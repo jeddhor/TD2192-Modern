@@ -121,8 +121,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M5-01 | Text renderer per font | SP/IM | M2-08 | TODO | | |
-| M5-02 | Palette fade engine | SP/IM | M1-03 | TODO | | |
+| M5-01 | Text renderer per font | SP/IM | M2-08 | IN PROGRESS | main-session | td-render::text draws the 3 fonts (baked or solid colour); spacing provisional pending M2-08; dialogue font U-032 |
+| M5-02 | Palette fade engine | SP/IM | M1-03 | IN PROGRESS | main-session | td-render::Fade (6-bit linear, provisional) pending DAC-routine RE |
 | M5-03 | Story card player | SP/IM | M1-04, M1-11 | TODO | | |
 | M5-04 | Dialogue scene player | SP/IM | M2-07, M2-10 | TODO | | |
 | M5-05 | Dossier screens | SP/IM | M1-11 | TODO | | |

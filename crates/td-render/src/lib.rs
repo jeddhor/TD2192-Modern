@@ -4,10 +4,14 @@
 //! Conversion to RGBA and scaling happen only in `td-platform`. Behaviour is implemented from
 //! `docs/spec/render/` and `docs/re/FORMATS.md`.
 
+pub mod fade;
 pub mod framebuffer;
 pub mod headings;
+pub mod text;
 pub mod tilemap;
 
+pub use fade::Fade;
 pub use framebuffer::{Framebuffer, HEIGHT, Image, Rect, WIDTH};
 pub use headings::{HEADINGS, HeadingSprites};
+pub use text::{TextColor, draw_text, text_width};
 pub use tilemap::draw_tile_map;
