@@ -136,7 +136,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | TODO | | |
-| M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | TODO | | |
+| M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom (all spec vectors pass) + Real48 format/convert/compare/Round/Trunc done; Real48 arithmetic waits for M1-01.b; tick/state_hash/replay next |
 | M6-03 | Player flight model | IM | M6-02 | TODO | | |
 | M6-04 | Map collision | IM | M6-02 | TODO | | |
 | M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | TODO | | |
