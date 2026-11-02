@@ -4,6 +4,7 @@
 //! the repository (MDG §5.3). Commands that only print facts (sizes, hashes, structure) may
 //! write to stdout.
 
+mod exe_res;
 mod export;
 mod gen_manifest;
 mod inventory;
@@ -43,6 +44,15 @@ enum Command {
         #[arg(long)]
         data: Option<PathBuf>,
     },
+    /// Verify the executable resource maps (docs/re/exe-resources) against an installation.
+    ExeRes {
+        /// Original game directory (defaults to $TD2192_DATA).
+        #[arg(long)]
+        data: Option<PathBuf>,
+        /// Also print the extracted values (terminal only; never commit them).
+        #[arg(long)]
+        show: bool,
+    },
     /// Regenerate crates/td-assets/src/manifest_data.rs from docs/re/FILE_INVENTORY.md.
     GenManifest {
         /// Inventory markdown to read.
@@ -58,6 +68,11 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Inventory { data, verbose } => inventory::run(data.as_deref(), verbose),
         Command::GenManifest { inventory, out } => gen_manifest::run(&inventory, &out),
+        Command::ExeRes { data, show } => {
+            let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
+                .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            exe_res::run(&root, show)
+        }
         Command::Export { kind, out, data } => {
             let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
                 .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;

@@ -21,4 +21,6 @@ offset = 0x18D91
 count = 20
 ```
 
-Rules: offsets are **file offsets**; every entry needs a stable `id` (the code refers to resources only by `id`); `tdtool exe-res --verify` must pass for every map. Never put the text itself in these files.
+Each map must also be listed in the `MAPS` table of `crates/td-assets/src/exe_res.rs` (it is compiled in with `include_str!`).
+
+Rules: offsets are **file offsets** (of the ShortString length byte for `pstring` kinds); every entry needs a stable `id` (the code refers to resources only by `id`); `tdtool exe-res --verify` must pass for every map. Never put the text itself in these files.

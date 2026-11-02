@@ -88,7 +88,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | IN PROGRESS | main-session | Structural parser + L1 over 60 files (classes 0..8, off-map coordinates); semantics need M1-08/M8-01 |
 | M2-12 | cfg / sav / stt parsers | RE/IM | M0-10 | TODO | | |
 | M2-13 | mz + pstring utilities | IM | M0-01 | DONE | main-session | 2026-11-02; MzHeader, file_offset, pstring/pstring_seq; headers checked vs EXECUTABLES.md |
-| M2-14 | exe-resource extraction + tdtool exe-res | IM | M2-13, M1-11 | TODO | | |
+| M2-14 | exe-resource extraction + tdtool exe-res | IM | M2-13, M1-11 | IN PROGRESS | main-session | Mechanism done (td-assets::exe_res, compiled-in TOML maps, hash-gated; tdtool exe-res); maps to be filled by M1-11 |
 | M2-15 | tdtool export (all formats, outside repo) | IM | M2-02..M2-12 | IN PROGRESS | main-session | tdtool export screens/tiles/sprites/maps done (refuses repo paths) |
 | M2-16 | Visual verification; FORMATS to CONFIRMED | VE | M2-15 | TODO | | |
 

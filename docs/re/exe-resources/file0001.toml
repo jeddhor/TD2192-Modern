@@ -1,0 +1,13 @@
+# Resource map for file0001.exe (Episode 1). See README.md in this folder and ADR-0003.
+# Offsets are FILE offsets of the ShortString length byte. Never put the text itself here.
+exe = "file0001.exe"
+sha256 = "96184a677d8dd8724b6c267a354104f6915c4a21d6d0822af1c4ce3ccd9e7998"
+
+# Seed entry verified 2026-11-02 (the first mission's story-card strings: title, location, date,
+# time cards, then the next mission's title). The full map is task M1-11.
+[[resource]]
+id = "e1.story_strings.seed"
+kind = "pstring_seq"
+offset = 0x4F38
+count = 8
+note = "E1M01 cards and the E1M02 title; consecutive ShortStrings"

@@ -9,10 +9,12 @@
 //!
 //! The original directory is only ever read (MDG P10, §8.8).
 
+pub mod exe_res;
 pub mod locator;
 pub mod manifest;
 pub mod validate;
 
+pub use exe_res::{ExeResources, MapStatus, ResourceValue};
 pub use locator::{AssetError, DataDir, DataDirSource, discover_data_dir, dos83};
 pub use manifest::{Category, Episode, ManifestEntry, Usage};
 pub use validate::{FileCheck, FileStatus, ValidationReport, validate};

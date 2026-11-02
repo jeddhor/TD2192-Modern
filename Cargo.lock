@@ -937,10 +937,12 @@ dependencies = [
 name = "td-assets"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "sha2",
  "td-formats",
  "td-test-support",
  "thiserror",
+ "toml",
  "tracing",
 ]
 
