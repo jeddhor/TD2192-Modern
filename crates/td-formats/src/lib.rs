@@ -8,7 +8,10 @@
 mod error;
 mod reader;
 
+pub mod dialogue;
 pub mod map;
+pub mod mission;
+pub mod mz;
 pub mod palette;
 pub mod screen;
 pub mod sprites;

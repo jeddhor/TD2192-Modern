@@ -155,6 +155,7 @@ Grammar as observed (bytes shown in hex; `<...>` = placeholder):
 ...                                    (one 01-line per speaker)
 03                                     end of scene header
 02 01 <color:u8> <text>                text line in the colour of the speaker who says it
+01 <slot> <face> <color> <name>        (inside a segment) a new or replacement speaker
 05                                     page break (wait for Space)
 04                                     end of scene
 d                                      a literal 'd' line follows each 04 (purpose unknown; U-016)
@@ -172,6 +173,12 @@ Whole-file survey (all six files):
 | `safedia3.dat` | 5,041 | 111 | 112 | 3,395 | 880 | 319 |
 
 Notes:
+- **Scene numbers are IDs, not a sequence.** E1 has 103 scenes with IDs from 1 to 157: 9 and 10 are absent, and 100, 105, 108, 109, 110, 156 and 157 sit among the lower IDs. The executables presumably look scenes up by ID. Uncut and edited files have identical ID lists.
+- **Scene 13 quirk:** its `06` line is the single byte `06`. The ID byte 0x0D doubles as the CR of the CR LF terminator (`06 0D 0A`); its neighbours are 12 and 14. The bytes 0x0A and 0x0D never occur inside any other line. How the original reader handles this is part of U-016; the port reads a bare `06` as ID 13.
+- **Mid-segment speaker lines:** a `01` line can appear inside a segment to bring in a new speaker (for example a new character taking slot 2 part-way through a scene).
+- **Speaker lines between segments** (after `04`, before the next `03`) occur in E3. They apply from the next segment on.
+- **Portrait-only changes:** a 3-byte `01 slot face` line (E3: twice in `dialogu3.dat`, once in `safedia3.dat`) changes the portrait shown in a slot without changing colour or name. Face 200 appears when a character leaves, so it probably means "no portrait". Face 200 also appears in some header speaker lines.
+- **Trailing spaces:** one `05` line in each E2 script carries two trailing spaces (`05 20 20`).
 - No other line-leading codes occur. Every line starts with `01`–`06` or is the literal `d` after `04`. The file ends with CR LF.
 - Speaker slots are only ever 1 and 2 (two speakers per scene). Portrait bytes range up to 200 (200 may mean "no portrait"; to confirm).
 - **Continuation segments:** in E2 and E3, a `03` follows a `04` directly, with no `06` or `01` lines (for example around line 4,002 of `dialogu2.dat`). This is a second segment that reuses the previous scene's speakers and has no trailing `d`.
