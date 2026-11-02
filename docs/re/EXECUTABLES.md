@@ -73,19 +73,24 @@ Code segments (image-relative start, size in bytes). The unit names are ours (M1
 2. **DS not set.** The loader sets DS only when the entry instruction is `mov dx,imm`. A BP7 entry is `call far System:init`, so DS was unset. The script sets DS = DGROUP over all code blocks.
 3. **DGROUP marked executable** (named `CODE_n`). The script renames it `DGROUP`/`DGROUP_BSS` and clears the execute flag.
 4. **False "non-returning" functions.** The analyzer "Non-Returning Functions – Discovered" flagged System's string-assign helper (`td2:350D:0D1E`, `td3:311C:0D1E`) as non-returning and dropped the code after every call to it (about 16 KB of code per exe). The script disables that analyzer, clears the flag on any function that contains a return instruction, and re-disassembles the dropped fall-throughs.
-5. The loader's "adjust segment starts" heuristic (it moves bytes up to a `RETF` in the first 16 bytes of a block into the previous block) did **not** fire for any of the five exes: every block starts at offset 0. Re-check this if an exe is ever re-imported.
+5. **Near branches 64 KB off (Ghidra x86 SLEIGH bug).** The 16-bit `rel16` operand is computed as `((inst_next >> 16) << 16) | ((inst_next + rel) & 0xFFFF)` on the *linear* address, so it wraps at a 64 KB linear boundary instead of at the segment base. In a segment that straddles a 64 KB linear boundary, every near `CALL`/`JMP rel16` that crosses that line resolves 64 KB away from the real `CS:((IP+rel) & 0xFFFF)` target, and Ghidra then disassembles and creates "functions" in whatever lies there (usually string literals). Affected segments: `file0001` `0E8B`, `1EDE`, `2C37`; equivalent segments in `td2`/`td3`. The script replaces each wrong flow reference with a `CALL_OVERRIDE_UNCONDITIONAL`/`JUMP_OVERRIDE_UNCONDITIONAL` reference to the correct target (78 in `file0001`, 115 in `td2`, 54 in `td3`; flow following and the decompiler both honour these). It then removes the bogus functions and clears any orphan run of "instructions" that is at least 70% printable ASCII. **Any new disassembly in those segments needs the same fix, so re-run the script after manual disassembly.**
+6. The loader's "adjust segment starts" heuristic (it moves bytes up to a `RETF` in the first 16 bytes of a block into the previous block) did **not** fire for any of the five exes: every block starts at offset 0. Re-check this if an exe is ever re-imported.
 
 **Coverage after setup** (instructions as a share of all code-segment bytes; the rest is classified by the script):
 
 | Exe | Functions | Instruction bytes | Code-segment bytes | % instructions | Pascal-string bytes | Zero fill | Other (tables, unreached) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `file0001.exe` | 393 | 202,863 | 246,832 | 82.2% | 22,298 | 5,058 | 16,372 (6.6%) |
-| `td2.exe` | 416 | 180,283 | 224,096 | 80.4% | 18,256 | 5,179 | 20,018 (8.9%) |
-| `td3.exe` | 397 | 172,648 | 207,952 | 83.0% | 13,691 | 5,056 | 16,206 (7.8%) |
+| `file0001.exe` | 391 | 199,947 | 246,832 | 81.0% | 25,682 | 5,024 | 15,930 (6.5%) |
+| `td2.exe` | 400 | 178,810 | 224,096 | 79.8% | 19,594 | 5,191 | 20,141 (9.0%) |
+| `td3.exe` | 387 | 168,751 | 207,952 | 81.1% | 16,782 | 5,127 | 16,941 (8.1%) |
 | `file0000.exe` | 175 | 23,248 | 46,032 | 50.5% | 1,375 | 5,022 | 16,127 (35.0%) |
-| `td1.exe` | 141 | 11,449 | 33,136 | 34.6% | 613 | 4,939 | 15,795 (47.7%) |
+| `td1.exe` | 141 | 11,479 | 33,136 | 34.6% | 577 | 4,939 | 15,801 (47.7%) |
 
-In `file0001` the remaining "other" bytes are almost all in WORX (`2C37`: an 11 KB run of tables and zeroed buffers starting at `2C37:0410`, plus some handler code that is still unreached) and System (`3A9A:14C3..`: Real48/8087-emulator constant tables). Function counts are low for the code size because the game code is written as a few very large procedures (for example `1EDE` holds 21 KB in 3 functions).
+Before setup, `file0001` had 340 functions and 196,388 instruction bytes, but some of those were string literals decoded as code (defect 5).
+
+In `file0001` the remaining "other" bytes are almost all in WORX (`2C37`: an 11 KB run of tables and zeroed buffers starting at `2C37:0410`, plus some handler code that is still unreached) and System (`3A9A:14C3..`: Real48/8087-emulator constant tables).
+
+Function counts are low for the code size because much of the game code is written as a few very large procedures. In `file0001` the largest are `0E8B:B880` (16.7 KB, 72 distinct callees), `1EDE:0E6A` (16.0 KB), `0E8B:0984` (14.1 KB), `2404:3521` (11.2 KB) and `3292:0011` (9.5 KB). `file0000`/`td1` were not studied further: their unexplained bytes are mostly WORX tables.
 
 ## 2. Toolchain fingerprints
 

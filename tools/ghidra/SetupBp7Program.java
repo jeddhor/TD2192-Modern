@@ -29,6 +29,7 @@ import java.math.BigInteger;
 import java.util.*;
 
 import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.database.mem.FileBytes;
 import ghidra.program.model.address.*;
@@ -36,7 +37,7 @@ import ghidra.program.model.lang.Register;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.mem.*;
 import ghidra.program.model.reloc.Relocation;
-import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.*;
 
 public class SetupBp7Program extends GhidraScript {
 
@@ -80,16 +81,32 @@ public class SetupBp7Program extends GhidraScript {
 		// then drops the code after every call to them. Turn it off and undo its damage.
 		setAnalysisOption(currentProgram, "Non-Returning Functions - Discovered", "false");
 		for (int pass = 1; pass <= passes; pass++) {
+			int wraps = fixNearBranchWrap();
+			int cleared = clearBogusTargets();
 			int seeded = repairNoReturn() + seedEntry() + seedFarCallTargets() + seedPrologues() +
-				seedCodePointers();
-			println(String.format("[setup] pass %d: seeded %d new code locations", pass, seeded));
+				seedCodePointers() + seedFlowTargets();
+			wraps += fixNearBranchWrap();
+			cleared += clearBogusTargets() + clearOrphanText();
+			println(String.format(
+				"[setup] pass %d: %d rel16 branches re-targeted, %d bogus targets cleared, %d new code locations",
+				pass, wraps, cleared, seeded));
 			if (!noAnalyze) {
 				analyzeAll(currentProgram);
 			}
-			if (seeded == 0) {
+			if (seeded == 0 && wraps == 0 && cleared == 0) {
 				break;
 			}
 		}
+		// analysis may have disassembled new rel16 branches: settle without re-analysing
+		for (int k = 0; k < 4; k++) {
+			int w = fixNearBranchWrap(), c = clearBogusTargets() + clearOrphanText(),
+					s = seedFlowTargets();
+			if (w + c + s == 0) {
+				break;
+			}
+		}
+		fixupFunctionBodies();
+		removeFunctionsOutsideCode();
 		Stats after = stats();
 		println("[setup] after:  " + after);
 		reportPerBlock();
@@ -229,6 +246,24 @@ public class SetupBp7Program extends GhidraScript {
 		}
 	}
 
+	/**
+	 * Analysis creates "functions" at the targets of indirect calls through pointer variables
+	 * (call far [DS:x]) when it mistakes the variable for the target. Those land in DGROUP or
+	 * uninitialised memory; remove them.
+	 */
+	private void removeFunctionsOutsideCode() {
+		List<Function> bad = new ArrayList<>();
+		for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {
+			if (f.getEntryPoint() instanceof SegmentedAddress && !isCode(f.getEntryPoint())) {
+				bad.add(f);
+			}
+		}
+		for (Function f : bad) {
+			println("[setup]   removing function outside code: " + f.getEntryPoint());
+			removeFunction(f);
+		}
+	}
+
 	private void setDs(int dgroup) throws Exception {
 		ProgramContext ctx = currentProgram.getProgramContext();
 		Register ds = ctx.getRegister("DS");
@@ -336,6 +371,238 @@ public class SetupBp7Program extends GhidraScript {
 			}
 		}
 		return n;
+	}
+
+	// ---------------------------------------------------------------- rel16 wrap repair
+
+	/** Wrong targets produced by the SLEIGH rel16 computation, pending clean-up. */
+	private final Set<Address> wrongTargets = new TreeSet<>();
+
+	/**
+	 * Ghidra's x86 SLEIGH computes a rel16 target as
+	 * {@code ((inst_next >> 16) << 16) | ((inst_next + rel) & 0xFFFF)} on the *linear* address,
+	 * i.e. it wraps at a 64 KB linear boundary instead of at the segment base. In any segment
+	 * that straddles a 64 KB linear boundary, every near CALL/JMP rel16 that crosses that
+	 * boundary therefore lands 64 KB off. The real-mode target is
+	 * {@code CS:((IP_next + rel) & 0xFFFF)}. This replaces the wrong flow reference with an
+	 * overriding reference (honoured by flow following and by the decompiler).
+	 */
+	private int fixNearBranchWrap() throws Exception {
+		ReferenceManager rm = currentProgram.getReferenceManager();
+		int fixed = 0;
+		for (MemoryBlock b : mem.getBlocks()) {
+			if (!b.isExecute() || !b.isInitialized() || !(b.getStart() instanceof SegmentedAddress sa)) {
+				continue;
+			}
+			long s = b.getStart().getOffset(), e = b.getEnd().getOffset();
+			if ((s >> 16) == (e >> 16)) {
+				continue; // does not straddle a 64 KB linear boundary
+			}
+			int seg = sa.getSegment();
+			InstructionIterator it = currentProgram.getListing()
+					.getInstructions(new AddressSet(b.getStart(), b.getEnd()), true);
+			while (it.hasNext()) {
+				Instruction ins = it.next();
+				int op = mem.getByte(ins.getAddress()) & 0xff;
+				if ((op != 0xE8 && op != 0xE9) || ins.getLength() != 3) {
+					continue;
+				}
+				int rel = mem.getShort(ins.getAddress().add(1)); // signed
+				long ipNext = ins.getAddress().getOffset() - seg * 16L + 3;
+				long correctLinear = seg * 16L + ((ipNext + rel) & 0xFFFF);
+				Address[] dflt = ins.getDefaultFlows();
+				if (dflt.length == 1 && dflt[0].getOffset() == correctLinear) {
+					continue; // Ghidra got this one right
+				}
+				Address correct = space.getAddress(seg, (int) (correctLinear - seg * 16L));
+				boolean haveCorrect = false;
+				for (Reference r : rm.getFlowReferencesFrom(ins.getAddress())) {
+					if (r.getToAddress().getOffset() == correctLinear) {
+						haveCorrect = true;
+					}
+					else {
+						wrongTargets.add(r.getToAddress());
+						rm.delete(r);
+					}
+				}
+				if (!haveCorrect) {
+					RefType t = op == 0xE8 ? RefType.CALL_OVERRIDE_UNCONDITIONAL
+							: RefType.JUMP_OVERRIDE_UNCONDITIONAL;
+					Reference nr = rm.addMemoryReference(ins.getAddress(), correct, t,
+						SourceType.USER_DEFINED, 0);
+					rm.setPrimary(nr, true);
+					fixed++;
+				}
+			}
+		}
+		return fixed;
+	}
+
+	/**
+	 * Removes functions and orphan instruction runs that exist only because of a wrong rel16
+	 * target (no flow reference reaches them any more). Real code inside a removed body is
+	 * rediscovered by the seeding passes from the corrected references.
+	 */
+	private int clearBogusTargets() throws Exception {
+		int n = 0;
+		ReferenceManager rm = currentProgram.getReferenceManager();
+		for (Address w : new ArrayList<>(wrongTargets)) {
+			if (hasFlowRefTo(rm, w)) {
+				continue;
+			}
+			wrongTargets.remove(w);
+			Function f = getFunctionAt(w);
+			if (f != null) {
+				AddressSetView body = new AddressSet(f.getBody());
+				removeFunction(f);
+				for (AddressRange r : body) {
+					clearListing(r.getMinAddress(), r.getMaxAddress());
+				}
+				n++;
+				continue;
+			}
+			// orphan run reached by a wrong JMP: clear while nothing else flows into it
+			Address a = w;
+			int guard = 0;
+			while (a != null && guard++ < 4096) {
+				Instruction ins = getInstructionAt(a);
+				if (ins == null || getFunctionContaining(a) != null) {
+					break;
+				}
+				if (!a.equals(w) && hasFlowRefTo(rm, a)) {
+					break;
+				}
+				Address next = ins.getFallThrough();
+				clearListing(ins.getAddress(), ins.getMaxAddress());
+				a = next;
+			}
+			n++;
+		}
+		return n;
+	}
+
+	/**
+	 * Clears runs of instructions that belong to no function, are not the target of any flow
+	 * reference from code inside a function, and whose bytes are at least 70% printable ASCII:
+	 * that is string data decoded as code (lowercase text decodes as INS/OUTS/IMUL/JO...).
+	 */
+	private int clearOrphanText() throws Exception {
+		int n = 0;
+		ReferenceManager rm = currentProgram.getReferenceManager();
+		for (MemoryBlock b : mem.getBlocks()) {
+			if (!b.isExecute() || !b.isInitialized()) {
+				continue;
+			}
+			List<Instruction> run = new ArrayList<>();
+			InstructionIterator it = currentProgram.getListing()
+					.getInstructions(new AddressSet(b.getStart(), b.getEnd()), true);
+			while (true) {
+				Instruction ins = it.hasNext() ? it.next() : null;
+				boolean orphan = ins != null && getFunctionContaining(ins.getAddress()) == null;
+				boolean contiguous = orphan && (run.isEmpty() ||
+					run.get(run.size() - 1).getMaxAddress().add(1).equals(ins.getAddress()));
+				if (contiguous) {
+					run.add(ins);
+					continue;
+				}
+				if (!run.isEmpty()) {
+					n += clearIfText(rm, run);
+					run.clear();
+				}
+				if (ins == null) {
+					break;
+				}
+				if (orphan) {
+					run.add(ins);
+				}
+			}
+		}
+		return n;
+	}
+
+	private int clearIfText(ReferenceManager rm, List<Instruction> run) throws Exception {
+		Address start = run.get(0).getAddress();
+		Address end = run.get(run.size() - 1).getMaxAddress();
+		long len = end.getOffset() - start.getOffset() + 1;
+		if (len < 8) {
+			return 0;
+		}
+		for (Instruction ins : run) {
+			for (Reference r : rm.getReferencesTo(ins.getAddress())) {
+				if (r.getReferenceType().isFlow() &&
+					getFunctionContaining(r.getFromAddress()) != null) {
+					return 0; // reached from real code
+				}
+			}
+		}
+		byte[] d = new byte[(int) len];
+		mem.getBytes(start, d);
+		int printable = 0;
+		for (byte c : d) {
+			int u = c & 0xff;
+			if (u >= 0x20 && u < 0x7f) {
+				printable++;
+			}
+		}
+		if (printable * 10 < len * 7) {
+			return 0;
+		}
+		clearListing(start, end);
+		return 1;
+	}
+
+	private static boolean hasFlowRefTo(ReferenceManager rm, Address a) {
+		for (Reference r : rm.getReferencesTo(a)) {
+			if (r.getReferenceType().isFlow()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Disassembles every undefined target of an existing call or jump reference. */
+	private int seedFlowTargets() throws Exception {
+		Set<Address> calls = new TreeSet<>(), jumps = new TreeSet<>();
+		ReferenceManager rm = currentProgram.getReferenceManager();
+		for (MemoryBlock b : mem.getBlocks()) {
+			if (!b.isExecute() || !b.isInitialized()) {
+				continue;
+			}
+			InstructionIterator it = currentProgram.getListing()
+					.getInstructions(new AddressSet(b.getStart(), b.getEnd()), true);
+			while (it.hasNext()) {
+				Instruction ins = it.next();
+				for (Reference r : rm.getFlowReferencesFrom(ins.getAddress())) {
+					Address t = r.getToAddress();
+					if (isCode(t) && isUndefined(t)) {
+						(r.getReferenceType().isCall() ? calls : jumps).add(t);
+					}
+				}
+			}
+		}
+		int n = 0;
+		for (Address t : jumps) {
+			if (isUndefined(t)) {
+				new DisassembleCommand(t, null, true).applyTo(currentProgram, monitor);
+				n++;
+			}
+		}
+		for (Address t : calls) {
+			n += seed(t);
+		}
+		return n;
+	}
+
+	private void fixupFunctionBodies() throws Exception {
+		for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {
+			if (isCode(f.getEntryPoint())) {
+				if (getInstructionAt(f.getEntryPoint()) == null && isUndefined(f.getEntryPoint())) {
+					new DisassembleCommand(f.getEntryPoint(), null, true).applyTo(currentProgram,
+						monitor);
+				}
+				CreateFunctionCmd.fixupFunctionBody(currentProgram, f, monitor);
+			}
+		}
 	}
 
 	/**
