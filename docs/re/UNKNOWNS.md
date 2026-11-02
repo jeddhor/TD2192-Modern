@@ -34,3 +34,6 @@ Priority: **P1** blocks a milestone's core work · **P2** blocks a specific task
 | U-026 | Music cue mapping (which CMF plays when) | P2 | Music list in `file0001` at 0x13AD2 suggests an index table | WORX call sites | M1-02 | OPEN |
 | U-027 | Whether Ghidra's MZ loader splits segments correctly for these binaries (BP7 code/data segments) | P2 | Not yet imported | Inspect the memory map after import; fix by hand | M0-08 | OPEN |
 | U-028 | Meaning of the `sound_override == True` string in `file0000.exe` | P3 | String only | xref | M1-10 | OPEN |
+| U-029 | Does WORX apply note velocity to CMF playback (velocities 49..127 occur)? The port currently ignores velocity | P2 | CMF survey (2026-11-02) | WORX analysis; A/B against a DOSBox-X music capture | M3-05 | OPEN |
+| U-030 | Do all ADPCM VOC blocks begin with an uncompressed reference byte (as the port assumes)? | P2 | Decoded signals look sane under that assumption | A/B against a DOSBox-X SFX capture; WORX DSP command used (with or without reference) | M3-08 | OPEN |
+| U-031 | `ric2.voc` decodes (as 8-bit PCM) to near-silent noise and is not referenced by name. Unused, or a different encoding? | P3 | Export analysis 2026-11-02 | Check whether any exe builds its name; listen | M1-02 | OPEN |

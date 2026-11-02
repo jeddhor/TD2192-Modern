@@ -96,13 +96,13 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M3-01 | VOC parser | IM | M0-06 | TODO | | |
-| M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | TODO | | |
-| M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | TODO | | |
-| M3-04 | CMF parser + sequencer | IM | M3-03 | TODO | | |
+| M3-01 | VOC parser | IM | M0-06 | DONE | main-session | 2026-11-02; td-formats::voc; all 17 files parse |
+| M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | DONE | main-session | 2026-11-02; spec audio/voc-and-adpcm.md; decoder + vectors; decoded signals sane (lag-1 autocorr 0.79-1.00); A/B pending M3-08 |
+| M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | DONE | main-session | 2026-11-02; td-opl over ymfm-sys (YM3812) |
+| M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | main-session | 2026-11-02; spec audio/cmf.md; fixed channel map, rhythm mode, fine transpose; velocity ignored (U-029); 96 ticks/s (U-007) |
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | TODO | | |
-| M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | TODO | | |
-| M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | TODO | | |
+| M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | IN PROGRESS | main-session | Mixer + Classic/Polyphonic SFX policies done; Classic rule provisional (U-021), balance untuned |
+| M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
 | M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | TODO | | |
 
 ## M4: Platform shell

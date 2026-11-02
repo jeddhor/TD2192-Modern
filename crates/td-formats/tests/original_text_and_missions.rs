@@ -100,3 +100,60 @@ fn executable_headers_match_executables_md() {
         assert_eq!((h.initial_cs, h.initial_ip), (cs, ip), "{name}");
     }
 }
+
+#[test]
+fn audio_containers_parse() {
+    use td_formats::cmf::Cmf;
+    use td_formats::voc::{Block, Voc};
+    let dir = require_data!();
+    // (file, end tick) from docs/spec/audio/cmf.md; all clocks are 96 ticks/s.
+    for (name, end) in [
+        ("climax.cmf", 5160),
+        ("death.cmf", 2764),
+        ("hangar.cmf", 4616),
+        ("intro.cmf", 8064),
+        ("intro1.cmf", 2069),
+        ("intro2.cmf", 9676),
+        ("low.cmf", 8063),
+        ("menu.cmf", 4841),
+        ("mood.cmf", 4821),
+        ("mood2.cmf", 2461),
+        ("mood3.cmf", 2461),
+        ("moodmaj.cmf", 5376),
+        ("satair.cmf", 6144),
+        ("td01.cmf", 11136),
+        ("td02.cmf", 6912),
+        ("td03.cmf", 6093),
+        ("vulture.cmf", 9600),
+    ] {
+        let c = Cmf::parse(&read(&dir, name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!((c.ticks_per_second, c.end_tick), (96, end), "{name}");
+        assert!(!c.events.is_empty());
+    }
+    for name in [
+        "afterb.voc",
+        "boomboom.voc",
+        "home.voc",
+        "hornet.voc",
+        "income.voc",
+        "missile.voc",
+        "poink.voc",
+        "pulse.voc",
+        "punyexp.voc",
+        "ric2.voc",
+        "ric3.voc",
+        "scratch.voc",
+        "stiletto.voc",
+        "vii.voc",
+        "vulturei.voc",
+        "whoosh.voc",
+        "zeus.voc",
+    ] {
+        let bytes = read(&dir, name);
+        let v = Voc::parse(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(
+            matches!(v.blocks.first(), Some(Block::Sound { .. })),
+            "{name}"
+        );
+    }
+}

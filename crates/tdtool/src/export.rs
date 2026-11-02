@@ -27,6 +27,8 @@ pub enum Kind {
     Sprites,
     /// Full renders of every map with its tileset.
     Maps,
+    /// Every sound effect (decoded, native rate) and every song (rendered once through) as WAV.
+    Audio,
     /// Everything above.
     All,
 }
@@ -61,6 +63,9 @@ pub fn run(data: &Path, out: &Path, kind: Kind) -> Result<()> {
             let ts = Tileset::parse(&dir.read(blk)?)?;
             map_png(&m, &ts, &pal, &out.join(format!("{map}.png")))?;
         }
+    }
+    if all || kind == Kind::Audio {
+        audio(&dir, out)?;
     }
     println!("exported to {}", out.display());
     Ok(())
@@ -183,6 +188,45 @@ fn map_png(m: &TileMap, ts: &Tileset, pal: &Palette, path: &Path) -> Result<()> 
         }
     }
     write_png(path, &img, w, w, pal)
+}
+
+fn audio(dir: &DataDir, out: &Path) -> Result<()> {
+    use std::sync::Arc;
+    for e in td_assets::manifest::of_category(td_assets::Category::Sfx) {
+        let pcm = td_audio::decode_voc(&dir.read(e.name)?).with_context(|| e.name.to_string())?;
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: pcm.rate,
+            bits_per_sample: 8,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(out.join(format!("{}.wav", e.name)), spec)?;
+        for &s in &pcm.samples {
+            w.write_sample((i16::from(s) - 128) as i8)?;
+        }
+        w.finalize()?;
+    }
+    for e in td_assets::manifest::of_category(td_assets::Category::Music) {
+        let song = Arc::new(td_formats::cmf::Cmf::parse(&dir.read(e.name)?)?);
+        let secs = f64::from(song.end_tick) / f64::from(song.ticks_per_second) + 2.0;
+        let mut player = td_audio::CmfPlayer::new(song, false);
+        let rate = player.sample_rate();
+        let mut buf = vec![0i32; (secs * f64::from(rate)) as usize];
+        player.render(&mut buf);
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(out.join(format!("{}.wav", e.name)), spec)?;
+        for &s in &buf {
+            w.write_sample(s.clamp(-32768, 32767) as i16)?;
+        }
+        w.finalize()?;
+    }
+    println!("audio exported");
+    Ok(())
 }
 
 /// Writes an indexed PNG with the palette expanded to 8 bits.

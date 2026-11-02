@@ -8,6 +8,7 @@
 mod error;
 mod reader;
 
+pub mod cmf;
 pub mod dialogue;
 pub mod map;
 pub mod mission;
@@ -16,6 +17,7 @@ pub mod palette;
 pub mod screen;
 pub mod sprites;
 pub mod tileset;
+pub mod voc;
 
 pub use error::{FormatError, Result};
 pub use reader::ByteReader;
