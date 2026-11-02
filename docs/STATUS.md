@@ -109,13 +109,13 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M4-01 | Window, texture, palette LUT, scaling modes, F11, high-DPI | IM | M2-02 | TODO | | |
-| M4-02 | Fixed-timestep driver | IM | M1-06 | TODO | | |
-| M4-03 | Input layer (scancodes, gamepad, actions, text) | IM | M4-01 | TODO | | |
-| M4-04 | Audio device + ring buffer | IM | M3-06 | TODO | | |
-| M4-05 | Settings + first-run data picker + validation UI | IM | M0-05 | TODO | | |
-| M4-06 | Dev map viewer | IM | M2-04, M2-05 | TODO | | |
-| M4-07 | Screenshot, logging, fatal-error dialog | IM | M4-01 | TODO | | |
+| M4-01 | Window, texture, palette LUT, scaling modes, F11, high-DPI | IM | M2-02 | DONE | main-session | 2026-11-02; aspect 4:3 sharp-bilinear / integer / stretch; F10 cycles, F11 fullscreen; verified by window read-back (1280x960) |
+| M4-02 | Fixed-timestep driver | IM | M1-06 | DONE | main-session | 2026-11-02; td-flow::FixedStep, no drift over 600 s; tick rate placeholder 70 Hz (U-001) |
+| M4-03 | Input layer (scancodes, gamepad, actions, text) | IM | M4-01 | IN PROGRESS | main-session | Keyboard (HID scancodes, edges, repeat, text) done; gamepad pending (fold into M11-04 action layer) |
+| M4-04 | Audio device + ring buffer | IM | M3-06 | DONE | main-session | 2026-11-02; main-thread render + push to SDL stream (~43 ms queue); OPL chip is not Send, so no audio thread |
+| M4-05 | Settings + first-run data picker + validation UI | IM | M0-05 | IN PROGRESS | main-session | settings.toml (td-flow::Settings) load/save done; first-run folder picker pending (error box explains for now) |
+| M4-06 | Dev map viewer | IM | M2-04, M2-05 | DONE | main-session | 2026-11-02; td2192 --dev-mapview e1/e2a/e2b/e3a/e3b/intro; sprites at 16 headings; music/SFX audition |
+| M4-07 | Screenshot, logging, fatal-error dialog | IM | M4-01 | DONE | main-session | 2026-11-02; F12 framebuffer PNG, --dev-exit-after window capture, tracing (TD2192_LOG), fatal error box |
 
 ## M5: Narrative & screens
 
