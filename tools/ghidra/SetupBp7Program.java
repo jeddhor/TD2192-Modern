@@ -14,10 +14,10 @@
 //      undefined bytes, then re-runs auto-analysis. Repeats until nothing new is found.
 //   5. Prints coverage statistics.
 //
-// Arguments (all optional, key=value):
-//   dgroup=<hex>   image-relative DGROUP segment (overrides detection)
+// Arguments (all optional, key:value; key=value also works outside analyzeHeadless.bat):
+//   dgroup:<hex>   image-relative DGROUP segment (overrides detection)
 //   noanalyze      seed only; do not run auto-analysis
-//   passes=<n>     maximum discovery passes (default 4)
+//   passes:<n>     maximum discovery passes (default 4)
 //
 // Headless: analyzeHeadless <proj> TD2192 -process file0001.exe -noanalysis
 //           -scriptPath tools/ghidra -postScript SetupBp7Program.java
@@ -232,8 +232,14 @@ public class SetupBp7Program extends GhidraScript {
 			}
 		}
 		Address a = space.getAddress(dgroup, 0);
-		if (getSymbolAt(a) == null || !"DGROUP".equals(getSymbolAt(a).getName())) {
-			createLabel(a, "DGROUP", true, SourceType.USER_DEFINED);
+		Symbol existing = getSymbolAt(a);
+		if (existing != null && "DGROUP".equals(existing.getName())) {
+			if (existing.getSource() == SourceType.USER_DEFINED) {
+				existing.setSource(SourceType.ANALYSIS); // not a symbols-CSV name
+			}
+		}
+		else {
+			createLabel(a, "DGROUP", true, SourceType.ANALYSIS);
 		}
 		// remove any function the first analysis left in DGROUP
 		for (MemoryBlock b : mem.getBlocks()) {
@@ -852,7 +858,7 @@ public class SetupBp7Program extends GhidraScript {
 	private static Map<String, String> parseArgs(String[] a) {
 		Map<String, String> m = new HashMap<>();
 		for (String s : a) {
-			int eq = s.indexOf('=');
+			int eq = s.indexOf('=') >= 0 ? s.indexOf('=') : s.indexOf(':');
 			if (eq < 0) {
 				m.put(s.toLowerCase(), "");
 			}

@@ -49,7 +49,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | DONE | main-session | 2026-11-02 |
 | M0-07 | RE work area + captures manifest template | RE | - | DONE | main-session | 2026-11-02 |
 | M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | DONE | RE-1 | 2026-11-02; base seg 1000 for all; DGROUP + segment maps + coverage in docs/re/EXECUTABLES.md §1.1; loader defects fixed by tools/ghidra/SetupBp7Program.java; U-027 resolved |
-| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | IN PROGRESS | RE-1 | Started 2026-11-02 |
+| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | DONE | RE-1 | 2026-11-02; tools/ghidra/*.java + tools/scripts/ghidra-headless.ps1; usage in tools/ghidra/README.md; all tested headless |
 | M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | IN PROGRESS | main-session | DOSBox-X built: dosbox-x\bin\x64\Release\dosbox-x.exe (C_DEBUG on) |
 | M0-11 | Capture tooling and procedure | VE | M0-10 | TODO | | |
 | M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | DONE | main-session | 2026-11-02; D1 Rust+SDL3, D2 MIT; ADRs accepted |
