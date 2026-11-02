@@ -79,7 +79,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-02 | screen parser (46 files) + tests | IM | M2-01 | DONE | main-session | 2026-11-02; 46 screens + td.hlp (2 pages) parse |
 | M2-03 | tileset parser (+ E2/E3 trailing bytes) | IM | M2-01 | IN PROGRESS | main-session | Parser done; 864 trailing bytes still unknown (U-013) |
 | M2-04 | map parser (201/200) + tdtool map | IM | M2-03 | IN PROGRESS | main-session | Parser done; tdtool map pending |
-| M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | IN PROGRESS | main-session | Sheet parsers done; 16-heading assembly pending |
+| M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | DONE | main-session | 2026-11-02; rotation sets CCW (measured); 16-heading assembly in td-render; tdtool export sprites |
 | M2-06 | .pic decoder | RE/IM | M1-05 | TODO | | |
 | M2-07 | portraits geometry + parser | RE/IM | M1-05 | TODO | | |
 | M2-08 | fonts x3 | RE/IM | M1-05 | TODO | | |
@@ -89,7 +89,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-12 | cfg / sav / stt parsers | RE/IM | M0-10 | TODO | | |
 | M2-13 | mz + pstring utilities | IM | M0-01 | TODO | | |
 | M2-14 | exe-resource extraction + tdtool exe-res | IM | M2-13, M1-11 | TODO | | |
-| M2-15 | tdtool export (all formats, outside repo) | IM | M2-02..M2-12 | TODO | | |
+| M2-15 | tdtool export (all formats, outside repo) | IM | M2-02..M2-12 | IN PROGRESS | main-session | tdtool export screens/tiles/sprites/maps done (refuses repo paths) |
 | M2-16 | Visual verification; FORMATS to CONFIRMED | VE | M2-15 | TODO | | |
 
 ## M3: Audio

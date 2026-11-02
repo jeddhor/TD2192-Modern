@@ -99,11 +99,11 @@ Slot contents as seen in the render (class mapping is U-008):
 
 | | |
 |---|---|
-| Confidence | LIKELY (rendered and compared side by side) |
+| Confidence | **CONFIRMED** (measured overlap + visual check of the assembled 16-heading sheet, 2026-11-02) |
 | Size | 38,400 bytes each = **24 cells × 40×40** |
-| Content | Cells 0..19 are the same 20 sprites as `td.shp`, pre-rotated clockwise by about **22.5° (`td.sc3`)**, **45° (`td.shr`)** and **67.5° (`td.sc2`)**. Cells 20..23: to be checked. |
-| Heading construction (hypothesis) | 16 headings: `h % 4` picks the base set `[shp(32×32), sc3, shr, sc2]`, and `h / 4` rotates it by multiples of 90° with exact pixel transposition and flips. Centre the 32×32 base in a 40×40 frame for uniform handling. |
-| To do | Confirm the rotation direction, the exact angles, the role of cells 20..23, and how the engine actually selects frames (M2-05; it may use a lookup table in the exe). |
+| Content | Cells 0..19 are the same 20 sprites as `td.shp`, pre-rotated **counter-clockwise** by **22.5° (`td.sc3`)**, **45° (`td.shr`)** and **67.5° (`td.sc2`)**. Best overlap with the base sprites rotated CCW is at 20° / 40° / 65° in 5° steps; CW rotation matches much worse. **Cells 20..23 are blank** (all zero). |
+| Heading construction | 16 headings, 0 = nose up, increasing counter-clockwise in 22.5° steps: `h % 4` picks `[shp, sc3, shr, sc2]`, and the result is rotated CCW by `90° × (h / 4)` with exact pixel transforms. The 32×32 base is centred in a 40×40 frame (offset 4,4). Implemented in `td-render::headings`; the result is continuous through all 16 steps. |
+| Still open | How the engine maps its internal angle to a frame index (U-003). |
 
 ### 6.3 Other sprite files (HYPOTHESIS)
 
