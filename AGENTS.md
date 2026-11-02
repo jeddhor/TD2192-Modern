@@ -22,7 +22,7 @@
 4. **One hat per task:** Archaeologist (RE), Spec author (SP), Implementer (IM), Verifier (VE). State your hat. Implementers do **not** open Ghidra, `re-work\exports`, or disassembly; they work from `docs/spec/` and file questions when a spec is insufficient. Never do RE and IM on the same subsystem in one session.
 5. **Specs before code** for original behaviour. Code cites `spec path + revision`. Constants cite provenance.
 6. **`td-sim` is deterministic:** no floats in Classic gameplay paths, no wall clock, no unseeded or extra RNG calls, no `HashMap` iteration, explicit 16-bit wrapping where the original wraps.
-7. **Respect crate boundaries** (MDG §8.2). No upward dependencies. No `unsafe` outside `td-platform` and `td-opl-sys`.
+7. **Respect crate boundaries** (MDG §8.2). No upward dependencies. No `unsafe` anywhere (only `td-platform` may get a justified, reviewed exception).
 8. **Green tree:** `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` pass with **and** without `TD2192_DATA`. Data-gated tests use `require_data!()`.
 9. **Write knowledge down in the same change:** `docs/re/FORMATS.md`, `docs/re/UNKNOWNS.md`, `docs/re/symbols/*.csv`, `docs/spec/**`, `docs/STATUS.md`. If you stop mid-task, write a handoff in `docs/handoffs/`.
 10. **Never reproduce hostile behaviour** (for example the `label.exe` disk-relabel path).

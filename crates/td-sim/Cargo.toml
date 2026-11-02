@@ -1,0 +1,20 @@
+[package]
+name = "td-sim"
+description = "Deterministic Traffic Department 2192 game simulation (no I/O, no floats in Classic paths)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+td-formats.workspace = true
+td-assets.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

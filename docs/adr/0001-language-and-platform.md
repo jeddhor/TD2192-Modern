@@ -13,13 +13,13 @@ Available on the development machine: Rust (rustup, MSVC host), Visual Studio 20
 
 - **Language:** Rust, stable, edition 2024, toolchain pinned in `rust-toolchain.toml`.
 - **Platform:** SDL3 through the `sdl3` crate (window, presentation, input, gamepad, audio stream, dialogs).
-- **Structure:** a Cargo workspace with the crates in MDG §8.2; dependency direction enforced by crate graph; `unsafe` forbidden except in `td-platform` and `td-opl-sys`.
+- **Structure:** a Cargo workspace with the crates in MDG §8.2; dependency direction enforced by crate graph; `unsafe` forbidden everywhere (a justified, reviewed exception is possible only in `td-platform`).
 
 ## Consequences
 
 - Memory safety and explicit integer-width semantics (`wrapping_*`, overflow checks) help both stability and T1 fidelity.
 - Built-in `cargo test`, `clippy` and `fmt` give every agent the same quality gates.
-- One C++ component (ymfm, ADR-0005) needs a `cc` build step.
+- One C++ component (ymfm, ADR-0005) is compiled by the `ymfm-sys` crate through `cxx`, which needs a C++ compiler (MSVC on Windows).
 - SDL3 bindings may need the crate's bundled or build-from-source feature on Windows (CMake is installed).
 
 ## Alternatives considered

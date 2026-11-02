@@ -1,0 +1,17 @@
+[package]
+name = "td-platform"
+description = "SDL3 platform layer: window, presentation, input, audio device, timing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+td-render.workspace = true
+sdl3.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

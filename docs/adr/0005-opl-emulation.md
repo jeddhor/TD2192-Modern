@@ -16,7 +16,7 @@ All 17 music tracks are Creative Music Files that drive a Yamaha YM3812 (OPL2). 
 
 ## Decision
 
-Vendor **ymfm** in `crates/td-opl-sys`, built with the `cc` crate, behind a minimal C ABI shim and a safe Rust wrapper (`write_reg`, `generate`, `reset`). Record its licence in `THIRD_PARTY.md`.
+Use **ymfm** through the existing `ymfm-sys` crate (BSD-3-Clause; `cxx` bridge with a safe API that exposes the YM3812), wrapped by our small `td-opl` crate (`Opl2::write_reg`, `generate`, `reset`). No vendoring and no `unsafe` of our own. Licences are recorded in `THIRD_PARTY.md`. If `ymfm-sys` is ever abandoned, vendor ymfm behind the same `td-opl` API.
 
 ## Consequences
 

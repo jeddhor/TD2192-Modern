@@ -1,0 +1,20 @@
+[package]
+name = "td-flow"
+description = "Top-level game flow: front end, narrative presentation, missions, debriefing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+td-formats.workspace = true
+td-assets.workspace = true
+td-sim.workspace = true
+td-render.workspace = true
+td-audio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

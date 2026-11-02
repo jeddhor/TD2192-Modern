@@ -296,7 +296,7 @@ The original game running in DOSBox, from a **writable copy** of the installatio
 |---|---|---|
 | Language | **Rust** (stable, edition 2024, toolchain pinned in `rust-toolchain.toml`) | Memory safety, built-in test/bench/fmt/lint, strong typing for binary formats, explicit integer-width semantics, easy multi-crate layering. Installed: rustup stable MSVC host. |
 | Platform layer | **SDL3** via the `sdl3` crate | Window, GPU texture presentation, keyboard, gamepad, audio stream, file dialogs. Cross-platform. |
-| OPL2 emulation | **ymfm** (BSD-3-Clause, C++) wrapped in a small `td-opl-sys` crate built with `cc` | Accurate, permissively licensed. ADR-0005. |
+| OPL2 emulation | **ymfm** (BSD-3-Clause, C++) via the `ymfm-sys` crate, wrapped in our small safe `td-opl` crate | Accurate, permissively licensed. ADR-0005. |
 | ADPCM / VOC / CMF | Our own Rust code from public format descriptions | Small and well documented. |
 | Error handling | `thiserror` (libraries), `anyhow` (binaries) | |
 | Logging | `tracing` + `tracing-subscriber` | |
@@ -349,7 +349,7 @@ flowchart TB
     end
     subgraph PLAT["Platform"]
         PLATFORM[td-platform<br/>SDL3 window, input, audio device, timing]
-        OPL[td-opl-sys<br/>ymfm FFI]
+        OPL[td-opl<br/>ymfm wrapper]
     end
     APP --> FLOW & PLATFORM
     FLOW --> SIM & RENDER & AUDIO & ASSETS
@@ -368,8 +368,8 @@ flowchart TB
 | `td-assets` | Find the data directory, resolve 8.3/case-insensitive names, verify the manifest, load and cache, extract exe-embedded resources by offset map, episode availability | `td-formats`, `sha2` | render, audio, sim, platform |
 | `td-sim` | Deterministic world: entities, physics, collision, weapons, AI, missions, scoring, RNG. Integer and fixed-point math only. Emits events (sounds, music cues, messages). | `td-assets` (read-only data types), `td-formats` types | render, audio, platform, flow |
 | `td-render` | Draws into `Framebuffer { pixels: [u8; 64000], palette: [Rgb6; 256] }`: tiles, sprites, text, HUD, effects, fades | `td-assets`, `td-sim` (read-only view of state) | platform, audio |
-| `td-audio` | Sample mixer, VOC/ADPCM decode, CMF sequencer, OPL bridge, PC-speaker synthesis (later). Produces PCM frames. No device I/O. | `td-assets`, `td-opl-sys` | platform, render, sim |
-| `td-opl-sys` | FFI wrapper over ymfm's OPL/OPL2 core. The only `unsafe` outside the platform crate. | `cc` (build) | everything else |
+| `td-audio` | Sample mixer, VOC/ADPCM decode, CMF sequencer, OPL bridge, PC-speaker synthesis (later). Produces PCM frames. No device I/O. | `td-assets`, `td-opl` | platform, render, sim |
+| `td-opl` | Safe wrapper over ymfm's YM3812 core via `ymfm-sys` | `ymfm-sys` | everything else |
 | `td-flow` | Top-level state machine: launcher/config equivalent, intro, menus, story cards, dialogue scenes, briefings, debriefings, save/load UI, episode progression; owns the `Sim` during missions | sim, render, audio, assets | platform |
 | `td-platform` | SDL3: window, presentation and scaling, input devices to an action snapshot, audio device, clock, filesystem locations, file dialog | `sdl3`, `td-render` types (framebuffer) | sim, flow internals |
 | `td2192` (bin) | Wires platform and flow together; CLI flags; settings | all runtime crates | |
@@ -378,7 +378,7 @@ flowchart TB
 
 Rules:
 1. Dependency direction is strictly downward in the diagram. A crate that needs something "upward" receives it through a trait or an event.
-2. `#![forbid(unsafe_code)]` in every crate except `td-platform` and `td-opl-sys`.
+2. `unsafe_code = "forbid"` workspace-wide. Only `td-platform` may get a justified, reviewed exception.
 3. `td-sim` and `td-formats` MUST compile and test without SDL, audio devices or data files.
 4. No global mutable state. Pass contexts explicitly.
 
@@ -572,7 +572,7 @@ Specs: `spec/render/*.md` (palette, screens, tiles, sprites, text, hud, effects,
 
 **9.4.3 SFX policy.** The original targets SB 1.x/2.0-class hardware, which plays **one** digital stream at a time, so new effects probably preempt old ones by priority. Classic mode reproduces the original policy as established by RE of the WORX call sites (M1-02, M3-06). Enhanced mode allows N simultaneous voices.
 
-**9.4.4 CMF music.** Parse CMF v1.01 (`CTMF` header: instrument and music offsets, timing fields, 16 channel-in-use flags, instrument count; 16-byte OPL instrument records; MIDI-like event stream). The sequencer handles note on/off, program change, controller events including CMF-specific ones (0x63 AM/VIB depth, 0x66 marker, 0x67 rhythm mode, 0x68/0x69 transpose), running status, end of track and looping. It drives OPL2 registers through `td-opl-sys`.
+**9.4.4 CMF music.** Parse CMF v1.01 (`CTMF` header: instrument and music offsets, timing fields, 16 channel-in-use flags, instrument count; 16-byte OPL instrument records; MIDI-like event stream). The sequencer handles note on/off, program change, controller events including CMF-specific ones (0x63 AM/VIB depth, 0x66 marker, 0x67 rhythm mode, 0x68/0x69 transpose), running status, end of track and looping. It drives OPL2 registers through `td-opl`.
 
 Timing: header field @0x0A varies per song (23..192) and @0x0C is 96 in every file. **Which one WORX uses, and whether it overrides tempo, MUST be established (U-007)** before music is accepted.
 
@@ -858,7 +858,7 @@ Each milestone below has: **Goal**, **Entry criteria**, **Tasks** (IDs are stabl
 |---|---|
 | IM M3-01 | `voc` parser: all block types; per-file report (rate, codec, length). |
 | SP/IM M3-02 | Creative ADPCM decoders (4-bit, 2.6-bit, 2-bit), spec written from public documentation in `spec/audio/adpcm.md`; L0 tests with synthetic vectors; L1 hash of decoded PCM per file. |
-| IM M3-03 | `td-opl-sys`: vendored ymfm (licence in THIRD_PARTY.md), minimal C ABI shim, safe Rust wrapper (`write_reg`, `generate`). |
+| IM M3-03 | `td-opl`: safe wrapper over `ymfm-sys` (YM3812): `write_reg`, `generate`, `reset` (done in M0 scaffolding; extend as needed). |
 | IM M3-04 | `cmf` parser + sequencer (events, CMF controllers, rhythm mode, looping); L0 tests with synthetic event streams. |
 | RE M3-05 | Tempo semantics (U-007): which header field WORX honours; loop/restart behaviour; any per-song tempo overrides in exe. |
 | SP/IM M3-06 | Mixer + SFX policy (Classic monophonic preemption per M1-02; Enhanced polyphony); volumes; resampling. |

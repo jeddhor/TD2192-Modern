@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+td-formats = { path = "crates/td-formats" }
+td-assets = { path = "crates/td-assets" }
+td-sim = { path = "crates/td-sim" }
+td-render = { path = "crates/td-render" }
+td-audio = { path = "crates/td-audio" }
+td-opl = { path = "crates/td-opl" }
+td-flow = { path = "crates/td-flow" }
+td-platform = { path = "crates/td-platform" }
+td-test-support = { path = "crates/td-test-support" }
+
+# Third-party (licences recorded in THIRD_PARTY.md)
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+hound = "3"
+png = "0.18"
+proptest = "1"
+sdl3 = { version = "0.22", features = ["build-from-source-static"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+thiserror = "2"
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ymfm-sys = "0.2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+# Optimise dependencies (SDL, ymfm) even in dev builds so audio and video run in real time.
+[profile.dev.package."*"]
+opt-level = 2
+
+# td-sim mirrors 16-bit arithmetic: unintended overflow must fail loudly in every profile (MDG §8.6).
+[profile.release.package.td-sim]
+overflow-checks = true

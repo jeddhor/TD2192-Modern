@@ -1,0 +1,14 @@
+[package]
+name = "td-opl"
+description = "Safe wrapper around the ymfm YM3812 (OPL2) emulator."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ymfm-sys.workspace = true
+
+[lints]
+workspace = true

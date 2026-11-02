@@ -11,7 +11,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | | |
 |---|---|
-| **Current milestone** | M0 (not started) |
+| **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
 | **Ghidra lock** | free |
 | **Active handoffs** | none |
@@ -41,18 +41,18 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M0-01 | Cargo workspace + crate stubs, toolchain pin, lints, profiles | IM | D1 | TODO | | |
-| M0-02 | CI workflow (fmt, clippy, test; win/linux/mac) | IM | M0-01 | TODO | | |
-| M0-03 | THIRD_PARTY.md, CONTRIBUTING.md, repo hygiene files | IM | M0-01 | TODO | | |
-| M0-04 | td-assets locator (precedence, 8.3 + case-insensitive) | IM | M0-01 | TODO | | |
-| M0-05 | tdtool gen-manifest + inventory | IM | M0-04 | TODO | | |
-| M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | TODO | | |
-| M0-07 | RE work area + captures manifest template | RE | - | TODO | | |
-| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | TODO | | |
+| M0-01 | Cargo workspace + crate stubs, toolchain pin, lints, profiles | IM | D1 | DONE | main-session | 2026-11-02; Rust 1.95.0 pinned; SDL3 built from source via VS-bundled CMake (machine-local P:\msdos\TD2192\.cargo\config.toml) |
+| M0-02 | CI workflow (fmt, clippy, test; win/linux/mac) | IM | M0-01 | REVIEW | main-session | Workflow written; cannot run until a remote exists (D7) |
+| M0-03 | THIRD_PARTY.md, CONTRIBUTING.md, repo hygiene files | IM | M0-01 | DONE | main-session | 2026-11-02 |
+| M0-04 | td-assets locator (precedence, 8.3 + case-insensitive) | IM | M0-01 | DONE | main-session | 2026-11-02; unit-tested incl. helihangar.scr |
+| M0-05 | tdtool gen-manifest + inventory | IM | M0-04 | DONE | main-session | 2026-11-02; inventory reports 218/218, E1-E3 exact |
+| M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | DONE | main-session | 2026-11-02 |
+| M0-07 | RE work area + captures manifest template | RE | - | DONE | main-session | 2026-11-02 |
+| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | IN PROGRESS | main-session | Imported + auto-analysed (fast; little code found); image bases + DS setup pending |
 | M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | TODO | | |
-| M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | TODO | | |
+| M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | IN PROGRESS | main-session | DOSBox-X built: dosbox-x\bin\x64\Release\dosbox-x.exe (C_DEBUG on) |
 | M0-11 | Capture tooling and procedure | VE | M0-10 | TODO | | |
-| M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | TODO | | |
+| M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | DONE | main-session | 2026-11-02; D1 Rust+SDL3, D2 MIT; ADRs accepted |
 
 ## M1: Executable archaeology
 
@@ -75,11 +75,11 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M2-01 | palette parser + tests | IM | M0-06 | TODO | | |
-| M2-02 | screen parser (46 files) + tests | IM | M2-01 | TODO | | |
-| M2-03 | tileset parser (+ E2/E3 trailing bytes) | IM | M2-01 | TODO | | |
-| M2-04 | map parser (201/200) + tdtool map | IM | M2-03 | TODO | | |
-| M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | TODO | | |
+| M2-01 | palette parser + tests | IM | M0-06 | DONE | main-session | 2026-11-02 |
+| M2-02 | screen parser (46 files) + tests | IM | M2-01 | DONE | main-session | 2026-11-02; 46 screens + td.hlp (2 pages) parse |
+| M2-03 | tileset parser (+ E2/E3 trailing bytes) | IM | M2-01 | IN PROGRESS | main-session | Parser done; 864 trailing bytes still unknown (U-013) |
+| M2-04 | map parser (201/200) + tdtool map | IM | M2-03 | IN PROGRESS | main-session | Parser done; tdtool map pending |
+| M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | IN PROGRESS | main-session | Sheet parsers done; 16-heading assembly pending |
 | M2-06 | .pic decoder | RE/IM | M1-05 | TODO | | |
 | M2-07 | portraits geometry + parser | RE/IM | M1-05 | TODO | | |
 | M2-08 | fonts x3 | RE/IM | M1-05 | TODO | | |
@@ -98,7 +98,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|---|---|---|---|---|
 | M3-01 | VOC parser | IM | M0-06 | TODO | | |
 | M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | TODO | | |
-| M3-03 | td-opl-sys (ymfm wrapper) | IM | M0-01 | TODO | | |
+| M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | TODO | | |
 | M3-04 | CMF parser + sequencer | IM | M3-03 | TODO | | |
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | TODO | | |
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | TODO | | |

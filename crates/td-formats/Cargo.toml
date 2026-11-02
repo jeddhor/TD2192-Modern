@@ -1,0 +1,19 @@
+[package]
+name = "td-formats"
+description = "Pure, panic-free parsers for the original Traffic Department 2192 file formats."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+td-test-support.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

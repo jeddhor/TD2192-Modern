@@ -160,8 +160,23 @@ Grammar as observed (bytes shown in hex; `<...>` = placeholder):
 d                                      a literal 'd' line follows each 04 (purpose unknown; U-016)
 ```
 
+Whole-file survey (all six files):
+
+| File | Lines | `06` scenes | `03`/`04` segments | `02` lines | `05` breaks | Speaker lines |
+|---|---:|---:|---:|---:|---:|---:|
+| `dialogue.dat` | 4,597 | 103 | 103 | 3,100 | 760 | 324 |
+| `safedial.dat` | 4,533 | 103 | 103 | 3,049 | 747 | 324 |
+| `dialogu2.dat` | 6,012 | 125 | 126 | 4,126 | 1,032 | 351 |
+| `safedia2.dat` | 5,881 | 125 | 126 | 4,025 | 1,002 | 351 |
+| `dialogu3.dat` | 5,072 | 111 | 112 | 3,420 | 885 | 320 |
+| `safedia3.dat` | 5,041 | 111 | 112 | 3,395 | 880 | 319 |
+
 Notes:
-- The second byte of `02` lines has been `01` in every line seen so far. Its meaning (alignment? window?) is U-016.
+- No other line-leading codes occur. Every line starts with `01`–`06` or is the literal `d` after `04`. The file ends with CR LF.
+- Speaker slots are only ever 1 and 2 (two speakers per scene). Portrait bytes range up to 200 (200 may mean "no portrait"; to confirm).
+- **Continuation segments:** in E2 and E3, a `03` follows a `04` directly, with no `06` or `01` lines (for example around line 4,002 of `dialogu2.dat`). This is a second segment that reuses the previous scene's speakers and has no trailing `d`.
+- Colour bytes can be any value, including control-range values (`0x14`, `0x16`, `0x17` ...). Parse lines positionally, not by scanning for printable text.
+- The second byte of `02` lines is `01` in every one of the 21,115 lines. Its meaning (alignment? window?) is U-016.
 - The speaker is identified by the **colour byte** matching a speaker definition's colour. Examples of colour bytes seen: `0x2E`, `0x39`, `0x2A` (these happen to be printable as `.`, `9`, `*`, so be careful when viewing the file as text).
 - Blank padding lines (`02 01 <color> <space>`) frame each speech block.
 - Edited files share the same scene structure. Line content differs.
@@ -207,7 +222,7 @@ Headerless 8bpp bitmaps whose dimensions must come from the drawing code (M1-05,
 | `td.sss` | 6,080 | Save/load screen element (referenced next to the save labels) |
 | `td.wea` | 3,888 | Weapon/HUD element? (`01` and `F2` values) |
 | `td.fac` | 3,920 | Face or faction icons? |
-| `td.dun` | 3,072 | Values `E5`–`E7` dominate (dark tones): IR or darkness overlay? |
+| `td.dun` | 3,072 | Referenced **only by the intro** (`file0000.exe`), so it is an intro asset (dunes or terrain?), not an in-flight effect. Values `E5`–`E7` dominate. |
 | `td.joy` | 1,600 | 40×40? Joystick calibration graphic |
 | `td1.ccm`, `td2.ccm`, `td3.ccm` | 9,216 / 7,168 / 5,120 | Comm graphics, multiples of 1,024. Pixel values in `0xA6`–`0xE8`. |
 
@@ -307,6 +322,8 @@ Which field actually sets playback speed in WORX is **U-007**. Implement both in
 | zeus | 8,000 | 2.6-bit ADPCM | 1,829 |
 
 Only the first block was examined. Check for further blocks (silence, repeat, markers) in M3-01. `hornet.voc` and `poink.voc` have identical sizes but different contents (different SHA-256).
+
+Usage from the filename scan (FILE_INVENTORY "Referenced by"): `home`, `ric3`, `whoosh`, `scratch` and `pulse` are referenced only by the intro. `ric2` and `poink` are not referenced by name in any exe (built names, or unused). Everything else is referenced by all three episodes.
 
 Probable meanings (HYPOTHESIS, to confirm from call sites in M1-02): `afterb` afterburner, `boomboom` big explosion, `punyexp` small explosion, `missile` missile launch, `pulse`/`vii`/`vulturei`/`stiletto`/`hornet`/`zeus` weapon sounds per ship type, `income` incoming transmission, `ric2`/`ric3` ricochets (or intro voice), `whoosh`/`scratch`/`pulse` intro effects, `poink` hit, `home` homing or homecoming.
 

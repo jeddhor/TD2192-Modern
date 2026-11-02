@@ -49,7 +49,7 @@
 4. **One hat per task per session.** State your hat at the start of the task. An Archaeologist session never writes production code for the subsystem it studied.
 5. **Specs before code** for any behaviour of the original game. Code cites the spec section it implements.
 6. **Determinism in `td-sim`:** no floats in Classic gameplay paths, no wall clock, no unseeded randomness, no hash-order iteration. See MDG §8.6.
-7. **Respect crate boundaries** (MDG §8.2). Do not add a dependency edge that points "up". Do not add `unsafe` outside `td-platform` and `td-opl-sys`.
+7. **Respect crate boundaries** (MDG §8.2). Do not add a dependency edge that points "up". Do not add `unsafe` anywhere; only `td-platform` may get a justified, reviewed exception.
 8. **Tests accompany changes.** Behaviour changes come with tests. Data-gated tests use `require_data!()` and must skip cleanly without data.
 9. **Leave the tree green:** `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` pass before you hand off.
 10. **Write knowledge down** in the same change that produced it: formats, unknowns, specs, STATUS, symbols CSV. Anything left only in your context is lost.
@@ -115,7 +115,7 @@ When sources disagree, the higher one wins. Then fix the lower one in the same c
 | Rust | rustup, `stable-x86_64-pc-windows-msvc` (cargo 1.95) and 1.99.1 installed. Pin in `rust-toolchain.toml` (M0-01). |
 | MSVC | Visual Studio 2026 Community (`C:\Program Files\Microsoft Visual Studio\18\Community`) |
 | LLVM | clang 22.1 (`C:\Program Files\LLVM\bin`) |
-| CMake | 3.31 (no Ninja on PATH) |
+| CMake | 3.31 on PATH is too old for the "Visual Studio 18 2026" generator. SDL3 is built with the CMake 4.3 bundled with VS 2026, selected by the machine-local `P:\msdos\TD2192\.cargo\config.toml` (`[env] CMAKE = ...`), which sits outside the repo and is found by Cargo through parent-directory search. Ninja is also bundled with VS. |
 | Git / GitHub CLI | git 2.45, gh 2.97 |
 | Python | 3.10.11 with Pillow 12.3 and numpy 2.2 (scratch analysis only, never a runtime dependency) |
 | Node | 22.18 (not used by the project) |
@@ -466,7 +466,7 @@ See MDG §8.6. In addition:
 
 - `td-audio` never touches devices or the sim. It consumes `AudioCommand`s and produces frames.
 - Decoding is deterministic and unit-tested. Resampling quality matters for T2: test with a sweep and a known tone.
-- `td-opl-sys` stays minimal: register write, sample generation, reset. Everything else is safe Rust.
+- `td-opl` stays minimal: register write, sample generation, reset. Everything else is safe Rust.
 
 ### 9.7 Platform rules
 
