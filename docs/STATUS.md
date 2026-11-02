@@ -1,0 +1,293 @@
+# Project Status Board
+
+The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPMENT_GUIDE.md §6](AGENT_DEVELOPMENT_GUIDE.md#6-task-lifecycle) and [§14](AGENT_DEVELOPMENT_GUIDE.md#14-multi-agent-coordination). Task definitions, deliverables and exit criteria are in [MASTER_DESIGN_GUIDE.md §12](MASTER_DESIGN_GUIDE.md#12-milestones).
+
+**Status values:** `TODO` · `IN PROGRESS` · `PAUSED` (link a handoff) · `BLOCKED` (say on what) · `REVIEW` · `DONE` (date + commit/PR)
+**Hats:** RE Archaeologist · SP Spec author · IM Implementer · VE Verifier · CO Coordinator. A task may need several sessions (for example RE/SP, then IM, then VE), each in a separate session.
+
+---
+
+## Current state
+
+| | |
+|---|---|
+| **Current milestone** | M0 (not started) |
+| **Last updated** | 2026-11-02 |
+| **Ghidra lock** | free |
+| **Active handoffs** | none |
+
+### Blocking user decisions (MDG §14)
+
+| ID | Decision | Blocks | Status |
+|---|---|---|---|
+| D1 | Language and stack | M0-01 and everything after it | **DECIDED 2026-11-02: Rust + SDL3** |
+| D2 | Project licence | M0-03, M0-12 | **DECIDED 2026-11-02: MIT** |
+| D3 | Import original saves? | M11-06 | OPEN |
+| D4 | TFP extras? | M11-07 | OPEN |
+| D5 | Enhanced features in 1.0 | M12-04, M12-05 | OPEN |
+| D6 | Platforms and signing | M13-01 | OPEN |
+| D7 | Repo hosting and visibility | Running CI remotely (the workflow file is written regardless) | OPEN |
+| D8 | Default script variant | M5-07 | OPEN (recommend: ask, as the original does) |
+| D9 | Cheater judgement text | M8-09 | OPEN (recommend: text only) |
+| D10 | Unknown exe versions | M2-14 | OPEN |
+
+### Done so far (pre-M0)
+
+- 2026-11-02: repository created; MDG, ADG, AGENTS.md, RE knowledge base (inventory with SHA-256 for 218 files, formats, executables, unknowns), spec template and draft ADRs written from an initial survey of the original files.
+
+---
+
+## M0: Foundation
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M0-01 | Cargo workspace + crate stubs, toolchain pin, lints, profiles | IM | D1 | TODO | | |
+| M0-02 | CI workflow (fmt, clippy, test; win/linux/mac) | IM | M0-01 | TODO | | |
+| M0-03 | THIRD_PARTY.md, CONTRIBUTING.md, repo hygiene files | IM | M0-01 | TODO | | |
+| M0-04 | td-assets locator (precedence, 8.3 + case-insensitive) | IM | M0-01 | TODO | | |
+| M0-05 | tdtool gen-manifest + inventory | IM | M0-04 | TODO | | |
+| M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | TODO | | |
+| M0-07 | RE work area + captures manifest template | RE | - | TODO | | |
+| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | TODO | | |
+| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | TODO | | |
+| M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | TODO | | |
+| M0-11 | Capture tooling and procedure | VE | M0-10 | TODO | | |
+| M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | TODO | | |
+
+## M1: Executable archaeology
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | TODO | | |
+| M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
+| M1-03 | Hardware access catalogue | RE | M0-09 | TODO | | |
+| M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
+| M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
+| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | TODO | | |
+| M1-07 | Global data map + symbols | RE | M1-01 | TODO | | |
+| M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | TODO | | |
+| M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
+| M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | TODO | | |
+| M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | TODO | | |
+| M1-12 | Unknowns triage | RE | M1-01..M1-11 | TODO | | |
+
+## M2: Static assets
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M2-01 | palette parser + tests | IM | M0-06 | TODO | | |
+| M2-02 | screen parser (46 files) + tests | IM | M2-01 | TODO | | |
+| M2-03 | tileset parser (+ E2/E3 trailing bytes) | IM | M2-01 | TODO | | |
+| M2-04 | map parser (201/200) + tdtool map | IM | M2-03 | TODO | | |
+| M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | TODO | | |
+| M2-06 | .pic decoder | RE/IM | M1-05 | TODO | | |
+| M2-07 | portraits geometry + parser | RE/IM | M1-05 | TODO | | |
+| M2-08 | fonts x3 | RE/IM | M1-05 | TODO | | |
+| M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | TODO | | |
+| M2-10 | dialogue parser (full grammar) | RE/IM | M2-01 | TODO | | |
+| M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | TODO | | |
+| M2-12 | cfg / sav / stt parsers | RE/IM | M0-10 | TODO | | |
+| M2-13 | mz + pstring utilities | IM | M0-01 | TODO | | |
+| M2-14 | exe-resource extraction + tdtool exe-res | IM | M2-13, M1-11 | TODO | | |
+| M2-15 | tdtool export (all formats, outside repo) | IM | M2-02..M2-12 | TODO | | |
+| M2-16 | Visual verification; FORMATS to CONFIRMED | VE | M2-15 | TODO | | |
+
+## M3: Audio
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M3-01 | VOC parser | IM | M0-06 | TODO | | |
+| M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | TODO | | |
+| M3-03 | td-opl-sys (ymfm wrapper) | IM | M0-01 | TODO | | |
+| M3-04 | CMF parser + sequencer | IM | M3-03 | TODO | | |
+| M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | TODO | | |
+| M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | TODO | | |
+| M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | TODO | | |
+| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | TODO | | |
+
+## M4: Platform shell
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M4-01 | Window, texture, palette LUT, scaling modes, F11, high-DPI | IM | M2-02 | TODO | | |
+| M4-02 | Fixed-timestep driver | IM | M1-06 | TODO | | |
+| M4-03 | Input layer (scancodes, gamepad, actions, text) | IM | M4-01 | TODO | | |
+| M4-04 | Audio device + ring buffer | IM | M3-06 | TODO | | |
+| M4-05 | Settings + first-run data picker + validation UI | IM | M0-05 | TODO | | |
+| M4-06 | Dev map viewer | IM | M2-04, M2-05 | TODO | | |
+| M4-07 | Screenshot, logging, fatal-error dialog | IM | M4-01 | TODO | | |
+
+## M5: Narrative & screens
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M5-01 | Text renderer per font | SP/IM | M2-08 | TODO | | |
+| M5-02 | Palette fade engine | SP/IM | M1-03 | TODO | | |
+| M5-03 | Story card player | SP/IM | M1-04, M1-11 | TODO | | |
+| M5-04 | Dialogue scene player | SP/IM | M2-07, M2-10 | TODO | | |
+| M5-05 | Dossier screens | SP/IM | M1-11 | TODO | | |
+| M5-06 | Help screens | SP/IM | M2-09 | TODO | | |
+| M5-07 | Script-choice + missing-dialogue screens | SP/IM | M5-01 | TODO | | |
+| M5-08 | Intro sequence | SP/IM | M1-10 | TODO | | |
+| M5-09 | Narrative parity | VE | M5-01..M5-08 | TODO | | |
+
+## M6: Flight core
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | TODO | | |
+| M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | TODO | | |
+| M6-03 | Player flight model | IM | M6-02 | TODO | | |
+| M6-04 | Map collision | IM | M6-02 | TODO | | |
+| M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | TODO | | |
+| M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | TODO | | |
+| M6-07 | HUD frame + instruments | IM | M6-05 | TODO | | |
+| M6-08 | Dev arena | IM | M6-03 | TODO | | |
+| M6-09 | Flight parity + feel sign-off | VE | M6-03..M6-07 | TODO | | |
+
+## M7: Combat & entities
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M7-01 | Ship-class table spec (all episodes) | RE/SP | M1-08 | TODO | | |
+| M7-02 | Weapons spec | RE/SP | M1-08 | TODO | | |
+| M7-03 | Damage model spec | RE/SP | M1-08 | TODO | | |
+| M7-04 | Entity arenas | IM | M6-02 | TODO | | |
+| M7-05 | Weapons + projectiles | IM | M7-02, M7-04 | TODO | | |
+| M7-06 | Damage, destruction, effects, SFX events | IM | M7-03, M7-05 | TODO | | |
+| M7-07 | Arena hostiles | IM | M7-05 | TODO | | |
+| M7-08 | Combat parity | VE | M7-06 | TODO | | |
+
+## M8: AI & mission runtime
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M8-01 | Mission file semantics spec | RE/SP | M2-11 | TODO | | |
+| M8-02 | Mission logic architecture + primitives spec | RE/SP | M1-04 | TODO | | |
+| M8-03 | AI behaviours spec | RE/SP | M1-08 | TODO | | |
+| M8-04 | Path playback + AI | IM | M8-01, M8-03, M7-06 | TODO | | |
+| M8-05 | Mission runtime + MissionScript API | IM | M8-02 | TODO | | |
+| M8-06 | Guidance line | IM | M8-05 | TODO | | |
+| M8-07 | Objective messages, comms, jurisdiction warnings | IM | M8-05, M2-14 | TODO | | |
+| M8-08 | Ship switching, wingmen, protected targets | IM | M8-05 | TODO | | |
+| M8-09 | Debrief computation + retry flow | IM | M8-05 | TODO | | |
+| M8-10 | E1M01-E1M03 specs + scripts | SP/IM | M8-04..M8-09 | TODO | | |
+| M8-11 | E1M01-E1M03 parity | VE | M8-10 | TODO | | |
+
+## M9: Episode 1 campaign
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M9-01 | E1M04: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-02 | E1M05: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-03 | E1M06: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-04 | E1M07: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-05 | E1M08: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-06 | E1M09: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-07 | E1M10: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-08 | E1M11: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-09 | E1M12: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-10 | E1M13: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-11 | E1M14: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-12 | E1M15: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-13 | E1M16: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-14 | E1M17: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-15 | E1M18: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-16 | E1M19: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-17 | E1M20: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
+| M9-18 | E1 narrative script (cards, dialogue, stills, dossiers, music between missions) | RE/SP/IM | M5-09, M1-04 | TODO | | |
+| M9-19 | Main menu, new game, save/load, kills-to-date | IM | M8-09 | TODO | | |
+| M9-20 | Episode endings (success, continuation, failure variants) | SP/IM | M9-18 | TODO | | |
+| M9-21 | Full E1 playthrough + parity report | VE | M9-01..M9-20 | TODO | | |
+
+## M10: Episodes 2 and 3
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M10-01 | E2 engine deltas + data set | RE/SP | M1-09 | TODO | | |
+| M10-02 | E3 engine deltas + data set + mission numbering (U-012) | RE/SP | M1-09 | TODO | | |
+| M10-03 | Implement deltas as episode configuration | IM | M10-01, M10-02 | TODO | | |
+| M10-04 | E2M01: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-05 | E2M02: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-06 | E2M03: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-07 | E2M04: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-08 | E2M05: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-09 | E2M06: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-10 | E2M07: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-11 | E2M08: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-12 | E2M09: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-13 | E2M10: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-14 | E2M11: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-15 | E2M12: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-16 | E2M13: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-17 | E2M14: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-18 | E2M15: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-19 | E2M16: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-20 | E2M17: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-21 | E2M18: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-22 | E2M19: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-23 | E2M20: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-24 | E3 mission 01: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-25 | E3 mission 02: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-26 | E3 mission 03: spec + script + success replay (numbering per U-012) | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-27 | E3 mission 04: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-28 | E3 mission 05: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-29 | E3 mission 06: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-30 | E3 mission 07: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-31 | E3 mission 08: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-32 | E3 mission 09: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-33 | E3 mission 10: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-34 | E3 mission 11: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-35 | E3 mission 12: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-36 | E3 mission 13: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-37 | E3 mission 14: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-38 | E3 mission 15: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-39 | E3 mission 16: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-40 | E3 mission 17: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-41 | E3 mission 18: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-42 | E3 mission 19: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-43 | E3 mission 20: spec + script + success replay (numbering per U-012) | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-44 | E2/E3 narrative scripts + endings | RE/SP/IM | M10-01, M10-02 | TODO | | |
+| M10-45 | Full E2 + E3 playthroughs + parity reports | VE | M10-04..M10-44 | TODO | | |
+
+## M11: Front end, options & meta
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M11-01 | Original main menu + episode select | SP/IM | M5-09 | TODO | | |
+| M11-02 | In-flight options menu (Esc) | SP/IM | M6-06 | TODO | | |
+| M11-03 | Modern settings screens (video, audio, controls, profile, accessibility, data dir) | IM | M4-05 | TODO | | |
+| M11-04 | Gamepad UI navigation | IM | M11-03 | TODO | | |
+| M11-05 | Credits screen (exe resources) | IM | M2-14 | TODO | | |
+| M11-06 | Original save import (D3) | IM | M2-12, D3 | TODO | | |
+| M11-07 | TFP extras (D4, optional) | RE/IM | D4 | TODO | | |
+
+## M12: Fidelity verification & polish
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | TODO | | |
+| M12-02 | Timing audit | VE | M12-01 | TODO | | |
+| M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | TODO | | |
+| M12-04 | Enhanced features for 1.0 (D5) | IM | D5 | TODO | | |
+| M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
+| M12-06 | Replay soak, fuzzing, profiling | VE | M12-01 | TODO | | |
+| M12-07 | Accessibility review | VE | M12-04 | TODO | | |
+
+## M13: Release engineering
+
+| ID | Task | Hat | Depends on | Status | Owner | Notes |
+|---|---|---|---|---|---|---|
+| M13-01 | Packaging per OS (D6) | IM | M12 | TODO | | |
+| M13-02 | First-run import from folder or original ZIP | IM | M4-05 | TODO | | |
+| M13-03 | Versioning, changelog, notices | IM | M12 | TODO | | |
+| M13-04 | Player documentation | IM | M12 | TODO | | |
+| M13-05 | Fresh-machine install tests + release checklist | VE | M13-01..M13-04 | TODO | | |
+
+## M14: Post-1.0 enhancements
+
+Not yet broken into tasks. See MDG §12 M14.
+
+## Bugs
+
+None yet. Use the bug template in ADG §17.5.

@@ -1,0 +1,67 @@
+# Build output
+/target/
+**/*.rs.bk
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Local tool output and scratch (never commit exports of game data)
+/out/
+/export/
+/exports/
+/scratch/
+/re-work/
+
+# Guard rails: original game data must never be committed (MDG §5.3).
+# If one of our own files ever needs one of these extensions, add a narrow negation (!path) with a comment.
+*.scr
+*.td
+*.td2
+*.td3
+*.blk
+*.map
+*.pal
+*.pic
+*.cmf
+*.voc
+*.dat
+*.sav
+*.stt
+*.cfg
+*.ccm
+*.cin
+*.ltr
+*.lt2
+*.tfp
+*.shp
+*.shr
+*.sc2
+*.sc3
+*.men
+*.hlp
+*.sss
+*.wea
+*.fac
+*.exp
+*.dun
+*.hel
+*.h2
+*.joy
+*.sel
+*.win
+*.cmm
+*.exe
+*.com
+*.doc
+
+# Derived media and RE artefacts
+*.wav
+*.avi
+MEMDUMP*.BIN
+*.gpr
+*.rep/
