@@ -85,7 +85,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-08 | fonts x3 | RE/IM | M1-05 | IN PROGRESS | main-session | Glyph geometry decoded for all 3 fonts (5x5, 8x8, 12x16) + td-formats::font; char maps LIKELY; dialogue font unknown (U-032) |
 | M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | IN PROGRESS | main-session | 13 sheets decoded (HUD bar, comm portraits, F6 indicator, heli, explosions); td.men/td.cmm/td.sel/td.wea need blit sites |
 | M2-10 | dialogue parser (full grammar) | RE/IM | M2-01 | IN PROGRESS | main-session | Strict parser handles all 6 files (scene IDs, scene-13 CR quirk, mid-scene speakers, portrait-only changes, trailing spaces); field meanings open (U-016) |
-| M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | IN PROGRESS | main-session | Structural parser + L1 over 60 files (classes 0..8, off-map coordinates); semantics need M1-08/M8-01 |
+| M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | IN PROGRESS | main-session | Parser + L1 (60 files); tdtool mission-map draws paths over any map/tileset (for M8-01 and U-006); field semantics need M1-08/M8-01 |
 | M2-12 | cfg / sav / stt parsers | RE/IM | M0-10 | TODO | | |
 | M2-13 | mz + pstring utilities | IM | M0-01 | DONE | main-session | 2026-11-02; MzHeader, file_offset, pstring/pstring_seq; headers checked vs EXECUTABLES.md |
 | M2-14 | exe-resource extraction + tdtool exe-res | IM | M2-13, M1-11 | IN PROGRESS | main-session | Mechanism done (td-assets::exe_res, compiled-in TOML maps, hash-gated; tdtool exe-res); maps to be filled by M1-11 |

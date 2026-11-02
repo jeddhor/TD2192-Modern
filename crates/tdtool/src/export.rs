@@ -72,7 +72,7 @@ pub fn run(data: &Path, out: &Path, kind: Kind) -> Result<()> {
 }
 
 /// Refuses to write inside a git work tree (the repository must never receive game content).
-fn refuse_repo_output(out: &Path) -> Result<()> {
+pub fn refuse_repo_output(out: &Path) -> Result<()> {
     let abs = std::path::absolute(out)?;
     let mut p: Option<&Path> = Some(abs.as_path());
     while let Some(dir) = p {

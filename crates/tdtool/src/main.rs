@@ -8,6 +8,7 @@ mod exe_res;
 mod export;
 mod gen_manifest;
 mod inventory;
+mod missions;
 
 use std::path::PathBuf;
 
@@ -53,6 +54,24 @@ enum Command {
         #[arg(long)]
         show: bool,
     },
+    /// Draw every mission's ship paths over a map (PNG files OUTSIDE the repository).
+    MissionMap {
+        /// Episode 1, 2 or 3.
+        #[arg(long)]
+        episode: u8,
+        /// Map file to draw on (td.map, td2.map, td3.map, td4.map).
+        #[arg(long)]
+        map: String,
+        /// Tileset (td.blk, td2.blk, td3.blk).
+        #[arg(long)]
+        blk: String,
+        /// Output directory (refused if inside a git repository).
+        #[arg(long)]
+        out: PathBuf,
+        /// Original game directory (defaults to $TD2192_DATA).
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
     /// Regenerate crates/td-assets/src/manifest_data.rs from docs/re/FILE_INVENTORY.md.
     GenManifest {
         /// Inventory markdown to read.
@@ -68,6 +87,17 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Inventory { data, verbose } => inventory::run(data.as_deref(), verbose),
         Command::GenManifest { inventory, out } => gen_manifest::run(&inventory, &out),
+        Command::MissionMap {
+            episode,
+            map,
+            blk,
+            out,
+            data,
+        } => {
+            let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
+                .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            missions::run(&root, &out, episode, &map, &blk)
+        }
         Command::ExeRes { data, show } => {
             let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
                 .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
