@@ -80,10 +80,10 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-03 | tileset parser (+ E2/E3 trailing bytes) | IM | M2-01 | IN PROGRESS | main-session | Parser done; 864 trailing bytes still unknown (U-013) |
 | M2-04 | map parser (201/200) + tdtool map | IM | M2-03 | IN PROGRESS | main-session | Parser done; tdtool map pending |
 | M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | DONE | main-session | 2026-11-02; rotation sets CCW (measured); 16-heading assembly in td-render; tdtool export sprites |
-| M2-06 | .pic decoder | RE/IM | M1-05 | TODO | | |
-| M2-07 | portraits geometry + parser | RE/IM | M1-05 | TODO | | |
+| M2-06 | .pic decoder | RE/IM | M1-05 | DONE | main-session | 2026-11-02; data analysis: raw sub-rectangles, 8 with palette, 2 without (td1-17/19); sizes LIKELY pending M1-05 load sites |
+| M2-07 | portraits geometry + parser | RE/IM | M1-05 | DONE | main-session | 2026-11-02; 26/27 x (768 pal + 160x100); per-face palettes; special face codes U-019 |
 | M2-08 | fonts x3 | RE/IM | M1-05 | TODO | | |
-| M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | TODO | | |
+| M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | IN PROGRESS | main-session | 13 sheets decoded (HUD bar, comm portraits, F6 indicator, heli, explosions); td.men/td.cmm/td.sel/td.wea need blit sites |
 | M2-10 | dialogue parser (full grammar) | RE/IM | M2-01 | IN PROGRESS | main-session | Strict parser handles all 6 files (scene IDs, scene-13 CR quirk, mid-scene speakers, portrait-only changes, trailing spaces); field meanings open (U-016) |
 | M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | IN PROGRESS | main-session | Structural parser + L1 over 60 files (classes 0..8, off-map coordinates); semantics need M1-08/M8-01 |
 | M2-12 | cfg / sav / stt parsers | RE/IM | M0-10 | TODO | | |

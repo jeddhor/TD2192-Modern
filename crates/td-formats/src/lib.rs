@@ -14,6 +14,8 @@ pub mod map;
 pub mod mission;
 pub mod mz;
 pub mod palette;
+pub mod picture;
+pub mod portraits;
 pub mod screen;
 pub mod sprites;
 pub mod tileset;

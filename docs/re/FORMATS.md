@@ -202,36 +202,55 @@ The character-to-glyph mapping, spacing and colour substitution come from the te
 
 | | |
 |---|---|
-| Confidence | PARTIAL |
-| Sizes | 435,968 (E1); 452,736 (E2, E3) |
-| Layout | 768-byte palette, then pixel data. At 320 px per row the data shows faces arranged in rows with two copies (or two frames) side by side, but the cells do not line up exactly at 320, so the true cell geometry differs. There is a strip of small icons partway down. |
-| To do | Find the blit routine to get the cell width, height and count, and the frame layout (talking or blinking?). (M2-07) |
+| Confidence | **CONFIRMED** (decoded and rendered, 2026-11-02) |
+| Layout | A sequence of records, each a **768-byte palette + 160×100 pixels** (16,768 bytes). E1: 26 faces (435,968 bytes); E2 and E3: 27 faces (452,736 bytes). No header. |
+| Pixel use | Faces use palette indices 1..~112 (up to 147 in E2), each with its **own palette**. How a dialogue screen shows two faces plus a backdrop in one 256-colour palette is part of M5-04. |
+| Dialogue link | Speaker face bytes 1..26/27 are 1-based portrait indices. Other values occur: 32, 33, 65, 78, 87, 89, 90, 126 and 200 (200 appears when a character leaves). These are special codes (U-019). |
+| Code | `td-formats::portraits` |
 
-## 11. Story pictures (`td1-13.pic` .. `td1-20.pic`, `secret.pic`, `pic4.td`)
+## 11. Story stills (`td1-13.pic` .. `td1-20.pic`, `secret.pic`, `pic4.td`)
 
 | | |
 |---|---|
-| Confidence | PARTIAL |
-| Layout | 768-byte palette (valid, max 63) + image data whose length does not divide by 320 (for example `td1-13.pic`: 17,372 bytes after the palette). The data starts with runs of zeros. |
-| Hypotheses | (a) RLE-compressed 320×200; (b) an uncompressed sub-rectangle with dimensions held in the exe; (c) a small header after the palette. |
-| To do | Locate the loader (xref of the filename strings in `file0001.exe` around file offset 0xDD48) and spec the decoder (M2-06). |
+| Confidence | LIKELY (geometry from data: row-similarity peak + exact size fit, every image rendered and visually coherent). The loaders in the exe should confirm it (M1-05). |
+| Layout | Optional 768-byte palette, then raw pixels. **No dimensions in the file.** |
 
-## 12. Raw UI graphics
+| File | Size | Own palette | Content (brief) |
+|---|---|---|---|
+| `td1-13.pic` | 202×86 | yes | Two portraits |
+| `td1-14.pic` | 200×200 | yes | Character dissolving (teleport) |
+| `td1-15.pic` | 255×121 | yes | Shooting scene |
+| `td1-16.pic` | 150×170 | yes | Character in a chair |
+| `td1-17.pic` | 320×90 | **no** (draw with the current palette; correct with `td.pal`) | Cockpit/bridge scene |
+| `td1-18.pic` | 170×104 | yes | Clone tube |
+| `td1-19.pic` | 320×72 | **no** (correct with `td.pal`) | Ship over clouds |
+| `td1-20.pic` | 320×100 | yes | Laser scene |
+| `secret.pic` | 320×32 | yes | Hint banner |
+| `pic4.td` | 100×150 | yes | Corridor/room |
 
-Headerless 8bpp bitmaps whose dimensions must come from the drawing code (M1-05, M2-09):
+Code: `td-formats::picture::{STILLS, Picture}`.
 
-| File | Bytes | Notes |
-|---|---:|---|
-| `td.men` | 144,000 | Menu art (with `tdmen.pal`). 144,000 = 320 × 450 = 45 × 3,200. |
-| `td.win` | 10,240 | Window/frame graphics; renders as 32-px-wide strips with texture. |
-| `td.cmm` | 32,768 | Communication panel? Starts with a framed pattern (`F3 10 15 10 ...`). |
-| `td.sel` | 3,096 | Selection UI |
-| `td.sss` | 6,080 | Save/load screen element (referenced next to the save labels) |
-| `td.wea` | 3,888 | Weapon/HUD element? (`01` and `F2` values) |
-| `td.fac` | 3,920 | Face or faction icons? |
-| `td.dun` | 3,072 | Referenced **only by the intro** (`file0000.exe`), so it is an intro asset (dunes or terrain?), not an in-flight effect. Values `E5`–`E7` dominate. |
-| `td.joy` | 1,600 | 40×40? Joystick calibration graphic |
-| `td1.ccm`, `td2.ccm`, `td3.ccm` | 9,216 / 7,168 / 5,120 | Comm graphics, multiples of 1,024. Pixel values in `0xA6`–`0xE8`. |
+## 12. Raw UI and sprite graphics
+
+Headerless 8bpp. Geometry from data analysis (row-similarity peak, exact size fit, visual check), drawn with `td.pal` unless noted. `td-formats::picture::CELL_SHEETS` holds the confirmed ones.
+
+| File | Bytes | Geometry | Content | Confidence |
+|---|---:|---|---|---|
+| `td.win` | 10,240 | 320×32 | **In-flight HUD bar**: shielding/hull panel, a radar-like box, missiles display, status boxes. So the flight viewport is probably 320×168 (U-025). | LIKELY |
+| `td.sss` | 6,080 | 320×19 | Save-slot bar | LIKELY |
+| `td.fac` | 3,920 | 5 × 28×28 | "HIT F6" comm indicator (blank + 4 animation frames) | CONFIRMED (visual) |
+| `td.joy` | 1,600 | 40×40 | Joystick icon (calibration screen) | CONFIRMED (visual) |
+| `td.h2` | 9,600 | 6 × 40×40 | Helicopter rotor frames | CONFIRMED (visual) |
+| `td.hel` | 2,048 | 2 × 32×32 | Helicopter bodies | CONFIRMED (visual) |
+| `td.dun` | 3,072 | 3 × 32×32 | Desert/dune tiles (intro only) | CONFIRMED (visual) |
+| `td1.ccm`, `td2.ccm`, `td3.ccm` | 9,216 / 7,168 / 5,120 | 9 / 7 / 5 × 32×32 | **Comm portraits** (small faces for in-flight transmissions) | CONFIRMED (visual) |
+| `mine.td` | 1,024 | 32×32 | Mine | CONFIRMED (visual) |
+| `lander.td` | 5,120 | 5 × 32×32 | Lander pieces (a large craft built from tiles?) | CONFIRMED (visual) |
+| `td.exp` | 7,168 | 7 × 32×32 | Explosion frames | CONFIRMED (visual) |
+| `td.men` | 144,000 | Mixed. The top ~380 rows at width 320 show the main menu panel, in-game options panels and confirmation boxes (quit confirmation, save/restore slot prompts). Uses `tdmen.pal`. The rest holds sub-images of other widths. | Menu graphics atlas | PARTIAL (needs blit sites, M2-09) |
+| `td.cmm` | 32,768 | Unknown (no clean width) | Communication panel? | UNKNOWN |
+| `td.sel` | 3,096 | Unknown | Selection UI | UNKNOWN |
+| `td.wea` | 3,888 | Unknown (36×36 × 3?) | Weapon/HUD element? | HYPOTHESIS |
 
 ## 13. Configuration and saves
 

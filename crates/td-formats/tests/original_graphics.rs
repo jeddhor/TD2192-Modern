@@ -147,3 +147,32 @@ fn sprite_sheets_parse() {
         7
     );
 }
+
+#[test]
+fn portraits_stills_and_cell_sheets_parse() {
+    use td_formats::picture::{CELL_SHEETS, Picture, STILLS, parse_cells};
+    use td_formats::portraits::Portraits;
+    let dir = require_data!();
+    for (name, faces) in [
+        ("newfaces.td", 26),
+        ("newfaces.td2", 27),
+        ("newfaces.td3", 27),
+    ] {
+        assert_eq!(
+            Portraits::parse(&read(&dir, name)).unwrap().faces.len(),
+            faces,
+            "{name}"
+        );
+    }
+    for layout in STILLS {
+        let p = Picture::parse(&read(&dir, layout.name), layout)
+            .unwrap_or_else(|e| panic!("{}: {e}", layout.name));
+        let distinct: BTreeSet<u8> = p.pixels.iter().copied().collect();
+        assert!(distinct.len() > 8, "{} looks blank", layout.name);
+    }
+    for layout in CELL_SHEETS {
+        let cells = parse_cells(&read(&dir, layout.name), layout)
+            .unwrap_or_else(|e| panic!("{}: {e}", layout.name));
+        assert_eq!(cells.len(), layout.count);
+    }
+}
