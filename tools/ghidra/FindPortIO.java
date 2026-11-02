@@ -140,8 +140,12 @@ public class FindPortIO extends GhidraScript {
 			if (p == null) {
 				break;
 			}
-			String m = p.getMnemonicString().toUpperCase();
+			String m = p.getMnemonicString().toUpperCase().replace(".REP", "");
 			String op0 = p.getNumOperands() > 0 ? p.getDefaultOperandRepresentation(0).toUpperCase() : "";
+			if (m.equals("OUT") || m.equals("IN") || m.startsWith("OUTS") || m.startsWith("INS") ||
+				m.equals("PUSH") || m.equals("CMP") || m.equals("TEST")) {
+				continue; // reads DX as a port or operand; does not change it
+			}
 			if (!op0.equals("DX") && !op0.equals("DL") && !op0.equals("DH") && !m.equals("CWD") &&
 				!m.equals("MUL") && !m.equals("DIV") && !m.equals("IMUL") && !m.equals("IDIV") &&
 				!m.startsWith("CALL") && !m.equals("POP")) {

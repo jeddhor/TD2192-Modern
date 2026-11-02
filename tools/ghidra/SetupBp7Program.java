@@ -107,6 +107,7 @@ public class SetupBp7Program extends GhidraScript {
 		}
 		fixupFunctionBodies();
 		removeFunctionsOutsideCode();
+		println("[setup] CS-relative data references re-pointed: " + fixCsRelativeRefs());
 		Stats after = stats();
 		println("[setup] after:  " + after);
 		reportPerBlock();
@@ -438,6 +439,54 @@ public class SetupBp7Program extends GhidraScript {
 						SourceType.USER_DEFINED, 0);
 					rm.setPrimary(nr, true);
 					fixed++;
+				}
+			}
+		}
+		return fixed;
+	}
+
+	/**
+	 * In real mode the SLEIGH derives CS as {@code (linear >> 4) & 0xF000} (a 64 KB-normalised
+	 * segment), so a "CS:[disp]" operand references the wrong place unless the segment is
+	 * 64 KB aligned. Re-points each such memory reference to {@code <own segment>:disp}.
+	 * (The decompiler still prints the raw constant; read CS:[x] as own-segment:x.)
+	 */
+	private int fixCsRelativeRefs() throws Exception {
+		ReferenceManager rm = currentProgram.getReferenceManager();
+		int fixed = 0;
+		for (MemoryBlock b : mem.getBlocks()) {
+			if (!b.isExecute() || !b.isInitialized() || !(b.getStart() instanceof SegmentedAddress sa)) {
+				continue;
+			}
+			int seg = sa.getSegment();
+			InstructionIterator it = currentProgram.getListing()
+					.getInstructions(new AddressSet(b.getStart(), b.getEnd()), true);
+			while (it.hasNext()) {
+				Instruction ins = it.next();
+				long normSegBase = ((ins.getAddress().getOffset() >> 4) & 0xF000) * 16L;
+				if (normSegBase == seg * 16L) {
+					continue;
+				}
+				for (int op = 0; op < ins.getNumOperands(); op++) {
+					String text = ins.getDefaultOperandRepresentation(op).toUpperCase();
+					if (!text.contains("CS:[")) {
+						continue;
+					}
+					for (Reference r : ins.getOperandReferences(op)) {
+						if (!r.isMemoryReference() || r.getReferenceType().isFlow()) {
+							continue;
+						}
+						long disp = r.getToAddress().getOffset() - normSegBase;
+						if (disp < 0 || disp > 0xFFFF) {
+							continue; // already re-pointed, or not of this shape
+						}
+						Address correct = space.getAddress(seg, (int) disp);
+						rm.delete(r);
+						Reference nr = rm.addMemoryReference(ins.getAddress(), correct,
+							r.getReferenceType(), SourceType.USER_DEFINED, op);
+						rm.setPrimary(nr, true);
+						fixed++;
+					}
 				}
 			}
 		}
