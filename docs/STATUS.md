@@ -48,7 +48,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M0-05 | tdtool gen-manifest + inventory | IM | M0-04 | DONE | main-session | 2026-11-02; inventory reports 218/218, E1-E3 exact |
 | M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | DONE | main-session | 2026-11-02 |
 | M0-07 | RE work area + captures manifest template | RE | - | DONE | main-session | 2026-11-02 |
-| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | IN PROGRESS | RE-1 | Imported; RE-1 fixing DS, code discovery, image bases |
+| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | DONE | RE-1 | 2026-11-02; base seg 1000 for all; DGROUP + segment maps + coverage in docs/re/EXECUTABLES.md §1.1; loader defects fixed by tools/ghidra/SetupBp7Program.java; U-027 resolved |
 | M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | IN PROGRESS | RE-1 | Started 2026-11-02 |
 | M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | IN PROGRESS | main-session | DOSBox-X built: dosbox-x\bin\x64\Release\dosbox-x.exe (C_DEBUG on) |
 | M0-11 | Capture tooling and procedure | VE | M0-10 | TODO | | |

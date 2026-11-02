@@ -20,15 +20,72 @@ Facts about the DOS executables, plus starting anchors for reverse engineering. 
 
 Entry CS values are image-relative (0000 = first paragraph of the load image).
 
-**Ghidra image base segment** (fill in during M0-08):
+### 1.1 Ghidra image base, segments and DGROUP (M0-08, 2026-11-02)
 
-| Exe | Ghidra base segment | Notes |
+Ghidra 12.2's MZ loader loads every program at **image base segment `0x1000`**, so **Ghidra address = `(0x1000 + rel_seg):off`** for all five exes (for example `file0001:3A9A:0000` is Ghidra `4A9A:0000`). It creates one block per segment that a relocation targets. For these BP7 binaries those are exactly the unit code segments plus DGROUP (verified against our own relocation-table scan), and every block starts at offset 0. Ghidra sometimes *displays* an address in a 64 KB-normalised form (`1000:77E5` is the same byte as `151A:2645`). Our scripts always convert through the containing block, so their output is image-relative.
+
+`tools/ghidra/SetupBp7Program.java` (M0-09) repeats all the fixes below (see [tools/ghidra/README.md](../../tools/ghidra/README.md)). It has been applied to all five programs in the canonical project.
+
+| Exe | Image base | DGROUP (rel) | DGROUP initialised bytes | SS (rel) = DGROUP + | SP | DGROUP found at |
+|---|---|---|---:|---|---|---|
+| `file0001.exe` | `1000` | `3C43` | 0x510 | `4623` = DS:9E00 | 3E80 | `file0001:3A9A:0000` (`mov dx,3C43h; mov ds,dx`) |
+| `td2.exe` | `1000` | `36B6` | 0x660 | `4088` = DS:9D20 | FA00 | `td2:350D:0000` |
+| `td3.exe` | `1000` | `32C5` | 0x660 | `3C96` = DS:9D10 | FA00 | `td3:311C:0000` |
+| `file0000.exe` | `1000` | `0B3D` | 0x60 | `16A9` = DS:B6C0 | 4000 | `file0000:09FD:0000` |
+| `td1.exe` | `1000` | `0817` | 0x60 | `0865` = DS:04E0 | 0898 | `td1:0717:0000` |
+
+In every exe the entry point is the BP7 main block. It starts with a run of `call far` to each unit's initialisation part (System first), then the main body's own `push bp; mov bp,sp` frame. That run gives the unit order (M1-01):
+
+| Exe | Init chain (image-relative, in call order) | Main body |
 |---|---|---|
-| `td1.exe` | TBD | |
-| `file0000.exe` | TBD | |
-| `file0001.exe` | TBD | |
-| `td2.exe` | TBD | |
-| `td3.exe` | TBD | |
+| `file0001.exe` | `3A9A:0000` (System) · `3A1C:000D` (Crt) · `34E6:3836` · `2A15:220F` · `2404:60FD` · `1EDE:5247` · `0E8B:F9E7` · `051A:96F9` | `0000:454E` |
+| `td2.exe` | `350D:0000` · `3499:000D` · `2F63:3836` · `2555:174D` · `2236:31DE` · `1E0B:429F` · `0E96:EBA8` · `04EC:9A93` | `0000:438D` |
+| `td3.exe` | `311C:0000` · `30A8:000D` · `2B72:3836` · `2215:0C35` · `1BD8:4122` · `0C5D:EC06` · `04A0:7BC0` | `0000:3EAD` |
+| `file0000.exe` | `09FD:0000` · `0993:000D` | `0000:0FCA` |
+| `td1.exe` | `0717:0000` · `006B:000D` | `0000:0208` |
+
+Code segments (image-relative start, size in bytes). The unit names are ours (M1-01, [bp7-runtime-semantics](../spec/core/bp7-runtime-semantics.md)):
+
+| `file0001` | `td2` | `td3` | Size (E1/E2/E3) | Unit |
+|---|---|---|---|---|
+| `0000` | `0000` | `0000` | 51A0 / 4EC0 / 4A00 | Main program |
+| `051A` | `04EC` | `04A0` | 9710 / 9AA0 / 7BD0 | Game unit (init) |
+| `0E8B` | `0E96` | `0C5D` | F9F0 / EBB0 / EC10 | Game unit (init) |
+| `1E2A` | `1D51` | `1B1E` | 950 / 950 / 950 | Unit, no init |
+| `1EBF` | `1DE6` | `1BB3` | 1F0 / 250 / 250 | Unit, no init |
+| `1EDE` | `1E0B` | `1BD8` | 5260 / 42B0 / 4130 | Game unit (init) |
+| `2404` | `2236` | `1FEB` | 6110 / 31F0 / 22A0 | Game unit (init in E1/E2) |
+| `2A15` | `2555` | `2215` | 2220 / 1760 / C50 | Unit (init) |
+| `2C37` | `26CB` | `22DA` | 65B0 (all) | **WORX Toolkit** (no init; contains `WAVEfmt `, ISR code, tables) |
+| `3292` | `2D26` | `2935` | 2540 / 23D0 / 23D0 | Unit, no init |
+| `34E6` | `2F63` | `2B72` | 3880 (all) | Engine unit (init at `:3836` in all three) |
+| `386E` | `32EB` | `2EFA` | 1AE0 (all) | Engine unit, no init |
+| `3A1C` | `3499` | `30A8` | 620 (all) | **Crt** |
+| `3A7E` | `34FB` | `310A` | 140 / A0 / A0 | Unit, no init |
+| `3A92` | `3505` | `3114` | 80 (all) | Unit, no init |
+| `3A9A` | `350D` | `311C` | 1A90 (all) | **System** |
+
+`file0000.exe` segments: `0000` (2FA0), `02FA` (65D0, WORX), `0957` (3C0), `0993` (620, Crt), `09F5` (80), `09FD` (1400, System). `td1.exe`: `0000` (6B0), `006B` (620, Crt), `00CD` (6400, WORX), `070D` (A0), `0717` (1000, System).
+
+**Loader defects found and fixed by `SetupBp7Program` (U-027):**
+
+1. **Truncated last page.** The loader computes the image end as `(e_cp − 1) × 512 + e_cblp`, which is 512 bytes short when `e_cblp = 0`. That is the case only for `file0001.exe` (`e_cp = 522`, `e_cblp = 0`). The last 0x200 bytes of DGROUP's initialised data (`DS:0310..050F`, which holds System's typed constants, including `PrefixSeg` and `RandSeed`) were left uninitialised. The script re-creates them from the file bytes.
+2. **DS not set.** The loader sets DS only when the entry instruction is `mov dx,imm`. A BP7 entry is `call far System:init`, so DS was unset. The script sets DS = DGROUP over all code blocks.
+3. **DGROUP marked executable** (named `CODE_n`). The script renames it `DGROUP`/`DGROUP_BSS` and clears the execute flag.
+4. **False "non-returning" functions.** The analyzer "Non-Returning Functions – Discovered" flagged System's string-assign helper (`td2:350D:0D1E`, `td3:311C:0D1E`) as non-returning and dropped the code after every call to it (about 16 KB of code per exe). The script disables that analyzer, clears the flag on any function that contains a return instruction, and re-disassembles the dropped fall-throughs.
+5. The loader's "adjust segment starts" heuristic (it moves bytes up to a `RETF` in the first 16 bytes of a block into the previous block) did **not** fire for any of the five exes: every block starts at offset 0. Re-check this if an exe is ever re-imported.
+
+**Coverage after setup** (instructions as a share of all code-segment bytes; the rest is classified by the script):
+
+| Exe | Functions | Instruction bytes | Code-segment bytes | % instructions | Pascal-string bytes | Zero fill | Other (tables, unreached) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `file0001.exe` | 393 | 202,863 | 246,832 | 82.2% | 22,298 | 5,058 | 16,372 (6.6%) |
+| `td2.exe` | 416 | 180,283 | 224,096 | 80.4% | 18,256 | 5,179 | 20,018 (8.9%) |
+| `td3.exe` | 397 | 172,648 | 207,952 | 83.0% | 13,691 | 5,056 | 16,206 (7.8%) |
+| `file0000.exe` | 175 | 23,248 | 46,032 | 50.5% | 1,375 | 5,022 | 16,127 (35.0%) |
+| `td1.exe` | 141 | 11,449 | 33,136 | 34.6% | 613 | 4,939 | 15,795 (47.7%) |
+
+In `file0001` the remaining "other" bytes are almost all in WORX (`2C37`: an 11 KB run of tables and zeroed buffers starting at `2C37:0410`, plus some handler code that is still unreached) and System (`3A9A:14C3..`: Real48/8087-emulator constant tables). Function counts are low for the code size because the game code is written as a few very large procedures (for example `1EDE` holds 21 KB in 3 functions).
 
 ## 2. Toolchain fingerprints
 
@@ -36,6 +93,7 @@ Entry CS values are image-relative (0000 = first paragraph of the load image).
 - "WORX TOOLKIT VERSION 2.1 COPYRIGHT 1993 BY MYSTIC SOFTWARE": the sound library (td1, file0000, file0001; check td2/td3).
 - A `WAVEfmt ` string in `td1.exe` (file offset 0x6AE1): WORX can apparently handle WAV headers as well.
 - A lookup table of ascending ASCII-range bytes next to the WORX banner (`" %')+,-../0011..."`): WORX-internal curve.
+- **Prologue encodings** (`file0001`): Pascal-compiled procedures use `55 89 E5` (`push bp; mov bp,sp` with the 89 encoding; 159 sites) or, in `{$G+}` units, `C8 nn nn 00` (`enter`; 54 sites, mostly in `0E8B` and `386E`). The MASM/TASM-style `55 8B EC` appears only in hand-written assembler (24 in System, 7 in `3A7E`, 1 in Crt). The game was therefore compiled at least partly with `{$G+}` (286 instructions).
 - Pascal ShortStrings: game text is length-prefixed. When strings are dumped naively, the length byte shows up as a leading printable character (for example `4just seconds away...`, where `4` = 0x34 = 52 characters).
 
 ## 3. Launcher `td1.exe`
