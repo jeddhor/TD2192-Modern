@@ -57,6 +57,46 @@ pub fn show_error(title: &str, message: &str) {
     }
 }
 
+/// Shows a modal information box.
+pub fn show_info(title: &str, message: &str) {
+    if sdl3::messagebox::show_simple_message_box(
+        sdl3::messagebox::MessageBoxFlag::INFORMATION,
+        title,
+        message,
+        None,
+    )
+    .is_err()
+    {
+        println!("{title}: {message}");
+    }
+}
+
+/// Shows the system folder picker and waits for the user. Returns `None` if they cancel.
+pub fn pick_folder() -> Result<Option<PathBuf>, PlatformError> {
+    let sdl = sdl3::init().map_err(sdl_err)?;
+    let _video = sdl.video().map_err(sdl_err)?;
+    let mut events = sdl.event_pump().map_err(sdl_err)?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    sdl3::dialog::show_open_folder_dialog(
+        None::<&std::path::Path>,
+        false,
+        None,
+        Box::new(move |result, _| {
+            let _ = tx.send(result.ok().and_then(|mut v| v.pop()));
+        }),
+    );
+    loop {
+        for _ in events.poll_iter() {}
+        match rx.try_recv() {
+            Ok(choice) => return Ok(choice),
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return Ok(None),
+        }
+    }
+}
+
 /// Window configuration.
 #[derive(Debug, Clone)]
 pub struct WindowConfig {

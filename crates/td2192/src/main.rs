@@ -42,6 +42,34 @@ fn main() {
     }
 }
 
+/// First run: ask for the original game folder until a valid one is chosen or the user cancels.
+fn first_run_pick() -> Result<PathBuf> {
+    td_platform::show_info(
+        "TD2192-Modern",
+        "Welcome! Please choose the folder where Traffic Department 2192 is installed \
+         (the one containing TD1.EXE and FILE0001.EXE).",
+    );
+    loop {
+        let Some(path) = td_platform::pick_folder()? else {
+            bail!("No game folder was chosen. Start again, or run with --data <folder>.");
+        };
+        let ok = DataDir::open(&path)
+            .map(|d| validate(&d).playable(Episode::E1))
+            .unwrap_or(false);
+        if ok {
+            return Ok(path);
+        }
+        td_platform::show_info(
+            "TD2192-Modern",
+            &format!(
+                "{} does not contain a complete Traffic Department 2192 installation. \
+                 Please choose another folder.",
+                path.display()
+            ),
+        );
+    }
+}
+
 fn real_main() -> Result<()> {
     let cli = Cli::parse();
     tracing_subscriber::fmt()
@@ -58,13 +86,14 @@ fn real_main() -> Result<()> {
         settings.save(&settings_path)?;
     }
 
-    let Some((root, _)) = discover_data_dir(cli.data.as_deref(), settings.data_dir.as_deref())
-    else {
-        bail!(
-            "No Traffic Department 2192 data directory configured.\n\nStart the game with \
-             --data <folder>, set the TD2192_DATA environment variable, or set data_dir in\n{}",
-            settings_path.display()
-        );
+    let root = match discover_data_dir(cli.data.as_deref(), settings.data_dir.as_deref()) {
+        Some((root, _)) => root,
+        None => {
+            let root = first_run_pick()?;
+            settings.data_dir = Some(root.clone());
+            settings.save(&settings_path)?;
+            root
+        }
     };
     let dir = DataDir::open(&root).with_context(|| format!("opening {}", root.display()))?;
     let report = validate(&dir);
