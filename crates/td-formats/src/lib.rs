@@ -10,6 +10,7 @@ mod reader;
 
 pub mod cmf;
 pub mod dialogue;
+pub mod font;
 pub mod map;
 pub mod mission;
 pub mod mz;

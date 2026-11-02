@@ -176,3 +176,22 @@ fn portraits_stills_and_cell_sheets_parse() {
         assert_eq!(cells.len(), layout.count);
     }
 }
+
+#[test]
+fn fonts_parse_with_visible_glyphs() {
+    use td_formats::font::{Font, FontKind};
+    let dir = require_data!();
+    for (name, kind) in [
+        ("td.lt2", FontKind::Small),
+        ("td-let.cin", FontKind::Title),
+        ("td.ltr", FontKind::Large),
+    ] {
+        let f = Font::parse(&read(&dir, name), kind).unwrap();
+        for c in ('a'..='z').chain('0'..='9') {
+            let g = f
+                .glyph(c)
+                .unwrap_or_else(|| panic!("{name}: no glyph for {c}"));
+            assert!(g.iter().any(|&p| p != 0), "{name}: glyph {c} is blank");
+        }
+    }
+}

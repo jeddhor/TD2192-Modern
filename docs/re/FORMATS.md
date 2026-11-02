@@ -190,13 +190,16 @@ Notes:
 
 ## 9. Fonts
 
-| File | Bytes | Finding | Confidence |
-|---|---:|---|---|
-| `td.lt2` | 950 | **5-pixel-wide glyphs**, stored as consecutive rows. 950 / 5 = 190 rows; probably **38 glyphs of 5×5** (26 letters + 10 digits + 2 symbols?). Pixel values `0xF7` (foreground) and `0x00`, with some `0x12` shading. | LIKELY |
-| `td-let.cin` | 2,560 | **8×8 glyphs**, 40 glyphs (2,560 / 64). Large title lettering (letters, digits, punctuation). | LIKELY |
-| `td.ltr` | 14,976 | Not 8 px wide (render incoherent). Geometry unknown. 14,976 = 2^7 × 117. | UNKNOWN (U-017) |
+| File | Bytes | Geometry | Glyph order | Confidence |
+|---|---:|---|---|---|
+| `td.lt2` | 950 | **38 × 5×5** | A–Z, dark-green block, bright-green block, 0–9 | CONFIRMED (decoded) |
+| `td-let.cin` | 2,560 | **40 × 8×8** | A–Z, 1–9, 0, `-`, `?`, `!`, `:` | CONFIRMED (decoded) |
+| `td.ltr` | 14,976 | **78 × 12×16** | A–Z, 1–9, 0, (blank), `-`, then blank cells | CONFIRMED (decoded) |
 
-The character-to-glyph mapping, spacing and colour substitution come from the text-drawing routine (M2-08).
+Notes:
+- Glyphs are stored consecutively, row-major. Index 0 is background. **Colours are baked in**: `td.lt2` letters and `0`/`1` are white (`0xF7`) while `2`–`9` are green (`0x12`); `td.ltr` is white with green highlights. Whether the game recolours glyphs when drawing is part of M2-08/M5-01.
+- None of the three fonts has lower case or `.` `,` `"` `'`. Game text is lower case (mapped to these glyphs), but **dialogue text needs punctuation**, so dialogue is probably drawn with another font, possibly the VGA BIOS ROM font (U-032).
+- Character maps (`td-formats::font::FontKind::glyph_index`) follow the visible glyph order: LIKELY until the text routines are analysed.
 
 ## 10. Portraits (`newfaces.td`, `.td2`, `.td3`)
 
