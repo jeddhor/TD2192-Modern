@@ -13,7 +13,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|
 | **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
-| **Ghidra lock** | free |
+| **Ghidra lock** | held by RE-1 agent (M0-08/M0-09/M1-01/M1-03/M1-06) |
 | **Active handoffs** | none |
 
 ### Blocking user decisions (MDG §14)
@@ -48,8 +48,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M0-05 | tdtool gen-manifest + inventory | IM | M0-04 | DONE | main-session | 2026-11-02; inventory reports 218/218, E1-E3 exact |
 | M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | DONE | main-session | 2026-11-02 |
 | M0-07 | RE work area + captures manifest template | RE | - | DONE | main-session | 2026-11-02 |
-| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | IN PROGRESS | main-session | Imported + auto-analysed (fast; little code found); image bases + DS setup pending |
-| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | TODO | | |
+| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | IN PROGRESS | RE-1 | Imported; RE-1 fixing DS, code discovery, image bases |
+| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | IN PROGRESS | RE-1 | Started 2026-11-02 |
 | M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | IN PROGRESS | main-session | DOSBox-X built: dosbox-x\bin\x64\Release\dosbox-x.exe (C_DEBUG on) |
 | M0-11 | Capture tooling and procedure | VE | M0-10 | TODO | | |
 | M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | DONE | main-session | 2026-11-02; D1 Rust+SDL3, D2 MIT; ADRs accepted |
@@ -58,12 +58,12 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | TODO | | |
+| M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | IN PROGRESS | RE-1 | Started 2026-11-02 |
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
-| M1-03 | Hardware access catalogue | RE | M0-09 | TODO | | |
+| M1-03 | Hardware access catalogue | RE | M0-09 | IN PROGRESS | RE-1 | Started 2026-11-02 |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
 | M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
-| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | TODO | | |
+| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | IN PROGRESS | RE-1 | Static part; started 2026-11-02 |
 | M1-07 | Global data map + symbols | RE | M1-01 | TODO | | |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | TODO | | |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
