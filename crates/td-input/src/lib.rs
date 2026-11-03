@@ -60,6 +60,17 @@ impl Key {
     }
 }
 
+/// A game controller reduced to the original's digital joystick (`docs/re/globals.md` §3):
+/// each axis is -1, 0 or 1 with the original's signs (`x` 1 = left, `y` 1 = up), plus its two
+/// buttons (button 1 = afterburner, button 2 = fire in flight).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Pad {
+    pub x: i8,
+    pub y: i8,
+    pub button1: bool,
+    pub button2: bool,
+}
+
 /// Input gathered since the previous poll.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InputSnapshot {
@@ -73,6 +84,8 @@ pub struct InputSnapshot {
     pub text: String,
     /// The user asked to close the window.
     pub quit: bool,
+    /// The first connected game controller, if any.
+    pub pad: Option<Pad>,
 }
 
 impl InputSnapshot {
@@ -100,6 +113,8 @@ pub struct InputState {
     repeated: Vec<Key>,
     pub text: String,
     pub quit: bool,
+    /// Set by the platform layer after each poll.
+    pub pad: Option<Pad>,
 }
 
 impl InputState {
@@ -125,6 +140,7 @@ impl InputState {
             repeated: std::mem::take(&mut self.repeated),
             text: std::mem::take(&mut self.text),
             quit: self.quit,
+            pad: self.pad,
         }
     }
 }
@@ -136,6 +152,8 @@ impl InputState {
 pub struct TickInput {
     pub held: BTreeSet<Key>,
     pub pressed: Vec<Key>,
+    /// The game controller at the tick, if one is connected.
+    pub pad: Option<Pad>,
 }
 
 impl TickInput {

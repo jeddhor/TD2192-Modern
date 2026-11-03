@@ -112,7 +112,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|---|---|---|---|---|
 | M4-01 | Window, texture, palette LUT, scaling modes, F11, high-DPI | IM | M2-02 | DONE | main-session | 2026-11-02; aspect 4:3 sharp-bilinear / integer / stretch; F10 cycles, F11 fullscreen; verified by window read-back (1280x960) |
 | M4-02 | Fixed-timestep driver | IM | M1-06 | DONE | main-session | 2026-11-02; td-flow::FixedStep, no drift over 600 s; tick rate placeholder 70 Hz (U-001) |
-| M4-03 | Input layer (scancodes, gamepad, actions, text) | IM | M4-01 | IN PROGRESS | main-session | Keyboard (HID scancodes, edges, repeat, text) done; gamepad pending (fold into M11-04 action layer) |
+| M4-03 | Input layer (scancodes, gamepad, actions, text) | IM | M4-01 | REVIEW | main-session | SDL3 gamepads -> td_input::Pad (original digital joystick: left stick/D-pad axes with original signs, East=button1 afterburner, South=button2 fire); TickInput.pad; flight arena enables the sim joystick read when a pad is connected. Needs a hands-on check with a real controller |
 | M4-04 | Audio device + ring buffer | IM | M3-06 | DONE | main-session | 2026-11-02; main-thread render + push to SDL stream (~43 ms queue); OPL chip is not Send, so no audio thread |
 | M4-05 | Settings + first-run data picker + validation UI | IM | M0-05 | REVIEW | main-session | settings.toml + first-run folder picker (SDL dialog, validates E1, saves data_dir); picker not yet exercised interactively - needs a manual check |
 | M4-06 | Dev map viewer | IM | M2-04, M2-05 | DONE | main-session | 2026-11-02; td2192 --dev-mapview e1/e2a/e2b/e3a/e3b/intro; sprites at 16 headings; music/SFX audition |

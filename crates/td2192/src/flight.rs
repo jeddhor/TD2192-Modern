@@ -29,7 +29,7 @@ use td_sim::flight::heading::Heading;
 use td_sim::flight::player::Event;
 use td_sim::flight::shots::Muzzles;
 use td_sim::flight::tables::episode1_tile_attributes;
-use td_sim::{Flight, FlightKey, Modal, TickControls, TickResult, World};
+use td_sim::{Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
 
 /// Typematic delay and repeat period of an AT keyboard at its power-on defaults (500 ms,
 /// 10.9 characters per second). The original's key bytes are re-set by every repeated make
@@ -74,6 +74,14 @@ impl Typematic {
     fn controls(&mut self, input: &TickInput, binds: &[(Key, FlightKey)]) -> TickControls {
         let tick_us = (1e6 / FLIGHT_TICK_HZ) as u64;
         let mut c = TickControls::default();
+        if let Some(p) = input.pad {
+            c.set_joystick(Joystick {
+                x: p.x,
+                y: p.y,
+                button1: p.button1,
+                button2: p.button2,
+            });
+        }
         for &(host, key) in binds {
             let down = input.held.contains(&host);
             let pressed = input.pressed.contains(&host);
@@ -183,6 +191,9 @@ impl Screen for FlightArena {
 
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         let c = self.typematic.controls(input, &self.binds);
+        // The original reads the joystick only when it is the chosen controller; the port
+        // uses it whenever one is connected.
+        self.flight.joystick_enabled = input.pad.is_some();
         self.events.clear();
         let result = match self.modal.take() {
             None => self.flight.tick(&self.world, &c, &mut self.events),
@@ -325,7 +336,7 @@ mod tests {
         first.pressed.push(Key::SPACE);
         let held = TickInput {
             held: first.held.clone(),
-            pressed: vec![],
+            ..TickInput::default()
         };
         let made = |c: TickControls| c.to_word() >> 32 != 0;
         assert!(made(t.controls(&first, &binds)));

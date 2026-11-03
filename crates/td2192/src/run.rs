@@ -80,6 +80,7 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         }
         handle_host_keys(&snap, &mut platform, &fb, rd.user_dir)?;
         pending.held = snap.held.clone();
+        pending.pad = snap.pad;
         pending.pressed.extend(snap.pressed);
 
         let now = Instant::now();
@@ -91,6 +92,7 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
                 TickInput {
                     held: snap.held.clone(),
                     pressed: Vec::new(),
+                    pad: snap.pad,
                 },
             );
             let mut ctx = FlowContext {

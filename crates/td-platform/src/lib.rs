@@ -125,6 +125,8 @@ pub struct Platform {
     canvas: WindowCanvas,
     presenter: present::Presenter,
     events: EventPump,
+    gamepads: Option<sdl3::GamepadSubsystem>,
+    pads: Vec<sdl3::gamepad::Gamepad>,
     input: td_input::InputState,
     audio: Option<AudioStreamOwner>,
     fullscreen: bool,
@@ -154,11 +156,14 @@ impl Platform {
         let _ = canvas.window_mut(); // keep the canvas mutable for later resizes
         let presenter = present::Presenter::new(&canvas, cfg.scale_mode)?;
         let events = sdl.event_pump().map_err(sdl_err)?;
+        let gamepads = sdl.gamepad().ok();
         Ok(Self {
             _sdl: sdl,
             canvas,
             presenter,
             events,
+            gamepads,
+            pads: Vec::new(),
             input: td_input::InputState::default(),
             audio: None,
             fullscreen: cfg.fullscreen,
@@ -214,9 +219,19 @@ impl Platform {
                     scancode: Some(sc), ..
                 } => self.input.key_up(Key(sc as u16)),
                 Event::TextInput { text, .. } => self.input.text.push_str(&text),
+                Event::GamepadAdded { which, .. } => {
+                    if let Some(pad) = self.gamepads.as_ref().and_then(|g| g.open(which).ok()) {
+                        tracing::info!("game controller connected: {:?}", pad.name());
+                        self.pads.push(pad);
+                    }
+                }
+                Event::GamepadRemoved { which, .. } => {
+                    self.pads.retain(|p| p.id().ok() != Some(which));
+                }
                 _ => {}
             }
         }
+        self.input.pad = self.pads.first().map(read_pad);
         self.input.snapshot()
     }
 
@@ -254,5 +269,31 @@ impl Platform {
         self.presenter
             .present(&mut self.canvas, fb, true)?
             .ok_or_else(|| PlatformError::Sdl("capture failed".into()))
+    }
+}
+
+/// Stick deflection (of 32767) that counts as a direction.
+const STICK_THRESHOLD: i16 = 16_000;
+
+/// Reduces a game controller to the original's digital joystick: left stick or D-pad give the
+/// axes; South (A) is button 2 (fire), East (B) is button 1 (afterburner).
+fn read_pad(pad: &sdl3::gamepad::Gamepad) -> td_input::Pad {
+    use sdl3::gamepad::{Axis, Button};
+    let axis = |a: Axis, neg: Button, pos: Button| -> i8 {
+        let v = pad.axis(a);
+        if v < -STICK_THRESHOLD || pad.button(neg) {
+            -1
+        } else if v > STICK_THRESHOLD || pad.button(pos) {
+            1
+        } else {
+            0
+        }
+    };
+    td_input::Pad {
+        // The original stores left and up as +1.
+        x: -axis(Axis::LeftX, Button::DPadLeft, Button::DPadRight),
+        y: -axis(Axis::LeftY, Button::DPadUp, Button::DPadDown),
+        button1: pad.button(Button::East),
+        button2: pad.button(Button::South),
     }
 }
