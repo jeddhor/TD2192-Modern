@@ -34,19 +34,20 @@ Conversion to 8-bit for presentation: `c8 = (c6 << 2) | (c6 >> 4)`. Keep 6-bit v
 
 | | |
 |---|---|
-| Confidence | LIKELY |
+| Confidence | **CONFIRMED** (loaders `file0001:0000:02AF` and `0E8B:6EDF`, M1-05) |
 | Size | 128,768 = 768 + 2 × 64,000 |
-| Hypothesis | Palette + two 320×200 pages. The first 768 bytes are a valid 6-bit palette (max 63). |
-| To do | Render both pages; confirm page order and usage (M2-09, M5-06). |
+| Layout | Palette, then page 1 (320×200), then page 2 (320×200), read row by row. The game shows page 1, waits for a key, then page 2. From the menu the palette goes to the menu palette buffer; in flight it replaces the flight palette until the help is closed. See [asset-load-sites.md](asset-load-sites.md) §3. |
 
 ## 4. Tileset (`.blk`)
 
 | | |
 |---|---|
-| Confidence | **CONFIRMED** for `td.blk`; LIKELY for `td2.blk`/`td3.blk` |
+| Confidence | **CONFIRMED** for `td.blk` (decode + loader + oracle); LIKELY for `td2.blk`/`td3.blk` (same loader code in `td2.exe`/`td3.exe`) |
 | `td.blk` | 81,920 bytes = **80 tiles × 32×32** pixels. Tile *i* is at offset `i × 1024`, stored row-major. No header, no palette (drawn with `td.pal`). |
-| `td2.blk`, `td3.blk` | 82,784 bytes = 81,920 + **864 trailing bytes** of unknown purpose (U-013) |
-| Evidence | Contact sheet of `td.blk` shows coherent 32×32 city tiles: building blocks, hazard-striped roofs, roads, desert, a "TD" logo, arrows. |
+| `td2.blk`, `td3.blk` | 82,784 bytes = 81,920 + **864 trailing bytes** with no function: the loader reads only the first 448 of them, places them after tile 79 in video memory, and no map uses a tile index above 70, so they are never drawn (U-013, RESOLVED) |
+| Loader | `Sim_FlyMission` (`file0001:0E8B:B880`, `td2:0E96:A76E`, `td3:0C5D:A9CC`) reads the file as rows of 352 bytes into off-screen VGA memory (unchained mode, 352-pixel rows) starting at row 496. Row count = `Round(FileSize / 352) − 2 + 1`: **232 rows (81,664 bytes) for `td.blk`, so the last 256 bytes (tile 79, pixel rows 24..31) are never loaded**; 234 rows (82,368 bytes) for `td2.blk`/`td3.blk`. Because 352 is a multiple of 32, tile *t* lands at VGA address `AA80h + 256·t` (8 bytes × 32 rows, four planes), and the tile blitter `386E:191C` copies it with latched writes. See [asset-load-sites.md](asset-load-sites.md) §5 |
+| Port note | Tile 79's bottom 8 rows are blank in the original. E1 maps never use tile 79 (maximum index 70), so a port that loads all 1,024 bytes renders identically. |
+| Evidence | Contact sheet of `td.blk` shows coherent 32×32 city tiles: building blocks, hazard-striped roofs, roads, desert, a "TD" logo, arrows. C-0002: 81,664 bytes in 232 reads plus the 3 seeks of `FileSize`. |
 
 ## 5. Map (`.map`)
 
@@ -107,15 +108,19 @@ Slot contents as seen in the render (class mapping is U-008):
 | Heading construction | 16 headings, 0 = nose up, increasing counter-clockwise in 22.5° steps: `h % 4` picks `[shp, sc3, shr, sc2]`, and the result is rotated CCW by `90° × (h / 4)` with exact pixel transforms. The 32×32 base is centred in a 40×40 frame (offset 4,4). Implemented in `td-render::headings`; the result is continuous through all 16 steps. |
 | Still open | How the engine maps its internal angle to a frame index (U-003). |
 
-### 6.3 Other sprite files (HYPOTHESIS)
+### 6.3 Other sprite files (LIKELY, from the loader `file0001:0E8B:B880`, M1-05)
 
-| File | Bytes | Guess |
-|---|---:|---|
-| `mine.td` | 1,024 | One 32×32 sprite |
-| `lander.td` | 5,120 | 5 × 32×32 |
-| `td.exp` | 7,168 | 7 × 32×32 explosion frames |
-| `td.hel` | 2,048 | 2 × 32×32 (helicopter / rotor frames?) |
-| `td.h2` | 9,600 | Helicopter-related; 9,600 = 2 × 4,800 or 6 × 1,600 (40×40)? |
+In flight the game keeps one RAM **sprite bank of 27 slots × 32×32** (`td.shp` → slots 0..19, `td.exp` → 20..26) and three rotation blocks: `td.sc3` and `td.sc2` are read only up to **cell 8** (14,400 bytes each), `td.shr` up to cell 19 (32,000 bytes). Some missions overwrite slots:
+
+| File | Bytes | Layout | Loaded into | When (E1 mission) |
+|---|---:|---|---|---|
+| `td.exp` | 7,168 | 7 × 32×32 explosion frames | slots 20..26 | always |
+| `mine.td` | 1,024 | 1 × 32×32 | slot 3 | mission 7 |
+| `lander.td` | 5,120 | 5 × 32×32 | first 2 → slots 0..1, last 3 → slots 4..6 | mission 20 |
+| `td.hel` | 2,048 | 2 × 32×32 | slots 2..3 | missions 12, 15, 21 |
+| `td.h2` | 9,600 | **3 × 2 × 40×40**: slots 2..3 pre-rotated by 67.5°, then 45°, then 22.5° | cells 2..3 of `td.sc2`, `td.shr`, `td.sc3` (in that order) | missions 12, 15, 21 |
+
+So `td.h2` holds the rotated versions of the two `td.hel` sprites, in the same scheme as §6.2 (it is not a set of rotor frames).
 
 ## 7. Missions (`m<N>.td`, `m<N>.td2`, `m<N>.td3`)
 
@@ -139,6 +144,7 @@ Layout:
 Observations:
 - Path runs are smooth (±1 per step) with plateaus, consistent with recorded or hand-drawn routes on the tile grid. Unused tail entries are 0.
 - **Correction (RE-2, 2026-11-02):** the earlier reading of a 500-byte stride (`80 + s*500`) shifts slot s by s − 1 bytes. The "odd first bytes" (`0xFF`, `0x80`, `0x11`, `0x64`, ...) are element k = 0 of each slot, which the game never uses: it copies steps k = 1..500 into the ship records. Slot 20 has file data only for k ≤ 481. The loader also replaces `0xFF` by 0 in steps 1..500 of slot 2 (both arrays). U-015 resolved.
+- **Independent confirmation (RE-3, M1-05):** over all 60 mission files, steps of more than 2 tiles inside a path drop from 747 (stride 500) to 202 (stride 501). Whether anything ever reads element 0 is U-060. **Port:** `td-formats` implements the 501 stride (M2-11, 2026-11-02).
 - Class codes index the ship-class tables directly (0..8 used, 9 empty, `0xFF` = no ship); numbers and names in [structures §6](structures.md#6-ship-classes-u-008) (U-008). The flight setup overrides some slots' codes per mission (`0E8B:60D8`).
 - The reserved areas may be runtime state in the original's in-memory record (the file is probably block-read straight into a record).
 
@@ -146,7 +152,7 @@ Observations:
 
 | | |
 |---|---|
-| Confidence | PARTIAL |
+| Confidence | **CONFIRMED** (grammar and reader `file0001:051A:92AF`, M5-04 prerequisites, 2026-11-02); playback rules in [spec/narrative/dialogue-player.md](../spec/narrative/dialogue-player.md) |
 | Encoding | ASCII lines terminated by CR LF. Each line starts with a control byte (< 0x20). Text is lowercase; `"` is used for an apostrophe. |
 | Lines | 4,596 CR LF lines in `dialogue.dat` |
 
@@ -161,7 +167,7 @@ Grammar as observed (bytes shown in hex; `<...>` = placeholder):
 01 <slot> <face> <color> <name>        (inside a segment) a new or replacement speaker
 05                                     page break (wait for Space)
 04                                     end of scene
-d                                      a literal 'd' line follows each 04 (purpose unknown; U-016)
+d                                      end of scene: the reader stops at the first line starting with 'd' (U-016)
 ```
 
 Whole-file survey (all six files):
@@ -177,17 +183,17 @@ Whole-file survey (all six files):
 
 Notes:
 - **Scene numbers are IDs, not a sequence.** E1 has 103 scenes with IDs from 1 to 157: 9 and 10 are absent, and 100, 105, 108, 109, 110, 156 and 157 sit among the lower IDs. The executables presumably look scenes up by ID. Uncut and edited files have identical ID lists.
-- **Scene 13 quirk:** its `06` line is the single byte `06`. The ID byte 0x0D doubles as the CR of the CR LF terminator (`06 0D 0A`); its neighbours are 12 and 14. The bytes 0x0A and 0x0D never occur inside any other line. How the original reader handles this is part of U-016; the port reads a bare `06` as ID 13.
+- **Scene 13 quirk:** its `06` line is the single byte `06`. The ID byte 0x0D doubles as the CR of the CR LF terminator (`06 0D 0A`); its neighbours are 12 and 14. The bytes 0x0A and 0x0D never occur inside any other line. The original reads the ID with Pascal `Read(ch)`, which returns the CR (13) at the end of the line, so the bare `06` really is scene 13; the port reads it the same way.
 - **Mid-segment speaker lines:** a `01` line can appear inside a segment to bring in a new speaker (for example a new character taking slot 2 part-way through a scene).
 - **Speaker lines between segments** (after `04`, before the next `03`) occur in E3. They apply from the next segment on.
 - **Portrait-only changes:** a 3-byte `01 slot face` line (E3: twice in `dialogu3.dat`, once in `safedia3.dat`) changes the portrait shown in a slot without changing colour or name. Face 200 appears when a character leaves, so it probably means "no portrait". Face 200 also appears in some header speaker lines.
 - **Trailing spaces:** one `05` line in each E2 script carries two trailing spaces (`05 20 20`).
 - No other line-leading codes occur. Every line starts with `01`–`06` or is the literal `d` after `04`. The file ends with CR LF.
-- Speaker slots are only ever 1 and 2 (two speakers per scene). Portrait bytes range up to 200 (200 may mean "no portrait"; to confirm).
-- **Continuation segments:** in E2 and E3, a `03` follows a `04` directly, with no `06` or `01` lines (for example around line 4,002 of `dialogu2.dat`). This is a second segment that reuses the previous scene's speakers and has no trailing `d`.
+- Speaker slots are only ever 1 and 2 (two speakers per scene). Face bytes are portrait numbers after a per-episode remap of a few codes; 200 means "load no portrait" (FORMATS §10).
+- **Continuation segments:** in E2 and E3, a `03` follows a `04` directly, with no `06` or `01` lines (for example around line 4,002 of `dialogu2.dat`). This is a second segment of the same scene: the reader only stops at `d`, so it fades out at `04` and back in at the next `03`, keeping the speakers, portraits and text.
 - Colour bytes can be any value, including control-range values (`0x14`, `0x16`, `0x17` ...). Parse lines positionally, not by scanning for printable text.
-- The second byte of `02` lines is `01` in every one of the 21,115 lines. Its meaning (alignment? window?) is U-016.
-- The speaker is identified by the **colour byte** matching a speaker definition's colour. Examples of colour bytes seen: `0x2E`, `0x39`, `0x2A` (these happen to be printable as `.`, `9`, `*`, so be careful when viewing the file as text).
+- The second byte of `02` lines is `01` in every one of the 21,115 lines. The reader reads it and **ignores it** (U-016, RESOLVED).
+- The speaker is identified by the **colour byte**: a line whose colour equals slot 1's colour is slot 1; any other colour counts as slot 2. Examples of colour bytes seen: `0x2E`, `0x39`, `0x2A` (these happen to be printable as `.`, `9`, `*`, so be careful when viewing the file as text).
 - Blank padding lines (`02 01 <color> <space>`) frame each speech block.
 - Edited files share the same scene structure. Line content differs.
 
@@ -195,14 +201,15 @@ Notes:
 
 | File | Bytes | Geometry | Glyph order | Confidence |
 |---|---:|---|---|---|
-| `td.lt2` | 950 | **38 × 5×5** | A–Z, dark-green block, bright-green block, 0–9 | CONFIRMED (decoded) |
-| `td-let.cin` | 2,560 | **40 × 8×8** | A–Z, 1–9, 0, `-`, `?`, `!`, `:` | CONFIRMED (decoded) |
-| `td.ltr` | 14,976 | **78 × 12×16** | A–Z, 1–9, 0, (blank), `-`, then blank cells | CONFIRMED (decoded) |
+| `td.lt2` | 950 | **38 × 5×5** | A–Z, dark block, bright block, 0–9 | **CONFIRMED** (decode + text routines `file0001:051A:088F`/`0B9F`) |
+| `td-let.cin` | 2,560 | **40 × 8×8** | A–Z, 1–9, 0, `-`, `?`, `!`, `:` | **CONFIRMED** (decode + `051A:042A`); the game loads only the first **39 glyphs (2,496 bytes)**, so `:` is never available |
+| `td.ltr` | 14,976 | **78 × 12×16** | A–Z, 1–9, 0, (blank), `-`, then blank cells | CONFIRMED (decoded). **Not opened by any game exe** (string scan of all five exes; no load site in `file0001`) |
 
 Notes:
-- Glyphs are stored consecutively, row-major. Index 0 is background. **Colours are baked in**: `td.lt2` letters and `0`/`1` are white (`0xF7`) while `2`–`9` are green (`0x12`); `td.ltr` is white with green highlights. Whether the game recolours glyphs when drawing is part of M2-08/M5-01.
-- None of the three fonts has lower case or `.` `,` `"` `'`. Game text is lower case (mapped to these glyphs), but **dialogue text needs punctuation**, so dialogue is probably drawn with another font, possibly the VGA BIOS ROM font (U-037).
-- Character maps (`td-formats::font::FontKind::glyph_index`) follow the visible glyph order: LIKELY until the text routines are analysed.
+- Glyphs are stored consecutively, row-major. Index 0 is background. The files carry baked colours (white `0xF7` plus some coloured pixels), but **the game recolours every glyph**: `td.lt2` draws every non-zero pixel in the requested colour; `td-let.cin` draws only the pixels equal to `0xF7` in the requested colour and treats all others as transparent. The baked colours never reach the screen.
+- **`td.lt2` is the font for all small text, including dialogue** (U-037, RESOLVED). Lower-case letters map to the glyphs; `.` `,` `"` (shown as an apostrophe) `?` `-` `!` are drawn by code as a few pixels; the advance is proportional (2 to 6 pixels per character). Full rules: [spec/render/text.md](../spec/render/text.md).
+- `td.lt2` is read into a 975-byte block (39 glyphs), so glyph 38 would be uninitialised memory; no character maps to it.
+- Character maps: `td.lt2`: `a`..`z` → 0..25, `{` → 26 (dark block), `|` → 27 (bright block, the typing cursor), `0`..`9` → 28..37. `td-let.cin` (after `UpCase`): `A`..`Z` → 0..25, `1`..`9` → 26..34, `0` → 35, `-` → 36, `?` → 37, `!` → 38, `:` → 39 (not loaded); space draws nothing; `.` and `,` are drawn by code. Both CONFIRMED.
 
 ## 10. Portraits (`newfaces.td`, `.td2`, `.td3`)
 
@@ -210,29 +217,32 @@ Notes:
 |---|---|
 | Confidence | **CONFIRMED** (decoded and rendered, 2026-11-02) |
 | Layout | A sequence of records, each a **768-byte palette + 160×100 pixels** (16,768 bytes). E1: 26 faces (435,968 bytes); E2 and E3: 27 faces (452,736 bytes). No header. |
-| Pixel use | Faces use palette indices 1..~112 (up to 147 in E2), each with its **own palette**. How a dialogue screen shows two faces plus a backdrop in one 256-colour palette is part of M5-04. |
-| Dialogue link | Speaker face bytes 1..26/27 are 1-based portrait indices. Other values occur: 32, 33, 65, 78, 87, 89, 90, 126 and 200 (200 appears when a character leaves). These are special codes (U-019). |
+| Pixel use | Faces use palette indices 1..~112 (up to 147 in E2), each with its **own palette**. The game uses **only palette entries 0..111 and pixel values 0..111** of each face: on load, every pixel value above 111 is replaced by 0 (CONFIRMED, `file0001:051A:1618`). The left face keeps entries 0..111; the right face is shifted to entries 112..223 (pixel + 112). There is no backdrop image on the dialogue screen. Details: [spec/narrative/dialogue-player.md](../spec/narrative/dialogue-player.md). |
+| Animation | None: one still frame per face (U-019, RESOLVED). The non-speaking face is shown at half brightness. |
+| Dialogue link | Speaker face bytes are 1-based portrait indices. A few codes stand in for faces whose numbers are awkward bytes in a text file; each episode remaps them before loading: **E1** 32 → 9, 65 → 10, 66 → 14, 78 → 13; **E2** 32 → 9, 33 → 10, 78 → 13; **E3** (applied in this order) 27 → 13, 28 → 27, 33 → 27, 89 → 16, 90 → 17, 87 → 18, 126 → 10, 32 → 9. **200 = do not load a portrait** (at the start of a scene that half stays black; mid-scene the previous portrait stays on screen). CONFIRMED (`file0001:051A:92AF`, `td2:04EC:96A4`, `td3:04A0:7795`) |
 | Code | `td-formats::portraits` |
 
 ## 11. Story stills (`td1-13.pic` .. `td1-20.pic`, `secret.pic`, `pic4.td`)
 
 | | |
 |---|---|
-| Confidence | LIKELY (geometry from data: row-similarity peak + exact size fit, every image rendered and visually coherent). The loaders in the exe should confirm it (M1-05). |
-| Layout | Optional 768-byte palette, then raw pixels. **No dimensions in the file.** |
+| Confidence | **CONFIRMED** (data analysis and the loaders agree on every size, M1-05, 2026-11-02; `secret.pic` also by the C-0002 read pattern). `td1-19.pic` stays LIKELY: no E1 loader. |
+| Layout | Optional 768-byte palette, then raw pixels, row by row. **No dimensions in the file**: each loader has its own width, height and screen position (U-018, RESOLVED: no compression). |
 
-| File | Size | Own palette | Content (brief) |
-|---|---|---|---|
-| `td1-13.pic` | 202×86 | yes | Two portraits |
-| `td1-14.pic` | 200×200 | yes | Character dissolving (teleport) |
-| `td1-15.pic` | 255×121 | yes | Shooting scene |
-| `td1-16.pic` | 150×170 | yes | Character in a chair |
-| `td1-17.pic` | 320×90 | **no** (draw with the current palette; correct with `td.pal`) | Cockpit/bridge scene |
-| `td1-18.pic` | 170×104 | yes | Clone tube |
-| `td1-19.pic` | 320×72 | **no** (correct with `td.pal`) | Ship over clouds |
-| `td1-20.pic` | 320×100 | yes | Laser scene |
-| `secret.pic` | 320×32 | yes | Hint banner |
-| `pic4.td` | 100×150 | yes | Corridor/room |
+| File | Size | Own palette | Loader | Screen position (x, y of the top-left pixel) | Content (brief) |
+|---|---|---|---|---|---|
+| `td1-13.pic` | 202×86 | yes | `051A:4113` (4) | (44, 39) | Two portraits |
+| `td1-14.pic` | 200×200 | yes | `051A:4113` (3) | (1, 0) | Character dissolving (teleport) |
+| `td1-15.pic` | 255×121 | yes | `051A:4979` | (32, 30) | Shooting scene |
+| `td1-16.pic` | 150×170 | yes | `051A:4113` (1) | (86, 0) | Character in a chair |
+| `td1-17.pic` | 320×90 | **no** (current flight palette, `td.pal`) | `0E8B:9860` | (0, 67) of the flight page | Cockpit/bridge scene |
+| `td1-18.pic` | 170×104 | yes | `051A:471B` | (76, 20) | Clone tube |
+| `td1-19.pic` | 320×72 | **no** (correct with `td.pal`) | none in E1 | — | Ship over clouds |
+| `td1-20.pic` | 320×100 | yes (byte-identical to `td.pal`); **the game skips it** and keeps `td.pal`, so the result is the same | `051A:4113` (2) | (0, 50) | Laser scene |
+| `secret.pic` | 320×32 | yes | `051A:2B26` | (1, 0) | Hint banner |
+| `pic4.td` | 100×150 | yes | `051A:4F5A` | (11, 16) | Corridor/room |
+
+Full-screen `.scr` scenes are also drawn one pixel to the right (column 0 of the file at x = 1; the last column falls off screen); `javelin.td` and `city.td` are not. See [asset-load-sites.md](asset-load-sites.md) §4.
 
 Code: `td-formats::picture::{STILLS, Picture}`.
 
@@ -242,21 +252,34 @@ Headerless 8bpp. Geometry from data analysis (row-similarity peak, exact size fi
 
 | File | Bytes | Geometry | Content | Confidence |
 |---|---:|---|---|---|
-| `td.win` | 10,240 | 320×32 | **In-flight HUD bar**: shielding/hull panel, a radar-like box, missiles display, status boxes. So the flight viewport is probably 320×168 (U-025). | LIKELY |
-| `td.sss` | 6,080 | 320×19 | Save-slot bar | LIKELY |
-| `td.fac` | 3,920 | 5 × 28×28 | "HIT F6" comm indicator (blank + 4 animation frames) | CONFIRMED (visual) |
-| `td.joy` | 1,600 | 40×40 | Joystick icon (calibration screen) | CONFIRMED (visual) |
-| `td.h2` | 9,600 | 6 × 40×40 | Helicopter rotor frames | CONFIRMED (visual) |
+| `td.win` | 10,240 | 320×32 | **In-flight HUD bar**, plotted into VGA rows 0..31 and shown below the split line at screen rows **160..191** of a 192-line display; the playfield is 320×160 (U-025, RESOLVED). See [spec/render/hud.md](../spec/render/hud.md) | **CONFIRMED** (loader `0E8B:B880` + C-0002) |
+| `td.sss` | 6,080 | 320×19 | Save-slot bar, drawn 10 times (rows 10, 29, ..., 181) on the save/restore screen | **CONFIRMED** (loader `051A:76EA`) |
+| `td.fac` | 3,920 | 5 × 28×28 | "HIT F6" comm indicator (blank + 4 animation frames). On load, colour 38 is replaced by 39 in frames 0..3 | CONFIRMED (visual + loader) |
+| `td.joy` | 1,600 | 40×40 | Joystick icon, drawn at (140, 70) on the calibration screen | CONFIRMED (visual + loader `0E8B:AF1F`) |
+| `td.h2` | 9,600 | 3 × 2 × 40×40 | The two `td.hel` helicopter bodies pre-rotated by 67.5°, 45° and 22.5° (§6.3) | CONFIRMED (loader + visual) |
 | `td.hel` | 2,048 | 2 × 32×32 | Helicopter bodies | CONFIRMED (visual) |
 | `td.dun` | 3,072 | 3 × 32×32 | Desert/dune tiles (intro only) | CONFIRMED (visual) |
 | `td1.ccm`, `td2.ccm`, `td3.ccm` | 9,216 / 7,168 / 5,120 | 9 / 7 / 5 × 32×32 | **Comm portraits** (small faces for in-flight transmissions) | CONFIRMED (visual) |
 | `mine.td` | 1,024 | 32×32 | Mine | CONFIRMED (visual) |
 | `lander.td` | 5,120 | 5 × 32×32 | Lander pieces (a large craft built from tiles?) | CONFIRMED (visual) |
 | `td.exp` | 7,168 | 7 × 32×32 | Explosion frames | CONFIRMED (visual) |
-| `td.men` | 144,000 | Mixed. The top ~380 rows at width 320 show the main menu panel, in-game options panels and confirmation boxes (quit confirmation, save/restore slot prompts). Uses `tdmen.pal`. The rest holds sub-images of other widths. | Menu graphics atlas | PARTIAL (needs blit sites, M2-09) |
-| `td.cmm` | 32,768 | Unknown (no clean width) | Communication panel? | UNKNOWN |
-| `td.sel` | 3,096 | Unknown | Selection UI | UNKNOWN |
-| `td.wea` | 3,888 | Unknown (36×36 × 3?) | Weapon/HUD element? | HYPOTHESIS |
+| `td.men` | 144,000 | Five regions, see §12.1 | Menu graphics atlas | **CONFIRMED** (loaders `0000:2E88`, `0E8B:794C`; C-0002 read pattern) |
+| `td.cmm` | 32,768 | **32 cells × 32×32**, forming a **256×128 panel** of 4 rows × 8 columns (cell *k* at column *k* mod 8, row *k* div 8) | F6 transmission panel: frame, two 32×32 portrait boxes, two text boxes | **CONFIRMED** (loader `0E8B:5435` + visual) |
+| `td.sel` | 3,096 | Unknown | **Unused**: no exe contains the name (byte scan of all ten exes, 2026-11-02), so the port does not need it | UNKNOWN geometry; not needed |
+| `td.wea` | 3,888 | **6 × 36×18** | Weapon icons for the HUD; one is drawn at HUD (179, 7) according to the ship class | **CONFIRMED** (loader `0E8B:B880` + visual) |
+
+### 12.1 `td.men` regions (M2-09)
+
+| Bytes | Geometry | Palette | Content | Used by `file0001` |
+|---|---|---|---|---|
+| 0..15,999 | 160×100 | `td.pal` (flight), entries 107..110 overridden as item colours | In-flight computer menu (four items) | `0E8B:794C`: drawn at (80, 50) of the flight page |
+| 16,000..79,999 | 320×200 | `tdmen.pal` | Main menu screen | `0000:2E88`: full screen (VGA rows 0..199). Entries 224..233 are the item colours |
+| 80,000..120,959 | 4 × 320×32 | `tdmen.pal` | Confirmation boxes: quit (Y/N); current game lost (Y/N); save 0–9; restore 0–9 | Copied to VGA rows 432..559; boxes 1 and 2 are shown by `0000:330E` over menu rows 84..115; boxes 3 and 4 are loaded but never shown in E1 |
+| 120,960..124,959 | 2 × 100×20 | `tdmen.pal` | Left and right halves of a 200×20 "game not loaded" message | VGA (0..199, 560..579); not shown in E1 |
+| 124,960..128,959 | 100×40 | `tdmen.pal` | "Game saved" (top 20 rows), "game loaded" (bottom 20 rows) | VGA (0..99, 580..619); not shown in E1 |
+| 128,960..143,999 | — | — | Not image-like | Never read by `file0001` |
+
+The main-menu loader also copies main-menu rows 84..115 (bytes 42,880..53,119) to VGA rows 400..431, to restore the menu after a confirmation box (`0000:330E` with box 0).
 
 ## 13. Configuration and saves
 
@@ -264,9 +287,13 @@ Headerless 8bpp. Geometry from data analysis (row-similarity peak, exact size fi
 
 `[music, sfx, controller]`. The shipped value is `02 02 02`. Probably 1-based menu choices from the config screen: music {1 none, 2 SB/AdLib}, SFX {1 none, 2 SB, 3 PC speaker}, controller {1 keyboard, 2 keyboard + joystick}. Confirm in M2-12.
 
-### 13.2 `td.sav`, `td2.sav`, `td3.sav` (70 bytes), HYPOTHESIS
+Static (M1-05, 2026-11-02): `file0001` reads the three bytes into DS:12C6 (music), DS:12C7 (effects) and DS:12C8 (controller) at start-up (`0000:49C1`) and writes them back from the configuration screen (`0000:5044`). Music plays only when byte 0 = 2 (`0E8B:07ED`); the joystick is read only when byte 2 = 2; the effects start-up `1E2A:06C6` loads the VOC files for 2 and installs a PC-speaker tick handler for 3. This agrees with the meanings above.
 
-Shipped `td.sav`: 10 × `02 0D 00`, then 40 × `0xFF`. Possibly 10 slots × 3 bytes (for example mission number / state) + a 40-byte area (10 × 4?) unused in the shipped file. The shipped `td2.sav` and `td3.sav` differ from `td.sav` and from each other; not yet examined. Real saves are needed to decode the format (create them in DOSBox).
+### 13.2 `td.sav`, `td2.sav`, `td3.sav` (70 bytes), PARTIAL
+
+Shipped `td.sav`: 10 × `02 0D 00`, then 40 × `0xFF`. The shipped `td2.sav` and `td3.sav` differ from `td.sav` and from each other; not yet examined.
+
+Static (M1-05, E1 save/restore screens `051A:76EA` and `051A:7EEA`): slot *s* (1..10) is the 3 bytes at offset (*s* − 1) × 3: a **mission number** byte (0 or > 20 means "empty slot") and a **16-bit word** shown next to it (meaning still open: U-011). Saving rewrites only those 3 bytes. Bytes 30..69 are never read or written by these screens; what (if anything) uses them is open (U-011).
 
 ### 13.3 `td.stt`, `td2.stt`, `td3.stt` (260 bytes), LIKELY
 
@@ -274,7 +301,9 @@ Shipped `td.sav`: 10 × `02 0D 00`, then 40 × `0xFF`. Possibly 10 slots × 3 by
 
 ### 13.4 `tdstatus.dat`
 
-Not shipped; written at runtime. Presumably passes state between `td1.exe` and the episode program (U-004).
+Not shipped; written at runtime. Passes state between `td1.exe` and the episode program (U-004).
+
+Static (M1-05): `file0001` start-up (`0000:45E1`) reads a 1-byte flag; if it is non-zero it reads 13 more bytes (word, byte, byte, word, word, word, word, byte; the last byte is the script choice, 1 = uncut, 2 = edited), then truncates the file to 0 bytes. `0000:3381` writes the same 14-byte record. The meaning of the other fields is open.
 
 ## 14. Creative Music File (`.cmf`), standard format
 
