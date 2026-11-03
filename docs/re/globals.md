@@ -185,5 +185,5 @@ Layouts and field meanings: [structures.md](structures.md) §2–§5.
 
 ## 8. Notes for other tasks
 
-- `0E8B:A714` (named `Inp_RestoreKeyboard` by M1-03) is the **F5 ship-switch screen**: it restores the BIOS keyboard handler for its own `ReadKey` loop, then shows the slot list with "Tab to change ships" and "Esc to return" prompts. Suggest renaming it `UI_ShipSwitchScreen` when the canonical project is next updated.
+- `0E8B:A714` (`UI_ShipSwitchScreen`, named `Inp_RestoreKeyboard` by M1-03 and renamed 2026-11-02) is the **F5 ship-switch screen**: it restores the BIOS keyboard handler for its own `ReadKey` loop, then shows the slot list with change-ship and return prompts.
 - The shared loop counters `g_I`/`g_J` (DS:1A52/1A54) mean that routines are not re-entrant; a port must not "fix" any behaviour that depends on a callee leaving them changed (none found yet, but watch for it in M8).

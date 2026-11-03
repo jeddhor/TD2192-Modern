@@ -120,7 +120,7 @@ Routine = containing function (our name where one exists). Sites = offsets withi
 | `0E8B` | `0E8B:012A` | `OUT 3C4h` | SEQ 02h map mask | 01B2, 01E3 |
 | `0E8B` | `0E8B:012A` | `OUT 3C5h` | map mask data 0Fh (all planes) | 01C2 |
 | `0E8B` | `0E8B:012A` | `OUT 3CEh` | GC 08h bit mask | 01AC, 01DC |
-| `0E8B` | `Inp_RestoreKeyboard` (0E8B:A714) | `OUT 3D4h` | CRTC 12h vertical display end | A771, AEC5 |
+| `0E8B` | `UI_ShipSwitchScreen` (0E8B:A714) | `OUT 3D4h` | CRTC 12h vertical display end | A771, AEC5 |
 | `0E8B` | `Sim_FlyMission` (0E8B:B880) | `OUT 3D4h` | CRTC 12h vertical display end | CC46 |
 | `386E` | `386E:0000` | `OUT 3C4h` | SEQ 02h map mask | 0026, 006C, 00B2, 00F8 |
 | `386E` | `386E:0000` | `OUT 3CEh` | GC 01h enable set/reset | 0031, 0077, 00BD, 0103 |

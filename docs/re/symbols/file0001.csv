@@ -57,7 +57,7 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:82DD,func,UI_DrawGuidanceLine,,guidance line to the current target (ArcTan; Sqrt),HYPOTHESIS,U-033
 0E8B:8E87,func,UI_DrawInstruments,,per tick: armour and shield gauges; radar; guidance; jurisdiction check,LIKELY,U-033
 0E8B:9860,func,UI_UpdateStatusPanel,,per tick: messages; ship info panel; ship switching; mission events,HYPOTHESIS,U-033
-0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
+0E8B:A714,func,UI_ShipSwitchScreen,,F5 ship-switch screen (modal): restores the BIOS INT 09h vector from DS:18C2 for its ReadKey loop; slot list with Tab/Esc prompts; resets CRTC 12h,LIKELY,M1-07
 0E8B:AF1F,func,Inp_CalibrateJoystick,,joystick calibration screen at start-up,LIKELY,M1-04
 0E8B:B1EC,func,Sim_PlayerSpecials,,per tick after thrust: fire (Space) and infra-red toggle (Alt),HYPOTHESIS,U-033
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
