@@ -1083,7 +1083,7 @@ Candidates, each needing its own spec and ADR where it affects gameplay: widescr
 | R8 | Formats whose dimensions live only in code (pic, UI raw, fonts, portraits) | High | Low | M1-05 load-site table before M2 tasks for those files |
 | R9 | Agent drift: inconsistent conventions, duplicated subsystems, undocumented decisions | Medium | High | AGENTS.md rules, crate boundaries, STATUS protocol, ADRs, review checklists, small tasks |
 | R10 | Episode 2/3 engine divergence larger than expected | Medium | Medium | M1-09 early; configuration-driven deltas; never fork the engine |
-| R11 | Real48 (software floating point) used in gameplay math | Low/Medium | Medium | Detect in M1-01; if used, implement a bit-exact Real48 type in `td-sim` |
+| R11 | Real48 (software floating point) used in gameplay math: **MATERIALISED** (M1-01: about 470 game call sites) | Certain | Medium | Detect in M1-01; if used, implement a bit-exact Real48 type in `td-sim` |
 | R12 | Input semantics (Alt key on macOS, keyboard layouts, IME) | Medium | Low | Scancode-based bindings; full rebinding; F11 for fullscreen |
 | R13 | Unknown original versions or patched files in the wild | Medium | Low | Manifest validation tolerant of modifications; exe-resource maps per known hash |
 | R14 | Scope creep from Enhanced features delaying 1.0 | Medium | Medium | Enhanced features only in M12 (per D5) and M14 |

@@ -8,7 +8,7 @@
 | **Fidelity tier** | T0 for container parsing and ADPCM decoding; T2 for playback (resampling) |
 | **Confidence** | LIKELY: written from the public descriptions of the VOC container and the Sound Blaster ADPCM schemes. Decoder output still has to be checked against a DOSBox-X capture (M3-08). |
 | **Tasks** | M3-01, M3-02 |
-| **Unknowns** | U-021 (SFX policy), U-030 (reference byte) |
+| **Unknowns** | U-021 (SFX policy), U-035 (reference byte) |
 
 ## 1. Summary
 
@@ -44,7 +44,7 @@ Codec byte: 0 = 8-bit unsigned PCM; 1 = 4-bit ADPCM; 2 = 2.6-bit ADPCM; 3 = 2-bi
 
 State: `sample` (signed, range −128..=127, centred so that unsigned PCM = `sample + 128`) and `step` (0..=3).
 
-1. **Reference byte:** the first data byte of each type-1 block is an uncompressed unsigned 8-bit sample. It becomes the first output sample and initialises `sample = byte − 128`, with `step = 0`. (Assumption U-030: all our ADPCM files start with a reference byte, as the DSP's "with reference" commands expect.)
+1. **Reference byte:** the first data byte of each type-1 block is an uncompressed unsigned 8-bit sample. It becomes the first output sample and initialises `sample = byte − 128`, with `step = 0`. (Assumption U-035: all our ADPCM files start with a reference byte, as the DSP's "with reference" commands expect.)
 2. **Code unpacking**, most significant bits first:
    - 4-bit: two codes per byte, `b >> 4` then `b & 0x0F`. Code width 4.
    - 2.6-bit: three codes per byte, `b >> 5`, `(b >> 2) & 7`, `(b & 3) << 1`. Code width 3; the last code has only 2 significant bits.
@@ -70,7 +70,7 @@ Vectors 1–4 follow from §3 by hand (they test the description, not the origin
 
 ## 5. Open questions
 
-- [ ] U-030: is the first byte always a reference byte in these files (as assumed), or does WORX use the "no reference" DSP commands for some?
+- [ ] U-035: is the first byte always a reference byte in these files (as assumed), or does WORX use the "no reference" DSP commands for some?
 - [ ] Does WORX apply any volume scaling or filtering to SFX?
 
 ## 6. Provenance

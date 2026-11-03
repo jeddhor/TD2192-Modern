@@ -198,7 +198,7 @@ Notes:
 
 Notes:
 - Glyphs are stored consecutively, row-major. Index 0 is background. **Colours are baked in**: `td.lt2` letters and `0`/`1` are white (`0xF7`) while `2`–`9` are green (`0x12`); `td.ltr` is white with green highlights. Whether the game recolours glyphs when drawing is part of M2-08/M5-01.
-- None of the three fonts has lower case or `.` `,` `"` `'`. Game text is lower case (mapped to these glyphs), but **dialogue text needs punctuation**, so dialogue is probably drawn with another font, possibly the VGA BIOS ROM font (U-032).
+- None of the three fonts has lower case or `.` `,` `"` `'`. Game text is lower case (mapped to these glyphs), but **dialogue text needs punctuation**, so dialogue is probably drawn with another font, possibly the VGA BIOS ROM font (U-037).
 - Character maps (`td-formats::font::FontKind::glyph_index`) follow the visible glyph order: LIKELY until the text routines are analysed.
 
 ## 10. Portraits (`newfaces.td`, `.td2`, `.td3`)
@@ -318,6 +318,8 @@ Each instrument is 16 bytes of OPL2 register values. Music data is a MIDI-like e
 | vulture | 8 | 168 | 48 | 96 |
 
 `mood2.cmf` and `mood3.cmf` are **byte-identical** (same SHA-256). They are presumably referenced separately by the code; keep both logical names.
+
+**Playback timer (static, M1-06, 2026-11-02; U-007 still open):** when a song starts, WORX (`file0001:2C37:4791`) stores one header word to a variable (CS:3062), advances to the next word, and programs PIT channel 0 to `1234DCh div <that word>`. If the words are 0x0A then 0x0C (the likely reading), the timer runs at the *ticks-per-second* field (0x0C, 96 Hz in every shipped file) and field 0x0A feeds the tempo calculation at `2C37:48BB`. The divisor also changes the effective BIOS tick and so the game's tick rate ([timing.md](../spec/core/timing.md)).
 
 Which field actually sets playback speed in WORX is **U-007**. Implement both interpretations behind a switch and compare durations against DOSBox captures.
 

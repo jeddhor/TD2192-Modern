@@ -1,7 +1,7 @@
 //! Creative Music File sequencer driving an emulated OPL2.
 //!
 //! Spec: `docs/spec/audio/cmf.md` (rev 1). Fidelity: T2, pending WORX findings (U-007 tempo,
-//! U-029 velocity, loop behaviour).
+//! U-034 velocity, loop behaviour).
 
 use std::sync::Arc;
 

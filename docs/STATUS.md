@@ -14,7 +14,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
 | **Ghidra lock** | free |
-| **Active handoffs** | none |
+| **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) |
 
 ### Blocking user decisions (MDG §14)
 
@@ -48,8 +48,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M0-05 | tdtool gen-manifest + inventory | IM | M0-04 | DONE | main-session | 2026-11-02; inventory reports 218/218, E1-E3 exact |
 | M0-06 | td-test-support (require_data!, assert_sha256!) | IM | M0-01 | DONE | main-session | 2026-11-02 |
 | M0-07 | RE work area + captures manifest template | RE | - | DONE | main-session | 2026-11-02 |
-| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | IN PROGRESS | main-session | Imported + auto-analysed (fast; little code found); image bases + DS setup pending |
-| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | TODO | | |
+| M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | DONE | RE-1 | 2026-11-02; base seg 1000 for all; DGROUP + segment maps + coverage in docs/re/EXECUTABLES.md §1.1; loader defects fixed by tools/ghidra/SetupBp7Program.java; U-027 resolved |
+| M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | DONE | RE-1 | 2026-11-02; tools/ghidra/*.java + tools/scripts/ghidra-headless.ps1; usage in tools/ghidra/README.md; all tested headless |
 | M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | IN PROGRESS | main-session | DOSBox-X built: dosbox-x\bin\x64\Release\dosbox-x.exe (C_DEBUG on) |
 | M0-11 | Capture tooling and procedure | VE | M0-10 | TODO | | |
 | M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | DONE | main-session | 2026-11-02; D1 Rust+SDL3, D2 MIT; ADRs accepted |
@@ -58,12 +58,13 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | TODO | | |
+| M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | DONE | RE-1 | 2026-11-02; docs/spec/core/bp7-runtime-semantics.md rev 1 + docs/re/symbols/file0001.csv (162 rows); RNG exact; Real48 used by gameplay (U-022, U-023 resolved); Real48 algorithms split to M1-01.b |
+| M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | TODO | | Needed before M6 code that mirrors file0001:0E8B:B880 / 0E8B:82DD |
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
-| M1-03 | Hardware access catalogue | RE | M0-09 | TODO | | |
+| M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
 | M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
-| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | TODO | | |
+| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
 | M1-07 | Global data map + symbols | RE | M1-01 | TODO | | |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | TODO | | |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
@@ -82,7 +83,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | DONE | main-session | 2026-11-02; rotation sets CCW (measured); 16-heading assembly in td-render; tdtool export sprites |
 | M2-06 | .pic decoder | RE/IM | M1-05 | DONE | main-session | 2026-11-02; data analysis: raw sub-rectangles, 8 with palette, 2 without (td1-17/19); sizes LIKELY pending M1-05 load sites |
 | M2-07 | portraits geometry + parser | RE/IM | M1-05 | DONE | main-session | 2026-11-02; 26/27 x (768 pal + 160x100); per-face palettes; special face codes U-019 |
-| M2-08 | fonts x3 | RE/IM | M1-05 | IN PROGRESS | main-session | Glyph geometry decoded for all 3 fonts (5x5, 8x8, 12x16) + td-formats::font; char maps LIKELY; dialogue font unknown (U-032) |
+| M2-08 | fonts x3 | RE/IM | M1-05 | IN PROGRESS | main-session | Glyph geometry decoded for all 3 fonts (5x5, 8x8, 12x16) + td-formats::font; char maps LIKELY; dialogue font unknown (U-037) |
 | M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | IN PROGRESS | main-session | 13 sheets decoded (HUD bar, comm portraits, F6 indicator, heli, explosions); td.men/td.cmm/td.sel/td.wea need blit sites |
 | M2-10 | dialogue parser (full grammar) | RE/IM | M2-01 | IN PROGRESS | main-session | Strict parser handles all 6 files (scene IDs, scene-13 CR quirk, mid-scene speakers, portrait-only changes, trailing spaces); field meanings open (U-016) |
 | M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | IN PROGRESS | main-session | Parser + L1 (60 files); tdtool mission-map draws paths over any map/tileset (for M8-01 and U-006); field semantics need M1-08/M8-01 |
@@ -99,7 +100,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M3-01 | VOC parser | IM | M0-06 | DONE | main-session | 2026-11-02; td-formats::voc; all 17 files parse |
 | M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | DONE | main-session | 2026-11-02; spec audio/voc-and-adpcm.md; decoder + vectors; decoded signals sane (lag-1 autocorr 0.79-1.00); A/B pending M3-08 |
 | M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | DONE | main-session | 2026-11-02; td-opl over ymfm-sys (YM3812) |
-| M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | main-session | 2026-11-02; spec audio/cmf.md; fixed channel map, rhythm mode, fine transpose; velocity ignored (U-029); 96 ticks/s (U-007) |
+| M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | main-session | 2026-11-02; spec audio/cmf.md; fixed channel map, rhythm mode, fine transpose; velocity ignored (U-034); 96 ticks/s (U-007) |
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | TODO | | |
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | IN PROGRESS | main-session | Mixer + Classic/Polyphonic SFX policies done; Classic rule provisional (U-021), balance untuned |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
@@ -121,7 +122,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M5-01 | Text renderer per font | SP/IM | M2-08 | IN PROGRESS | main-session | td-render::text draws the 3 fonts (baked or solid colour); spacing provisional pending M2-08; dialogue font U-032 |
+| M5-01 | Text renderer per font | SP/IM | M2-08 | IN PROGRESS | main-session | td-render::text draws the 3 fonts (baked or solid colour); spacing provisional pending M2-08; dialogue font U-037 |
 | M5-02 | Palette fade engine | SP/IM | M1-03 | IN PROGRESS | main-session | td-render::Fade (6-bit linear, provisional) pending DAC-routine RE |
 | M5-03 | Story card player | SP/IM | M1-04, M1-11 | TODO | | |
 | M5-04 | Dialogue scene player | SP/IM | M2-07, M2-10 | TODO | | |

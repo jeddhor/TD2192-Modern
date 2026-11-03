@@ -1,0 +1,190 @@
+address,kind,name,signature,comment,confidence,source_task
+0000:0F06,func,Main_CampaignLoop,,mission sequencer: calls Sim_FlyMission 21 times,LIKELY,M1-06
+0000:4526,func,Main_Entry,,"program entry: calls each unit init (System first), then the main body",CONFIRMED,M1-01
+0000:454E,label,Main_Body,,main block after the init chain,CONFIRMED,M1-01
+051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
+0E8B:0052,func,Gfx_WaitRetraceStart,,polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace,CONFIRMED,M1-03
+0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
+0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
+0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
+0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
+0E8B:F9E7,func,Unit0E8B_Init,,unit init part (7th in chain),CONFIRMED,M1-01
+1E2A:0000,func,Snd_Int1CHandler,,INT 1Ch (BIOS user tick) handler installed by 1E2A:06C6,HYPOTHESIS,M1-03
+1E2A:06C6,func,Snd_InstallTick,,saves INT 1Ch to DS:1E34 and installs 1E2A:0000,LIKELY,M1-03
+1EBF:0000,func,Inp_JoystickAvailable,,returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead,HYPOTHESIS,M1-03
+1EBF:0026,func,Inp_JoystickRead,,port 201h trigger and timing loop for axes and buttons (all joystick port I/O),LIKELY,M1-03
+1EDE:5247,func,Unit1EDE_Init,,unit init part (6th in chain),CONFIRMED,M1-01
+2404:60FD,func,Unit2404_Init,,unit init part (5th in chain),CONFIRMED,M1-01
+2A15:220F,func,Unit2A15_Init,,unit init part (4th in chain),CONFIRMED,M1-01
+2C37:0000,func,WORX_CallDriver,,Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h,LIKELY,M1-03
+2C37:3285,func,WORX_InstallInterrupts,,"hooks INT 63h (driver API, 2C37:34EE) and INT 08h (2C37:4558); PIT divisor 0952h",CONFIRMED,M1-03
+2C37:336E,func,WORX_RemoveInterrupts,,restores INT 08h and INT 63h,CONFIRMED,M1-03
+2C37:34EE,label,WORX_Int63Handler,,WORX driver API (software interrupt 63h),LIKELY,M1-03
+2C37:4558,func,WORX_TimerIsr,,INT 08h: music tick if active; chains BIOS every N fast ticks; else EOI,CONFIRMED,M1-06
+2C37:4A72,func,WORX_SetTimerRate,,AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick,CONFIRMED,M1-06
+34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
+386E:1991,func,Gfx_SetLogicalWidth,,CRTC 13h (offset) write,LIKELY,M1-03
+386E:19A0,func,Gfx_SetSplitLine,,"waits for a full vertical retrace, then programs line compare (CRTC 18h/07h/09h)",LIKELY,M1-03
+386E:19EF,func,Gfx_InitUnchained,,"INT 10h mode 13h, then chain-4 off (SEQ 04h), CRTC 14h/17h: planar 320x200",CONFIRMED,M1-03
+386E:1A6C,func,Gfx_FlipPage,,"waits display-enable low, sets CRTC start address 0Ch/0Dh, then waits for vertical retrace",CONFIRMED,M1-03
+3A1C:000D,func,Crt_Init,,"Crt unit init (2nd in chain): video setup, AssignCrt Input/Output, Delay calibration",CONFIRMED,M1-01
+3A1C:003B,func,Crt_InitVideo,,reads BIOS video mode (INT 10h AH=0Fh) and sets up text state,LIKELY,M1-01
+3A1C:00A3,func,Crt_SetVideoMode,,internal: set text mode via INT 10h AH=00h,HYPOTHESIS,M1-01
+3A1C:00F0,func,Crt_GetScreenRows,,internal: INT 10h AX=1130h font info for row count,HYPOTHESIS,M1-01
+3A1C:0138,func,Crt_CtrlBreakIsr,,INT 1Bh handler: sets the break flag when CheckBreak is on,CONFIRMED,M1-01
+3A1C:014E,func,Crt_CheckBreakFlag,,"internal: acts on a pending Ctrl-Break, flushes keyboard (INT 16h)",LIKELY,M1-01
+3A1C:0177,func,Crt_TextMode,,TextMode(Mode: Word),LIKELY,M1-01
+3A1C:01CC,func,Crt_ClrScr,,ClrScr: scroll window (INT 10h AX=0600h) and home cursor,LIKELY,M1-01
+3A1C:021F,func,Crt_GotoXY,,"GotoXY(X, Y: Byte), window-relative",LIKELY,M1-01
+3A1C:0263,func,Crt_TextColor,,TextColor(Color: Byte),LIKELY,M1-01
+3A1C:027D,func,Crt_TextBackground,,TextBackground(Color: Byte),LIKELY,M1-01
+3A1C:02A8,func,Crt_Delay,,Delay(MS: Word): busy loop of DelayCnt iterations per ms,CONFIRMED,M1-01
+3A1C:02C6,func,Crt_DelayLoop,,internal busy loop shared with the calibration,LIKELY,M1-01
+3A1C:02D4,func,Crt_Sound,,"Sound(Hz: Word): PIT ch2 divisor 1234DDh/Hz, speaker on",CONFIRMED,M1-01
+3A1C:0301,func,Crt_NoSound,,NoSound: speaker gate off (port 61h),CONFIRMED,M1-01
+3A1C:0308,func,Crt_KeyPressed,,"KeyPressed: Boolean (INT 16h AH=01h, or pending scan code)",CONFIRMED,M1-01
+3A1C:031A,func,Crt_ReadKey,,ReadKey: Char (INT 16h AH=00h; extended keys return #0 then scan code),CONFIRMED,M1-01
+3A1C:033C,func,Crt_AssignCrt,,AssignCrt(var F: Text),LIKELY,M1-01
+3A1C:039F,func,Crt_TextDriver,,Crt text-file driver (reached via TextRec function pointers),HYPOTHESIS,M1-01
+3A1C:0614,func,Crt_BiosVideo,,internal: INT 10h wrapper preserving SI/DI/BP/ES,LIKELY,M1-01
+3A7E:0000,func,Dos_GetDate,,GetDate (INT 21h AH=2Ah); unreferenced,LIKELY,M1-01
+3A7E:0022,func,Dos_SetDate,,SetDate (INT 21h AH=2Bh); unreferenced,LIKELY,M1-01
+3A7E:0036,func,Dos_GetTime,,"GetTime(var Hour, Minute, Second, Sec100) (INT 21h AH=2Ch)",CONFIRMED,M1-01
+3A7E:005B,func,Dos_SetTime,,SetTime (INT 21h AH=2Dh); unreferenced,LIKELY,M1-01
+3A7E:0072,func,Dos_GetIntVec,,GetIntVec(IntNo; var Vector) (INT 21h AH=35h),CONFIRMED,M1-01
+3A7E:008A,func,Dos_SetIntVec,,SetIntVec(IntNo; Vector) (INT 21h AH=25h),CONFIRMED,M1-01
+3A7E:009D,func,Dos_Exec,,"Exec(Path, CmdLine) (INT 21h AH=4Bh); used by the label.exe path, never port",CONFIRMED,M1-01
+3A92:0000,func,Unit3A92_StrLCopyLike,,"only routine of a small library unit; copies (dest, src, maxlen); called once from main",HYPOTHESIS,M1-01
+3A9A:0000,func,BP_SystemInit,,"System init: DS:=DGROUP, PrefixSeg, heap and overlay pointers, saves and hooks vectors",CONFIRMED,M1-01
+3A9A:00B1,func,BP_DetectCpu,,internal: FLAGS tests to classify the CPU into Test8086,LIKELY,M1-01
+3A9A:010C,func,BP_DivZeroIsr,,INT 00h handler tail: RunError 200 at the faulting address,LIKELY,M1-01
+3A9A:010F,func,BP_RunError,,"runtime error entry: AX = error code, caller address becomes ErrorAddr",LIKELY,M1-01
+3A9A:0116,func,BP_Halt,,"Halt(ExitCode in AX): ExitProc chain, restore vectors, error message, INT 21h AH=4Ch",CONFIRMED,M1-01
+3A9A:01F0,func,BP_PrintCsString,,internal: print zero-terminated CS string (runtime error text),LIKELY,M1-01
+3A9A:0218,func,BP_PrintHexWord,,internal: print AX as 4 hex digits,LIKELY,M1-01
+3A9A:0232,func,BP_PrintChar,,internal: print AL via INT 21h AH=06h,LIKELY,M1-01
+3A9A:028A,func,BP_GetMem,,"GetMem: AX=size, returns pointer DX:AX; RunError 203 on failure",CONFIRMED,M1-01
+3A9A:029F,func,BP_FreeMem,,FreeMem(P; Size),CONFIRMED,M1-01
+3A9A:02B9,func,BP_Mark,,Mark(var P): stores HeapPtr,LIKELY,M1-01
+3A9A:02CB,func,BP_Release,,Release(var P): resets HeapPtr and FreeList,LIKELY,M1-01
+3A9A:02E7,func,BP_MaxAvail,,MaxAvail: LongInt,LIKELY,M1-01
+3A9A:0303,func,BP_MemAvail,,MemAvail: LongInt,LIKELY,M1-01
+3A9A:0353,func,BP_HeapAlloc,,internal heap allocator (free list then heap top),HYPOTHESIS,M1-01
+3A9A:041E,func,BP_HeapFree,,internal heap release with validity checks,HYPOTHESIS,M1-01
+3A9A:04ED,func,BP_IOResult,,IOResult: returns InOutRes and clears it,CONFIRMED,M1-01
+3A9A:04F4,func,BP_IOCheck,,{$I+} check after I/O: RunError(InOutRes) if non-zero,CONFIRMED,M1-01
+3A9A:0530,func,BP_StackCheck,,{$S+} stack check: AX = frame size; RunError 202 on overflow,CONFIRMED,M1-01
+3A9A:0549,func,BP_AssignText,,Assign(var T: Text; Name),LIKELY,M1-01
+3A9A:05C7,func,BP_ResetText,,Reset(var T: Text) (mode fmInput D7B1h),LIKELY,M1-01
+3A9A:05CC,func,BP_RewriteText,,Rewrite(var T: Text) (mode fmOutput D7B2h),LIKELY,M1-01
+3A9A:05D4,func,BP_OpenText,,internal: common text open through the TextRec OpenFunc,LIKELY,M1-01
+3A9A:0621,func,BP_CloseText,,Close(var T: Text),HYPOTHESIS,M1-01
+3A9A:066E,func,BP_TextFileRead,,text driver InOutFunc for input files (INT 21h AH=3Fh),LIKELY,M1-01
+3A9A:069E,func,BP_TextFileWrite,,text driver InOutFunc for output files (INT 21h AH=40h),LIKELY,M1-01
+3A9A:06E3,func,BP_TextFileClose,,text driver CloseFunc (INT 21h AH=3Eh),LIKELY,M1-01
+3A9A:0800,func,BP_TextReadOp,,text read operation (Read/ReadLn family),HYPOTHESIS,M1-01
+3A9A:0840,func,BP_TextWriteLn,,WriteLn end: writes CR LF from DS:0500,LIKELY,M1-01
+3A9A:0861,func,BP_TextWriteEnd,,Write end: flush if needed,HYPOTHESIS,M1-01
+3A9A:0898,func,BP_TextReadLnEnd,,ReadLn end,HYPOTHESIS,M1-01
+3A9A:0929,func,BP_TextWriteInt,,Write(LongInt: width),HYPOTHESIS,M1-01
+3A9A:0964,func,BP_TextWriteStr,,Write(String: width),LIKELY,M1-01
+3A9A:0991,func,BP_AssignFile,,"Assign(var F: File; Name) (untyped/typed file, mode fmClosed D7B0h)",CONFIRMED,M1-01
+3A9A:09CC,func,BP_ResetFile,,Reset(var F; RecSize): INT 21h AH=3Dh with AL=FileMode,CONFIRMED,M1-01
+3A9A:09D5,func,BP_RewriteFile,,Rewrite(var F; RecSize): INT 21h AH=3Ch,CONFIRMED,M1-01
+3A9A:0A4D,func,BP_CloseFile,,Close(var F) (INT 21h AH=3Eh; handles <=4 left open),CONFIRMED,M1-01
+3A9A:0AB7,func,BP_BlockRead,,"BlockRead(var F; var Buf; Count; var Result) (AH=3Fh, error 100)",CONFIRMED,M1-01
+3A9A:0ABE,func,BP_BlockWrite,,"BlockWrite(var F; var Buf; Count; var Result) (AH=40h, error 101)",CONFIRMED,M1-01
+3A9A:0B1F,func,BP_SeekFile,,Seek(var F; N: LongInt): N*RecSize via INT 21h AX=4200h,CONFIRMED,M1-01
+3A9A:0B4F,func,BP_ParamStr,,"ParamStr(Index): command-line word, or program path for 0 (needs DOS 3+)",LIKELY,M1-01
+3A9A:0BA5,func,BP_ParamScan,,internal: walks the PSP command tail at PSP:80h,LIKELY,M1-01
+3A9A:0BD7,func,BP_Move,,"Move(var Src, Dst; Count): REP MOVSB forward",CONFIRMED,M1-01
+3A9A:0BEF,func,BP_LongMul,,LongInt multiply DX:AX * BX:CX (386 path if Test8086>=2),CONFIRMED,M1-01
+3A9A:0C2C,func,BP_LongDivMod,,LongInt divide/modulo (386 path if Test8086>=2),LIKELY,M1-01
+3A9A:0D04,func,BP_StrLoad,,copy a string to a temporary (expression evaluation),LIKELY,M1-01
+3A9A:0D1E,func,BP_StrStore,,string assignment Dst := Src truncated to MaxLen,CONFIRMED,M1-01
+3A9A:0D42,func,BP_StrCopy,,"Copy(S, Index, Count)",LIKELY,M1-01
+3A9A:0D83,func,BP_StrConcat,,string concatenation into temporary,LIKELY,M1-01
+3A9A:0DAF,func,BP_StrPos,,"Pos(Substr, S); unreferenced",LIKELY,M1-01
+3A9A:0DF5,func,BP_StrCompare,,"string comparison, result in flags",CONFIRMED,M1-01
+3A9A:0E20,func,BP_CharToStr,,Char to one-character string,CONFIRMED,M1-01
+3A9A:0E4D,func,BP_StrInsert,,Insert(Source; var S; Index); unreferenced,HYPOTHESIS,M1-01
+3A9A:0EAC,func,BP_StrDelete,,"Delete(var S; Index, Count); unreferenced",LIKELY,M1-01
+3A9A:0F1B,func,BP_TextOpenFunc,,text driver OpenFunc: open/create by mode,HYPOTHESIS,M1-01
+3A9A:1002,func,BP_RealSubCore,,Real48 subtract: negate operand 2 then add (falls into BP_RealAddCore),HYPOTHESIS,M1-01
+3A9A:1006,func,BP_RealAddCore,,"Real48 add DX:BX:AX + DI:SI:CX, carry set on overflow",LIKELY,M1-01
+3A9A:10C9,func,BP_RealMulCore,,Real48 multiply DX:BX:AX * DI:SI:CX,LIKELY,M1-01
+3A9A:11CC,func,BP_RealDivCore,,Real48 divide DX:BX:AX / DI:SI:CX,LIKELY,M1-01
+3A9A:1243,func,BP_RealCmpCore,,"Real48 compare, result in flags",LIKELY,M1-01
+3A9A:126D,func,BP_RealFromLongCore,,LongInt DX:AX to Real48 (exact),CONFIRMED,M1-01
+3A9A:12A9,func,BP_RealToLongCore,,"Real48 to LongInt, CH=0 truncate / CH=1 round half away from zero; carry on overflow",CONFIRMED,M1-01
+3A9A:1317,func,BP_RealAdd,,Real48 + (RunError 205 on overflow),CONFIRMED,M1-01
+3A9A:131D,label,BP_RealSub,,Real48 - entry; unreferenced in file0001,LIKELY,M1-01
+3A9A:1323,label,BP_RealSqr,,"Sqr(Real) entry (copies operand, multiplies); unreferenced",HYPOTHESIS,M1-01
+3A9A:1329,func,BP_RealMul,,Real48 * (RunError 205 on overflow),CONFIRMED,M1-01
+3A9A:132F,func,BP_RealDiv,,"Real48 / (RunError 200 if divisor zero, 205 on overflow)",CONFIRMED,M1-01
+3A9A:1339,func,BP_RealCmp,,"Real48 comparison, flags",CONFIRMED,M1-01
+3A9A:133D,func,BP_RealFromLong,,LongInt to Real48 conversion,CONFIRMED,M1-01
+3A9A:1341,label,BP_RealTrunc,,Trunc(Real): LongInt entry (CH=0); unreferenced in file0001,CONFIRMED,M1-01
+3A9A:1349,func,BP_RealRound,,Round(Real): LongInt (CH=1); RunError 207 on overflow,CONFIRMED,M1-01
+3A9A:138B,func,BP_RealInt,,Int(Real): clears fraction bits,LIKELY,M1-01
+3A9A:13DC,func,BP_RealFrac,,Frac(Real) = X - Int(X),LIKELY,M1-01
+3A9A:13F0,func,BP_RealSqrt,,Sqrt(Real): Newton iteration; RunError 207 if negative,LIKELY,M1-01
+3A9A:144F,func,BP_RealCos,,Cos(X) computed as Sin(pi/2 - X),LIKELY,M1-01
+3A9A:1462,func,BP_RealSin,,"Sin(X): reduce by 2*pi, polynomial",LIKELY,M1-01
+3A9A:14C3,data,k_RealTrigConsts,,Real48 constant/coefficient table used by Sin/ArcTan,HYPOTHESIS,M1-01
+3A9A:1639,func,BP_RealArcTan,,"ArcTan(X): |X|>1 reduced via 1/X, polynomial",LIKELY,M1-01
+3A9A:176E,func,BP_RealPolyOdd,,internal: odd polynomial in X (X * P(X*X)) over a CS coefficient table,HYPOTHESIS,M1-01
+3A9A:1787,func,BP_RealPolyEval,,internal: Horner evaluation over a CS table of Real48 coefficients,HYPOTHESIS,M1-01
+3A9A:17D6,func,BP_RandomInt,,Random(Range: Word): Word = (new RandSeed * Range) shr 32,CONFIRMED,M1-01
+3A9A:17F3,func,BP_RandomReal,,Random: Real = new RandSeed / 2^32 as Real48,CONFIRMED,M1-01
+3A9A:1833,func,BP_RandNext,,RandSeed := RandSeed * 08088405h + 1 (mod 2^32); returns it in DX:AX,CONFIRMED,M1-01
+3A9A:1869,data,k_RandFactorLow,u16,"low word 8405h of the LCG multiplier, read CS-relative",CONFIRMED,M1-01
+3A9A:186B,label,BP_Randomize,,Randomize: RandSeed := DOS time CX:DX; never called in file0001,CONFIRMED,M1-01
+3A9A:1878,func,BP_LongToStrCore,,internal: LongInt to decimal digits,LIKELY,M1-01
+3A9A:18B4,func,BP_StrToLongCore,,internal: parse optional sign and digits (Val),LIKELY,M1-01
+3A9A:195B,func,BP_StrLong,,"Str(L: Width, S)",LIKELY,M1-01
+3A9A:19A6,func,BP_ValLong,,"Val(S, var L, var Code); unreferenced",HYPOTHESIS,M1-01
+3A9A:19D7,func,BP_FileSize,,FileSize(var F) in records,HYPOTHESIS,M1-01
+3A9A:19EE,func,BP_FilePos,,FilePos(var F) in records,HYPOTHESIS,M1-01
+3A9A:1A1E,func,BP_FileQueryPos,,internal: current position and size via INT 21h AX=4201h/4202h/4200h,HYPOTHESIS,M1-01
+3A9A:1A63,func,BP_UpCase,,UpCase(Ch): a..z to A..Z only,CONFIRMED,M1-01
+3A9A:1A76,func,BP_ClearBss,,internal: zero DS:0502..9DF1 (uninitialised globals) at start-up,LIKELY,M1-01
+3C43:04B2,data,g_OvrCodeList,u16,System typed constants start here,LIKELY,M1-01
+3C43:04B4,data,g_OvrHeapSize,u16,,LIKELY,M1-01
+3C43:04C4,data,g_OvrEmsHandle,u16,initial FFFFh,CONFIRMED,M1-01
+3C43:04C6,data,g_HeapOrg,farptr,heap start (segment written by System init),CONFIRMED,M1-01
+3C43:04CA,data,g_HeapPtr,farptr,heap top,CONFIRMED,M1-01
+3C43:04CE,data,g_HeapEnd,farptr,heap end (segment from PSP:2),CONFIRMED,M1-01
+3C43:04D2,data,g_FreeList,farptr,free-block list,CONFIRMED,M1-01
+3C43:04DA,data,g_HeapError,farptr,heap error function,CONFIRMED,M1-01
+3C43:04DE,data,g_ExitProc,farptr,exit procedure chain,LIKELY,M1-01
+3C43:04E2,data,g_ExitCode,i16,set by Halt,CONFIRMED,M1-01
+3C43:04E4,data,g_ErrorAddr,farptr,runtime error address,LIKELY,M1-01
+3C43:04E8,data,g_PrefixSeg,u16,"PSP segment, stored by System init",CONFIRMED,M1-01
+3C43:04EA,data,g_StackLimit,u16,lowest SP allowed by the stack check,CONFIRMED,M1-01
+3C43:04EC,data,g_InOutRes,i16,I/O error code (0 = OK),CONFIRMED,M1-01
+3C43:04EE,data,g_RandSeed,u32,RNG state; initial value 0; only BP_RandNext reads or writes it,CONFIRMED,M1-01
+3C43:04F2,data,g_SelectorInc,u16,initial 1000h,CONFIRMED,M1-01
+3C43:04F4,data,g_Seg0040,u16,BIOS data segment 0040h,CONFIRMED,M1-01
+3C43:04F6,data,g_SegA000,u16,VGA segment A000h,CONFIRMED,M1-01
+3C43:04F8,data,g_SegB000,u16,,CONFIRMED,M1-01
+3C43:04FA,data,g_SegB800,u16,,CONFIRMED,M1-01
+3C43:04FC,data,g_Test8086,u8,"CPU class (2 = 386+, enables 32-bit LongInt paths)",CONFIRMED,M1-01
+3C43:04FD,data,g_Test8087,u8,FPU class,LIKELY,M1-01
+3C43:04FE,data,g_FileMode,u8,open mode for Reset (initial 2),CONFIRMED,M1-01
+3C43:0500,data,k_CrLf,u8[2],CR LF used by WriteLn,LIKELY,M1-01
+3C43:1708,data,g_TickPrevTime,u16[4],"hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-06
+3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
+3C43:1718,data,g_MissionTicks,u32,"per-mission counter compared with 25, 200 and 15000",HYPOTHESIS,M1-06
+3C43:18C2,data,g_OldInt09,farptr,saved keyboard vector,CONFIRMED,M1-03
+3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
+3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
+3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03
+3C43:9B8A,data,g_CrtCheckBreak,u8,Crt.CheckBreak,LIKELY,M1-01
+3C43:9B8E,data,g_CrtLastMode,u16,Crt.LastMode,HYPOTHESIS,M1-01
+3C43:9B90,data,g_CrtTextAttr,u8,Crt.TextAttr,CONFIRMED,M1-01
+3C43:9B92,data,g_CrtWindMin,u16,Crt.WindMin,CONFIRMED,M1-01
+3C43:9B94,data,g_CrtWindMax,u16,Crt.WindMax,CONFIRMED,M1-01
+3C43:9B96,data,g_CrtDelayCnt,u16,Delay loop iterations per millisecond (calibrated at init),LIKELY,M1-01
+3C43:9B9B,data,g_CrtPendingScan,u8,scan code held back by ReadKey for an extended key,CONFIRMED,M1-01
+3C43:9B9C,data,g_CrtBreakFlag,u8,set by the Ctrl-Break handler,CONFIRMED,M1-01

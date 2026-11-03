@@ -6,7 +6,7 @@
 | **Revision** | 1 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 (perceptual), pending WORX-specific findings |
-| **Confidence** | Container CONFIRMED (all 17 files); sequencer behaviour LIKELY (standard CMF semantics plus our data survey); WORX deviations UNKNOWN (U-007, U-029) |
+| **Confidence** | Container CONFIRMED (all 17 files); sequencer behaviour LIKELY (standard CMF semantics plus our data survey); WORX deviations UNKNOWN (U-007, U-034) |
 | **Tasks** | M3-04, M3-05 |
 
 ## 1. Summary
@@ -91,7 +91,7 @@ Melodic voice or bass drum: write the full instrument to both operators and `0xC
 - Frequency of MIDI note `k` with fine transpose `t` (1/128 semitone): `f = 440 × 2^((k − 69)/12 + t/(12 × 128))`. Choose the smallest block `b` (0..=7) such that `fnum = round(f × 2^(20 − b) / 49716) ≤ 1023`.
 - Melodic note-on: write `0xA0 + v = fnum & 0xFF` and `0xB0 + v = 0x20 | b << 2 | fnum >> 8`. Note-off clears bit 0x20.
 - Percussion note-on: set the drum's pitch voice frequency (bass drum: voice 6; snare and hi-hat: voice 7; tom-tom and cymbal: voice 8) without key-on, then set the drum's bit in `0xBD` (BD 0x10, SD 0x08, TT 0x04, CY 0x02, HH 0x01), clearing it first if it is already set. Note-off clears the bit.
-- **Velocity is ignored** (assumption U-029; WORX behaviour unknown).
+- **Velocity is ignored** (assumption U-034; WORX behaviour unknown).
 
 ### 3.6 Transpose
 
@@ -108,7 +108,7 @@ Controllers 0x68/0x69 set the channel's transpose to `+value`/`−value` (in 1/1
 ## 5. Open questions
 
 - [ ] U-007: does WORX play at the header's 96 ticks/s?
-- [ ] U-029: does WORX apply velocity (carrier attenuation)?
+- [ ] U-034: does WORX apply velocity (carrier attenuation)?
 - [ ] Loop behaviour at end of track (loop, stop, or hand back to the game).
 - [ ] Exact transpose semantics (units, and whether it applies to sounding notes).
 
