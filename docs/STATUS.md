@@ -163,9 +163,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M8-01 | Mission file semantics spec | RE/SP | M2-11 | TODO | | |
+| M8-01 | Mission file semantics spec | RE/SP | M2-11 | IN PROGRESS | RE-5 | RE-5: mission-ships rev 2 + mission-setup.md (0E8B:60D8) |
 | M8-02 | Mission logic architecture + primitives spec | RE/SP | M1-04 | TODO | | |
-| M8-03 | AI behaviours spec | RE/SP | M1-08 | TODO | | |
+| M8-03 | AI behaviours spec | RE/SP | M1-08 | IN PROGRESS | RE-5 | RE-5: 34E6 AI state machine (U-045) |
 | M8-04 | Path playback + AI | IM | M8-01, M8-03, M7-06 | TODO | | |
 | M8-05 | Mission runtime + MissionScript API | IM | M8-02 | TODO | | |
 | M8-06 | Guidance line | IM | M8-05 | TODO | | |
