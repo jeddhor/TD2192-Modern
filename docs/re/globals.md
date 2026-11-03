@@ -159,14 +159,18 @@ Layouts and field meanings: [structures.md](structures.md) §2–§5.
 | DS:3A7A..3A8D | u8[1..20] | `g_SlotClass` (file bytes 40..59, overridden per mission; FFh = empty or destroyed) | CONFIRMED |
 | DS:3A8E..3AA1 | u8[1..20] | `g_SlotHdrB` (file bytes 20..39) | CONFIRMED (load) |
 | DS:3AA2..3AB5 | u8[1..20] | `g_SlotHeading` (keypad code) | LIKELY |
-| DS:3AB6..3AC9 | u8[1..20] | `g_SlotHeading2` (requested or previous heading) | HYPOTHESIS |
+| DS:3958..396B | u8[1..20] | `g_SlotMarker` (target bracket 0 / 32h / 39h, [mission-setup](../spec/sim/mission-setup.md)) | CONFIRMED |
+| DS:3A32 | farptr | `g_ShipTileAttr`: **never assigned** (nil); `3292:0011` reads the interrupt vector table through it (OB-013) | CONFIRMED |
+| DS:3AB6..3AC9 | u8[1..20] | `g_SlotTargetHeading` | CONFIRMED |
 | DS:3ACA..3AF1 | i16[1..20] | `g_SlotSubX` | LIKELY |
 | DS:3AF2..3B19 | i16[1..20] | `g_SlotSubY` | LIKELY |
-| DS:3B1A..3B2D | u8[1..20] | `g_SlotState` (0, 1, 2 seen) | HYPOTHESIS |
+| DS:3B1A..3B2D | u8[1..20] | `g_SlotTurnDir` (1 ccw, 2 cw) | CONFIRMED |
 | DS:3B2E..3B41 | u8[1..20] | `g_SlotTileX` | CONFIRMED |
 | DS:3B42..3B55 | u8[1..20] | `g_SlotTileY` | CONFIRMED |
-| DS:3B56..3B69, 3B6A..3B7D | u8[1..20] | `g_SlotAux1`, `g_SlotTimer` | HYPOTHESIS |
-| DS:3BE2..3BEA | u8[1..9] | `g_TickFlags` (cleared every tick) | HYPOTHESIS |
+| DS:3B6A..3BB9 | u8[1..20][4] | `g_SlotSpeed` (up, down, left, right; biased by 16) | CONFIRMED |
+| DS:3BBA..3BCD, 3BCE..3BE1 | u8[1..20] | `g_SlotGoalX`, `g_SlotGoalY` | CONFIRMED |
+| DS:3BE2..3BEA | u8[1..9] | `g_TickFlags`: thrust flags of the ship being moved (3BE3 up, 3BE5 right, 3BE7 left, 3BE9 down); cleared after each ship and at tick start | CONFIRMED |
+| DS:9766..976E | | `34E6` unit: player tile (9766/9767), 976A (1, unused), AI range 976B (3), detour step 976C/976E (i16) ([mission-ships §2](../spec/sim/mission-ships.md)) | CONFIRMED |
 | DS:3BEC / 3BF0 | farptr | `g_PathX` / `g_PathY` (20 × 501 bytes each) | CONFIRMED |
 | DS:3BF6..3CA9 | u8[1..20, 1..9] | `g_FireRequest` (shares the base DS:3BEC with the index arithmetic) | LIKELY |
 | DS:3CAA | farptr | `g_TileAttr` (tile → 1 solid, 2 open) | CONFIRMED |

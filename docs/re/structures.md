@@ -47,22 +47,20 @@ Check: mission 1, slot 1 starts at (7Ch, 49h) and slot 2 at (7Dh, 49h); RAM `g_S
 
 | Field | Size | Meaning | Conf. | Evidence (M1 slot 1, +1 s / +2 s) |
 |---:|---:|---|---|---|
-| +000h | 1 | ? | — | 0 |
-| +001h | 2 | Current target waypoint (x, y) = path[cursor] | LIKELY | (7C, 4C) / (7C, 51) |
-| +003h | 2 | Previous waypoint (x, y) = tile the ship is leaving | LIKELY | (7C, 4B) / (7C, 50) |
-| +005h..00Ah | 6 | ? (`34E6` helpers use +3..+6, words at +7, +9) | — | 0 |
-| +00Bh | 1 | **Path cursor** (step index k of the target waypoint) | LIKELY | 4 / 9 |
-| +00Ch | 1 | ? (path pair 0, y half) | — | 0 |
+| +000h | 1 | Dead flag (fixed-point mode) | CONFIRMED | 0 |
+| +001h | 2 | Waypoint (x, y): the tile the ship flies to, at most one tile step from the previous one | CONFIRMED | (7C, 4C) / (7C, 51) |
+| +003h | 2 | Previous waypoint (x, y) | CONFIRMED | (7C, 4B) / (7C, 50) |
+| +005h..00Ah | 6 | AI: blocked-Y, blocked-X flags; i16 step X (+007h), step Y (+009h) ([mission-ships §3.1](../spec/sim/mission-ships.md)) | CONFIRMED | 0 |
+| +00Bh | 2 | **Path cursor** (u16, index of the last path step reached; = "path step 0") | CONFIRMED | 4 / 9 |
 | +00Dh + 2(k−1) | 2 × 500 | **Path copy**: (x, y) of steps k = 1..500 (from §2) | CONFIRMED | step 1 = (7C, 49) |
-| +3F5h | 1 | Ship state (2 → 4 seen) | HYPOTHESIS | 2 / 2 |
-| +3F6h | 1 | Flag; set to FFh for every slot by the M+K+A+R chord | HYPOTHESIS | 0 (32h for slot 14) |
+| +3F5h | 1 | Direction of the last waypoint step (2/4/6/8); facing of the wall follower | CONFIRMED | 2 / 2 |
+| +3F6h | 1 | Aggression: fire-budget unit set per flight (`Msn_Setup`); FFh for every slot after the M+K+A+R chord | CONFIRMED | 0 (32h for slot 14) |
 | +3F8h | 2 | Shields, initialised from `k_ClassShields[class]` | LIKELY | 0 (class 0) |
 | +3FAh | 2 | Armour, initialised to `2 × k_ClassArmour[class]`, then overridden per mission | LIKELY | 3 (slot 12: 1000) |
-| +3FCh | 2 | ? | — | 0 |
-| +411h..424h | | Various bytes/words (+419h = 1 for slots 1–2, +420h/+421h = 6Bh) | — | |
-| +426h | 2 | Current tile (x, y), mirror of `g_SlotTileX/Y` | LIKELY | (7C, 4B) / (7C, 50) |
+| +3FCh..428h | | AI state: hold flag and schedule (+3FCh..+412h), attack mode +415h, attack counter +416h (u16), random detour hand +419h, detour steps +41Ah, direct mode +41Bh, in-line +41Ch, out-of-range +41Dh, target selector +41Fh, target position +420h/+421h, dead fixed-point fields +422h..+425h, return mode +428h. Full table: [mission-ships §3.1](../spec/sim/mission-ships.md) | CONFIRMED | +420h/+421h = player tile (6Bh, 6Bh) |
+| +426h | 2 | Return point: the waypoint the ship last left while following its path | CONFIRMED | (7C, 4B) / (7C, 50) |
 
-Mission ships advance one waypoint per 32 px of travel at their class speed: slot 1 (class 0, 8 px/tick) moved 5 waypoints in the 19 ticks between the dumps (5 × 32 = 160 px ≈ 19 × 8.4). LIKELY; the movement rule is M8-01/M8-03 (U-039).
+Mission ships advance one waypoint per tile reached; movement, AI and the record fields are specified in [sim/mission-ships.md](../spec/sim/mission-ships.md) rev 2 (U-039, U-045 resolved; C-0009).
 
 ## 4. Mission-slot arrays (DGROUP, index s = 1..20)
 
@@ -70,13 +68,16 @@ Mission ships advance one waypoint per 32 px of travel at their class speed: slo
 |---|---|---|---|---|
 | `g_SlotClass` | DS:3A7A | u8 | Class code (§6). Per-mission overrides in `0E8B:60D8`; set to FFh when the ship is destroyed (`0E8B:12CB`) | CONFIRMED |
 | `g_SlotHeading` | DS:3AA2 | u8 | Heading, keypad code (§7) | LIKELY |
-| `g_SlotHeading2` | DS:3AB6 | u8 | Second heading (target or previous) | HYPOTHESIS |
+| `g_SlotTargetHeading` | DS:3AB6 | u8 | Heading the ship turns toward | CONFIRMED |
 | `g_SlotSubX` | DS:3ACA | i16 | Pixel offset X (C-0002: 10h) | LIKELY |
 | `g_SlotSubY` | DS:3AF2 | i16 | Pixel offset Y (C-0002: 1Eh, changing) | LIKELY |
-| `g_SlotState` | DS:3B1A | u8 | 0/1/2 | HYPOTHESIS |
+| `g_SlotTurnDir` | DS:3B1A | u8 | Turn direction 1 ccw / 2 cw | CONFIRMED |
 | `g_SlotTileX` | DS:3B2E | u8 | Tile X | CONFIRMED |
 | `g_SlotTileY` | DS:3B42 | u8 | Tile Y | CONFIRMED |
-| `g_FireRequest` | DS:3BF6 | u8[20][9] | Fire request per slot and entry 1..9 (element (s, e) at DS:3BEC + 9s + e); consumed every second tick, then cleared | LIKELY |
+| `g_SlotSpeed` | DS:3B6A | u8[20][4] | Speed components up/down/left/right (element (s, k) at DS:3B6A + 4(s − 1) + k) | CONFIRMED |
+| `g_SlotGoalX/Y` | DS:3BBA / DS:3BCE | u8 | Waypoint copy used by the thrust step | CONFIRMED |
+| `g_SlotMarker` | DS:3958 | u8 | Target bracket 0 / 32h / 39h (set per flight) | CONFIRMED |
+| `g_FireRequest` | DS:3BF6 | u8[20][9] | Fire request per slot and entry 1..9 (element (s, e) at DS:3BEC + 9s + e); the AI sets entries 2/4/6/8; consumed every second tick, then cleared | CONFIRMED |
 
 ## 5. Projectiles and explosions
 
