@@ -178,8 +178,9 @@ pub fn mission_ship_pos(view: ViewPos, page: i32, s: &ShipMark) -> Option<(i32, 
 }
 
 /// Draws a mission ship at `pos` (from [`mission_ship_pos`]): its heading frame (colour 0
-/// transparent; `size` 32, or 40 with the 32 × 32 base frame at (4, 4)), then the target
-/// brackets of its marker.
+/// transparent; `size` 32, or 40 with the 32 × 32 base frame at (4, 4)) with x rounded down to
+/// a multiple of 4 like every planar sprite blit (`flight-screens.md` §2), then the target
+/// brackets of its marker, which are single pixels at the exact x.
 pub fn draw_mission_ship(
     fb: &mut Framebuffer,
     frame: Option<(&[u8], usize)>,
@@ -187,14 +188,7 @@ pub fn draw_mission_ship(
     marker: u8,
 ) {
     if let Some((frame, size)) = frame {
-        let inset = (size as i32 - 32) / 2;
-        fb.blit(
-            Image::new(frame, size, size),
-            x - inset,
-            y - inset,
-            PLAYFIELD,
-            Some(0),
-        );
+        draw_sprite(fb, frame, size, (x & !3, y));
     }
     for (pixels, target, friend) in BRACKETS {
         let c = match marker {
@@ -208,6 +202,215 @@ pub fn draw_mission_ship(
             }
         }
     }
+}
+
+/// Draws a sprite frame (colour 0 transparent) with the 32 × 32 base frame's top-left corner at
+/// screen `pos`; `size` 40 frames have the base frame at (4, 4).
+pub fn draw_sprite(fb: &mut Framebuffer, frame: &[u8], size: usize, (x, y): (i32, i32)) {
+    let inset = (size as i32 - 32) / 2;
+    fb.blit(
+        Image::new(frame, size, size),
+        x - inset,
+        y - inset,
+        PLAYFIELD,
+        Some(0),
+    );
+}
+
+/// Screen position of a sprite blitted at sprite coordinates (x, y) (`flight-screens.md` rev 1
+/// §2): the planar blit rounds x down to a multiple of 4, and sprite y is the page row + 32.
+pub fn sprite_screen(view: ViewPos, (x, y): (i32, i32)) -> (i32, i32) {
+    let (ox, oy) = view.page_origin();
+    ((x & !3) - ox, y - 32 - oy)
+}
+
+/// Sprite coordinates of an explosion drawn into back page `page`, or `None` when it is not
+/// drawn (`flight-screens.md` rev 1 §4.7; an explosion in the top tile row shows on page 1
+/// only, OB-033). The sprite is bank slot 19 + frame.
+pub fn explosion_sprite(
+    view: ViewPos,
+    page: i32,
+    tile: (u8, u8),
+    off: (u8, u8),
+) -> Option<(i32, i32)> {
+    let (tx, ty) = (i32::from(tile.0), i32::from(tile.1));
+    let (dx, dy) = (i32::from(off.0), i32::from(off.1));
+    let row = (ty - view.tile_y) * 32 + dy;
+    let visible = (view.tile_x..=view.tile_x + 9).contains(&tx)
+        && (view.tile_y..=view.tile_y + 5).contains(&ty)
+        && !(tx == view.tile_x + 9 && dx >= view.sub_x)
+        && (page == 1 || row > 32);
+    // The code passes x + 352, one VGA row further down.
+    visible.then_some(((tx - view.tile_x) * 32 + dx, row + 1))
+}
+
+/// How a projectile looks (`flight-screens.md` rev 1 §4.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShotLook {
+    /// Kinds 0..2: single pixels (screen x, y, colour) in drawing order.
+    Pixels(Vec<(i32, i32, u8)>),
+    /// Kinds 4..6: sprite bank `slot` with the blit of `heading` at sprite coordinates `at`.
+    Sprite {
+        slot: usize,
+        heading: u8,
+        at: (i32, i32),
+    },
+}
+
+/// Pixel offsets and colours of shot kinds 0..2 for a principal heading (§4.8).
+fn shot_pattern(kind: u8, heading: u8) -> Option<Vec<(i32, i32, u8)>> {
+    #[derive(Clone, Copy)]
+    enum G {
+        V,
+        H,
+        D1,
+        D2,
+    }
+    let g = match heading {
+        8 | 2 => G::V,
+        4 | 6 => G::H,
+        9 | 1 => G::D1,
+        7 | 3 => G::D2,
+        _ => return None,
+    };
+    let (a, b, c, d) = (0x3C, 0x3D, 0x32, 0x33);
+    let (e, f) = (0xBE, 0x35);
+    Some(match (kind, g) {
+        (0, G::V) => vec![(0, -1, a), (0, 0, b), (0, 1, a)],
+        (0, G::H) => vec![(1, 0, a), (0, 0, b), (-1, 0, a)],
+        (0, G::D1) => vec![(1, -1, a), (0, 0, b), (-1, 1, a)],
+        (0, G::D2) => vec![(1, 1, a), (0, 0, b), (-1, -1, a)],
+        (1, G::V) => vec![
+            (0, -1, c),
+            (0, 0, d),
+            (0, 1, d),
+            (0, 2, c),
+            (1, -1, c),
+            (1, 0, d),
+            (1, 1, d),
+            (1, 2, d),
+        ],
+        (1, G::H) => vec![
+            (1, 0, c),
+            (0, 0, d),
+            (-1, 0, d),
+            (-2, 0, c),
+            (1, 1, c),
+            (0, 1, d),
+            (-1, 1, d),
+            (-2, 1, d),
+        ],
+        (1, G::D1) => vec![
+            (1, -1, c),
+            (0, 0, d),
+            (-1, 1, d),
+            (-2, 2, c),
+            (2, -1, c),
+            (1, 0, d),
+            (0, 1, d),
+            (-1, 2, c),
+        ],
+        (1, G::D2) => vec![
+            (1, 1, c),
+            (0, 0, d),
+            (-1, -1, d),
+            (-2, -2, c),
+            (2, 1, c),
+            (1, 0, d),
+            (0, -1, d),
+            (-1, -2, c),
+        ],
+        (2, G::V) => (-1..=2)
+            .flat_map(|x| [(x, -2, e), (x, -1, f), (x, 0, f), (x, 1, f), (x, 2, e)])
+            .collect(),
+        (2, G::H) => (-1..=2)
+            .flat_map(|y| [(2, y, e), (1, y, f), (0, y, f), (-1, y, f), (-2, y, e)])
+            .collect(),
+        (2, G::D1) => (0..=3)
+            .flat_map(|k| {
+                [
+                    (2, k - 3, e),
+                    (1, k - 2, f),
+                    (0, k - 1, f),
+                    (-1, k, f),
+                    (-2, k + 1, e),
+                ]
+            })
+            .collect(),
+        (2, G::D2) => (0..=3)
+            .flat_map(|k| {
+                [
+                    (2, k + 1, e),
+                    (1, k, f),
+                    (0, k - 1, f),
+                    (-1, k - 2, f),
+                    (-2, k - 3, e),
+                ]
+            })
+            .collect(),
+        _ => return None,
+    })
+}
+
+/// How a live projectile is drawn this tick, or `None` when it is not (`flight-screens.md` rev 1
+/// §4.8). Kind 3 and shots on a two-digit heading are never drawn.
+pub fn shot_look(
+    view: ViewPos,
+    kind: u8,
+    heading: u8,
+    tile: (u8, u8),
+    off: (i16, i16),
+) -> Option<ShotLook> {
+    let (tx, ty) = (i32::from(tile.0), i32::from(tile.1));
+    let x = (tx - view.tile_x) * 32 + i32::from(off.0);
+    let y = (ty - view.tile_y) * 32 + i32::from(off.1);
+    match kind {
+        0..=2 => {
+            // The centre (world pixel + 16) inside the 352 × 192 tile window, below the HUD
+            // rows (the page test Y + 1 <= 261 is implied).
+            let visible = (0..352).contains(&(x + 16)) && (34..192).contains(&(y + 16));
+            if !visible {
+                return None;
+            }
+            let r = view.page_origin().0 + 16;
+            let (sx, sy) = (x + 32 - r, y - view.sub_y);
+            let pixels = shot_pattern(kind, heading)?;
+            Some(ShotLook::Pixels(
+                pixels
+                    .into_iter()
+                    .map(|(dx, dy, c)| (sx + dx, sy + dy, c))
+                    .collect(),
+            ))
+        }
+        4..=6 => {
+            let visible = (view.tile_x..=view.tile_x + 8).contains(&tx)
+                && (view.tile_y + 2..=view.tile_y + 5).contains(&ty)
+                && matches!(heading, 1..=4 | 6..=9);
+            let slot = [16, 15, 9][usize::from(kind - 4)];
+            visible.then_some(ShotLook::Sprite {
+                slot,
+                heading,
+                at: (x, y),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Screen top-left of the afterburner flame for a burst heading (`flight-screens.md` rev 1
+/// §4.6); the flame is sprite bank slot 9 + burst frame, drawn with that heading's blit.
+pub fn flame_pos(heading: u8) -> Option<(i32, i32)> {
+    Some(match heading {
+        8 => (144, 100),
+        2 => (144, 36),
+        6 => (112, 68),
+        4 => (176, 68),
+        7 => (168, 92),
+        1 => (168, 44),
+        9 => (120, 92),
+        3 => (120, 44),
+        _ => return None,
+    })
 }
 
 /// Copies the 320 × 32 HUD bar (`td.win`) to rows 160..192.
@@ -274,5 +477,111 @@ mod tests {
             "below the overpass the ship shows"
         );
         assert_eq!(fb.get(150, 160), Some(0), "playfield clip");
+    }
+
+    const VIEW: ViewPos = ViewPos {
+        tile_x: 102,
+        tile_y: 104,
+        sub_x: 32,
+        sub_y: 16,
+    };
+
+    #[test]
+    fn sprites_use_planar_x_and_sprite_rows() {
+        assert_eq!(sprite_screen(VIEW, (163, 100)), (144, 68));
+        let mut fb = Framebuffer::new();
+        let frame = vec![9u8; 32 * 32];
+        draw_mission_ship(&mut fb, Some((&frame, 32)), (145, 50), 0x32);
+        assert_eq!(fb.get(144, 50), Some(9), "sprite x rounded down to 144");
+        assert_eq!(fb.get(146, 51), Some(0x5C), "bracket at the exact x + 1");
+        let ship = ShipMark {
+            tile_x: 107,
+            tile_y: 107,
+            sub_x: 32,
+            sub_y: 32,
+            marker: 0x32,
+        };
+        // Row 3 × 32 + 32 is a VGA row: 32 page rows higher on screen (U-127).
+        assert_eq!(mission_ship_pos(VIEW, 0, &ship), Some((176, 96)));
+        let top = ShipMark {
+            tile_y: 104,
+            sub_y: 20,
+            ..ship
+        };
+        assert_eq!(
+            mission_ship_pos(VIEW, 0, &top),
+            None,
+            "page 0 skips the top row"
+        );
+        assert_eq!(mission_ship_pos(VIEW, 1, &top), Some((176, -12)));
+    }
+
+    #[test]
+    fn explosions_follow_the_window_and_page_rules() {
+        assert_eq!(
+            explosion_sprite(VIEW, 0, (107, 107), (16, 16)),
+            Some((176, 113))
+        );
+        assert_eq!(
+            explosion_sprite(VIEW, 0, (107, 104), (16, 16)),
+            None,
+            "OB-033"
+        );
+        assert_eq!(
+            explosion_sprite(VIEW, 1, (107, 104), (16, 16)),
+            Some((176, 17))
+        );
+        assert_eq!(
+            explosion_sprite(VIEW, 1, (111, 105), (32, 16)),
+            None,
+            "right column"
+        );
+        assert_eq!(
+            explosion_sprite(VIEW, 1, (111, 105), (31, 16)),
+            Some((319, 49))
+        );
+    }
+
+    #[test]
+    fn shots_by_kind_and_heading() {
+        let look = shot_look(VIEW, 0, 8, (107, 106), (16, 16));
+        assert_eq!(
+            look,
+            Some(ShotLook::Pixels(vec![
+                (176, 63, 0x3C),
+                (176, 64, 0x3D),
+                (176, 65, 0x3C)
+            ]))
+        );
+        let Some(ShotLook::Pixels(p)) = shot_look(VIEW, 2, 9, (107, 106), (16, 16)) else {
+            panic!("kind 2 is drawn as pixels");
+        };
+        assert_eq!(p.len(), 20);
+        assert_eq!(shot_look(VIEW, 3, 8, (107, 106), (16, 16)), None, "kind 3");
+        assert_eq!(
+            shot_look(VIEW, 0, 0x24, (107, 106), (16, 16)),
+            None,
+            "two-digit heading"
+        );
+        assert_eq!(
+            shot_look(VIEW, 0, 8, (107, 104), (16, 0)),
+            None,
+            "under the HUD rows"
+        );
+        assert_eq!(
+            shot_look(VIEW, 4, 8, (103, 105), (16, 16)),
+            None,
+            "rows 2..5 only"
+        );
+        assert_eq!(
+            shot_look(VIEW, 4, 2, (103, 106), (16, 16)),
+            Some(ShotLook::Sprite {
+                slot: 16,
+                heading: 2,
+                at: (48, 80)
+            })
+        );
+        assert_eq!(flame_pos(8), Some((144, 100)));
+        assert_eq!(flame_pos(0x24), None);
     }
 }
