@@ -14,7 +14,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
 | **Ghidra lock** | free |
-| **Active handoffs** | none |
+| **Active handoffs** | [2026-11-02-M0-10](handoffs/2026-11-02-M0-10.md) (commit the DOSBox-X oracle patch on branch `td2192-oracle`) |
 
 ### Blocking user decisions (MDG §14)
 
@@ -50,8 +50,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M0-07 | RE work area + captures manifest template | RE | - | DONE | main-session | 2026-11-02 |
 | M0-08 | Ghidra project: import + analyse 5 exes; record image bases | RE | M0-07 | IN PROGRESS | main-session | Imported + auto-analysed (fast; little code found); image bases + DS setup pending |
 | M0-09 | Ghidra scripts (index, strings, symbols in/out, decompile export, port IO) + headless wrapper | RE | M0-08 | TODO | | |
-| M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | IN PROGRESS | VE-1 | Oracle rig in progress (worktree branch) |
-| M0-11 | Capture tooling and procedure | VE | M0-10 | IN PROGRESS | VE-1 | Capture tooling in progress |
+| M0-10 | DOSBox reference setup on a writable copy | VE | M0-07 | REVIEW | VE-1 | 2026-11-02; oracle rig runs E1 power-on to M1 flight unattended, deterministic (C-0002=C-0003); preset P1 cycles=fixed 20000; re-work/dosbox/ORACLE.md. Remaining: commit the DOSBox-X patch on branch td2192-oracle (handoffs/2026-11-02-M0-10.md) |
+| M0-11 | Capture tooling and procedure | VE | M0-10 | DONE | VE-1 | 2026-11-02; oracle-run.ps1, capture-add.ps1, oracle-fb2png.py, oracle-summary.py; ADG 11; captures C-0001..C-0006; docs/re/dynamic-observations.md |
 | M0-12 | STATUS populated; ADRs accepted by user | CO | D1, D2 | DONE | main-session | 2026-11-02; D1 Rust+SDL3, D2 MIT; ADRs accepted |
 
 ## M1: Executable archaeology
