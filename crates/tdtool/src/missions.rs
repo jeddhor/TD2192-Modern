@@ -1,7 +1,8 @@
 //! `tdtool mission-map`: draw every mission's ship paths over a city map (outside the repo).
 //!
-//! Each used slot's 500-step path is drawn as a coloured polyline over a 1/4-scale render of the
-//! map (8 px per tile), with the slot's class code at its first point. Useful for mission RE
+//! Each used slot's 500-step path (as the game uses it, structures.md §2) is drawn as a coloured polyline over a 1/4-scale render of the
+//! map (8 px per tile), with the slot's class code at its first point.
+//! Slots are printed 1-based, as in the RE docs. Useful for mission RE
 //! (M8-01) and for deciding which map a mission uses (U-006).
 
 use std::path::Path;
@@ -87,7 +88,7 @@ pub fn run(data: &Path, out: &Path, episode: u8, map_name: &str, blk_name: &str)
         crate::export::write_png(&file, &img, size, size, &pal)?;
         let classes: Vec<String> = m
             .used_slots()
-            .map(|s| format!("{s}:{}", m.slot_class[s]))
+            .map(|s| format!("{}:{}", s + 1, m.slot_class[s]))
             .collect();
         println!("{name}: slots {}", classes.join(" "));
     }

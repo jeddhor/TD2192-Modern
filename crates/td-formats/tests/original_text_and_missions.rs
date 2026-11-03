@@ -70,9 +70,14 @@ fn mission_files_parse() {
     for name in &files {
         let m = Mission::parse(&read(&dir, name)).unwrap();
         classes.extend(m.slot_class.iter().copied().filter(|&c| c != EMPTY_SLOT));
-        assert!(m.reserved_tail.iter().all(|&b| b == 0), "{name}");
+        assert!(m.hdr_b.iter().chain(&m.hdr_d).all(|&b| b == 0), "{name}");
         if name != "m18.td3" {
-            assert!(m.reserved_head.iter().all(|&b| b == 0), "{name} (U-014)");
+            assert!(m.hdr_a.iter().all(|&b| b == 0), "{name} (U-038)");
+        }
+        if name == "m1.td" {
+            // structures.md §2 check: slot 1 starts at (7Ch, 49h), slot 2 at (7Dh, 49h).
+            assert_eq!(m.path(0).unwrap().next(), Some((0x7C, 0x49)));
+            assert_eq!(m.path(1).unwrap().next(), Some((0x7D, 0x49)));
         }
         // Path coordinates are plain 0..=255 tile values; runs beyond 200 are off-map approaches
         // (FORMATS.md §7), so no bounds are asserted here.
