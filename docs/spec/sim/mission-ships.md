@@ -212,7 +212,7 @@ if offsetX > 48 and tileX = 199: class := FFh
 if offsetX > 48: offsetX -= 32                     (no tile change)
 ```
 
-Drag: each component above 16 loses 1 after it moved the ship (as the player, [flight-model §4.2](flight-model.md)). A ship removed here still finishes steps (h)–(j) of this tick (it is drawn once more). There is **no map collision** for ships: they fly over solid tiles; only the AI keeps the waypoints on open cells (§4.3). Y never wraps at row 199 (offsetY grows), and there is no removal at row 199.
+Drag: each component above 16 loses 1 after it moved the ship (as the player, [flight-model §4.2](flight-model.md)). A ship removed here still finishes steps (h)–(j) of this tick: if it is inside the view window it is drawn once more, with sprite number FFh (the class byte is passed unchanged; in practice the map edge is outside the view, which stays within tiles 6..183 × 7..190). There is **no map collision** for ships: they fly over solid tiles; only the AI keeps the waypoints on open cells (§4.3). Y never wraps at row 199 (offsetY grows), and there is no removal at row 199.
 
 C-0009, slot 1 (class 0, max 24, acc 2), down speed per tick from setup: 0, 2, 4, … 16 (tick 8), then 17 (offset Y 16 → 18), 18 (→ 21), 19 (→ 25), 20 (→ 30), 21 (→ 36), 22 (→ 43), 23 (→ 51 → carry: tile Y 73 → 74, offset 19), 24 (→ 28), 23 (→ 36; no thrust at max) …
 
