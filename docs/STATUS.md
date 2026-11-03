@@ -279,9 +279,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M13-01 | Packaging per OS (D6) | IM | M12 | TODO | | |
+| M13-01 | Packaging per OS (D6) | IM | M12 | IN PROGRESS | main-session | tools/scripts/package.ps1: Windows x64 portable folder + zip (td2192.exe statically linked with SDL3 and ymfm, tdtool, LICENSE, README, notices); no game data; signing and other OSes wait for D6 |
 | M13-02 | First-run import from folder or original ZIP | IM | M4-05 | TODO | | |
-| M13-03 | Versioning, changelog, notices | IM | M12 | TODO | | |
+| M13-03 | Versioning, changelog, notices | IM | M12 | IN PROGRESS | main-session | tools/scripts/gen-notices.py: THIRD_PARTY_NOTICES.txt from cargo metadata (all ~100 runtime crates + bundled SDL sources), all licences permissive (MIT/Apache-2.0/Zlib/BSD-3/Unicode-3.0/Unlicense/0BSD); versioning + changelog pending |
 | M13-04 | Player documentation | IM | M12 | TODO | | |
 | M13-05 | Fresh-machine install tests + release checklist | VE | M13-01..M13-04 | TODO | | |
 
