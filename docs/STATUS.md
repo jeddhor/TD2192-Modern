@@ -124,11 +124,11 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|---|---|---|---|---|
 | M5-01 | Text renderer per font | SP/IM | M2-08 | DONE | main-session, IM-1 | td-render small_text (advance table, code-drawn punctuation, opaque cells, Typewriter) + title_text (F7h mask, 39 glyphs, measure/centre) per text.md rev 1; L5 pixel-exact vs C-0002 f1162/f2283/f2433 |
 | M5-02 | Palette fade engine | SP/IM | M1-03 | IN PROGRESS | main-session | td-render::Fade (6-bit linear, provisional) pending DAC-routine RE |
-| M5-03 | Story card player | SP/IM | M1-04, M1-11 | TODO | | |
+| M5-03 | Story card player | SP/IM | M1-04, M1-11 | REVIEW | IM-1 | 2026-11-02 td-flow::story: scene cards (OB-003 shift, captions + shadow, entry 210), text card, still sets 1-4, td1-18, td1-15 (plain, U-122), pic4; fades 17 levels x 2 frames, timed holds (U-123). L5 0-diff: C-0002 f1162 title, f1630 hangar (full frames), f3332 hint banner + paragraph 1. Hint/text layouts provisional (U-121). Handoff docs/handoffs/2026-11-02-IM-1b.md |
 | M5-04 | Dialogue scene player | SP/IM | M2-07, M2-10 | REVIEW | IM-1 | 2026-11-02 IM-1: td-flow::dialogue::DialogueScene from spec/narrative/dialogue-player.md rev 1 (01/02/03/04/05/d, face remaps E1-E3, text entries 250.. in 01 order, highlight, typed lines + 7-px scroll, 17-level fades 2 frames/level, key type-ahead, Esc); td2192 --dev-dialogue. L5: full frames C-0002 f2283/f2433/f2573 0-diff (f2573 at 1 char/frame); all scenes of 6 scripts play to the end. Branch worktree-agent-aaf96da0769f430c4, awaiting merge |
-| M5-05 | Dossier screens | SP/IM | M1-11 | TODO | | |
-| M5-06 | Help screens | SP/IM | M2-09 | TODO | | |
-| M5-07 | Script-choice + missing-dialogue screens | SP/IM | M5-01 | TODO | | |
+| M5-05 | Dossier screens | SP/IM | M1-11 | IN PROGRESS | IM-1 | 2026-11-02 orders/enemy dossier/player dossier wired as provisional text pages (layouts U-121, portraits not drawn). Handoff docs/handoffs/2026-11-02-IM-1b.md |
+| M5-06 | Help screens | SP/IM | M2-09 | REVIEW | IM-1 | 2026-11-02 td-flow::story::help: td.hlp pages 1 and 2, each held for a key, menu item 4 |
+| M5-07 | Script-choice + missing-dialogue screens | SP/IM | M5-01 | IN PROGRESS | IM-1 | 2026-11-02 script choice (keys 1/2, D8: ask) and missing-dialogue notice (edited script) in td-flow::program; layout provisional (U-121) |
 | M5-08 | Intro sequence | SP/IM | M1-10 | TODO | | |
 | M5-09 | Narrative parity | VE | M5-01..M5-08 | TODO | | |
 
@@ -171,7 +171,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M8-06 | Guidance line | IM | M8-05 | TODO | | |
 | M8-07 | Objective messages, comms, jurisdiction warnings | IM | M8-05, M2-14 | TODO | | |
 | M8-08 | Ship switching, wingmen, protected targets | IM | M8-05 | TODO | | |
-| M8-09 | Debrief computation + retry flow | IM | M8-05 | TODO | | |
+| M8-09 | Debrief computation + retry flow | IM | M8-05 | IN PROGRESS | IM-1 | 2026-11-02 debrief tiers (vector 3) + retry flow in td-flow::campaign; debrief/retry layout provisional (U-121), taunt choice U-124 |
 | M8-10 | E1M01-E1M03 specs + scripts | SP/IM | M8-04..M8-09 | TODO | | |
 | M8-11 | E1M01-E1M03 parity | VE | M8-10 | TODO | | |
 
@@ -196,8 +196,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M9-15 | E1M18: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
 | M9-16 | E1M19: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
 | M9-17 | E1M20: spec + script + success replay | RE/SP, IM, VE | M8-11 | TODO | | |
-| M9-18 | E1 narrative script (cards, dialogue, stills, dossiers, music between missions) | RE/SP/IM | M5-09, M1-04 | TODO | | |
-| M9-19 | Main menu, new game, save/load, kills-to-date | IM | M8-09 | TODO | | |
+| M9-18 | E1 narrative script (cards, dialogue, stills, dossiers, music between missions) | RE/SP/IM | M5-09, M1-04 | REVIEW | IM-1 | 2026-11-02 td-flow::campaign: all 20 E1 blocks as data (episode-program-flow §4.4), skip rules (U-125), retry rules, debrief, endings A/B/C, flight 21, music cues; FlightLauncher hook + PlaceholderLauncher. Every block plays to the end (data test) |
+| M9-19 | Main menu, new game, save/load, kills-to-date | IM | M8-09 | IN PROGRESS | IM-1 | 2026-11-02 td-flow::program::Episode1: menu (td.men, 9 items, cursor colours U-120, quit/game-lost boxes), new game/next mission/kills to date; save/restore stubs (D3); items 6/7 'not yet' |
 | M9-20 | Episode endings (success, continuation, failure variants) | SP/IM | M9-18 | TODO | | |
 | M9-21 | Full E1 playthrough + parity report | VE | M9-01..M9-20 | TODO | | |
 
@@ -255,7 +255,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M11-01 | Original main menu + episode select | SP/IM | M5-09 | TODO | | |
+| M11-01 | Original main menu + episode select | SP/IM | M5-09 | IN PROGRESS | IM-1 | 2026-11-02 E1 menu in td-flow::program (see M9-19); td2192 with no dev flag starts it |
 | M11-02 | In-flight options menu (Esc) | SP/IM | M6-06 | TODO | | |
 | M11-03 | Modern settings screens (video, audio, controls, profile, accessibility, data dir) | IM | M4-05 | TODO | | |
 | M11-04 | Gamepad UI navigation | IM | M11-03 | TODO | | |
