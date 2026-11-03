@@ -140,10 +140,10 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom + bit-exact Real48 + state_hash + replay v2 (u64 input word = key down/made + joystick); td_sim::flight::Flight runs the tick-order steps that are specified, resumable at modal screens (pause, Esc menu, F5, F6); projectiles/mission ships pending specs |
 | M6-03 | Player flight model | IM | M6-02 | REVIEW | main-session | td_sim::flight::player from flight-model.md rev 1: biased speeds, drift/drag, thrust + half braking, 16-heading ring turn, full steering table, afterburner burst, shields/armour; vectors 1-3 pass; key table with make/break + game clears (td_sim::input) |
 | M6-04 | Map collision | IM | M6-02 | REVIEW | main-session | Player map collision + bounce, tile carry, map limits/edge alert (flight-model 4.3-4.4); E1 tile attributes; data test: E1M1 start bounces in place (RE-2 C-0007 observation) |
-| M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | TODO | | |
+| M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | REVIEW | main-session | td_render::flight: 11x6 tile window with camera-viewport start-address formula (4-px horizontal steps), opaque overpass redraw (42h/44h/45h/46h + x 7Ah..7Fh at y 47h), ship at screen (144,68), HUD bar; L5 test pixel-exact vs C-0002 f3500/f3543 playfield; U-046 resolved (dynamic-observations 13) |
 | M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | TODO | | |
 | M6-07 | HUD frame + instruments | IM | M6-05 | TODO | | |
-| M6-08 | Dev arena | IM | M6-03 | TODO | | |
+| M6-08 | Dev arena | IM | M6-03 | IN PROGRESS | main-session | td2192 --dev-flight N: E1 map, original key bytes (keypad/arrows, keypad +/0 burst, P pause, Esc quits), deterministic AT typematic; no ships/weapons/radar/gauges yet |
 | M6-09 | Flight parity + feel sign-off | VE | M6-03..M6-07 | TODO | | |
 
 ## M7: Combat & entities

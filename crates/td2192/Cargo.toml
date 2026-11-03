@@ -18,6 +18,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 td-formats.workspace = true
 td-render.workspace = true
+td-sim.workspace = true
 td-audio.workspace = true
 png.workspace = true
 

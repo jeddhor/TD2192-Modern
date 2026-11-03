@@ -224,3 +224,12 @@ From the C-0002 frames `dialogue-1/2/3` (f2283, f2433, f2573) and `script-choice
 - **Name labels** are drawn at y = 90 in the speaker colour, centred under the portrait (`80 / 240 − (width + 4) / 2`, from two names), over a black drop shadow (each glyph pixel also blackens the pixels left, below and below-left).
 - `crates/td-render/tests/oracle_parity.rs::dialogue_portraits_names_and_palette_match_the_original` reproduces rows 0–99 and palette entries 0–223, 250 and 251 of f2283 exactly.
 
+## 13. Flight playfield composition (main session, black-box, 2026-11-02)
+
+C-0002 frames f3500 and f3543 (E1 mission 1 at rest; RAM: view (102, 104, 32, 16), heading 8, class 4) were rebuilt from `td.map`, `td.blk` and `td.shp` alone and compared pixel by pixel with the oracle (rows 0..159):
+
+- **Tile window:** an 11 × 6 window of tiles (view tile + (0..10, 0..5)) laid out at 32-px steps in a page, shown from page pixel (`4 × round(subX / 4) − 16`, `subY − 16`), the camera-viewport.md formula.
+- **Player ship:** `td.shp` frame *class* (4 here) for heading 8, colour 0 transparent, top-left at **screen (144, 68)**: that is page (128 + 4 × round(subX / 4), subY + 84 − 32). So the blitter's y is 32 rows (the HUD rows in front of page 0) larger than the page row (U-046). Centre (160, 84).
+- **Overpasses:** the map cells of window columns 3..6, rows 1..4 with tiles 42h, 44h, 45h, 46h ((106, 106), (107, 105), (107, 106), (108, 106) here) are redrawn **opaquely** after the ship (tick-order step 12): the ship's upper 28 rows are hidden under them in these frames, and a row of colour 0 in the tile shows as 0.
+- **Result:** 0 differing pixels apart from 15 pixels of a small moving object around (171, 64), drawn after the overpass redraw (an explosion or other step-13+ element; M8).
+

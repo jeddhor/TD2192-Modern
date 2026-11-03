@@ -1,5 +1,6 @@
 //! TD2192-Modern: the game executable (composition root).
 
+mod flight;
 mod mapview;
 mod run;
 
@@ -23,6 +24,9 @@ struct Cli {
     /// Developer map viewer for a map: e1, e2a, e2b, e3a, e3b or intro.
     #[arg(long, value_name = "MAP")]
     dev_mapview: Option<String>,
+    /// Developer flight arena: fly flight N (1..21) on the Episode 1 map.
+    #[arg(long, value_name = "N")]
+    dev_flight: Option<u8>,
     /// Start in fullscreen (overrides settings).
     #[arg(long)]
     fullscreen: bool,
@@ -127,8 +131,13 @@ fn real_main() -> Result<()> {
     }
 
     let resources = td_assets::ExeResources::load(&dir)?;
-    let map = cli.dev_mapview.as_deref().unwrap_or("e1");
-    let first = Box::new(mapview::MapView::new(&dir, map)?);
+    let first: Box<dyn td_flow::Screen> = match cli.dev_flight {
+        Some(n) => Box::new(flight::FlightArena::new(&dir, n)?),
+        None => {
+            let map = cli.dev_mapview.as_deref().unwrap_or("e1");
+            Box::new(mapview::MapView::new(&dir, map)?)
+        }
+    };
     let options = run::RunOptions {
         exit_after_ticks: cli.dev_exit_after,
     };
