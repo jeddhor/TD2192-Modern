@@ -13,7 +13,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|
 | **Current milestone** | M1–M8 in parallel. Done or in review: M0 core, M2 parsers, M3 audio (CMF write-exact vs oracle), M5 text + dialogue player (pixel-exact), M6 flight core (confirmed vectors, pixel-exact playfield), M7 weapons (static spec). Active: RE-5 (mission ships/AI, M8-01/03), RE-6 (mission logic, HUD; M8-02, M6-07) |
 | **Last updated** | 2026-11-02 |
-| **Ghidra lock** | free (RE-8 applied file0001.csv, 513 rows incl. RE-5 and RE-6, to the canonical project on 2026-11-02: 306 functions, 198 data, 9 labels, 0 skipped) |
+| **Ghidra lock** | free (RE-9 applied file0001.csv (550 rows), td2.csv (505) and td3.csv (493) to the canonical project on 2026-11-02, 0 skipped. **Pending for the next holder:** td2.csv is now 530 rows (RE-9, M10-01), and the canonical td2 still has E2 `Msn_UpdateB` truncated at `2236:27E8`: run `DisassembleAt.java` with the `clear:`/`at:` lists in tools/ghidra/README.md (or copy td2 from `re-workghidra-re9`), then `ApplySymbols`) |
 | **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) · [2026-11-02-M6-01](handoffs/2026-11-02-M6-01.md) (flight-core specs: flight model drafted) |
 
 ### Blocking user decisions (MDG §14)
@@ -205,29 +205,29 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M10-01 | E2 engine deltas + data set | RE/SP | M1-09 | TODO | | |
+| M10-01 | E2 engine deltas + data set | RE/SP | M1-09 | DONE | RE-9 | 2026-11-02: sim/e2-mission-setup.md, sim/e2-mission-logic.md (flights 1-20, Msn_E2FlightEvents), sim/e2-mission-ships.md (U-205), flow/e2-program-flow.md (rev 1 each); episode-deltas rev 2; td2.csv +25/~21; td2.toml e2.target_info, e2.flight_messages.02 = 20; captures C-0015 (E2 flight 1), C-0016 (E2 flight 9 via prepared TD2.SAV); U-200, U-201, U-205 resolved; U-240..U-252; OB-035..OB-042; open: U-204 (combat captures), U-241 (vectors 3, 4, 6) |
 | M10-02 | E3 engine deltas + data set + mission numbering (U-012) | RE/SP | M1-09 | TODO | | |
 | M10-03 | Implement deltas as episode configuration | IM | M10-01, M10-02 | TODO | | |
-| M10-04 | E2M01: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-05 | E2M02: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-06 | E2M03: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-07 | E2M04: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-08 | E2M05: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-09 | E2M06: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-10 | E2M07: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-11 | E2M08: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-12 | E2M09: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-13 | E2M10: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-14 | E2M11: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-15 | E2M12: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-16 | E2M13: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-17 | E2M14: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-18 | E2M15: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-19 | E2M16: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-20 | E2M17: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-21 | E2M18: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-22 | E2M19: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-23 | E2M20: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
+| M10-04 | E2M01: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.1, sim/e2-mission-setup.md 3.2 row 1, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-05 | E2M02: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.2, sim/e2-mission-setup.md 3.2 row 2, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-06 | E2M03: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.3, sim/e2-mission-setup.md 3.2 row 3, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-07 | E2M04: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.4, sim/e2-mission-setup.md 3.2 row 4, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-08 | E2M05: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.5, sim/e2-mission-setup.md 3.2 row 5, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-09 | E2M06: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.6, sim/e2-mission-setup.md 3.2 row 6, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-10 | E2M07: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.7, sim/e2-mission-setup.md 3.2 row 7, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-11 | E2M08: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.8, sim/e2-mission-setup.md 3.2 row 8, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-12 | E2M09: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.9, sim/e2-mission-setup.md 3.2 row 9, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-13 | E2M10: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.10, sim/e2-mission-setup.md 3.2 row 10, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-14 | E2M11: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.11, sim/e2-mission-setup.md 3.2 row 11, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-15 | E2M12: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.12, sim/e2-mission-setup.md 3.2 row 12, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-16 | E2M13: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.13, sim/e2-mission-setup.md 3.2 row 13, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-17 | E2M14: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.14, sim/e2-mission-setup.md 3.2 row 14, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-18 | E2M15: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.15, sim/e2-mission-setup.md 3.2 row 15, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-19 | E2M16: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.16, sim/e2-mission-setup.md 3.2 row 16, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-20 | E2M17: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.17, sim/e2-mission-setup.md 3.2 row 17, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-21 | E2M18: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.18, sim/e2-mission-setup.md 3.2 row 18, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-22 | E2M19: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.19, sim/e2-mission-setup.md 3.2 row 19, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
+| M10-23 | E2M20: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.20, sim/e2-mission-setup.md 3.2 row 20, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
 | M10-24 | E3 mission 01: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
 | M10-25 | E3 mission 02: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
 | M10-26 | E3 mission 03: spec + script + success replay (numbering per U-012) | RE/SP, IM, VE | M10-03 | TODO | | |
@@ -248,7 +248,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M10-41 | E3 mission 18: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
 | M10-42 | E3 mission 19: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
 | M10-43 | E3 mission 20: spec + script + success replay (numbering per U-012) | RE/SP, IM, VE | M10-03 | TODO | | |
-| M10-44 | E2/E3 narrative scripts + endings | RE/SP/IM | M10-01, M10-02 | TODO | | |
+| M10-44 | E2/E3 narrative scripts + endings | RE/SP/IM | M10-01, M10-02 | TODO |  | E2 part specified by RE-9 (M10-01): flow/e2-program-flow.md rev 1 (20 blocks, music, endings A/B/C, end card); E3 not started |
 | M10-45 | Full E2 + E3 playthroughs + parity reports | VE | M10-04..M10-44 | TODO | | |
 
 ## M11: Front end, options & meta
