@@ -5,7 +5,7 @@
 //!
 //! Implemented: tick counter, turn step, afterburner burst, projectiles and hits, end-sequence
 //! counting, explosions, the white flash, the per-tick page toggle, modal interruptions (comm
-//! viewer, pause, flight menu, ship switch), shields and destruction, player movement with map
+//! viewer, pause, flight menu, tactical map), shields and destruction, player movement with map
 //! collision, thrust and steering, player weapons (volleys, missiles, Tab, infra-red toggle),
 //! the missile cooldown, the end-of-flight test, mission ships (step 10) and their fire
 //! requests and volleys (`mission-ships.md` rev 2), and per-flight setup (`mission-setup.md`
@@ -71,8 +71,8 @@ pub enum Modal {
     Pause,
     /// Esc: the flight menu, which may abort the flight (step 25).
     FlightMenu,
-    /// F5: the ship-switch screen (step 29).
-    ShipSwitch,
+    /// F5: the tactical map (step 29; flight-screens §4.3, changes no state).
+    TacticalMap,
 }
 
 /// How a call to [`Flight::tick`] or [`Flight::resume`] ended.
@@ -480,12 +480,12 @@ impl Flight {
             if self.player.move_step(world, !self.late_draw) && !self.edge_latch {
                 self.edge_hit = true;
             }
-            // 29. Comm request and ship switch.
+            // 29. Comm request and tactical map.
             if self.keys.get(FlightKey::F6) {
                 self.comm_request = true;
             }
             if self.keys.get(FlightKey::F5) && self.number != 14 {
-                return self.interrupt(30, Modal::ShipSwitch);
+                return self.interrupt(30, Modal::TacticalMap);
             }
         }
         // 30. Thrust and steering.

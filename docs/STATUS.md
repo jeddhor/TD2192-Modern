@@ -141,7 +141,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M6-03 | Player flight model | IM | M6-02 | REVIEW | main-session | td_sim::flight::player from flight-model.md rev 1: biased speeds, drift/drag, thrust + half braking, 16-heading ring turn, full steering table, afterburner burst, shields/armour; vectors 1-3 pass; key table with make/break + game clears (td_sim::input) |
 | M6-04 | Map collision | IM | M6-02 | REVIEW | main-session | Player map collision + bounce, tile carry, map limits/edge alert (flight-model 4.3-4.4); E1 tile attributes; data test: E1M1 start bounces in place (RE-2 C-0007 observation) |
 | M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | REVIEW | main-session | td_render::flight: 11x6 tile window with camera-viewport start-address formula (4-px horizontal steps), opaque overpass redraw (42h/44h/45h/46h + x 7Ah..7Fh at y 47h), ship at screen (144,68), HUD bar; L5 test pixel-exact vs C-0002 f3500/f3543 playfield; U-046 resolved (dynamic-observations 13) |
-| M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | TODO |  | RE part DONE 2026-11-02 (RE-8): spec/flow/flight-screens.md rev 1: pause 4.4, IR palette formulas and notice 4.5 (C-0012, C-0014) |
+| M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | IN PROGRESS | IM-5 | RE part DONE 2026-11-02 (RE-8): spec/flow/flight-screens.md rev 1: pause 4.4, IR palette formulas and notice 4.5 (C-0012, C-0014). IM-5 2026-11-02: in-flight modal screens (Esc menu, F6 panel, F5 map, pause, IR palettes) |
 | M6-07 | HUD frame + instruments | IM | M6-05 | TODO |  | RE part DONE 2026-11-02 (RE-6): spec/render/hud.md rev 2. IM not started: IM-1 handed off (out of context), see docs/handoffs/2026-11-02-IM-1c.md |
 | M6-08 | Dev arena | IM | M6-03 | IN PROGRESS | main-session | td2192 --dev-flight N: E1 map, original key bytes (keypad/arrows, keypad +/0 burst, P pause, Esc quits), deterministic AT typematic; no ships/weapons/radar/gauges yet |
 | M6-09 | Flight parity + feel sign-off | VE | M6-03..M6-07 | IN PROGRESS | main-session | L5 td-sim/tests/oracle_flight.rs: td-sim driven by the original's recorded key bytes matches the original's view, speeds, target, turn and heading on every tick of C-0007 + C-0008 (E1M1; class 4 and 0). L5 render: playfield pixel-exact vs C-0002. Feel sign-off (human) pending |
@@ -169,7 +169,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M8-04 | Path playback + AI | IM | M8-01, M8-03, M7-06 | DONE | IM-2 | 2026-11-02; mission-ships rev 2 + mission-setup rev 1: full slot arrays and record, setup (40 Random(2) incl. program start), AI state machine, movement, removal, flight 7/20 specials, enemy volleys; class tables + ships + RNG as Session (OB-018); Ships::order_attack and a step 8-9 hook for M8-05. L5 tests/oracle_ships.rs: C-0009 setup + 3,353 slot-ticks exact (attack orders and tick-1 removals copied). Open: flight 19 special (needs mission phase), drawing rules 4.7, U-143 |
 | M8-05 | Mission runtime + MissionScript API | IM | M8-02 | PAUSED | IM-2 | handoff docs/handoffs/2026-11-02-IM-2c.md (not started; IM-2 out of context after M8-04) |
 | M8-06 | Guidance line | IM | M8-05 | TODO | | |
-| M8-07 | Objective messages, comms, jurisdiction warnings | IM | M8-05, M2-14 | TODO | | |
+| M8-07 | Objective messages, comms, jurisdiction warnings | IM | M8-05, M2-14 | IN PROGRESS | IM-5 (comm screen) | IM-5 2026-11-02: F6 transmission screen presentation (flight-screens 4.2); phase advance is IM-3's mission logic |
 | M8-08 | Ship switching, wingmen, protected targets | IM | M8-05 | TODO | | |
 | M8-09 | Debrief computation + retry flow | IM | M8-05 | IN PROGRESS | IM-1 | 2026-11-02 debrief tiers (vector 3) + retry flow in td-flow::campaign; debrief/retry layout provisional (U-121), taunt choice U-124; RE-8 2026-11-02: debrief and retry layouts in spec/flow/screens.md 3.6-3.7; retry calls Random(10) once (U-124) |
 | M8-10 | E1M01-E1M03 specs + scripts | SP/IM | M8-04..M8-09 | TODO | | |
@@ -256,7 +256,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M11-01 | Original main menu + episode select | SP/IM | M5-09 | IN PROGRESS | IM-1 | 2026-11-02 E1 menu in td-flow::program (see M9-19); td2192 with no dev flag starts it |
-| M11-02 | In-flight options menu (Esc) | SP/IM | M6-06 | TODO | | |
+| M11-02 | In-flight options menu (Esc) | SP/IM | M6-06 | IN PROGRESS | IM-5 | IM-5 2026-11-02: Esc computer menu, ship library, help (flight-screens 4.1) |
 | M11-03 | Modern settings screens (video, audio, controls, profile, accessibility, data dir) | IM | M4-05 | TODO | | |
 | M11-04 | Gamepad UI navigation | IM | M11-03 | TODO | | |
 | M11-05 | Credits screen (exe resources) | IM | M2-14 | TODO | | |
