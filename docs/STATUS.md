@@ -13,7 +13,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|
 | **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
-| **Ghidra lock** | free |
+| **Ghidra lock** | free (RE-2 applied file0001.csv, 452 rows, to the canonical project on 2026-11-02: 270 functions, 173 data, 9 labels, 0 skipped) |
 | **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) · [2026-11-02-M6-01](handoffs/2026-11-02-M6-01.md) (flight-core specs: flight model drafted) |
 
 ### Blocking user decisions (MDG §14)
@@ -136,7 +136,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | PAUSED | RE-2 | flight-model.md rev 1 drafted (static); world/units facts in docs/re/structures.md 1; camera/viewport/collision specs not started. Handoff: docs/handoffs/2026-11-02-M6-01.md |
+| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | IN PROGRESS | RE-2 | flight-model rev 2 CONFIRMED by C-0007/C-0008 (215 ticks); weapons.md (U-041/U-043), mission-ships.md (partial, U-039/U-045), camera-viewport.md, collision.md (index) drafted. Handoff: docs/handoffs/2026-11-02-M6-01.md |
 | M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom + bit-exact Real48 + state_hash + replay v2 (u64 input word = key down/made + joystick); td_sim::flight::Flight runs the tick-order steps that are specified, resumable at modal screens (pause, Esc menu, F5, F6); projectiles/mission ships pending specs |
 | M6-03 | Player flight model | IM | M6-02 | REVIEW | main-session | td_sim::flight::player from flight-model.md rev 1: biased speeds, drift/drag, thrust + half braking, 16-heading ring turn, full steering table, afterburner burst, shields/armour; vectors 1-3 pass; key table with make/break + game clears (td_sim::input) |
 | M6-04 | Map collision | IM | M6-02 | REVIEW | main-session | Player map collision + bounce, tile carry, map limits/edge alert (flight-model 4.3-4.4); E1 tile attributes; data test: E1M1 start bounces in place (RE-2 C-0007 observation) |

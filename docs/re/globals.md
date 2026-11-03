@@ -59,7 +59,7 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | DS:13DC | u8 | `g_NoSoundDriver` | `/nosound` or `/pc`: never call WORX | CONFIRMED |
 | DS:1F4E | u8 | `g_SkipStory` | Esc pressed during a story screen | CONFIRMED |
 | DS:1F56..1F5C | u16 × 4 | `g_JoyCal` | Joystick calibration (saved in `tdstatus.dat`) | LIKELY |
-| DS:3946 | u16 | `g_SongSize` | Size of `g_SongBuffer` | LIKELY |
+| DS:3946 | u16 | `g_MusicSize` | Size of `g_SongBuffer` (name from M1-02) | CONFIRMED |
 
 ## 3. Input
 
@@ -71,7 +71,7 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | DS:1E30 | u8 | `g_IsrFlag` | Set by the keyboard ISR when DS:1AA1 (scan 45h, Num Lock) is down | HYPOTHESIS |
 | DS:1F67 | i8 | `g_JoyX` | Joystick X: 1 = left, −1 (FFh) = right, 0 centre | LIKELY |
 | DS:1F68 | i8 | `g_JoyY` | Joystick Y: 1 = up, −1 = down | LIKELY |
-| DS:1F69 | u8 | `g_JoyButton2` | Second button (read with Alt/Space in `0E8B:B1EC`; menus) | LIKELY |
+| DS:1F69 | u8 | `g_JoyButton2` | Second button: fire, like Space | LIKELY |
 | DS:1F6A | u8 | `g_JoyButton1` | First button (afterburner burst, like Ins / keypad +) | LIKELY |
 
 Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-block key):
@@ -85,7 +85,9 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | 1AAA | 4Eh keypad + | Afterburner burst, classes 2 and 5 only (byte cleared after use: one burst per make code) |
 | 1AAE | 52h Ins / keypad 0 | Afterburner burst (same) |
 | 1A94 / 1B94 | 38h Alt / right Alt | Infra-red toggle (`0E8B:B1EC`; the IR notice says so, string `0E8B:B807`) |
-| 1A95 | 39h Space | Fire (`0E8B:B1EC` spawns projectiles; HYPOTHESIS) |
+| 1A95 | 39h Space | Fire: volley every second tick while held, or one missile per press ([weapons](../spec/sim/weapons.md)) |
+| 1A6B | 0Fh Tab | Switch between primary weapon and missiles |
+| 1A8E | 32h M | Replay the HUD ticker message |
 | 1A5D | 01h Esc | Flight menu |
 | 1A75 | 19h P | Pause |
 | 1A9B | 3Fh F5 | Ship-switch screen (`0E8B:A714`, not in mission 14) |
@@ -98,7 +100,7 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 |---|---|---|---|---|
 | DS:1703 | u8 | `g_PlayerDrawLate` | Draw the player after the mission ships (tick-order §2) | LIKELY |
 | DS:1704 | u8 | `g_PaletteMode` | 0 normal, 1 infra-red (dimmed palette), 2 red-only | LIKELY |
-| DS:1705 | u8 | `g_JurisdictionMsg` | Jurisdiction warning state (`0E8B:7FDF`) | HYPOTHESIS |
+| DS:1705 | u8 | `g_CommIndicatorPhase` | F6 indicator pulse phase 1..7 while a comm is incoming (`0E8B:7FDF`) | LIKELY |
 | DS:1706 | u8 | `g_CommRequest` | F6 pressed; comm viewer opens on the next even page | LIKELY |
 | DS:1708, 1710, 1718 | | (timing) | `g_TickPrevTime`, `g_TickNowTime`, `g_MissionTicks` (ticks since flight start, CONFIRMED) | see [timing](../spec/core/timing.md) |
 | DS:16F6 | u8 | `g_PlayerSprite` | Sprite set used to draw the player (= class, or 2/3 alternating in late mode) | LIKELY |
@@ -111,9 +113,9 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | DS:1A56 | u8 | `g_PlayerHeading` | Heading as keypad code (structures §7) | CONFIRMED |
 | DS:1A57 | u8 | `g_PlayerClass` | Player ship class (per mission, structures §6) | CONFIRMED |
 | DS:1A5A | u8 | `g_PlayerTurnDir` | 1 = counter-clockwise, 2 = clockwise | CONFIRMED |
-| DS:1CB8 | u8 | `g_WeaponState` | Weapon phase used by `0E8B:B1EC` (0, 4, 6 seen) | HYPOTHESIS |
-| DS:1CB9 | u8 | `g_WeaponCharge` | Weapon charge or ammunition (HUD bar of 26 px; the T+I+M chord sets 30) | HYPOTHESIS |
-| DS:1CBA | u8 | `g_WeaponHeat` | Countdown 0..4 shown as a palette colour on the HUD | HYPOTHESIS |
+| DS:1CB8 | u8 | `g_Weapon` | Selected weapon: 1..3 class volley, 4/5 missile kinds, 6 homing missile ([weapons §3.2](../spec/sim/weapons.md)) | LIKELY |
+| DS:1CB9 | u8 | `g_Missiles` | Missiles left (HUD bar; the T+I+M chord sets 30) | LIKELY |
+| DS:1CBA | u8 | `g_MissileCooldown` | 4 after a launch, −1 per tick (HUD colour) | LIKELY |
 | DS:1CBB | u8 | `g_PlayerTargetHeading` | Heading requested by the steering keys | CONFIRMED |
 | DS:1CC8..1CCB | u8 | `g_LastCrossing` | Direction of the last tile-boundary crossing of the view: 1CC8 left, 1CCA right, 1CC9 up, 1CCB down (1CC9 is also a scratch byte in the collision swap) | LIKELY |
 | DS:1E2E | u16 | `g_EdgeHit` | Player touched the map limit (jurisdiction) | LIKELY |
@@ -121,7 +123,8 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | DS:32B8 | u8 | `g_EndTicks` | Ticks since `g_MissionOver`; player hidden from 15; loop ends at 35 | LIKELY |
 | DS:32B9 | u8 | `g_FlightNumber` | `Sim_FlyMission` argument (1..21) | CONFIRMED |
 | DS:32BA | u8 | `g_MissionPhase` | Mission-script state (written 92 times in `2404`, `0E8B:60D8`, ...) | LIKELY |
-| DS:32BC | u16 | `g_EdgeLatch` | Suppresses repeated edge alerts | HYPOTHESIS |
+| DS:32BC | u16 | `g_TickerPos` | HUD ticker scroll position 1..78 (0 idle); a new edge alert is raised only while it is 0 (`0E8B:7FDF`) | LIKELY |
+| DS:329C | u8 | `g_CommIncoming` | Incoming transmission waiting (F6) | LIKELY |
 | DS:329E | u8 | `g_MissionSucceeded` | Ends the flight normally | LIKELY |
 | DS:398E | i8 | `g_PlayerArmour` | Player armour; < 1 = destroyed | CONFIRMED (C-0002: 25 for class 4) |
 | DS:398F | i8 | `g_PlayerShields` | Player shields; +1 per tick up to `k_ClassShields` | CONFIRMED (C-0002: 25) |
@@ -136,7 +139,7 @@ Checked every tick after the player specials. A chord is several key bytes down 
 
 | Keys held | Effect | Port |
 |---|---|---|
-| T + I + M | `g_PlayerArmour` := 64, `g_WeaponCharge` := 30 | decision (D5/D9) |
+| T + I + M | `g_PlayerArmour` := 64, `g_Missiles` := 30 | decision (D5/D9) |
 | H + A + R + D | DS:13DE += 1 (difficulty/cheat level; also set to 8 by M+K+A+R) | decision |
 | J + O + H + N | DS:13DE := 0 | decision |
 | J + D + W | player class := 6 and **patches the class table** (max speed of class 6 := 1Ch, accel := 4) | decision |
@@ -180,10 +183,10 @@ Layouts and field meanings: [structures.md](structures.md) §2–§5.
 |---|---|---|---|
 | DS:1E34 | farptr | saved INT 1Ch vector (M1-03) | CONFIRMED |
 | DS:1E38..1E3B, 1E40 | | SFX unit state | HYPOTHESIS |
-| DS:1F0A | u8 | an effect is playing (cleared when WORX reports idle) | LIKELY |
+| DS:1F0A | u8 | `g_SfxPriority` (M1-02): priority of the effect playing, 0 = idle; cleared when WORX reports idle | CONFIRMED |
 | DS:1F0C..1F4C | | SFX channel table (6-byte entries) | HYPOTHESIS |
 
 ## 8. Notes for other tasks
 
-- `0E8B:A714` (named `Inp_RestoreKeyboard` by M1-03) is the **F5 ship-switch screen**: it restores the BIOS keyboard handler for its own `ReadKey` loop, then shows the slot list with "Tab to change ships" and "Esc to return" prompts. Suggest renaming it `UI_ShipSwitchScreen` when the canonical project is next updated.
+- `0E8B:A714` (`UI_ShipSwitchScreen`, named `Inp_RestoreKeyboard` by M1-03 and renamed 2026-11-02) is the **F5 ship-switch screen**: it restores the BIOS keyboard handler for its own `ReadKey` loop, then shows the slot list with change-ship and return prompts.
 - The shared loop counters `g_I`/`g_J` (DS:1A52/1A54) mean that routines are not re-entrant; a port must not "fix" any behaviour that depends on a callee leaving them changed (none found yet, but watch for it in M8).

@@ -34,11 +34,11 @@ Routines called once per tick, in call order (all `file0001:`):
 | 3 | inline `0E8B:CCE3..CD22` | `Sim_PlayerTurnStep` | target heading ≠ heading |
 | 4 | `386E:191C` × 66 | `Gfx_DrawTile` (11 × 6 map window) | always |
 | 5 | inline `0E8B:CDA0..D160` + `1E2A:006A` | `Sim_AfterburnerBurst` (flame sprites, speed kick, sound) | Ins / keypad + / joystick button 1, player class 2 or 5 |
-| 6 | `0E8B:0984` | `Sim_ProjectilesAndHits` | always |
+| 6 | `0E8B:0984` | `Sim_ProjectilesAndHits` ([weapons §4.3](weapons.md)) | always |
 | 7 | `386E:024A`…`386E:172D` (one of 16) | `Gfx_DrawPlayerShip` | not late, end ticks < 15 |
 | 8 | `2404:1426` | `Msn_UpdateA` (mission triggers and messages) | always |
 | 9 | `2404:3521` | `Msn_UpdateB` (mission triggers and messages) | always |
-| 10 | `3292:0011(n)` | `AI_UpdateShips` (move and draw the 20 mission ships) | always |
+| 10 | `3292:0011(n)` | `AI_UpdateShips` (move and draw the 20 mission ships; [mission-ships](mission-ships.md)) | always |
 | 11 | `0E8B:56ED` | `Sim_EndSequenceStep` | mission over |
 | 12 | inline `0E8B:D68C..D86F` + `386E:191C` | `Gfx_RedrawOverlayTiles` (tiles drawn over ships) | not late |
 | 13 | inline `0E8B:D872..D93x` + `386E:024A` | `Gfx_DrawExplosions` (30 slots) | always |
@@ -59,7 +59,7 @@ Routines called once per tick, in call order (all `file0001:`):
 | 28 | `0E8B:A714` | ship-switch screen (F5) | F5 held, mission ≠ 14 |
 | 29 | inline `0E8B:EA2B..F3xx` | `Sim_PlayerThrust` and steering | always |
 | 30 | inline `0E8B:F3xx..F6A0` + `1E2A:006A` | `AI_FireRequests` (spawn mission-ship shots) | back page ≠ 0 |
-| 31 | `0E8B:B1EC` | `Sim_PlayerSpecials` (fire on Space, infra-red toggle on Alt) | always |
+| 31 | `0E8B:B1EC` | `Sim_PlayerSpecials` (Space fire, Alt infra-red, M ticker; [weapons §4.1](weapons.md)) | always |
 | 32 | inline `0E8B:F6B5..F7E0` (+ `3A7E:009D`) | cheat key chords | chord held |
 | 33 | inline `0E8B:F7E0..F842` | end-of-flight test | always |
 
@@ -107,7 +107,7 @@ each tick (0E8B:CC7F):
   23. pause key: show the pause text, clear all key bytes, wait until any key byte is set
   24. g_DrawPage := 1 - g_DrawPage
   25. Esc and not over: flight menu (may set g_MissionAborted)
-  26. SFX on Sound Blaster: when WORX reports idle, clear the "effect playing" byte DS:1F0A
+  26. SFX on Sound Blaster: when WORX reports idle, clear g_SfxPriority (DS:1F0A)
   27. shields < 1 -> 0; armour < 1 and not over -> mission over (player destroyed)
       shields < class maximum -> shields += 1
   28. player drift and drag, map collision, tile carry and map limits (flight-model.md 4.2-4.4)
@@ -120,7 +120,8 @@ each tick (0E8B:CC7F):
       muzzle offset for its heading (DS:035C + 34*heading + 2m), play one sound
       (structures.md section 4)
   32. clear all fire requests (slots 1..20, entries 1..9)
-  33. player specials (0E8B:B1EC): fire (Space), infra-red toggle (Alt)
+  33. player specials (0E8B:B1EC): fire (Space), infra-red toggle (Alt), ticker replay (M)
+      (the Tab weapon switch is done in step 32's tail, 0E8B:F4F8..F6A7, before 0E8B:B1EC)
   34. cheat chords (globals.md section 5)
   35. if aborted, or end ticks = 35, or mission lost, or mission succeeded: leave the loop
 teardown (0E8B:F826..F990):

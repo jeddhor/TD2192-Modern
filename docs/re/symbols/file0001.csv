@@ -61,8 +61,9 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:01F6,func,Gfx_FadeInFlight,,retrace-paced palette fade in from g_FlightPalette (Real48 scaling),HYPOTHESIS,U-033
 0E8B:0426,func,Gfx_FadeOutFlight,,retrace-paced palette fade out (Real48 scaling),HYPOTHESIS,U-033
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
+0E8B:06C5,func,Sim_DistanceFlash,"void near(TileY, TileX: Byte)",raises g_HitFlash to 20 - round(sqrt(distance)) for an explosion near the player,LIKELY,U-041
 0E8B:07ED,func,Snd_PlayMusic,void far(N: Byte),"(N): if g_MusicDevice = 2: stop, free, load song N, play (see spec audio/music-cues); also: (cue 1..14) stops the song and loads/plays a CMF if td.cfg music = 2; also: stops the current song and plays CMF n (1..14; table in flow spec 3.1) when music is on",CONFIRMED,M1-02
-0E8B:0984,func,Sim_ProjectilesAndHits,,per tick: projectiles; hits; kills (+g_MissionKills); frees destroyed slots,HYPOTHESIS,U-033
+0E8B:0984,func,Sim_ProjectilesAndHits,,per tick for projectile slots 0..50: bounds; life and map test; hits on ships and player; damage; kills; drawing; one-tile move (sim/weapons.md),LIKELY,U-041
 0E8B:40B2,func,Txt_FlightDrawGlyphOpaque,,"flight-unit copy of Txt_DrawGlyph, opaque",CONFIRMED,M2-08
 0E8B:43A6,func,Txt_FlightDrawGlyph,,"flight-unit copy of Txt_DrawGlyph, transparent",CONFIRMED,M2-08
 0E8B:45EF,func,Txt_FlightDrawStringOpaque,,flight-unit copy of Txt_DrawStringOpaque,CONFIRMED,M2-08
@@ -76,14 +77,14 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:6EDF,func,UI_FlightHelp,,td.hlp pages in flight,LIKELY,M1-05
 0E8B:7374,func,UI_ShipLibrary,,ship library: td.shp sprites 0..8 and class text; also: ship class chart with sprites and stat lines (UI_ShipRecognitionChart),LIKELY,M1-05
 0E8B:794C,func,UI_FlightMenu,,"in-flight computer menu from td.men bytes 0..15999 at (80,50); also: Esc menu in flight (td.men); may set g_MissionAborted",LIKELY,M2-09
-0E8B:7FDF,func,UI_HudTickerAndIndicator,,advances the objective ticker (page-0 ticks) and the F6 indicator animation; also: shows the leave-jurisdiction warning and plays its sound (Msn_JurisdictionWarning),LIKELY,M2-09
+0E8B:7FDF,func,UI_HudTickerAndIndicator,,"called from UI_DrawInstruments each tick: (1) on an edge alert (DS:1E2E) posts the leave-jurisdiction message to the ticker (other text in missions 13/14) and starts it (DS:32BC := 1); (2) on page-0 ticks scrolls the ticker via UI_HudTickerBlit until DS:32BC passes 78; (3) while a comm is incoming (DS:329C) plays its sound once and pulses the F6 indicator (DS:1705 phase 1..7)",CONFIRMED,M2-09
 0E8B:80D3,func,UI_CommViewer,,F6 comm viewer (modal; td.cmm),LIKELY,U-033
 0E8B:82DD,func,UI_DrawGuidanceLine,,guidance line to the current target (ArcTan; Sqrt),HYPOTHESIS,U-033
 0E8B:8E87,func,UI_DrawInstruments,,per tick: armour and shield gauges; radar; guidance; jurisdiction check,LIKELY,U-033
 0E8B:9860,func,UI_UpdateStatusPanel,,per tick: messages; ship info panel; ship switching; mission events,HYPOTHESIS,U-033
 0E8B:A714,func,UI_ShipSwitchScreen,,F5 ship-switch screen in flight (not in mission 14; tick-order step 29); earlier misnamed Inp_RestoreKeyboard,LIKELY,M6-01
 0E8B:AF1F,func,UI_JoystickCalibration,,"td.joy icon at (140,70) and calibration loop; also: joystick calibration screen at start-up (Inp_CalibrateJoystick)",LIKELY,M1-05
-0E8B:B1EC,func,Sim_PlayerSpecials,,per tick after thrust: fire (Space) and infra-red toggle (Alt),HYPOTHESIS,U-033
+0E8B:B1EC,func,Sim_PlayerSpecials,,per tick: M ticker replay; Alt infra-red (palette modes 1/2); Space volley (every second tick) or missile launch (sim/weapons.md),LIKELY,U-043
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
 0E8B:CC7F,label,Sim_TickTop,,top of the in-flight tick loop (back edge at 0E8B:F842),CONFIRMED,U-033
 0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
@@ -144,7 +145,7 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:5E47,func,WORX_DspWrite,,AL to the DSP write port (waits for ready),CONFIRMED,M3-05
 2C37:62D5,func,WORX_FnPlayVoc,,fn 06h handler: stop current; parse VOC blocks from memory,CONFIRMED,M3-05
 3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick: move and draw the 20 mission ships,HYPOTHESIS,U-033
-34E6:3449,func,AI_InitSlot,void near(Slot: Byte),initialises one mission slot at flight start,HYPOTHESIS,U-033
+34E6:3449,func,AI_ChooseWaypoint,"void far(Slot: Byte)",chooses the next waypoint of a mission ship (path step or behaviour-specific target); called for every slot at flight start and when a ship reaches its waypoint,LIKELY,U-039
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
 386E:0000,func,Gfx_HudRadarBlit,,"copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M2-09
 386E:012B,func,Gfx_HudFacFrame,,"(frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M2-09
@@ -351,11 +352,13 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:12D0,data,g_SongHandle,u16,WORX handle of the playing song,LIKELY,M1-07
 3C43:12D2,data,g_MusicBuffer,farptr,heap block of the current song; also: loaded CMF data (g_SongBuffer),CONFIRMED,M1-02
 3C43:13DC,data,g_NoWorx,u8,1 when the first parameter is /nosound or /pc: WORX never installed; also: /nosound or /pc: WORX never called (g_NoSoundDriver),CONFIRMED,M1-02
+3C43:13DE,data,g_Difficulty,u8,damage multiplier for hits on the player (1 at flight start; cheat chords change it),LIKELY,U-041
 3C43:13E6,data,g_FlightPalette,u8[768],u8[768] flight palette (td.pal); also: td.pal copy for fades and flashes,CONFIRMED,M1-05
 3C43:16F6,data,g_PlayerSprite,u8,sprite set used to draw the player,LIKELY,M1-07
 3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
 3C43:1703,data,g_PlayerDrawLate,u8,draw the player after the mission ships,LIKELY,M1-07
 3C43:1704,data,g_PaletteMode,u8,0 normal; 1 infra-red; 2 red-only,LIKELY,M1-07
+3C43:1705,data,g_CommIndicatorPhase,u8,F6 indicator pulse phase 1..7 while a comm is incoming (0 = off),LIKELY,M6-01
 3C43:1706,data,g_CommRequest,u8,F6 pressed (comm viewer pending),LIKELY,M1-07
 3C43:1708,data,g_TickPrevTime,u16[4],"hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-06
 3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
@@ -374,7 +377,9 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
 3C43:1CB3,data,g_AnyKeyLatch,u8,pause: any key pressed,LIKELY,M1-07
 3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
-3C43:1CB9,data,g_WeaponCharge,u8,weapon charge or ammunition (HUD bar),HYPOTHESIS,M1-07
+3C43:1CB8,data,g_Weapon,u8,selected player weapon: 1..3 class volley; 4/5 missile kinds; 6 homing,LIKELY,U-043
+3C43:1CB9,data,g_Missiles,u8,missiles left (HUD bar); set per class at flight start,LIKELY,U-043
+3C43:1CBA,data,g_MissileCooldown,u8,4 after a missile launch; -1 per tick,LIKELY,U-043
 3C43:1CBB,data,g_PlayerTargetHeading,u8,heading requested by the steering keys,CONFIRMED,M1-07
 3C43:1E2E,data,g_EdgeHit,u16,player touched the map limit,LIKELY,M1-07
 3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03
@@ -386,11 +391,13 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1F68,data,g_JoyY,i8,joystick Y: 1 up; -1 down,LIKELY,M1-07
 3C43:1F69,data,g_JoyButton2,u8,second joystick button,LIKELY,M1-07
 3C43:1F6A,data,g_JoyButton1,u8,first joystick button (fire),LIKELY,M1-07
+3C43:329C,data,g_CommIncoming,u8,an incoming transmission is waiting (set by mission logic; cleared by the comm viewer),LIKELY,M6-01
 3C43:329E,data,g_MissionSucceeded,u8,ends the flight normally,LIKELY,M1-07
 3C43:32B7,data,g_MissionOver,u8,flight is ending,LIKELY,M1-07
 3C43:32B8,data,g_EndTicks,u8,ticks since g_MissionOver (player hidden from 15; loop ends at 35),LIKELY,M1-07
 3C43:32B9,data,g_FlightNumber,u8,Sim_FlyMission argument 1..21,CONFIRMED,M1-07
 3C43:32BA,data,g_MissionPhase,u8,mission-script state,LIKELY,M1-07
+3C43:32BC,data,g_TickerPos,u16,"HUD ticker scroll position 1..78 (0 = idle); edge alerts are only raised while it is 0",LIKELY,M6-01
 3C43:3946,data,g_MusicSize,u16,size of the loaded song (WORX_LoadMusic),CONFIRMED,M1-02
 3C43:3948,data,g_SfxLoadSize,u16,size of the last VOC loaded (WORX_LoadSfx),CONFIRMED,M1-02
 3C43:3950,data,g_WorxParamAL,u8,"WORX_CallDriver inputs: AL (3950), BX (3952), DX (3954), DI (3956)",CONFIRMED,M1-02

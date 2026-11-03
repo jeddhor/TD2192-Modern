@@ -89,11 +89,11 @@ Mission ships advance one waypoint per 32 px of travel at their class speed: slo
 | DS:3976 | i16 | Pixel offset X := muzzle dx + ship offset X − 16 | LIKELY |
 | DS:397A | i16 | Pixel offset Y := muzzle dy + ship offset Y − 16 | LIKELY |
 | DS:397E | u8 | Heading := ship heading | LIKELY |
-| DS:3982 | u8 | Kind := shot-table value − 1 | HYPOTHESIS |
+| DS:3982 | u8 | Kind := shot-table value − 1 (0..3 guns, 4/5 missiles, 6 homing) | LIKELY |
 | DS:396E | u8 | Owner slot | LIKELY |
-| DS:3972 | u8 | 1 for mission-ship shots | HYPOTHESIS |
+| DS:3972 | u8 | Life counter (starts at 1, or 0 for missiles; the shot dies above 25); target slot for kind 6 | LIKELY |
 
-Movement, lifetime, damage and hit tests are in `0E8B:0984` (U-041).
+Movement (one tile per tick), lifetime, map collision, hit tests and damage: [sim/weapons.md](../spec/sim/weapons.md).
 
 **Explosions:** 30 slots, five `array[1..30] of u8` in DGROUP: frame DS:399A (8 = idle; all set to 8 at setup), tile X DS:39B8, tile Y DS:39D6, offset X DS:39F4, offset Y DS:3A12. Each tick an active explosion (frame < 8) is drawn with sprite 13h + frame if it is inside the 11 × 6 window, then frame += 1, skipping 7 (so frames 0..6 show, then idle). Started by `0E8B:0984`, `2404:1426` and `0E8B:56ED`.
 

@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/flight-model` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 |
-| **Confidence** | LIKELY (static; start values and units checked against C-0002 RAM). No dynamic manoeuvre capture yet (§6) |
+| **Confidence** | **CONFIRMED** for §4.2 drift and drag, §4.3 horizontal collision and bounce, §4.4 tile carry inside the map, §4.5 thrust and braking (classes 4 and 0, keyboard), §4.6 turn step and the side-block steering cases: the rules reproduce every tick of captures C-0007 and C-0008 (215 ticks, 0 mismatches, §6). LIKELY (static only) for vertical collision, map limits, the up/down and diagonal steering cases, the `full` predicates (joystick) and §4.7 |
 | **Tasks** | M6-01 (draft from M1-08 findings) |
 | **Unknowns** | U-002 and U-003 (resolved), U-009 (partial), U-024 (partial), U-043 |
 
@@ -109,7 +109,8 @@ if offsetY < 16 and viewY = 7:    offsetY += 32; edge alert            (pushed b
 if offsetY > 48 and viewY < 190:  viewY += 1; offsetY -= 32
 if offsetY > 48 and viewY = 190:  offsetY -= 32; edge alert
 same for X with limits 6 and 183 (offsetX, viewX)
-edge alert: if DS:32BC = 0 then DS:1E2E := 1 (the jurisdiction warning routine reacts to it)
+edge alert: if DS:32BC = 0 then DS:1E2E := 1   (DS:32BC = HUD ticker position; 0E8B:7FDF then posts the
+            leave-jurisdiction message to the ticker)
 ```
 
 The direction of each carry is recorded in DS:1CC8..1CCB (`globals.md` §4).
@@ -197,13 +198,17 @@ Components along a heading: left for 4, 1, 7; right for 6, 9, 3; up for 8, 7, 9;
 
 ## 6. Test vectors
 
-Derived from this model (static). They must be confirmed with a DOSBox capture (VE, M6-09) before the spec can be CONFIRMED.
+Vectors 1 and 2 were first derived from this model and then **observed exactly** in C-0008 (rightward and leftward instead of upward, which is the same rule on another component; the start cell is boxed in vertically). Method: DGROUP dumped every video frame; the state of tick t is read from the first frame whose tick counter (DS:1718) is t, which lies after the physics of tick t − 1 and before that of tick t. A rule-by-rule model of §4.2–§4.6 driven by the recorded key bytes reproduces every observed tick of C-0007 (99 ticks, including repeated wall bounces and a class change) and C-0008 (116 ticks).
 
 | # | Setup | Expected per tick (moved px / total px / up speed after the tick) | Evidence |
 |---|---|---|---|
-| 1 | Class 4, open area, hold U from rest for 14 ticks, then release | t1..5: 0/0/4, 0/0/8, 0/0/12, 0/0/16, 0/0/20; t6: 4/4/23; t7: 7/11/26; t8: 10/21/29; t9: 13/34/28; t10: 12/46/31; t11: 15/61/30; t12: 14/75/29; t13: 13/88/28; t14: 12/100/31; released: t15: 15/115/30, t16: 14, t17: 13, … down to 1 px at t29, then 0 | model |
-| 2 | Class 0 (accel 2, max 24), hold U from rest | 0 px for 9 ticks; t10..: 2, 3, 4, 5, 6, 7, 8, 9, 8, 9, 8, … (speed 24/25 alternating) | model |
+| 1 | Class 4, open street, hold one thrust direction from rest for 14 ticks, then release | t1..5: 0/0/4, 0/0/8, 0/0/12, 0/0/16, 0/0/20; t6: 4/4/23; t7: 7/11/26; t8: 10/21/29; t9: 13/34/28; t10: 12/46/31; t11: 15/61/30; t12: 14/75/29; t13: 13/88/28; t14: 12/100/31; released: t15: 15/115/30, t16: 14, t17: 13, … down to 1 px at t29, then 0 (speed stays 16) | C-0008 keypad 6, physics ticks 40..53 (world X 3296 → 3516) |
+| 2 | Class 0 (accel 2, max 24), hold from rest for 22 ticks, then release | speeds 2, 4, …, 18 (t1..9, no movement); moved px from t10: 2, 3, 4, 5, 6, 7, 8, 9, 8, 9, 8, 9, 8 (speed alternating 25/24); released at speed 24: 9, 8, 7, …, 1, then 0 | C-0008 keypad 4 after the M+K+A+R chord, physics ticks 80..101 |
 | 3 | C-0002 at flight +1 s and +2 s, no input | speeds 0, heading 8, target 8, turn direction 0, view (102, 104, 32, 16), armour 25, shields 25 (class 4) | C-0002 RAM |
+| 4 | Class 4 at the start position, hold right 14 ticks | the first move (+4 px at the 6th tick) takes offset X to 36 > 32 with cell (108, 106) solid and offset Y 16 < 40: offset X := 32 and left/right swap, then the thrust brakes the new left component by 2 and adds 4 to right; per tick (left, right) = (17, 4), (4, 20), (17, 8), (8, 20), (17, 12), (12, 20), (17, 16), (16, 20), (17, 20); after release (19, 16), (16, 18), (17, 16), (16, 16); the view never moves | C-0007, physics ticks 22..39 |
+| 5 | Class 0 at the start position, hold left (heading 6) | the target heading stays 6 (opposite key ignored); left = 18 is bounced by cell (106, 106) into right = 17, then braked by 1 and left gets +2: (18, 16) every tick | C-0007, physics ticks 74..101 |
+| 6 | Heading 8, hold right | heading 8 → 98 → 9 → 96 → 6, one ring step per tick, turn direction 2 (clockwise), target 6 | C-0007 ticks 22..26 |
+| 7 | Hold down 6 ticks from (102, 104, 32, 16) | down speed 4, 8, 12, 16, 20, 23; offset Y then 20, 27, 33, 38, 42, 45, 47, 48 (no carry) | C-0008 ticks 22..34 |
 
 ## 7. Presentation and audio hooks
 
@@ -215,7 +220,8 @@ Derived from this model (static). They must be confirmed with a DOSBox capture (
 
 - [ ] Q1 (U-043): Space (fire) and Alt (infra-red) in `0E8B:B1EC`.
 - [ ] Q2 (U-009): collision for mission ships and projectiles; whether DS:1703 (late draw) also means "no collision" in every flight that sets it.
-- [ ] Q3 (VE): capture test vectors 1 and 2 (hold keypad 8 in an open area of mission 1 and dump DS:3995 and DS:3A38/3A3C every tick).
+- [x] Q3 (VE): test vectors 1 and 2 captured (C-0008) and match.
+- [ ] Q4 (VE): capture vertical collision, a map limit, an up/down + side diagonal and the afterburner burst (class 2 flight) to raise the rest of the spec to CONFIRMED.
 
 ## 9. Provenance
 
@@ -231,9 +237,11 @@ Derived from this model (static). They must be confirmed with a DOSBox capture (
 | Afterburner burst | `0E8B:CD78..D160` | static + hint text before flight 6 | LIKELY |
 | Class tables | DS:02BE..02E4 | static (file bytes) + C-0002 (class 4 armour/shields) | CONFIRMED |
 | Start values | `0E8B:C4E6..C647`; C-0002 | static + capture | CONFIRMED |
+| Drift, drag, horizontal collision, carry, thrust, braking, turn | C-0007 (99 ticks), C-0008 (116 ticks), every tick reproduced | dynamic | CONFIRMED |
 
 ## 10. Revision history
 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial draft from M1-08 findings |
+| 2 | 2026-11-02 | RE-2 (Verifier) | No rule changes. Test vectors 1 and 2 observed in C-0008; collision, braking, class change and steering cases observed in C-0007 (vectors 4–7); confidence raised per section; edge-alert note names DS:32BC as the HUD ticker position |
