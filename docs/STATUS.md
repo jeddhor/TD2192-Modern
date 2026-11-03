@@ -163,9 +163,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M8-01 | Mission file semantics spec | RE/SP | M2-11 | IN PROGRESS | RE-5 | RE-5: mission-ships rev 2 + mission-setup.md (0E8B:60D8) |
+| M8-01 | Mission file semantics spec | RE/SP | M2-11 | DONE | RE-5 | 2026-11-02 RE-5: sim/mission-ships.md rev 2 (setup, movement, removal) + sim/mission-setup.md rev 1 (flights 1..21); CONFIRMED by C-0009 (3342/3343 slot-ticks); U-038/U-039 resolved; open U-160..U-162 |
 | M8-02 | Mission logic architecture + primitives spec | RE/SP | M1-04 | TODO | | |
-| M8-03 | AI behaviours spec | RE/SP | M1-08 | IN PROGRESS | RE-5 | RE-5: 34E6 AI state machine (U-045) |
+| M8-03 | AI behaviours spec | RE/SP | M1-08 | DONE | RE-5 | 2026-11-02 RE-5: sim/mission-ships.md rev 2 sections 4.3-4.4 (path/attack/detour/return, fire decision, shot spawn); CONFIRMED by C-0009; U-040/U-042/U-045/U-047 resolved; OB-013..OB-018; mission-logic attack orders (2404) left to RE-6 |
 | M8-04 | Path playback + AI | IM | M8-01, M8-03, M7-06 | TODO | | |
 | M8-05 | Mission runtime + MissionScript API | IM | M8-02 | TODO | | |
 | M8-06 | Guidance line | IM | M8-05 | TODO | | |
