@@ -69,7 +69,7 @@ System and Dos wrappers account for most `INT 21h` sites (`AH` = 3Dh/3Fh/40h/42h
 
 - `INT 63h` is not a hardware or BIOS interrupt: WORX installs its own handler there at start-up and calls it from Pascal (`2C37:0029`).
 - Before the 2026-11-02 Setup fixes, Ghidra also reported dozens of `INSB`/`OUTSB`/`IMUL` "sites": that was lowercase text decoded as code, and it is gone now. If such mnemonics reappear in a `FindPortIO` export, re-run `SetupBp7Program`.
-- E2/E3 have not been catalogued yet (M1-09). Their WORX, graphics and Crt units are byte-for-byte the same size as E1's, so the same picture is expected.
+- E2/E3 (M1-09): WORX, Crt, System, the flight-graphics unit (`386E`) and the sound-effects unit are code-identical to E1 apart from addresses, and the flight unit's retrace, DAC and INT 09h code is unchanged, so this catalogue applies with the segment mapping of [episode-deltas §2](episode-deltas.md#2-method-and-match-statistics). E2/E3 have no `Exec` (no INT 21h AH=4Bh).
 
 ## Appendix: every site
 
