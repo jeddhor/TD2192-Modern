@@ -61,8 +61,9 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:01F6,func,Gfx_FadeInFlight,,retrace-paced palette fade in from g_FlightPalette (Real48 scaling),HYPOTHESIS,U-033
 0E8B:0426,func,Gfx_FadeOutFlight,,retrace-paced palette fade out (Real48 scaling),HYPOTHESIS,U-033
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
+0E8B:06C5,func,Sim_DistanceFlash,"void near(TileY, TileX: Byte)",raises g_HitFlash to 20 - round(sqrt(distance)) for an explosion near the player,LIKELY,U-041
 0E8B:07ED,func,Snd_PlayMusic,void far(N: Byte),"(N): if g_MusicDevice = 2: stop, free, load song N, play (see spec audio/music-cues); also: (cue 1..14) stops the song and loads/plays a CMF if td.cfg music = 2; also: stops the current song and plays CMF n (1..14; table in flow spec 3.1) when music is on",CONFIRMED,M1-02
-0E8B:0984,func,Sim_ProjectilesAndHits,,per tick: projectiles; hits; kills (+g_MissionKills); frees destroyed slots,HYPOTHESIS,U-033
+0E8B:0984,func,Sim_ProjectilesAndHits,,per tick for projectile slots 0..50: bounds; life and map test; hits on ships and player; damage; kills; drawing; one-tile move (sim/weapons.md),LIKELY,U-041
 0E8B:40B2,func,Txt_FlightDrawGlyphOpaque,,"flight-unit copy of Txt_DrawGlyph, opaque",CONFIRMED,M2-08
 0E8B:43A6,func,Txt_FlightDrawGlyph,,"flight-unit copy of Txt_DrawGlyph, transparent",CONFIRMED,M2-08
 0E8B:45EF,func,Txt_FlightDrawStringOpaque,,flight-unit copy of Txt_DrawStringOpaque,CONFIRMED,M2-08
@@ -83,7 +84,7 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:9860,func,UI_UpdateStatusPanel,,per tick: messages; ship info panel; ship switching; mission events,HYPOTHESIS,U-033
 0E8B:A714,func,UI_ShipSwitchScreen,,F5 ship-switch screen in flight (not in mission 14; tick-order step 29); earlier misnamed Inp_RestoreKeyboard,LIKELY,M6-01
 0E8B:AF1F,func,UI_JoystickCalibration,,"td.joy icon at (140,70) and calibration loop; also: joystick calibration screen at start-up (Inp_CalibrateJoystick)",LIKELY,M1-05
-0E8B:B1EC,func,Sim_PlayerSpecials,,per tick after thrust: fire (Space) and infra-red toggle (Alt),HYPOTHESIS,U-033
+0E8B:B1EC,func,Sim_PlayerSpecials,,per tick: M ticker replay; Alt infra-red (palette modes 1/2); Space volley (every second tick) or missile launch (sim/weapons.md),LIKELY,U-043
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
 0E8B:CC7F,label,Sim_TickTop,,top of the in-flight tick loop (back edge at 0E8B:F842),CONFIRMED,U-033
 0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
@@ -351,6 +352,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:12D0,data,g_SongHandle,u16,WORX handle of the playing song,LIKELY,M1-07
 3C43:12D2,data,g_MusicBuffer,farptr,heap block of the current song; also: loaded CMF data (g_SongBuffer),CONFIRMED,M1-02
 3C43:13DC,data,g_NoWorx,u8,1 when the first parameter is /nosound or /pc: WORX never installed; also: /nosound or /pc: WORX never called (g_NoSoundDriver),CONFIRMED,M1-02
+3C43:13DE,data,g_Difficulty,u8,damage multiplier for hits on the player (1 at flight start; cheat chords change it),LIKELY,U-041
 3C43:13E6,data,g_FlightPalette,u8[768],u8[768] flight palette (td.pal); also: td.pal copy for fades and flashes,CONFIRMED,M1-05
 3C43:16F6,data,g_PlayerSprite,u8,sprite set used to draw the player,LIKELY,M1-07
 3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
@@ -375,7 +377,9 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
 3C43:1CB3,data,g_AnyKeyLatch,u8,pause: any key pressed,LIKELY,M1-07
 3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
-3C43:1CB9,data,g_WeaponCharge,u8,weapon charge or ammunition (HUD bar),HYPOTHESIS,M1-07
+3C43:1CB8,data,g_Weapon,u8,selected player weapon: 1..3 class volley; 4/5 missile kinds; 6 homing,LIKELY,U-043
+3C43:1CB9,data,g_Missiles,u8,missiles left (HUD bar); set per class at flight start,LIKELY,U-043
+3C43:1CBA,data,g_MissileCooldown,u8,4 after a missile launch; -1 per tick,LIKELY,U-043
 3C43:1CBB,data,g_PlayerTargetHeading,u8,heading requested by the steering keys,CONFIRMED,M1-07
 3C43:1E2E,data,g_EdgeHit,u16,player touched the map limit,LIKELY,M1-07
 3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03

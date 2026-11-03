@@ -71,7 +71,7 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | DS:1E30 | u8 | `g_IsrFlag` | Set by the keyboard ISR when DS:1AA1 (scan 45h, Num Lock) is down | HYPOTHESIS |
 | DS:1F67 | i8 | `g_JoyX` | Joystick X: 1 = left, −1 (FFh) = right, 0 centre | LIKELY |
 | DS:1F68 | i8 | `g_JoyY` | Joystick Y: 1 = up, −1 = down | LIKELY |
-| DS:1F69 | u8 | `g_JoyButton2` | Second button (read with Alt/Space in `0E8B:B1EC`; menus) | LIKELY |
+| DS:1F69 | u8 | `g_JoyButton2` | Second button: fire, like Space | LIKELY |
 | DS:1F6A | u8 | `g_JoyButton1` | First button (afterburner burst, like Ins / keypad +) | LIKELY |
 
 Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-block key):
@@ -85,7 +85,9 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | 1AAA | 4Eh keypad + | Afterburner burst, classes 2 and 5 only (byte cleared after use: one burst per make code) |
 | 1AAE | 52h Ins / keypad 0 | Afterburner burst (same) |
 | 1A94 / 1B94 | 38h Alt / right Alt | Infra-red toggle (`0E8B:B1EC`; the IR notice says so, string `0E8B:B807`) |
-| 1A95 | 39h Space | Fire (`0E8B:B1EC` spawns projectiles; HYPOTHESIS) |
+| 1A95 | 39h Space | Fire: volley every second tick while held, or one missile per press ([weapons](../spec/sim/weapons.md)) |
+| 1A6B | 0Fh Tab | Switch between primary weapon and missiles |
+| 1A8E | 32h M | Replay the HUD ticker message |
 | 1A5D | 01h Esc | Flight menu |
 | 1A75 | 19h P | Pause |
 | 1A9B | 3Fh F5 | Ship-switch screen (`0E8B:A714`, not in mission 14) |
@@ -111,9 +113,9 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | DS:1A56 | u8 | `g_PlayerHeading` | Heading as keypad code (structures §7) | CONFIRMED |
 | DS:1A57 | u8 | `g_PlayerClass` | Player ship class (per mission, structures §6) | CONFIRMED |
 | DS:1A5A | u8 | `g_PlayerTurnDir` | 1 = counter-clockwise, 2 = clockwise | CONFIRMED |
-| DS:1CB8 | u8 | `g_WeaponState` | Weapon phase used by `0E8B:B1EC` (0, 4, 6 seen) | HYPOTHESIS |
-| DS:1CB9 | u8 | `g_WeaponCharge` | Weapon charge or ammunition (HUD bar of 26 px; the T+I+M chord sets 30) | HYPOTHESIS |
-| DS:1CBA | u8 | `g_WeaponHeat` | Countdown 0..4 shown as a palette colour on the HUD | HYPOTHESIS |
+| DS:1CB8 | u8 | `g_Weapon` | Selected weapon: 1..3 class volley, 4/5 missile kinds, 6 homing missile ([weapons §3.2](../spec/sim/weapons.md)) | LIKELY |
+| DS:1CB9 | u8 | `g_Missiles` | Missiles left (HUD bar; the T+I+M chord sets 30) | LIKELY |
+| DS:1CBA | u8 | `g_MissileCooldown` | 4 after a launch, −1 per tick (HUD colour) | LIKELY |
 | DS:1CBB | u8 | `g_PlayerTargetHeading` | Heading requested by the steering keys | CONFIRMED |
 | DS:1CC8..1CCB | u8 | `g_LastCrossing` | Direction of the last tile-boundary crossing of the view: 1CC8 left, 1CCA right, 1CC9 up, 1CCB down (1CC9 is also a scratch byte in the collision swap) | LIKELY |
 | DS:1E2E | u16 | `g_EdgeHit` | Player touched the map limit (jurisdiction) | LIKELY |
@@ -137,7 +139,7 @@ Checked every tick after the player specials. A chord is several key bytes down 
 
 | Keys held | Effect | Port |
 |---|---|---|
-| T + I + M | `g_PlayerArmour` := 64, `g_WeaponCharge` := 30 | decision (D5/D9) |
+| T + I + M | `g_PlayerArmour` := 64, `g_Missiles` := 30 | decision (D5/D9) |
 | H + A + R + D | DS:13DE += 1 (difficulty/cheat level; also set to 8 by M+K+A+R) | decision |
 | J + O + H + N | DS:13DE := 0 | decision |
 | J + D + W | player class := 6 and **patches the class table** (max speed of class 6 := 1Ch, accel := 4) | decision |
