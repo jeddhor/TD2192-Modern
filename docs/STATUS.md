@@ -59,8 +59,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | DONE | RE-1 | 2026-11-02; docs/spec/core/bp7-runtime-semantics.md rev 1 + docs/re/symbols/file0001.csv (162 rows); RNG exact; Real48 used by gameplay (U-022, U-023 resolved); Real48 algorithms split to M1-01.b |
-| M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | TODO | | Needed before M6 code that mirrors file0001:0E8B:B880 / 0E8B:82DD |
-| M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
+| M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | IN PROGRESS | RE-4 | Real48 bit-exact spec + emulator vectors |
+| M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | IN PROGRESS | RE-4 | WORX API + call sites |
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
 | M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
@@ -101,7 +101,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | DONE | main-session | 2026-11-02; spec audio/voc-and-adpcm.md; decoder + vectors; decoded signals sane (lag-1 autocorr 0.79-1.00); A/B pending M3-08 |
 | M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | DONE | main-session | 2026-11-02; td-opl over ymfm-sys (YM3812) |
 | M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | main-session | 2026-11-02; spec audio/cmf.md; fixed channel map, rhythm mode, fine transpose; velocity ignored (U-034); 96 ticks/s (U-007) |
-| M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | TODO | | |
+| M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | IN PROGRESS | RE-4 | CMF playback in WORX |
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | IN PROGRESS | main-session | Mixer + Classic/Polyphonic SFX policies done; Classic rule provisional (U-021), balance untuned |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
 | M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | TODO | | |
