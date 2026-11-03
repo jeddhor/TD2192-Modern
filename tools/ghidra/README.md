@@ -29,6 +29,11 @@ Options: `-Write` (save changes; hold the lock in `docs/STATUS.md` first), `-Ana
 | `ExportSymbols.java` | no (writes the CSV) | `docs/re/symbols/<exe>.csv` | `[symbols.csv] [task:<id>] [confidence:<c>]` |
 | `ExportDecompiled.java` | no | `re-work\exports\<exe>\SSSS_OOOO_<name>.c` (**never commit**) | `[outdir] [filter:<regex>] [timeout:<s>]` |
 | `FindPortIO.java` | no | `re-work\exports\<exe>-portio.csv` | `[out.csv]` |
+| `ExportListing.java` | no | `re-work\exports\<exe>-asm\SSSS_OOOO_<name>.asm` (**never commit**) | `[outdir] [filter:<regex>] [range:SSSS:OOOO-SSSS:OOOO]` |
+
+### ExportListing
+
+A plain disassembly listing per function (or per address range), one instruction per line with the image-relative address, the bytes, the instruction and its references as image-relative addresses with names. Flow references include the overrides `SetupBp7Program` installs, so near calls in the segments that straddle a 64 KB line show their real targets. Useful where the decompiler drops arguments (Real48 constants, `PUSH` sequences before calls to routines with odd signatures). Like `ExportDecompiled`, it refuses to write inside a git work tree.
 
 The default outputs go to `<project parent>\exports\`, which is `P:\msdos\TD2192\re-work\exports`. `ExportPascalStrings` and `ExportDecompiled` **refuse to write inside any git work tree**.
 

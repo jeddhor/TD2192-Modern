@@ -14,10 +14,24 @@ use thiserror::Error;
 use crate::DataDir;
 
 /// The compiled-in resource maps (TOML source, as committed under `docs/re/exe-resources/`).
-const MAPS: &[(&str, &str)] = &[(
-    "file0001.toml",
-    include_str!("../../../docs/re/exe-resources/file0001.toml"),
-)];
+const MAPS: &[(&str, &str)] = &[
+    (
+        "file0000.toml",
+        include_str!("../../../docs/re/exe-resources/file0000.toml"),
+    ),
+    (
+        "file0001.toml",
+        include_str!("../../../docs/re/exe-resources/file0001.toml"),
+    ),
+    (
+        "td2.toml",
+        include_str!("../../../docs/re/exe-resources/td2.toml"),
+    ),
+    (
+        "td3.toml",
+        include_str!("../../../docs/re/exe-resources/td3.toml"),
+    ),
+];
 
 /// Errors in a resource map itself (programming errors caught by tests).
 #[derive(Debug, Error)]

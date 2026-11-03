@@ -63,13 +63,13 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | REVIEW | RE-2 | docs/spec/flow/episode-program-flow.md rev 1 (start-up, menu, all 20 E1 mission blocks + flight 21, endings, debrief tiers, tdstatus.dat). Static; mission-1 path matches C-0002 |
-| M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
+| M1-05 | Asset load-site table | RE | M1-01 | DONE | RE-3 | 2026-11-02: docs/re/asset-load-sites.md (all E1 load sites, VGA layout); FORMATS 3/4/6.3/7/9-13 updated (path stride 501, td.men regions, stills confirmed); E2/E3 map/tileset loaders |
 | M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
 | M1-07 | Global data map + symbols | RE | M1-01 | REVIEW | RE-2 | docs/re/globals.md (front end, input + flight keys, cheat chords, player/view state, slot/projectile/explosion arrays, buffers) + 158 symbol rows (functions and data; ApplySymbols-checked on a private copy) |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | REVIEW | RE-2 | docs/re/structures.md: units (tile+pixel), mission file load map with 501-byte path stride (FORMATS 7 corrected; M2-11 parser needs the fix), ship record 1065 B, slot/projectile/explosion arrays, class table (U-008), heading codes (U-003), tile attributes (U-009) |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
 | M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | TODO | | |
-| M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | TODO | | |
+| M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | REVIEW | RE-3 | 2026-11-02: file0001.toml 82 resources (all mission titles/cards, ending, objectives, flight messages, target info, 9 comms, debrief labels/tiers, retry, dossiers, hints, background story, script-choice notices, ship library, prompts); new file0000/td2/td3 maps (4/71/62) to register in td-assets MAPS; tdtool exe-res green for file0001 |
 | M1-12 | Unknowns triage | RE | M1-01..M1-11 | TODO | | |
 
 ## M2: Static assets
@@ -83,8 +83,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M2-05 | sprite sheet + rotation sets + 16-heading assembly | RE/IM | M2-01 | DONE | main-session | 2026-11-02; rotation sets CCW (measured); 16-heading assembly in td-render; tdtool export sprites |
 | M2-06 | .pic decoder | RE/IM | M1-05 | DONE | main-session | 2026-11-02; data analysis: raw sub-rectangles, 8 with palette, 2 without (td1-17/19); sizes LIKELY pending M1-05 load sites |
 | M2-07 | portraits geometry + parser | RE/IM | M1-05 | DONE | main-session | 2026-11-02; 26/27 x (768 pal + 160x100); per-face palettes; special face codes U-019 |
-| M2-08 | fonts x3 | RE/IM | M1-05 | IN PROGRESS | main-session | Glyph geometry decoded for all 3 fonts (5x5, 8x8, 12x16) + td-formats::font; char maps LIKELY; dialogue font unknown (U-037) |
-| M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | IN PROGRESS | main-session | 13 sheets decoded (HUD bar, comm portraits, F6 indicator, heli, explosions); td.men/td.cmm/td.sel/td.wea need blit sites |
+| M2-08 | fonts x3 | RE/IM | M1-05 | REVIEW | RE-3 (RE part) | 2026-11-02 RE done: spec/render/text.md rev 1 (td.lt2 is the dialogue font, advance table, code-drawn . , " ? - !, title font map, typed text; 3 oracle frames 0-diff). IM follow-up: align td-formats char maps + td-render with the spec |
+| M2-09 | raw UI graphics dimensions + parsers | RE/IM | M1-05 | REVIEW | RE-3 (RE part) | 2026-11-02 RE done: FORMATS 12/12.1 (td.men 5 regions + blit sites, td.cmm 256x128 panel, td.wea 6x36x18, td.win rows 160-191, td.sss, td.h2; td.sel unused), spec/render/hud.md draft (display geometry, radar, weapon icon, F6 indicator, ticker). IM follow-up: parsers/CELL_SHEETS; gauges still RE (M6-07) |
 | M2-10 | dialogue parser (full grammar) | RE/IM | M2-01 | IN PROGRESS | main-session | Strict parser handles all 6 files (scene IDs, scene-13 CR quirk, mid-scene speakers, portrait-only changes, trailing spaces); field meanings open (U-016) |
 | M2-11 | mission parser + dump + path overlay | RE/IM | M1-08 | DONE | main-session | Parser per FORMATS §7 rev 2 / structures §2: paths stored as the in-memory 20x501 array (stride 501, file image from element (1,1)), slot-2 FFh->0 loader fixup in Mission::path; header bytes A/B/D kept (U-038). L1 on 60 files + m1 slot 1/2 start check; tdtool mission-map paths now follow roads |
 | M2-12 | cfg / sav / stt parsers | RE/IM | M0-10 | TODO | | |
