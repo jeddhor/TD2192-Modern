@@ -31,10 +31,15 @@ Options: `-Write` (save changes; hold the lock in `docs/STATUS.md` first), `-Ana
 | `FindPortIO.java` | no | `re-work\exports\<exe>-portio.csv` | `[out.csv]` |
 | `ExportListing.java` | no | `re-work\exports\<exe>-asm\SSSS_OOOO_<name>.asm` (**never commit**) | `[outdir] [filter:<regex>] [range:SSSS:OOOO-SSSS:OOOO]` |
 | `ExportInstructionTable.java` | no | `<outdir>\<exe>-insns.tsv` (one row per instruction: bytes, instruction mask, references) and `<exe>-funcs.tsv` (**never commit**) | `[outdir]` |
+| `DisassembleAt.java` | **yes** | console report | `at:SSSS:OOOO` (repeatable), `clear:SSSS:OOOO-SSSS:OOOO` (repeatable) |
 
 ### ExportInstructionTable
 
 Input for `tools/scripts/match-episodes.py`, the cross-episode matcher (M1-09, [episode-deltas.md §2](../../docs/re/episode-deltas.md#2-method-and-match-statistics)). Run it on `file0001.exe`, `td2.exe` and `td3.exe` into one directory, then `python tools/scripts/match-episodes.py --exports <dir> --out <dir>\match [--symbols docs/re/symbols/file0001.csv]`. The matcher reads the original exes (`--data`, default `TD2192_DATA`) for relocations and strings and writes match, hunk, operand-difference and DS-map tables (addresses only) plus, with `--symbols`, transferred `td2.csv`/`td3.csv`.
+
+### DisassembleAt
+
+Forces flow-following disassembly where auto-analysis stopped early, clears stray defined data first (`clear:`), regrows the containing or preceding function body and reports why disassembly stopped (the next code unit and any "conflicting data" error bookmark). Typical loop: `ExportListing range:` the unit, list the non-instruction gaps that are not Pascal strings, `DisassembleAt` those addresses with `clear:` over the gaps, re-export, repeat. RE-9 used it to complete E2 `Msn_UpdateB` (`td2:2236:240A..31DD`, 3540 bytes; Ghidra had stopped at `2236:27E8`) and the code gaps in `Msn_UpdateA` on a private project copy. Run `SetupBp7Program` afterwards if the new code straddles a 64 KB line.
 
 ### ExportListing
 
