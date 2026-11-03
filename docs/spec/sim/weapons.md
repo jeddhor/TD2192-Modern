@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/weapons` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions) · T2 for the drawing of shots |
-| **Confidence** | LIKELY (static reading of `0E8B:B1EC`, `0E8B:0984` and the enemy-fire step of `Sim_FlyMission`). No capture yet (§8) |
+| **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); LIKELY for hits, damage, homing and enemy volleys (static) |
 | **Tasks** | M6-01 (follow-up), feeds M7-02, M7-03, M7-05 |
 | **Unknowns** | U-041 and U-043 (resolved here), U-040 (resolved in mission-ships rev 2), U-061, U-160 |
 
@@ -27,7 +27,7 @@ All shots, of the player and of the 20 mission ships, live in one pool of 51 pro
 | Owner | DS:396E array | u8 | 0 = player, 1..20 = mission slot |
 | Weapon | `g_Weapon` DS:1CB8 | u8 | Player's selected weapon 1..6 (§3.2) |
 | Missiles | `g_Missiles` DS:1CB9 | u8 | Missiles left (HUD bar, max shown 26) |
-| Missile cooldown | `g_MissileCooldown` DS:1CBA | u8 | Set to 4 on a launch, −1 per tick (tick-order step 34) |
+| Missile cooldown | `g_MissileCooldown` DS:1CBA | u8 | Set to 4 on a launch; −1 per tick **before** the fire keys are handled, so it reads 4, 3, 2, 1, 0 in the ticks after a launch and the next launch can come 4 ticks later (C-0011; rev 1 had the decrement after the launch) |
 | Difficulty | DS:13DE | u8 | Multiplier of damage to the player; 1 at flight start (cheat chords change it, globals §5) |
 
 World pixel of a shot = tile × 32 + offset (per axis). World pixel of a mission ship = slot tile × 32 + slot offset (DS:3ACA/3AF2). The player's hit reference = `((viewX + 5) × 32 + viewSubX, (viewY + 3) × 32 + viewSubY)`.
@@ -95,7 +95,7 @@ player volley:  for m = 1..17 with shot_table[class][m] != 0:
     slot := highest free slot in 8..48 (none -> skip this muzzle)
     life := 1; tile := (viewX + 4, viewY + 3); owner := 0; heading := player heading
     kind := shot_table[class][m] − 1
-    offsetX := 4 × round(viewSubX / 4) + muzzle[heading][m].dx
+    offsetX := 4 × round(viewSubX / 4) − 16 + muzzle[heading][m].dx      (rev 2: the −16 is observed, C-0011)
     offsetY := viewSubY − 28 + muzzle[heading][m].dy
     sound: kind = class (or 2 while DS:1703 is set), at the view
 player missile: slot := lowest free slot in 40..50 (none: the original writes slot 200, out of the
@@ -177,6 +177,9 @@ To be captured (§8). Static examples:
 | 1 | Class 2 player, heading 8, Space held for 4 ticks | 2 volleys of 4 shots (every second tick), kinds 0, slots 48, 47, 46, 45 first |
 | 2 | Kind 1 shot hits a class 7 ship with shields 25 | shields 15, armour unchanged |
 | 3 | Kind 0 shot hits the player (difficulty 1, shields 1, armour 25) | shields 0, armour 24 |
+| 4 | C-0011: class 4, heading 8, view sub (32, 16), Space held from tick 25 | volleys at ticks 26, 28, 30, … (back page 1 only) into slots 48/47 then 46/45; offsets (23, −1) and (38, −1) (muzzles 6, 7: dx 7 and 22); each shot moves one tile up and is freed by the map test two updates later |
+| 5 | C-0011: Tab, then Space taps (weapon 4, 4 missiles) | missile in slot 40 at offsets (30, 4), missiles 4 → 3, cooldown 4, 3, 2, 1, 0; the held Space byte is cleared by the launch |
+| 6 | C-0011: heading 6, Space held | volleys at offsets (36, −3) and (36, 12) (muzzles 6, 7 of heading 6: (20, 9), (20, 24)) |
 
 ## 7. Presentation and audio hooks
 
@@ -204,3 +207,4 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial |
+| 2 | 2026-11-02 | main session (Verifier) | Capture C-0011 (`wpn-e1m1.txt`); L5 test `crates/td-sim/tests/oracle_weapons.rs` matches every frame. Corrections: volley offset X has a −16; the cooldown decrements before the fire keys. Vectors 4–6 |

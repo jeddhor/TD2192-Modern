@@ -383,7 +383,7 @@ fn missiles_need_a_new_press_and_a_cooldown() {
     f.tick(&w, &held(&[FlightKey::Tab]), &mut ev);
     assert_eq!(f.weapon, 4);
     f.tick(&w, &held(&[FlightKey::Space]), &mut ev);
-    assert_eq!((f.missiles, f.missile_cooldown), (3, 3));
+    assert_eq!((f.missiles, f.missile_cooldown), (3, 4));
     // Held without a new make code: no second missile.
     let mut still = TickControls::default();
     still.set_down(FlightKey::Space);

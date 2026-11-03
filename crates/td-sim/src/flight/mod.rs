@@ -498,10 +498,11 @@ impl Flight {
             self.shots.ship_volleys(&self.ships, &world.muzzles, events);
         }
         self.ships.clear_fire_requests();
-        // 33. Player weapons and infra-red.
-        self.player_specials(world, events);
-        // 34. Missile cooldown (the cheat chords checked here are not ported).
+        // 33–34. The missile cooldown counts down *before* the fire keys are handled (C-0011:
+        // 4, 3, 2, 1, 0 in the ticks after a launch, where weapons.md §2 implies 3, 2, 1, 0),
+        // then weapons and infra-red; the cheat chords checked at step 34 are not ported.
         self.missile_cooldown = self.missile_cooldown.saturating_sub(1);
+        self.player_specials(world, events);
         // 35. End of flight.
         if self.aborted || self.end_ticks == 35 || self.lost || self.succeeded {
             TickResult::Finished

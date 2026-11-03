@@ -572,3 +572,11 @@ kind = "u8_table"
 offset = 0x4124C
 count = 342
 note = "DS:035C: signed (dx, dy) byte pairs; muzzle m of heading digit h at 34*h + 2*m (weapons.md 3.1)"
+
+# HUD tables (RE-6, M6-07, 2026-11-02). DGROUP typed constants: file offset = 19136 + 3C430h + DS offset.
+[[resource]]
+id = "hud.radar_tile_colours"
+kind = "u8_table"
+offset = 0x41154
+count = 71
+note = "k_TileRadarColour DS:0264: radar colour of each map tile 0..70 (render/hud.md 3.4, 4.6)"
