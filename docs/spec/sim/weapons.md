@@ -8,7 +8,7 @@
 | **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions) · T2 for the drawing of shots |
 | **Confidence** | LIKELY (static reading of `0E8B:B1EC`, `0E8B:0984` and the enemy-fire step of `Sim_FlyMission`). No capture yet (§8) |
 | **Tasks** | M6-01 (follow-up), feeds M7-02, M7-03, M7-05 |
-| **Unknowns** | U-041 and U-043 (resolved here), U-040, U-061 |
+| **Unknowns** | U-041 and U-043 (resolved here), U-040 (resolved in mission-ships rev 2), U-061, U-160 |
 
 ## 1. Summary
 
@@ -51,7 +51,7 @@ Damage to a ship by kind k: `(k + 1)² + 4 + 2k` → k = 0: 5, 1: 10, 2: 17, 3: 
 
 The volleys agree with the class chart's armament lines (truck and transport unarmed, four light pulsers for classes 2 and 8, two weapons for 4 and 7), which supports the class names in structures §6.
 
-Muzzle offsets (dx, dy) per heading h and muzzle m are signed bytes at DS:035C + 34h + 2m (h = 1..9; heading 5 is unused). For example heading 8, muzzles 6 and 7: (7, 11) and (22, 11); heading 6, muzzles 1, 2, 4, 5: (16, 25), (16, 9), (31, 19), (31, 15). Two-digit headings index beyond the table (U-040).
+Muzzle offsets (dx, dy) per heading h and muzzle m are signed bytes at DS:035C + 34h + 2m (h = 1..9; heading 5 is unused). For example heading 8, muzzles 6 and 7: (7, 11) and (22, 11); heading 6, muzzles 1, 2, 4, 5: (16, 25), (16, 9), (31, 19), (31, 15). Two-digit headings index beyond the table: mission ships do fire on them (their volley uses the ship's current heading), reading other globals ([mission-ships §4.4.2](mission-ships.md), OB-017, U-160).
 
 ### 3.2 Player weapons per class (set at flight start, `0E8B:C751..C86C`)
 
@@ -186,7 +186,7 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 
 - [ ] Q1 (VE): capture a volley, a missile launch and a ship kill in E1M1 (class 4) with per-frame dumps of the projectile arrays (heap; follow the far pointers at DS:396E..398A) and the ship records.
 - [ ] Q2: the five destruction-explosion offsets and the `06C5` distance formula (presentation).
-- [ ] Q3 (U-040): what the original reads for two-digit headings in the muzzle table.
+- [x] Q3 (U-040): answered in [mission-ships §4.4.2](mission-ships.md): bytes at DS:035C + 34 × heading + 2m (other globals); port policy U-160.
 
 ## 9. Provenance
 
