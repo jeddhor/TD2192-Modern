@@ -148,7 +148,7 @@ fn real_main() -> Result<()> {
             None => Box::new(td_flow::Episode1::new(
                 &dir,
                 &resources,
-                Box::new(flight::ArenaLauncher),
+                Box::new(flight::ArenaLauncher::default()),
             )?),
         },
     };

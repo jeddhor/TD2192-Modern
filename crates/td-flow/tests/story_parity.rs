@@ -2,9 +2,11 @@
 //! (`docs/spec/flow/episode-program-flow.md` §6; `docs/re/dynamic-observations.md`). Data-gated
 //! (TD2192_DATA; the frame comparisons also TD2192_ORACLE). No captured pixels are stored.
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 
 use td_assets::{DataDir, ExeResources};
 use td_audio::AudioCommand;
@@ -12,7 +14,7 @@ use td_flow::campaign::{Campaign, E1_BLOCKS, Step};
 use td_flow::program::Program;
 use td_flow::settings::Settings;
 use td_flow::story::{self, StoryAssets, StoryScreen};
-use td_flow::{FlowContext, PlaceholderLauncher};
+use td_flow::{FlightLauncher, FlightScreen, FlowContext, PlaceholderLauncher};
 use td_formats::palette::Palette;
 use td_input::{Key, TickInput};
 use td_test_support::{require_data, require_oracle};
@@ -75,7 +77,6 @@ fn every_string_reference_resolves() {
         for s in b
             .pre
             .iter()
-            .chain(b.brief)
             .chain(b.post)
             .chain(b.post_failed.unwrap_or(&[]))
         {
@@ -139,7 +140,7 @@ fn main_menu_matches_the_original() {
     let _data = require_data!();
     let oracle = require_oracle!();
     let (dir, res) = load().unwrap();
-    let ep = td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher)).unwrap();
+    let ep = td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
     let mut fb = td_render::Framebuffer::new();
     td_flow::Screen::draw(&ep, &mut fb);
     let (dac, frame) = oracle_frame(&oracle, "f00000997_320x200_main-menu.vga");
@@ -160,7 +161,7 @@ fn play_block(
     let settings = Settings::default();
     let mut audio = Vec::new();
     let mut all = Vec::new();
-    let mut prog = Program::new(&dir, &res, Box::new(PlaceholderLauncher)).unwrap();
+    let mut prog = Program::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
     let mut c = Campaign::new(mission, 0);
     for frame in 0..400_000u32 {
         let mut ctx = FlowContext {
@@ -214,4 +215,162 @@ fn death_without_retry_is_game_over() {
             .iter()
             .any(|a| matches!(a, AudioCommand::PlayMusic { looping: false, .. }))
     );
+}
+
+type Counter = Rc<Cell<u32>>;
+
+/// A launcher that counts its `Random` calls and flights and returns `r` (placeholder
+/// flights).
+#[derive(Debug)]
+struct CountingLauncher {
+    r: u16,
+    calls: Counter,
+    launches: Counter,
+}
+
+impl FlightLauncher for CountingLauncher {
+    fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
+        self.launches.set(self.launches.get() + 1);
+        PlaceholderLauncher::default().launch(ctx, flight)
+    }
+
+    fn random(&mut self, _n: u16) -> u16 {
+        self.calls.set(self.calls.get() + 1);
+        self.r
+    }
+}
+
+fn counting(r: u16) -> (CountingLauncher, Counter, Counter) {
+    let (calls, launches) = (Counter::default(), Counter::default());
+    let l = CountingLauncher {
+        r,
+        calls: calls.clone(),
+        launches: launches.clone(),
+    };
+    (l, calls, launches)
+}
+
+/// Runs a block with `key(campaign, frame)` as the input of each frame until it ends or
+/// `until()` holds; returns the frame count.
+fn drive(
+    prog: &mut Program,
+    c: &mut Campaign,
+    key: impl Fn(&Campaign, u32) -> Option<Key>,
+    until: impl Fn() -> bool,
+    audio: &mut Vec<AudioCommand>,
+) -> u32 {
+    let (dir, res) = (prog.data.clone(), prog.res.clone());
+    let settings = Settings::default();
+    for frame in 0..400_000u32 {
+        let mut ctx = FlowContext {
+            data: &dir,
+            resources: &res,
+            settings: &settings,
+            audio,
+        };
+        let input = TickInput {
+            pressed: key(c, frame).into_iter().collect(),
+            ..TickInput::default()
+        };
+        if c.step(prog, &mut ctx, &input).is_some() || until() {
+            return frame;
+        }
+    }
+    panic!("block never ended");
+}
+
+#[test]
+fn script_choice_matches_the_original() {
+    // screens §3.2; C-0002 f710 (entries 85, 92, 102 and the layout).
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let (dir, res) = load().unwrap();
+    let settings = Settings::default();
+    let mut audio = Vec::new();
+    let mut ctx = FlowContext {
+        data: &dir,
+        resources: &res,
+        settings: &settings,
+        audio: &mut audio,
+    };
+    let launcher = Box::new(PlaceholderLauncher::default());
+    let mut ep = td_flow::Episode1::new(&dir, &res, launcher).unwrap();
+    for _ in 0..40 {
+        td_flow::Screen::tick(&mut ep, &mut ctx, &TickInput::default());
+    }
+    let mut fb = td_render::Framebuffer::new();
+    td_flow::Screen::draw(&ep, &mut fb);
+    let (dac, frame) = oracle_frame(&oracle, "f00000710_320x200_script-choice.vga");
+    let d: Vec<usize> = (0..64_000).filter(|&i| fb.pixels[i] != frame[i]).collect();
+    let first = d.first().map(|i| (i % 320, i / 320));
+    assert!(d.is_empty(), "{} pixels differ, first {first:?}", d.len());
+    for e in frame.iter().copied().collect::<BTreeSet<u8>>() {
+        let e = usize::from(e);
+        assert_eq!(fb.palette.colors[e], dac.colors[e], "entry {e}");
+    }
+}
+
+#[test]
+fn retry_prompt_matches_the_original() {
+    // screens §3.7; C-0002 f6300: exactly one Random(10) result gives the captured screen.
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let (dir, res) = load().unwrap();
+    let (dac, frame) = oracle_frame(&oracle, "f00006300_320x200_retry-screen.vga");
+    let mut matches = Vec::new();
+    for r in 0..10 {
+        let (l, calls, _) = counting(r);
+        let mut prog = Program::new(&dir, &res, Box::new(l)).unwrap();
+        let mut s = prog.retry_prompt();
+        assert_eq!(calls.get(), 1, "one Random call per prompt");
+        fade_in(&mut s, 40);
+        let ours = s.screen();
+        if (0..64_000).all(|i| ours.pixels[i] == frame[i]) {
+            for e in [39, 40] {
+                assert_eq!(ours.palette.colors[e], dac.colors[e], "entry {e}");
+            }
+            matches.push(r);
+        }
+    }
+    assert_eq!(matches.len(), 1, "taunts matching f6300: {matches:?}");
+}
+
+#[test]
+fn a_retry_draws_one_random_number() {
+    let _data = require_data!();
+    let (dir, res) = load().unwrap();
+    let (l, calls, _) = counting(3);
+    let mut prog = Program::new(&dir, &res, Box::new(l)).unwrap();
+    let mut c = Campaign::new(1, 0);
+    let d = Key::letter('d').unwrap();
+    let key = |c: &Campaign, f: u32| {
+        f.is_multiple_of(40)
+            .then_some(if c.in_retry_prompt() { Key::ESCAPE } else { d })
+    };
+    drive(&mut prog, &mut c, key, || false, &mut Vec::new());
+    assert_eq!(calls.get(), 1);
+}
+
+#[test]
+fn esc_on_the_title_card_goes_straight_to_the_flight() {
+    // screens §3.12, test vector 3: no dialogue 1, no `low` cue and no hint before flight 1.
+    let _data = require_data!();
+    let (dir, res) = load().unwrap();
+    let (l, _, launches) = counting(0);
+    let mut prog = Program::new(&dir, &res, Box::new(l)).unwrap();
+    let mut c = Campaign::new(1, 0);
+    let mut audio = Vec::new();
+    let esc = |_: &Campaign, f: u32| (f == 40).then_some(Key::ESCAPE);
+    let launched = || launches.get() > 0;
+    let frame = drive(&mut prog, &mut c, esc, launched, &mut audio);
+    assert!(
+        launched() && frame < 200,
+        "flight launched at frame {frame}"
+    );
+    // The only music so far is the flight's own song, started by the launch.
+    let songs = audio
+        .iter()
+        .filter(|a| matches!(a, AudioCommand::PlayMusic { .. }))
+        .count();
+    assert_eq!(songs, 1);
 }

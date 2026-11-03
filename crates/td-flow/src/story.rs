@@ -60,20 +60,63 @@ enum Phase {
     Done,
 }
 
-/// A typed text line: pen and text.
-type TypedLine = ((i32, i32), String);
+/// One line shown after the fade-in (screens §2.3): typed (`Txt_TypeString`, opaque on
+/// colour 0, one character per frame) or drawn at once (`Txt_DrawString`, transparent).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextItem {
+    pub pen: (i32, i32),
+    pub text: String,
+    pub ink: u8,
+    /// `Crt.Delay` before the line, in milliseconds.
+    pub delay_ms: u32,
+    pub drawn: bool,
+}
+
+impl TextItem {
+    /// A typed line.
+    #[must_use]
+    pub fn typed(pen: (i32, i32), text: impl Into<String>, ink: u8) -> Self {
+        Self {
+            pen,
+            text: text.into(),
+            ink,
+            delay_ms: 0,
+            drawn: false,
+        }
+    }
+
+    /// A line drawn at once.
+    #[must_use]
+    pub fn drawn(pen: (i32, i32), text: impl Into<String>, ink: u8) -> Self {
+        Self {
+            drawn: true,
+            ..Self::typed(pen, text, ink)
+        }
+    }
+
+    /// The same line after a `Crt.Delay(ms)`.
+    #[must_use]
+    pub fn after(self, ms: u32) -> Self {
+        Self {
+            delay_ms: ms,
+            ..self
+        }
+    }
+}
 
 /// One story screen.
 pub struct StoryScreen {
     screen: Framebuffer,
     pal: Palette,
     hold: Hold,
-    /// Lines typed after the fade-in (hint screens), with their ink.
-    typed: Vec<TypedLine>,
-    ink: u8,
+    /// Lines shown after the fade-in.
+    items: Vec<TextItem>,
     font: Option<Font>,
-    /// Second page (help): shown after the first wait, then held again.
-    next_page: Option<(Box<[u8]>, Palette)>,
+    /// Hint screens (screens §3.3): the key buffer is flushed after the fade-in, and a key
+    /// waiting after a line skips the remaining lines.
+    hint_skip: bool,
+    /// Second page (help, story so far): shown after the first wait, then held again.
+    next_page: Option<(Box<[u8]>, Palette, Hold)>,
     phase: Phase,
     wait: u32,
     keys: Vec<Key>,
@@ -112,6 +155,11 @@ fn seconds(s: u32) -> u32 {
     (f64::from(s) * RETRACE_HZ).round() as u32
 }
 
+/// `Crt.Delay(ms)` in frames at the retrace rate (T2).
+fn ms_frames(ms: u32) -> u32 {
+    (f64::from(ms) * RETRACE_HZ / 1000.0).round() as u32
+}
+
 /// `Round(x)` of a non-negative `n / 2` (halves away from zero).
 fn round_half(n: i32) -> i32 {
     (n + 1).div_euclid(2)
@@ -124,9 +172,9 @@ impl StoryScreen {
             screen: Framebuffer::new(),
             pal: Palette::default(),
             hold,
-            typed: Vec::new(),
-            ink: 0,
+            items: Vec::new(),
             font: None,
+            hint_skip: false,
             next_page: None,
             phase: Phase::FadeIn(0),
             wait: FADE_FRAMES_PER_LEVEL,
@@ -166,11 +214,11 @@ impl StoryScreen {
         self.phase == Phase::Done
     }
 
-    /// Lines to type (one character per frame) after the fade-in, before the wait.
-    pub fn with_typed(mut self, font: Font, ink: u8, lines: Vec<TypedLine>) -> Self {
+    /// Lines to show after the fade-in, before the wait.
+    #[must_use]
+    pub fn with_items(mut self, font: Font, items: Vec<TextItem>) -> Self {
         self.font = Some(font);
-        self.ink = ink;
-        self.typed = lines;
+        self.items = items;
         self
     }
 
@@ -189,21 +237,26 @@ impl StoryScreen {
                         *level = k + 1;
                         self.wait = FADE_FRAMES_PER_LEVEL;
                     } else {
-                        self.phase = Phase::Typing(0, self.typewriter(0));
+                        if self.hint_skip {
+                            // The hint screen flushes the BIOS buffer after its fade-in.
+                            self.keys.clear();
+                        }
+                        self.phase = self.next_item(0);
                     }
                 }
                 Phase::Typing(i, t) => {
-                    let Some(font) = &self.font else {
+                    let i = *i;
+                    let (Some(font), Some(item)) = (&self.font, self.items.get(i)) else {
                         self.phase = self.hold_phase();
                         continue;
                     };
-                    if let Some(frames) = t.step(&mut self.screen, font) {
+                    if item.drawn {
+                        small_text::draw(&mut self.screen, font, &item.text, item.pen, item.ink);
+                        self.phase = self.next_item(i + 1);
+                    } else if let Some(frames) = t.step(&mut self.screen, font) {
                         self.wait = frames;
-                    } else if *i + 1 < self.typed.len() {
-                        let n = *i + 1;
-                        self.phase = Phase::Typing(n, self.typewriter(n));
                     } else {
-                        self.phase = self.hold_phase();
+                        self.phase = self.next_item(i + 1);
                     }
                 }
                 Phase::Hold(left) => {
@@ -228,9 +281,11 @@ impl StoryScreen {
                     if k > 0 {
                         *level = k - 1;
                         self.wait = FADE_FRAMES_PER_LEVEL;
-                    } else if let Some((pixels, pal)) = self.next_page.take() {
+                    } else if let Some((pixels, pal, hold)) = self.next_page.take() {
                         self.screen.pixels.copy_from_slice(&pixels);
                         self.pal = pal;
+                        self.hold = hold;
+                        self.items.clear();
                         self.phase = Phase::FadeIn(0);
                         self.wait = FADE_FRAMES_PER_LEVEL;
                     } else {
@@ -241,10 +296,18 @@ impl StoryScreen {
         }
     }
 
-    fn typewriter(&self, i: usize) -> Typewriter {
-        match self.typed.get(i) {
-            Some((pen, text)) => Typewriter::new(text, *pen, self.ink, 0),
-            None => Typewriter::new("", (0, 0), 0, 0),
+    /// Starts line `n` after its delay, or the wait when the lines are done. On a hint
+    /// screen a key waiting after a line skips the rest (screens §3.3).
+    fn next_item(&mut self, n: usize) -> Phase {
+        if self.hint_skip && n > 0 && !self.keys.is_empty() {
+            return self.hold_phase();
+        }
+        match self.items.get(n) {
+            Some(item) => {
+                self.wait = ms_frames(item.delay_ms);
+                Phase::Typing(n, Typewriter::new(&item.text, item.pen, item.ink, 0))
+            }
+            None => self.hold_phase(),
         }
     }
 
@@ -439,29 +502,70 @@ pub fn still_18(
     Ok(s)
 }
 
-/// `td1-15.pic` (`051A:4979`) at (32, 30); 10 s. ASSUMPTION(U-122): the original's
-/// split-screen/palette effect is not specified; the still is shown plainly.
+/// `td1-15.pic` (`Scene_StillTd1_15` `051A:4979`, screens §3.9): a plain still. Row r, byte
+/// c (c = 0..253) at (33 + c, 30 + r); column 32 shows the byte before the row buffer (0,
+/// U-227); byte 254 of each row is never shown. 10 s.
 pub fn still_15(data: &DataDir) -> Result<StoryScreen, StoryError> {
-    still_screen(data, "td1-15.pic", (32, 30), Hold::Seconds(10))
+    const NAME: &str = "td1-15.pic";
+    let layout = Picture::layout(NAME).ok_or_else(|| AssetError::NotFound(NAME.to_owned()))?;
+    let pic = Picture::parse(&data.read(NAME)?, layout)?;
+    let mut s = StoryScreen::blank(Hold::Seconds(10));
+    if let Some(p) = &pic.palette {
+        s.pal = p.clone();
+    }
+    for (r, row) in pic.pixels.chunks_exact(pic.width).enumerate() {
+        let y = 30 + r as i32;
+        s.screen.put(32, y, 0);
+        for (c, &p) in row.iter().take(254).enumerate() {
+            s.screen.put(33 + c as i32, y, p);
+        }
+    }
+    Ok(s)
 }
 
 /// Hint text entry and colour. Spec: text.md §4.5.
 pub const HINT_ENTRY: u8 = 240;
 
-/// Lines of `e1.hints` per hint screen, as (first line, count, pen y of the first line).
-///
-/// ASSUMPTION(U-121): only hint 1's first two paragraphs are pinned by C-0002 frame 3332 (pen
-/// y 40 and 100, 7-pixel pitch, x 10). The grouping of the other lines and the paragraph
-/// positions are provisional.
-type Paragraph = (usize, usize, i32);
-const HINT_PARAGRAPHS: [(u8, &[Paragraph]); 3] = [
-    (1, &[(8, 7, 40), (15, 4, 100), (19, 1, 135), (7, 1, 160)]),
-    (2, &[(20, 3, 40), (7, 1, 160)]),
-    (6, &[(0, 3, 40), (3, 2, 70), (5, 2, 93), (7, 1, 160)]),
+/// Lines of `e1.hints` per hint screen as (index, pen y), all typed at pen x 10 (screens
+/// §3.3; line 7 is the shared "press a key" line).
+const HINT_LINES: [(u8, &[(usize, i32)]); 3] = [
+    (
+        1,
+        &[
+            (8, 40),
+            (9, 47),
+            (10, 54),
+            (11, 61),
+            (12, 68),
+            (13, 75),
+            (14, 82),
+            (15, 100),
+            (16, 107),
+            (17, 114),
+            (18, 121),
+            (19, 170),
+            (7, 185),
+        ],
+    ),
+    (2, &[(20, 40), (21, 47), (22, 54), (7, 170)]),
+    (
+        6,
+        &[
+            (0, 40),
+            (1, 47),
+            (2, 54),
+            (3, 68),
+            (4, 75),
+            (5, 96),
+            (6, 103),
+            (7, 130),
+        ],
+    ),
 ];
 
-/// A pre-flight hint screen (`051A:2B26`): the `secret.pic` banner at x = 1..320, rows 0..31
-/// (OB-003), then the hint typed in entry 240 = (63, 10, 10); waits for a key.
+/// A pre-flight hint screen (`Scene_HintScreen` `051A:2B26`, screens §3.3): the `secret.pic`
+/// banner at x = 1..320, rows 0..31 (OB-003), then the hint lines typed in entry 240 =
+/// (63, 10, 10); a key waiting after a line skips the rest; then a key.
 pub fn hint(
     data: &DataDir,
     assets: &StoryAssets,
@@ -474,17 +578,19 @@ pub fn hint(
         g: 10,
         b: 10,
     };
-    let mut lines = Vec::new();
-    let paragraphs = HINT_PARAGRAPHS
+    let lines = HINT_LINES
         .iter()
         .find(|(h, _)| *h == n)
-        .map_or(&[][..], |(_, p)| *p);
-    for &(first, count, y) in paragraphs {
-        for (k, text) in hints.iter().skip(first).take(count).enumerate() {
-            lines.push(((10, y + 7 * k as i32), text.clone()));
-        }
-    }
-    Ok(s.with_typed(assets.small.clone(), HINT_ENTRY, lines))
+        .map_or(&[][..], |(_, l)| *l);
+    let items = lines
+        .iter()
+        .map(|&(i, y)| {
+            let text = hints.get(i).map_or("", String::as_str);
+            TextItem::typed((10, y), text, HINT_ENTRY)
+        })
+        .collect();
+    s.hint_skip = true;
+    Ok(s.with_items(assets.small.clone(), items))
 }
 
 /// The two help pages of `td.hlp` (`0000:02AF`), each held until a key.
@@ -508,15 +614,12 @@ pub fn help(data: &DataDir) -> Result<StoryScreen, StoryError> {
     let mut s = StoryScreen::blank(Hold::Key);
     s.screen.pixels.copy_from_slice(&page(0)?);
     s.pal = pal.clone();
-    s.next_page = Some((page(1)?, pal));
+    s.next_page = Some((page(1)?, pal, Hold::Key));
     Ok(s)
 }
 
-/// A text-only screen on black with `td.pal` (orders, dossiers, debrief, retry prompt,
-/// notices): `lines` are (pen, text) in `ink`.
-///
-/// ASSUMPTION(U-121): the original layouts of these screens are not specified; the port puts
-/// the lines at the pens the caller gives.
+/// A text-only screen on black with `td.pal` (port notices): `lines` are (pen, text) drawn in
+/// `ink`.
 pub fn text_screen(
     assets: &StoryAssets,
     lines: &[((i32, i32), String)],
@@ -530,6 +633,71 @@ pub fn text_screen(
         small_text::draw(&mut s.screen, &assets.small, text, *pen, ink.0);
     }
     s
+}
+
+/// A typed page on black (screens §3.4–§3.7): `palette` with `entries` changed, `items` shown
+/// after the fade-in, then `hold`.
+pub fn typed_page(
+    assets: &StoryAssets,
+    palette: &Palette,
+    entries: &[(u8, Rgb6)],
+    items: Vec<TextItem>,
+    hold: Hold,
+) -> StoryScreen {
+    let mut s = StoryScreen::blank(hold);
+    s.pal = palette.clone();
+    for &(e, c) in entries {
+        s.pal.colors[usize::from(e)] = c;
+    }
+    s.with_items(assets.small.clone(), items)
+}
+
+/// Types `text` at once into the screen before the fade-in (the retry taunt, screens §3.7).
+pub fn type_now(s: &mut StoryScreen, font: &Font, text: &str, pen: (i32, i32), ink: u8) {
+    Typewriter::new(text, pen, ink, 0).finish(&mut s.screen, font);
+}
+
+/// The two pages of the story so far (`Scene_BackgroundStory` `051A:8EAA`, screens §3.8):
+/// `javelin.td` with `lines[0..6]` (30 s), then `city.td` with `lines[6..18]` (45 s); every
+/// line drawn with a shadow in 253 at (4, y + 1) and the text in 254 at (5, y). Palette:
+/// entries 0..250 := component × 6 div 9, entry 254 G and B := 63.
+pub fn story_so_far(
+    data: &DataDir,
+    assets: &StoryAssets,
+    lines: &[String],
+) -> Result<StoryScreen, StoryError> {
+    let page = |file: &str, ys: &[i32], first: usize| -> Result<Framebuffer, StoryError> {
+        let img = ScrImage::parse(&data.read(file)?)?;
+        let mut fb = Framebuffer::new();
+        fb.pixels.copy_from_slice(&img.pixels);
+        fb.palette = img.palette.clone();
+        for c in fb.palette.colors.iter_mut().take(251) {
+            *c = Rgb6 {
+                r: c.r * 6 / 9,
+                g: c.g * 6 / 9,
+                b: c.b * 6 / 9,
+            };
+        }
+        fb.palette.colors[254].g = 63;
+        fb.palette.colors[254].b = 63;
+        for (k, &y) in ys.iter().enumerate() {
+            let text = lines.get(first + k).map_or("", String::as_str);
+            small_text::draw(&mut fb, &assets.small, text, (4, y + 1), 253);
+            small_text::draw(&mut fb, &assets.small, text, (5, y), 254);
+        }
+        Ok(fb)
+    };
+    let one = page("javelin.td", &[15, 35, 55, 75, 95, 115], 0)?;
+    let two = page(
+        "city.td",
+        &[10, 20, 30, 40, 50, 60, 80, 90, 100, 110, 130, 140],
+        6,
+    )?;
+    let mut s = StoryScreen::blank(Hold::Seconds(30));
+    s.screen.pixels.copy_from_slice(&one.pixels);
+    s.pal = one.palette;
+    s.next_page = Some((two.pixels, two.palette, Hold::Seconds(45)));
+    Ok(s)
 }
 
 #[cfg(test)]
@@ -588,10 +756,13 @@ mod tests {
     #[test]
     fn typed_lines_come_after_the_fade_in() {
         let font = Font::parse(&vec![0xF7; FontKind::Small.file_len()], FontKind::Small).unwrap();
-        let mut s = StoryScreen::blank(Hold::Key).with_typed(
+        let mut s = StoryScreen::blank(Hold::Key).with_items(
             font,
-            240,
-            vec![((10, 40), "ab".into()), ((10, 47), "c".into())],
+            vec![
+                TextItem::typed((10, 40), "ab", 240),
+                TextItem::typed((10, 47), "c", 240),
+                TextItem::drawn((10, 60), "d", 39).after(100),
+            ],
         );
         for _ in 0..34 {
             s.step(&TickInput::default());
@@ -605,6 +776,39 @@ mod tests {
         s.step(&TickInput::default());
         assert_eq!(s.screen().get(12, 48), Some(240), "second line");
         assert!(matches!(s.phase, Phase::Typing(1, _)));
+        // The drawn line waits for its Crt.Delay(100) (7 frames), then appears at once.
+        for _ in 0..7 {
+            s.step(&TickInput::default());
+        }
+        assert_eq!(s.screen().get(12, 61), Some(0));
+        s.step(&TickInput::default());
+        assert_eq!(s.screen().get(12, 61), Some(39));
+    }
+
+    #[test]
+    fn a_key_after_a_hint_line_skips_the_rest() {
+        let font = Font::parse(&vec![0xF7; FontKind::Small.file_len()], FontKind::Small).unwrap();
+        let mut s = StoryScreen::blank(Hold::Key).with_items(
+            font,
+            vec![
+                TextItem::typed((10, 40), "a", 240),
+                TextItem::typed((10, 47), "b", 240),
+            ],
+        );
+        s.hint_skip = true;
+        // A key during the fade-in is flushed with the buffer.
+        s.step(&press(Key::SPACE));
+        for _ in 0..33 {
+            s.step(&TickInput::default());
+        }
+        assert!(matches!(s.phase, Phase::Typing(0, _)));
+        // A key while line 0 types: line 1 is skipped, and the wait consumes the key.
+        s.step(&press(Key::SPACE));
+        for _ in 0..3 {
+            s.step(&TickInput::default());
+        }
+        assert_eq!(s.screen().get(12, 48), Some(0), "line 1 not typed");
+        assert!(matches!(s.phase, Phase::FadeOut(_)));
     }
 
     #[test]
