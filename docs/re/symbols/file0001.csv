@@ -1,11 +1,58 @@
 address,kind,name,signature,comment,confidence,source_task
+0000:02AF,func,UI_MenuHelp,,td.hlp from the main menu: two 320x200 pages shown in turn,LIKELY,M1-05
 0000:0F06,func,Main_CampaignLoop,,mission sequencer: calls Sim_FlyMission 21 times,LIKELY,M1-06
+0000:2E88,func,UI_LoadMainMenu,,loads td.men regions into VGA (menu screen + off-screen boxes) and tdmen.pal,CONFIRMED,M1-05
+0000:330E,func,UI_ShowMenuBox,,latched copy of 32 VGA rows from 8980h + n*0B00h to menu rows 84..115,CONFIRMED,M2-09
+0000:3381,func,UI_MainMenuLoop,,"main menu: item highlight, confirmation boxes, tdstatus.dat writes",LIKELY,M2-09
 0000:4526,func,Main_Entry,,"program entry: calls each unit init (System first), then the main body",CONFIRMED,M1-01
 0000:454E,label,Main_Body,,main block after the init chain,CONFIRMED,M1-01
+051A:0000,func,Gfx_WaitRetraceBit,,polls 3DAh until bit 3 is set (returns at once during a retrace); per-character delay of typed text,CONFIRMED,M2-08
+051A:0016,func,Gfx_FadeInScene,,"DAC entries 1..255 from black to g_Palette in 17 steps (k/16, Real48 Round), one per retrace; sets g_ScreenLit",CONFIRMED,M5-04
+051A:013F,func,Gfx_FadeOutScene,,reverse of Gfx_FadeInScene (k = 16..0); clears g_ScreenLit,CONFIRMED,M5-04
+051A:0269,func,Gfx_ScrollTextUp,,"(xByte,row,widthBytes,count) latched copy moving rows row+1..row+count-1 up by one",CONFIRMED,M5-04
+051A:02D7,func,Txt_MeasureTitle,,width of a td-let.cin string for centring,CONFIRMED,M2-08
+051A:042A,func,Txt_DrawTitle,,"(x,y,s,colour) td-let.cin text: UpCase, glyph map, only 0F7h pixels drawn",CONFIRMED,M2-08
+051A:088F,func,Txt_DrawGlyph,,"(x,y,ch,colour,opaque) one td.lt2 glyph, recoloured; punctuation drawn by code",CONFIRMED,M2-08
+051A:0B9F,func,Txt_DrawString,,"(x,y,s,colour) td.lt2 string, transparent, proportional advance",CONFIRMED,M2-08
+051A:0F04,func,Txt_DrawStringOpaque,,as Txt_DrawString with the glyph cell background filled,CONFIRMED,M2-08
+051A:1269,func,Txt_TypeString,,opaque string typed one character per retrace with a block cursor,CONFIRMED,M2-08
+051A:1618,func,Dlg_LoadPortrait,,"(side,face,name,colour) newfaces.td record into one half of rows 0..99, palette 0..111 or 112..223, name below",CONFIRMED,M5-04
+051A:1A40,func,Inp_WaitKeyOrButton,,waits for a key or joystick button; Esc sets g_SkipRequested,CONFIRMED,M5-04
+051A:1AA3,func,Flow_WaitSecondsOrKey,,"waits n seconds (DOS time, 16-bit centiseconds) or a key/button; Esc sets g_SkipRequested",CONFIRMED,M5-04
+051A:1BF7,func,Dlg_ShowLine,,"speaker half at full brightness, other at half; types the line at (2,175); scrolls 7 px",CONFIRMED,M5-04
+051A:1DA1,func,Txt_DrawStringOnce,,"loads td.lt2, draws one string, frees the font",CONFIRMED,M2-08
+051A:1E5A,func,Scene_Hangar,,hangar.scr with three caption lines; 10 s,CONFIRMED,M1-05
+051A:2B26,func,Scene_HintScreen,,secret.pic banner + typed hint text chosen by parameter,LIKELY,M1-05
+051A:4113,func,Scene_Still,,"td1-16 / td1-20 / td1-14 / td1-13 by parameter 1..4, captions, 25 s",CONFIRMED,M1-05
+051A:471B,func,Scene_StillTd1_18,,"td1-18.pic at (76,20), captions, 15 s",CONFIRMED,M1-05
+051A:4979,func,Scene_StillTd1_15,,"td1-15.pic at (32,30), 10 s",CONFIRMED,M1-05
+051A:4F5A,func,Scene_Pic4,,"pic4.td at (11,16), captions at x 150",CONFIRMED,M1-05
+051A:527F,func,UI_ScriptChoice,,warning screen (td-let.cin title + td.lt2 text); sets g_ScriptChoice,LIKELY,M5-07
+051A:56D5,func,UI_MissingDialogueNotice,,notice shown when dialogue.dat is absent,LIKELY,M5-07
+051A:5852,func,Scene_MissionTitle,,one td-let.cin line centred at y 90 in palette entry 85; 5 s,CONFIRMED,M1-05
+051A:5EE9,func,Gfx_LoadJavelin,,"javelin.td into VGA rows 200..399, palette to g_Palette",LIKELY,M1-05
+051A:5FC7,func,Gfx_LoadCity,,"city.td into VGA rows 200..399, palette to g_Palette",LIKELY,M1-05
+051A:62FD,func,UI_AssignmentOrders,,assignment printout text screen,LIKELY,M5-05
+051A:6653,func,UI_EnemyDossier,,dossier text screen with portrait 6 on the right,LIKELY,M5-05
+051A:6A33,func,UI_RetryPrompt,,retry question with taunts,LIKELY,M5-05
+051A:6FF2,func,UI_Debriefing,,debriefing text screen with portrait 1 on the right,LIKELY,M8-09
+051A:74B2,func,UI_PlayerDossier,,player dossier with portrait 1 on the right,LIKELY,M5-05
+051A:76EA,func,Sav_RestoreScreen,,"td.stt names, td.sav slots, td.sss bars; choose a slot",LIKELY,M2-12
+051A:7EEA,func,Sav_SaveScreen,,"as Sav_RestoreScreen, then writes td.sav slot and td.stt",LIKELY,M2-12
+051A:8EAA,func,Scene_BackgroundStory,,background story text pages (30 s and 45 s waits),LIKELY,M5-03
+051A:92AF,func,Dlg_PlayScene,,(sceneId) plays one dialogue.dat/safedial.dat scene,CONFIRMED,M5-04
 051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
 0E8B:0052,func,Gfx_WaitRetraceStart,,polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace,CONFIRMED,M1-03
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
+0E8B:07ED,func,Snd_PlayMusic,,(cue 1..14) stops the song and loads/plays a CMF if td.cfg music = 2,CONFIRMED,M1-05
+0E8B:51FE,func,UI_DrawCommPortraitA,,"td1.ccm portrait i into sprite slot 0, drawn on the transmission panel; restores td.shp slot 0",LIKELY,M1-05
+0E8B:530B,func,UI_DrawCommPortraitB,,second transmission portrait (same as UI_DrawCommPortraitA),LIKELY,M1-05
+0E8B:5435,func,UI_CommScreen,,"F6 transmission: td.cmm panel, portraits, message lines",LIKELY,M1-05
+0E8B:6EDF,func,UI_FlightHelp,,td.hlp pages in flight,LIKELY,M1-05
+0E8B:7374,func,UI_ShipLibrary,,ship library: td.shp sprites 0..8 and class text,LIKELY,M1-05
+0E8B:794C,func,UI_FlightMenu,,"in-flight computer menu from td.men bytes 0..15999 at (80,50)",LIKELY,M2-09
 0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
+0E8B:AF1F,func,UI_JoystickCalibration,,"td.joy icon at (140,70) and calibration loop",LIKELY,M1-05
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
 0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
 0E8B:F9E7,func,Unit0E8B_Init,,unit init part (7th in chain),CONFIRMED,M1-01
@@ -17,16 +64,22 @@ address,kind,name,signature,comment,confidence,source_task
 2404:60FD,func,Unit2404_Init,,unit init part (5th in chain),CONFIRMED,M1-01
 2A15:220F,func,Unit2A15_Init,,unit init part (4th in chain),CONFIRMED,M1-01
 2C37:0000,func,WORX_CallDriver,,Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h,LIKELY,M1-03
+2C37:0273,func,WORX_LoadFileToHeap,,"gets a file size, allocates and reads the whole file (CMF songs)",LIKELY,M1-05
 2C37:3285,func,WORX_InstallInterrupts,,"hooks INT 63h (driver API, 2C37:34EE) and INT 08h (2C37:4558); PIT divisor 0952h",CONFIRMED,M1-03
 2C37:336E,func,WORX_RemoveInterrupts,,restores INT 08h and INT 63h,CONFIRMED,M1-03
 2C37:34EE,label,WORX_Int63Handler,,WORX driver API (software interrupt 63h),LIKELY,M1-03
 2C37:4558,func,WORX_TimerIsr,,INT 08h: music tick if active; chains BIOS every N fast ticks; else EOI,CONFIRMED,M1-06
 2C37:4A72,func,WORX_SetTimerRate,,AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick,CONFIRMED,M1-06
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
+386E:024A,func,Gfx_DrawSprite32,,"draws the 32x32 sprite in slot 0 of the sprite bank at (x,y) of a page",HYPOTHESIS,M1-05
+386E:189C,func,Gfx_ClearPage,,"(page,widthBytes,x) clears 232 rows of flight page 0 (0B00h) or 1 (5AC0h)",LIKELY,M2-09
+386E:1901,func,Gfx_SetDacEntry,,"(index,r,g,b) one DAC write via 3C8h/3C9h",CONFIRMED,M2-08
+386E:191C,func,Gfx_DrawTile,,"(page,tile,row,col) latched copy of tile from AA80h+256*tile to page + row*0B00h + col*8",CONFIRMED,M1-05
 386E:1991,func,Gfx_SetLogicalWidth,,CRTC 13h (offset) write,LIKELY,M1-03
 386E:19A0,func,Gfx_SetSplitLine,,"waits for a full vertical retrace, then programs line compare (CRTC 18h/07h/09h)",LIKELY,M1-03
 386E:19EF,func,Gfx_InitUnchained,,"INT 10h mode 13h, then chain-4 off (SEQ 04h), CRTC 14h/17h: planar 320x200",CONFIRMED,M1-03
 386E:1A6C,func,Gfx_FlipPage,,"waits display-enable low, sets CRTC start address 0Ch/0Dh, then waits for vertical retrace",CONFIRMED,M1-03
+386E:1A97,func,Gfx_PutPixel,,"(x,y,colour) plane x&3, address y*88 + x/4 (352-pixel rows)",CONFIRMED,M1-05
 3A1C:000D,func,Crt_Init,,"Crt unit init (2nd in chain): video setup, AssignCrt Input/Output, Delay calibration",CONFIRMED,M1-01
 3A1C:003B,func,Crt_InitVideo,,reads BIOS video mode (INT 10h AH=0Fh) and sets up text state,LIKELY,M1-01
 3A1C:00A3,func,Crt_SetVideoMode,,internal: set text mode via INT 10h AH=00h,HYPOTHESIS,M1-01
@@ -144,11 +197,12 @@ address,kind,name,signature,comment,confidence,source_task
 3A9A:18B4,func,BP_StrToLongCore,,internal: parse optional sign and digits (Val),LIKELY,M1-01
 3A9A:195B,func,BP_StrLong,,"Str(L: Width, S)",LIKELY,M1-01
 3A9A:19A6,func,BP_ValLong,,"Val(S, var L, var Code); unreferenced",HYPOTHESIS,M1-01
-3A9A:19D7,func,BP_FileSize,,FileSize(var F) in records,HYPOTHESIS,M1-01
-3A9A:19EE,func,BP_FilePos,,FilePos(var F) in records,HYPOTHESIS,M1-01
-3A9A:1A1E,func,BP_FileQueryPos,,internal: current position and size via INT 21h AX=4201h/4202h/4200h,HYPOTHESIS,M1-01
+3A9A:19D7,func,BP_FilePos,,FilePos(var F) in records (returns DX:AX from 3A9A:1A1E); corrected by RE-3,CONFIRMED,M1-01
+3A9A:19EE,func,BP_FileSize,,FileSize(var F) in records (returns BX:CX from 3A9A:1A1E); corrected by RE-3,CONFIRMED,M1-01
+3A9A:1A1E,func,BP_FileQueryPos,,internal: returns position in DX:AX and size in BX:CX (seeks back to the position),CONFIRMED,M1-01
 3A9A:1A63,func,BP_UpCase,,UpCase(Ch): a..z to A..Z only,CONFIRMED,M1-01
 3A9A:1A76,func,BP_ClearBss,,internal: zero DS:0502..9DF1 (uninitialised globals) at start-up,LIKELY,M1-01
+3C43:0264,data,k_TileRadarColour,,radar colour per tile index (map overview and radar),LIKELY,M2-09
 3C43:04B2,data,g_OvrCodeList,u16,System typed constants start here,LIKELY,M1-01
 3C43:04B4,data,g_OvrHeapSize,u16,,LIKELY,M1-01
 3C43:04C4,data,g_OvrEmsHandle,u16,initial FFFFh,CONFIRMED,M1-01
@@ -173,13 +227,34 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:04FD,data,g_Test8087,u8,FPU class,LIKELY,M1-01
 3C43:04FE,data,g_FileMode,u8,open mode for Reset (initial 2),CONFIRMED,M1-01
 3C43:0500,data,k_CrLf,u8[2],CR LF used by WriteLn,LIKELY,M1-01
+3C43:07E0,data,g_MenuPalette,u8[768],u8[768] menu/help palette,CONFIRMED,M1-05
+3C43:0D28,data,g_ScriptChoice,,"1 = dialogue.dat, 2 = safedial.dat",CONFIRMED,M1-05
+3C43:0D2E,data,g_Palette,u8[768],u8[768] scene/dialogue palette used by the fades,CONFIRMED,M1-05
+3C43:102E,data,g_ScreenLit,,"1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M5-04
+3C43:1032,data,g_FontTitle,farptr,"farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M2-08
+3C43:12C6,data,g_CfgMusic,,td.cfg byte 0 (2 = music on),CONFIRMED,M1-05
+3C43:12C7,data,g_CfgSfx,,td.cfg byte 1,CONFIRMED,M1-05
+3C43:12C8,data,g_CfgController,,td.cfg byte 2 (2 = joystick),CONFIRMED,M1-05
+3C43:13E6,data,g_FlightPalette,u8[768],u8[768] flight palette (td.pal),CONFIRMED,M1-05
 3C43:1708,data,g_TickPrevTime,u16[4],"hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-06
 3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
 3C43:1718,data,g_MissionTicks,u32,"per-mission counter compared with 25, 200 and 15000",HYPOTHESIS,M1-06
+3C43:18BE,data,g_WeaponIcons,farptr,farptr to td.wea (6 x 36x18),CONFIRMED,M1-05
 3C43:18C2,data,g_OldInt09,farptr,saved keyboard vector,CONFIRMED,M1-03
 3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
 3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
 3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03
+3C43:1F4E,data,g_SkipRequested,,set when Esc ends a wait; scenes and dialogue check it,CONFIRMED,M5-04
+3C43:32B9,data,g_MissionNumber,,current mission (selects m<n>.td and extra sprite files),LIKELY,M1-05
+3C43:3BEC,data,g_PathX,farptr,"farptr to X paths, 20 x 501 bytes",CONFIRMED,M1-05
+3C43:3BF0,data,g_PathY,farptr,"farptr to Y paths, 20 x 501 bytes",CONFIRMED,M1-05
+3C43:442E,data,g_Map,farptr,"farptr to the 201x201 map, column-major (x*201+y)",CONFIRMED,M1-05
+3C43:9770,data,g_Font5,farptr,farptr to td.lt2 glyphs (975-byte block),CONFIRMED,M2-08
+3C43:9774,data,g_RotSc3,farptr,farptr to td.sc3 cells 0..8,CONFIRMED,M1-05
+3C43:9778,data,g_RotSc2,farptr,farptr to td.sc2 cells 0..8,CONFIRMED,M1-05
+3C43:977C,data,g_RotShr,farptr,farptr to td.shr cells 0..19,CONFIRMED,M1-05
+3C43:9B82,data,g_SpriteBank,farptr,farptr to 27 x 32x32 sprites (td.shp + td.exp),CONFIRMED,M1-05
+3C43:9B86,data,g_FacFrames,farptr,farptr to td.fac (5 x 28x28),CONFIRMED,M1-05
 3C43:9B8A,data,g_CrtCheckBreak,u8,Crt.CheckBreak,LIKELY,M1-01
 3C43:9B8E,data,g_CrtLastMode,u16,Crt.LastMode,HYPOTHESIS,M1-01
 3C43:9B90,data,g_CrtTextAttr,u8,Crt.TextAttr,CONFIRMED,M1-01

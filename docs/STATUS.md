@@ -63,7 +63,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
-| M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
+| M1-05 | Asset load-site table | RE | M1-01 | DONE | RE-3 | 2026-11-02: docs/re/asset-load-sites.md (all E1 load sites, VGA layout); FORMATS 3/4/6.3/7/9-13 updated (path stride 501, td.men regions, stills confirmed); E2/E3 map/tileset loaders |
 | M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
 | M1-07 | Global data map + symbols | RE | M1-01 | TODO | | |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | TODO | | |
