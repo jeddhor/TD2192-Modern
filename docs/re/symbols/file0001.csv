@@ -1,4 +1,5 @@
 address,kind,name,signature,comment,confidence,source_task
+0000:0000,func,Flow_MenuFadeIn,,main menu fade-in: DAC 1..255 from black to g_MenuPalette in 17 levels (Real48 Round of c*s/16); one retrace-bit wait per level (flow/screens.md 3.1),LIKELY,RE-8
 0000:0124,func,Flow_MenuFadeOut,,palette fade-out before leaving the main menu,HYPOTHESIS,M1-04
 0000:02AF,func,UI_MenuHelp,,td.hlp from the main menu: two 320x200 pages shown in turn; also: shows the td.hlp help pages (menu item 4) (UI_HelpScreens),LIKELY,M1-05
 0000:0F06,func,Main_CampaignLoop,,mission sequencer: calls Sim_FlyMission 21 times,LIKELY,M1-06
@@ -46,6 +47,7 @@ address,kind,name,signature,comment,confidence,source_task
 051A:596F,func,Scene_VultureCommand,"void far(A, B, C: String)",story scene at the Vultures' command; also: scene card on voffice.scr (Flow_SceneVoffice),LIKELY,M1-02
 051A:5EE9,func,Gfx_LoadJavelin,,"javelin.td into VGA rows 200..399, palette to g_Palette",LIKELY,M1-05
 051A:5FC7,func,Gfx_LoadCity,,"city.td into VGA rows 200..399, palette to g_Palette",LIKELY,M1-05
+051A:609D,func,Gfx_DrawRect,"void far(X0, Y0, X1, Y1: Word; Colour: Byte)",one-pixel rectangle outline (orders printout frame),LIKELY,RE-8
 051A:62FD,func,UI_AssignmentOrders,,assignment printout text screen; also: assignment printout before mission 2 (Flow_OrdersPrintout),LIKELY,M5-05
 051A:6653,func,UI_EnemyDossier,,dossier text screen with portrait 6 on the right; also: enemy-ace dossier before mission 5 (Flow_AceDossier),LIKELY,M5-05
 051A:6A33,func,UI_RetryPrompt,Boolean far,after a failed flight; AL<>0 = fly again; also: retry question with taunts; also: retry prompt after a failed flight; true = retry (Flow_RetryPrompt),LIKELY,M1-02
@@ -58,8 +60,10 @@ address,kind,name,signature,comment,confidence,source_task
 051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
 0E8B:0000,func,UI_HudTickerBlit,,"(offset) latched copy of a 56x5 window from off-screen VGA row 736 + offset to HUD (256,13)",LIKELY,M2-09
 0E8B:0052,func,Gfx_WaitRetraceStart,,polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace,CONFIRMED,M1-03
-0E8B:01F6,func,Gfx_FadeInFlight,,retrace-paced palette fade in from g_FlightPalette (Real48 scaling),HYPOTHESIS,U-033
-0E8B:0426,func,Gfx_FadeOutFlight,,retrace-paced palette fade out (Real48 scaling),HYPOTHESIS,U-033
+0E8B:0061,func,UI_CommScrollA,,"transmission box A: latched copy of 30 rows x 45 bytes one VGA row up (screen rows 43..72 to 42..71), bottom row filled with the font background (flow/flight-screens.md 4.2)",CONFIRMED,RE-8
+0E8B:012A,func,UI_CommScrollB,,as UI_CommScrollA for box B (screen rows 95..124 to 94..123),CONFIRMED,RE-8
+0E8B:01F6,func,Gfx_FadeInFlight,,"flight fade-in: target = g_FlightPalette for palette mode 0, (R/8,G/8,B/8) rounded for mode 1, (min(63,1.5R),0,0) for mode 2; 17 levels Round(c*s/16) on DAC 1..255; zeroes g_HitFlash (flow/flight-screens.md 4.5.3)",CONFIRMED,RE-8
+0E8B:0426,func,Gfx_FadeOutFlight,,reverse of Gfx_FadeInFlight (s = 16..0) over DAC 0..255,LIKELY,RE-8
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
 0E8B:06C5,func,Sim_DistanceFlash,"void near(TileY, TileX: Byte)",raises g_HitFlash to 20 - round(sqrt(distance)) for an explosion near the player,LIKELY,U-041
 0E8B:07ED,func,Snd_PlayMusic,void far(N: Byte),"(N): if g_MusicDevice = 2: stop, free, load song N, play (see spec audio/music-cues); also: (cue 1..14) stops the song and loads/plays a CMF if td.cfg music = 2; also: stops the current song and plays CMF n (1..14; table in flow spec 3.1) when music is on",CONFIRMED,M1-02
@@ -69,6 +73,12 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:45EF,func,Txt_FlightDrawStringOpaque,,flight-unit copy of Txt_DrawStringOpaque,CONFIRMED,M2-08
 0E8B:4947,func,Txt_FlightDrawString,,flight-unit copy of Txt_DrawString,CONFIRMED,M2-08
 0E8B:4C9F,func,Txt_FlightTypeString,,flight-unit copy of Txt_TypeString,LIKELY,M2-08
+0E8B:5032,func,UI_CommScrollA6,,calls UI_CommScrollA six times (one 6-pixel text line),CONFIRMED,RE-8
+0E8B:504A,func,UI_CommScrollB6,,calls UI_CommScrollB six times,CONFIRMED,RE-8
+0E8B:5062,func,UI_CommHeaderA,void near(Colour: Byte; S: String),"header A of the transmission screen: opaque text at screen pen (92, 35)",CONFIRMED,RE-8
+0E8B:50C3,func,UI_CommHeaderB,void near(Colour: Byte; S: String),"header B: opaque text at screen pen (92, 87)",CONFIRMED,RE-8
+0E8B:5124,func,UI_CommTypeLineA,void near(Colour: Byte; S: String),"types a transmission line at screen pen (92, 67) (bottom of box A)",CONFIRMED,RE-8
+0E8B:5188,func,UI_CommTypeLineB,void near(Colour: Byte; S: String),"types a transmission line at screen pen (92, 119) (bottom of box B)",CONFIRMED,RE-8
 0E8B:51FE,func,UI_DrawCommPortraitA,,"td1.ccm portrait i into sprite slot 0, drawn on the transmission panel; restores td.shp slot 0",LIKELY,M1-05
 0E8B:530B,func,UI_DrawCommPortraitB,,second transmission portrait (same as UI_DrawCommPortraitA),LIKELY,M1-05
 0E8B:5435,func,UI_CommScreen,,"F6 transmission: td.cmm panel, portraits, message lines",LIKELY,M1-05
@@ -84,7 +94,7 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:82DD,func,UI_DrawGuidanceLine,,"compass lamps (8 palette entries: red = live marked ships per octant, blue = home) and six guidance dots toward the lowest live marked slot or home (Real48 ArcTan/Cos/Sin); holds the flight-7 phase-100 rule; render/hud.md 4.3",CONFIRMED,M6-07
 0E8B:8E87,func,UI_DrawInstruments,,per tick: guidance and lamps; low-armour pulse; armour and shield bars; missile lamp and column; radar; ticker and F6 indicator; render/hud.md 4.2,CONFIRMED,M6-07
 0E8B:9860,func,Msn_UpdateEvents,,per tick (step 18): respawns of dead ships far from the player; scripted events of flights 13 17 18 19 20; flight-17 cut-scene; earlier misnamed UI_UpdateStatusPanel (draws no HUD); mission-logic.md 4.7,LIKELY,M8-02
-0E8B:A714,func,UI_ShipSwitchScreen,,F5 ship-switch screen in flight (not in mission 14; tick-order step 29); earlier misnamed Inp_RestoreKeyboard,LIKELY,M6-01
+0E8B:A714,func,UI_TacticalMap,,F5 tactical map: 200x200 radar-colour map; player and live marked ships; Tab cycles targets (entries 0..30) with a cross and five info lines; Esc or F5 closes; changes no game state (tick-order step 29; not in flight 14). Earlier misnamed UI_ShipSwitchScreen and Inp_RestoreKeyboard (flow/flight-screens.md 4.3),CONFIRMED,RE-8
 0E8B:AF1F,func,UI_JoystickCalibration,,"td.joy icon at (140,70) and calibration loop; also: joystick calibration screen at start-up (Inp_CalibrateJoystick)",LIKELY,M1-05
 0E8B:B1EC,func,Sim_PlayerSpecials,,per tick: M ticker replay; Alt infra-red (palette modes 1/2); Space volley (every second tick) or missile launch (sim/weapons.md),LIKELY,U-043
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
@@ -98,6 +108,7 @@ address,kind,name,signature,comment,confidence,source_task
 1E2A:0810,func,Snd_FreeEffects,,(Device): unhooks INT 1Ch and frees the VOC buffers,LIKELY,M1-02
 1EBF:0000,func,Inp_JoystickAvailable,,returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead,HYPOTHESIS,M1-03
 1EBF:0026,func,Inp_JoystickRead,,port 201h trigger and timing loop for axes and buttons (all joystick port I/O),LIKELY,M1-03
+1EDE:0E6A,func,Msn_LoadTargetInfo,void far(Flight: Byte),"per flight (called by Msn_Setup): F5 map entry flags, fixed points 21.. and the five info lines per entry (e1.target_info) (flow/flight-screens.md 3.4)",CONFIRMED,RE-8
 1EDE:5247,func,Unit1EDE_Init,,unit init part (6th in chain),CONFIRMED,M1-01
 2404:0000,func,Msn_DrawTickerGlyph,"void near(X, Y: Integer; Ch: Char; Colour: Byte)",opaque small-font glyph for mission messages (copy of the text.md glyph routine; 6 drawn from g),LIKELY,M8-02
 2404:030A,func,Msn_PostTicker,"void near(X, Y: Integer; S: String; Colour: Byte)","draws a mission message into the ticker strip (always 0, 735); callers then set g_TickerPos := 1",CONFIRMED,M8-02
@@ -108,6 +119,15 @@ address,kind,name,signature,comment,confidence,source_task
 2404:1426,func,Msn_UpdateA,,"per tick (step 8): mission rules of flights 1..9 (base test, exits, engagement, phase script); mission-logic.md 5",LIKELY,M8-02
 2404:3521,func,Msn_UpdateB,,per tick (step 9): mission rules of flights 10..20; mission-logic.md 5,LIKELY,M8-02
 2404:60FD,func,Unit2404_Init,,unit init part (5th in chain),CONFIRMED,M1-01
+2A15:01EC,func,Comm_LoadTransmission1,,"fills the transmission table for F6 transmission 1: headers, lines (e1.comms.01), speaker bytes, portraits (flow/flight-screens.md 3.3)",CONFIRMED,RE-8
+2A15:0593,func,Comm_LoadTransmission2,,"fills the transmission table for F6 transmission 2: headers, lines (e1.comms.02), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:0A02,func,Comm_LoadTransmission3,,"fills the transmission table for F6 transmission 3: headers, lines (e1.comms.03), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:0ED8,func,Comm_LoadTransmission4,,"fills the transmission table for F6 transmission 4: headers, lines (e1.comms.04), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:1273,func,Comm_LoadTransmission5,,"fills the transmission table for F6 transmission 5: headers, lines (e1.comms.05), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:1591,func,Comm_LoadTransmission6,,"fills the transmission table for F6 transmission 6: headers, lines (e1.comms.06), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:18BE,func,Comm_LoadTransmission7,,"fills the transmission table for F6 transmission 7: headers, lines (e1.comms.07), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:1D76,func,Comm_LoadTransmission8,,"fills the transmission table for F6 transmission 8: headers, lines (e1.comms.08), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
+2A15:20DD,func,Comm_LoadTransmission9,,"fills the transmission table for F6 transmission 9: headers, lines (e1.comms.09), speaker bytes, portraits (flow/flight-screens.md 3.3)",LIKELY,RE-8
 2A15:220F,func,Unit2A15_Init,,unit init part (4th in chain),CONFIRMED,M1-01
 2C37:0000,func,WORX_CallDriver,,Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h,LIKELY,M1-03
 2C37:0055,func,WORX_Shutdown,,"removes the INT 08h/63h hooks (stop VOC and music, PIT 18.2 Hz)",LIKELY,M1-02
@@ -184,7 +204,7 @@ address,kind,name,signature,comment,confidence,source_task
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
 386E:0000,func,Gfx_HudRadarBlit,,"copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M2-09
 386E:012B,func,Gfx_HudFacFrame,,"(frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M2-09
-386E:024A,func,Gfx_DrawSprite32,,"draws the 32x32 sprite in slot 0 of the sprite bank at (x,y) of a page",HYPOTHESIS,M1-05
+386E:024A,func,Gfx_DrawSprite32,"void far(X, Y: Word; Slot, Page: Byte)","draws sprite-bank slot Slot (32x32, 0 transparent) at x rounded down to 4 and VGA row y (+232 rows for page 1, so y = page row + 32; only the low byte of y is used)",CONFIRMED,RE-8
 386E:189C,func,Gfx_ClearPage,,"(page,widthBytes,x) clears 232 rows of flight page 0 (0B00h) or 1 (5AC0h)",LIKELY,M2-09
 386E:18D8,func,Gfx_Fill4x2,"void far(XByte, Y, Colour: Byte)","4x2 pixel block at VGA byte XByte of rows Y and Y+1, all planes (HUD missile column)",CONFIRMED,M6-07
 386E:1901,func,Gfx_SetDacEntry,,"(index,r,g,b) one DAC write via 3C8h/3C9h",CONFIRMED,M2-08
@@ -362,6 +382,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:04FE,data,g_FileMode,u8,open mode for Reset (initial 2),CONFIRMED,M1-01
 3C43:0500,data,k_CrLf,u8[2],CR LF used by WriteLn,LIKELY,M1-01
 3C43:0502,data,g_SbIrq,i16,WORX_SbInit result; -1 = no Sound Blaster; also: WORX card detection result (FFFFh none) (g_SoundCard),LIKELY,M1-02
+3C43:0504,data,g_MemAvailText,string[255],"decimal MemAvail drawn in ink 0 at (10, 10) of the main menu (flow/screens.md 3.1)",LIKELY,RE-8
 3C43:060F,data,g_GameOver,u8,set by every ending of a mission block,LIKELY,M1-07
 3C43:0610,data,g_MissionAdvance,u8,1 = mission block completed (menu advances),LIKELY,M1-07
 3C43:0752,data,g_ResumeStatus,u8,tdstatus.dat status byte (1 ordering; 2 about),CONFIRMED,M1-07
@@ -376,6 +397,8 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:0D2E,data,g_Palette,u8[768],u8[768] scene/dialogue palette used by the fades,CONFIRMED,M1-05
 3C43:102E,data,g_ScreenLit,,"1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M5-04
 3C43:1032,data,g_FontTitle,farptr,"farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M2-08
+3C43:12C2,data,g_FlashTmpR,u8,hit-flash temporary (red component),LIKELY,RE-8
+3C43:12C3,data,g_FlashTmpG,u8,hit-flash temporary (green component),LIKELY,RE-8
 3C43:12C4,data,g_HitFlash,u16,red hit-flash intensity,LIKELY,M1-07
 3C43:12C6,data,g_MusicDevice,u8,2 = FM music; other values = no music; also: td.cfg byte 0 (2 = music on); also: 1 off; 2 on; 0 = show config screen (g_CfgMusic),CONFIRMED,M1-02
 3C43:12C7,data,g_SfxDevice,u8,"1 none, 2 Sound Blaster digital, 3 PC speaker; also: td.cfg byte 1 (g_CfgSfx)",CONFIRMED,M1-02
@@ -390,6 +413,8 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:13DC,data,g_NoWorx,u8,1 when the first parameter is /nosound or /pc: WORX never installed; also: /nosound or /pc: WORX never called (g_NoSoundDriver),CONFIRMED,M1-02
 3C43:13DE,data,g_Difficulty,u8,damage multiplier for hits on the player (1 at flight start; cheat chords change it),LIKELY,U-041
 3C43:13E6,data,g_FlightPalette,u8[768],u8[768] flight palette (td.pal); also: td.pal copy for fades and flashes,CONFIRMED,M1-05
+3C43:16E7,data,g_MapKeyChar,u8,F5 map: last ReadKey character (9 = Tab),CONFIRMED,RE-8
+3C43:16E8,data,g_MapKeyExt,u8,F5 map: last extended key byte (3Fh = F5 closes),CONFIRMED,RE-8
 3C43:16EE,data,g_F19PinSlot19,"u8,_,u8,_,i16,i16","flight 19 (phase > 1): slot 19 tile X (16EE), tile Y (16F0), offset X (16F2), offset Y (16F4) are copied from here every tick",LIKELY,M8-01
 3C43:16F6,data,g_PlayerSprite,u8,sprite set used to draw the player,LIKELY,M1-07
 3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
@@ -428,6 +453,12 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1F68,data,g_JoyY,i8,joystick Y: 1 up; -1 down,LIKELY,M1-07
 3C43:1F69,data,g_JoyButton2,u8,second joystick button,LIKELY,M1-07
 3C43:1F6A,data,g_JoyButton1,u8,first joystick button (fire),LIKELY,M1-07
+3C43:1F74,data,g_MapEntryFlag,u8[32],"F5 map: entry selectable (0 player, 1..20 slots, 21..31 fixed points)",CONFIRMED,RE-8
+3C43:1F94,data,g_MapEntryX,u8[32],F5 map: entry map X,CONFIRMED,RE-8
+3C43:1FB4,data,g_MapEntryY,u8[32],F5 map: entry map Y,CONFIRMED,RE-8
+3C43:1FD4,data,g_MapInfoLines,u8[4960],F5 map: 32 entries x 5 string[30] (155 bytes per entry),CONFIRMED,RE-8
+3C43:3299,data,g_MapSelection,u8,F5 map: selected entry,CONFIRMED,RE-8
+3C43:329A,data,g_SavedFontBg,u8,font background byte saved by the computer menu and the F5 map (178 in flight),CONFIRMED,RE-8
 3C43:329C,data,g_CommIncoming,u8,an incoming transmission is waiting (set by mission logic; cleared by the comm viewer),LIKELY,M6-01
 3C43:329D,data,g_MsnEventCount,u8,flight 17 base hits then destruction counter; flight 20 lander hits,LIKELY,M8-02
 3C43:329E,data,g_MissionSucceeded,u8,ends the flight normally,LIKELY,M1-07
@@ -443,6 +474,12 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:32BE,data,g_MsnI,u16,loop counter of the mission rules,CONFIRMED,M8-02
 3C43:32C0,data,g_MsnJ,u16,loop counter of the mission rules,CONFIRMED,M8-02
 3C43:32C2,data,g_MsnK,u16,loop counter of the mission rules (explosion slot search),CONFIRMED,M8-02
+3C43:32C4,data,g_CommHeaderA,string[50],transmission header A (slot -1 of the 51-byte table),CONFIRMED,RE-8
+3C43:32F7,data,g_CommLines,u8[1580],"transmission table: string[50] per slot; slot 0 = header B, slots 1.. = lines",CONFIRMED,RE-8
+3C43:3923,data,g_CommSpeaker,u8[31],"speaker byte per transmission line k (index k): 1 box A, 2 box B",CONFIRMED,RE-8
+3C43:3942,data,g_CommPortraitA,u8,td1.ccm record for box A,CONFIRMED,RE-8
+3C43:3943,data,g_CommPortraitB,u8,td1.ccm record for box B,CONFIRMED,RE-8
+3C43:3944,data,g_CommI,u16,loop counter of the transmission loaders,CONFIRMED,RE-8
 3C43:3946,data,g_MusicSize,u16,size of the loaded song (WORX_LoadMusic),CONFIRMED,M1-02
 3C43:3948,data,g_SfxLoadSize,u16,size of the last VOC loaded (WORX_LoadSfx),CONFIRMED,M1-02
 3C43:3950,data,g_WorxParamAL,u8,"WORX_CallDriver inputs: AL (3950), BX (3952), DX (3954), DI (3956)",CONFIRMED,M1-02

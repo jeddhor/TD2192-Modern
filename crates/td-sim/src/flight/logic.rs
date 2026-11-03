@@ -13,7 +13,6 @@
 //! ([`Message`]); resolving text is the renderer's job.
 
 use super::Flight;
-use super::explosions::IDLE;
 use super::player::Event;
 use super::ships::{NO_SHIP, SHIP_SLOTS};
 use super::shots::Shot;
@@ -446,22 +445,23 @@ impl Flight {
     }
 
     /// An explosion in the lowest idle slot of 1..=20 with frame 1; `false` when none is idle.
+    ///
+    /// mission-logic rev 1 (§5.7, §5.17, §5.20) says slots 1..=20 for these starters;
+    /// flight-screens §4.7 says `2404:1426` uses only slots 21..=30. The port follows the
+    /// mission-logic text until RE settles it (U-145).
     fn mission_explosion(&mut self, tile: (u8, u8), sub: (u8, u8)) -> bool {
-        let Some(e) = self.explosions.0[..20].iter_mut().find(|e| e.frame >= IDLE) else {
+        let Some(i) = self.explosions.idle_hit_slot() else {
             return false;
         };
-        (e.tile_x, e.tile_y) = tile;
-        (e.sub_x, e.sub_y) = sub;
-        e.frame = 1;
+        self.explosions
+            .start_in(i, tile, (i16::from(sub.0), i16::from(sub.1)));
         true
     }
 
     /// An explosion with random offsets (`Random(48)` each); the generator is drawn only
     /// when a slot is idle (ASSUMPTION, U-145).
     fn random_explosion(&mut self, tile: impl FnOnce(&mut Self) -> (u8, u8)) -> Option<(u8, u8)> {
-        if !self.explosions.0[..20].iter().any(|e| e.frame >= IDLE) {
-            return None;
-        }
+        self.explosions.idle_hit_slot()?;
         let sx = self.rng.random(48) as u8;
         let sy = self.rng.random(48) as u8;
         let t = tile(self);

@@ -302,8 +302,7 @@ impl Shots {
                     let ship = &mut c.ships.0[s];
                     ship.armour = 0;
                     ship.shields = 0;
-                    c.explosions
-                        .start((ship.tile_x, ship.tile_y), (ship.sub_x, ship.sub_y));
+                    five_explosions(c.explosions, (ship.tile_x, ship.tile_y));
                 }
             }
         }
@@ -404,17 +403,13 @@ impl Shots {
                 *c.kills += 1;
             }
             ship.class = super::ships::NO_SHIP;
-            // ASSUMPTION: the five fixed offsets are not specified yet.
-            for (dx, dy) in [(0, 0), (-12, -12), (12, -12), (-12, 12), (12, 12)] {
-                c.explosions.start(
-                    (ship.tile_x, ship.tile_y),
-                    (ship.sub_x + dx, ship.sub_y + dy),
-                );
-            }
-        } else {
+            five_explosions(c.explosions, (ship.tile_x, ship.tile_y));
+        } else if let Some(e) = c.explosions.idle_hit_slot() {
+            // The Random calls sit inside the slot search (weapons rev 3): none without a slot.
             let rx = c.rng.random(16) as i16;
             let ry = c.rng.random(16) as i16;
-            c.explosions.start(
+            c.explosions.start_in(
+                e,
                 (ship.tile_x, ship.tile_y),
                 (ship.sub_x + rx, ship.sub_y + ry),
             );
@@ -445,14 +440,16 @@ impl Shots {
         if p.shields > 60 || p.shields < 0 {
             p.shields = 0;
         }
-        let rx = c.rng.random(8) as i16 - 8;
-        let ry = c.rng.random(8) as i16 - 8;
-        // ASSUMPTION: the explosion tile is the player's shot tile (view + (4, 3)).
-        let v = p.view;
-        c.explosions.start(
-            ((v.tile_x + 4) as u8, (v.tile_y + 3) as u8),
-            (v.sub_x + rx, v.sub_y + ry),
-        );
+        if let Some(e) = c.explosions.idle_hit_slot() {
+            let rx = c.rng.random(8) as i16 - 8;
+            let ry = c.rng.random(8) as i16 - 8;
+            let v = p.view;
+            c.explosions.start_in(
+                e,
+                ((v.tile_x + 4) as u8, (v.tile_y + 3) as u8),
+                (v.sub_x + rx, v.sub_y + ry),
+            );
+        }
     }
 
     fn steer(&mut self, i: usize, ships: &Ships) {
@@ -477,6 +474,16 @@ impl Shots {
             (1, 0) => 6,
             _ => 4,
         };
+    }
+}
+
+/// The five explosions of a destroyed ship: tiles (X+1, Y+1), (X, Y), (X+1, Y−1), (X−1, Y+1),
+/// (X−1, Y−1) in this order, each at offset (16, 16) and each in its own slot search
+/// (`flight-screens.md` §4.7).
+fn five_explosions(explosions: &mut Explosions, (x, y): (u8, u8)) {
+    for (dx, dy) in [(1, 1), (0, 0), (1, -1), (-1, 1), (-1, -1)] {
+        let tile = ((i16::from(x) + dx) as u8, (i16::from(y) + dy) as u8);
+        explosions.start(tile, (16, 16));
     }
 }
 

@@ -29,10 +29,10 @@ Rules: offsets are **file offsets** (of the ShortString length byte for `pstring
 
 | Map | Exe | Resources | Notes |
 |---|---|---:|---|
-| `file0001.toml` | Episode 1 | 83 | Compiled in |
+| `file0001.toml` | Episode 1 | 82 | Compiled in; `tdtool exe-res` passes (RE-8, 2026-11-02; RE-8: `e1.comms.04.01`, `e1.comms.misc` and `e1.comms.04.02` merged into `e1.comms.04`) |
 | `file0000.toml` | Intro | 4 | Narration cards and credits. **Register in `MAPS`** |
-| `td2.toml` | Episode 2 | 71 | **Register in `MAPS`** |
-| `td3.toml` | Episode 3 | 62 | **Register in `MAPS`** |
+| `td2.toml` | Episode 2 | 73 | Compiled in (2 HUD tables added by M1-09) |
+| `td3.toml` | Episode 3 | 63 | Compiled in (1 HUD table added by M1-09) |
 
 - **One namespace.** `ExeResources` keeps every map's values in one table, so ids must be unique across all maps. Episode 1 owns the unprefixed shared names (`debrief.tiers`, `retry.taunts`, `script_choice.warning`, `ship_library`, `flight.prompts` ...); every Episode 2/3 id starts with `e2.`/`e3.`, and intro ids with `intro.`.
 - `eN.mission.NN.title`: the title card of mission NN (from its Roman numeral). `eN.mission.NN.cards`: the strings that follow it up to the next title (locations, relative times, captions), in file order. Which of them are shown when is defined by the episode flow spec (M1-04), not by the map. `eN.ending`: lines after the last mission. `eN.story.preamble`: strings before the first title.

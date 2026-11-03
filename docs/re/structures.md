@@ -149,7 +149,7 @@ The muzzle table DS:035C is indexed with `heading × 34`, which is only meaningf
 | 69 | 2 open |
 | 70 | 1 solid |
 
-66% of `td.map` is open (the five most common tiles 49, 50, 16, 15, 61 are all open). Collision is per tile against fixed cells around the player, with a bounce response ([flight-model](../spec/sim/flight-model.md) §4.3). Tiles 42h, 44h, 45h, 46h are redrawn over ships each tick (overpasses; tick-order step 12). The table is the same for every E1 flight; E2/E3 were not checked (M1-09).
+66% of `td.map` is open (the five most common tiles 49, 50, 16, 15, 61 are all open). Collision is per tile against fixed cells around the player, with a bounce response ([flight-model](../spec/sim/flight-model.md) §4.3). Tiles 42h, 44h, 45h, 46h are redrawn over ships each tick (overpasses; tick-order step 12). The table is the same for every E1 flight. E2 (two map sets) and E3 have their own tables and overlay codes, and E3 adds hazard tiles: [episode-deltas §4.4](episode-deltas.md#44-tile-attributes-and-overlay-tiles-u-009).
 
 ## 9. Provenance
 

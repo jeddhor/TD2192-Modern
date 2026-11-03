@@ -177,7 +177,7 @@ The port's audio layer needs: one "digital effect" voice with stop-and-replace s
 
 - [ ] Q1 (U-082): can a call site pass a source 181–256 tiles from the view (RunError 207 in the original)? Check the callers' range tests (M6/M8).
 - [ ] Q2 (U-083): confirm the event meaning of each call site (§3.2) when the flight loop is mapped (M6-01, M8).
-- [ ] Q3: E2/E3 effect tables (same unit, `td2:1D51`, `td3:1B1E`).
+- [x] Q3: E2/E3 effect tables (same unit, `td2:1D51`, `td3:1B1E`). **Resolved (RE-7, M1-09):** the unit is identical (DGROUP offsets only), with the same files, ids, priorities and PC-speaker sequences ([episode-deltas §3.1, §7](../../re/episode-deltas.md#7-audio)).
 
 ## 9. Provenance
 
