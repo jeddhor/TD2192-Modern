@@ -98,7 +98,7 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 |---|---|---|---|---|
 | DS:1703 | u8 | `g_PlayerDrawLate` | Draw the player after the mission ships (tick-order §2) | LIKELY |
 | DS:1704 | u8 | `g_PaletteMode` | 0 normal, 1 infra-red (dimmed palette), 2 red-only | LIKELY |
-| DS:1705 | u8 | `g_JurisdictionMsg` | Jurisdiction warning state (`0E8B:7FDF`) | HYPOTHESIS |
+| DS:1705 | u8 | `g_CommIndicatorPhase` | F6 indicator pulse phase 1..7 while a comm is incoming (`0E8B:7FDF`) | LIKELY |
 | DS:1706 | u8 | `g_CommRequest` | F6 pressed; comm viewer opens on the next even page | LIKELY |
 | DS:1708, 1710, 1718 | | (timing) | `g_TickPrevTime`, `g_TickNowTime`, `g_MissionTicks` (ticks since flight start, CONFIRMED) | see [timing](../spec/core/timing.md) |
 | DS:16F6 | u8 | `g_PlayerSprite` | Sprite set used to draw the player (= class, or 2/3 alternating in late mode) | LIKELY |
@@ -121,7 +121,8 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | DS:32B8 | u8 | `g_EndTicks` | Ticks since `g_MissionOver`; player hidden from 15; loop ends at 35 | LIKELY |
 | DS:32B9 | u8 | `g_FlightNumber` | `Sim_FlyMission` argument (1..21) | CONFIRMED |
 | DS:32BA | u8 | `g_MissionPhase` | Mission-script state (written 92 times in `2404`, `0E8B:60D8`, ...) | LIKELY |
-| DS:32BC | u16 | `g_EdgeLatch` | Suppresses repeated edge alerts | HYPOTHESIS |
+| DS:32BC | u16 | `g_TickerPos` | HUD ticker scroll position 1..78 (0 idle); a new edge alert is raised only while it is 0 (`0E8B:7FDF`) | LIKELY |
+| DS:329C | u8 | `g_CommIncoming` | Incoming transmission waiting (F6) | LIKELY |
 | DS:329E | u8 | `g_MissionSucceeded` | Ends the flight normally | LIKELY |
 | DS:398E | i8 | `g_PlayerArmour` | Player armour; < 1 = destroyed | CONFIRMED (C-0002: 25 for class 4) |
 | DS:398F | i8 | `g_PlayerShields` | Player shields; +1 per tick up to `k_ClassShields` | CONFIRMED (C-0002: 25) |

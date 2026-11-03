@@ -76,7 +76,7 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:6EDF,func,UI_FlightHelp,,td.hlp pages in flight,LIKELY,M1-05
 0E8B:7374,func,UI_ShipLibrary,,ship library: td.shp sprites 0..8 and class text; also: ship class chart with sprites and stat lines (UI_ShipRecognitionChart),LIKELY,M1-05
 0E8B:794C,func,UI_FlightMenu,,"in-flight computer menu from td.men bytes 0..15999 at (80,50); also: Esc menu in flight (td.men); may set g_MissionAborted",LIKELY,M2-09
-0E8B:7FDF,func,UI_HudTickerAndIndicator,,advances the objective ticker (page-0 ticks) and the F6 indicator animation; also: shows the leave-jurisdiction warning and plays its sound (Msn_JurisdictionWarning),LIKELY,M2-09
+0E8B:7FDF,func,UI_HudTickerAndIndicator,,"called from UI_DrawInstruments each tick: (1) on an edge alert (DS:1E2E) posts the leave-jurisdiction message to the ticker (other text in missions 13/14) and starts it (DS:32BC := 1); (2) on page-0 ticks scrolls the ticker via UI_HudTickerBlit until DS:32BC passes 78; (3) while a comm is incoming (DS:329C) plays its sound once and pulses the F6 indicator (DS:1705 phase 1..7)",CONFIRMED,M2-09
 0E8B:80D3,func,UI_CommViewer,,F6 comm viewer (modal; td.cmm),LIKELY,U-033
 0E8B:82DD,func,UI_DrawGuidanceLine,,guidance line to the current target (ArcTan; Sqrt),HYPOTHESIS,U-033
 0E8B:8E87,func,UI_DrawInstruments,,per tick: armour and shield gauges; radar; guidance; jurisdiction check,LIKELY,U-033
@@ -306,6 +306,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
 3C43:1703,data,g_PlayerDrawLate,u8,draw the player after the mission ships,LIKELY,M1-07
 3C43:1704,data,g_PaletteMode,u8,0 normal; 1 infra-red; 2 red-only,LIKELY,M1-07
+3C43:1705,data,g_CommIndicatorPhase,u8,F6 indicator pulse phase 1..7 while a comm is incoming (0 = off),LIKELY,M6-01
 3C43:1706,data,g_CommRequest,u8,F6 pressed (comm viewer pending),LIKELY,M1-07
 3C43:1708,data,g_TickPrevTime,u16[4],"hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-06
 3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
@@ -334,11 +335,13 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1F68,data,g_JoyY,i8,joystick Y: 1 up; -1 down,LIKELY,M1-07
 3C43:1F69,data,g_JoyButton2,u8,second joystick button,LIKELY,M1-07
 3C43:1F6A,data,g_JoyButton1,u8,first joystick button (fire),LIKELY,M1-07
+3C43:329C,data,g_CommIncoming,u8,an incoming transmission is waiting (set by mission logic; cleared by the comm viewer),LIKELY,M6-01
 3C43:329E,data,g_MissionSucceeded,u8,ends the flight normally,LIKELY,M1-07
 3C43:32B7,data,g_MissionOver,u8,flight is ending,LIKELY,M1-07
 3C43:32B8,data,g_EndTicks,u8,ticks since g_MissionOver (player hidden from 15; loop ends at 35),LIKELY,M1-07
 3C43:32B9,data,g_FlightNumber,u8,Sim_FlyMission argument 1..21,CONFIRMED,M1-07
 3C43:32BA,data,g_MissionPhase,u8,mission-script state,LIKELY,M1-07
+3C43:32BC,data,g_TickerPos,u16,"HUD ticker scroll position 1..78 (0 = idle); edge alerts are only raised while it is 0",LIKELY,M6-01
 3C43:3946,data,g_SongSize,u16,size of g_SongBuffer,LIKELY,M1-07
 3C43:396E,data,g_ProjOwner,farptr,projectile array: shooter slot,LIKELY,M1-08
 3C43:3972,data,g_ProjFlag,farptr,projectile array: 1 = enemy shot,HYPOTHESIS,M1-08

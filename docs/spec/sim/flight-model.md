@@ -109,7 +109,8 @@ if offsetY < 16 and viewY = 7:    offsetY += 32; edge alert            (pushed b
 if offsetY > 48 and viewY < 190:  viewY += 1; offsetY -= 32
 if offsetY > 48 and viewY = 190:  offsetY -= 32; edge alert
 same for X with limits 6 and 183 (offsetX, viewX)
-edge alert: if DS:32BC = 0 then DS:1E2E := 1 (the jurisdiction warning routine reacts to it)
+edge alert: if DS:32BC = 0 then DS:1E2E := 1   (DS:32BC = HUD ticker position; 0E8B:7FDF then posts the
+            leave-jurisdiction message to the ticker)
 ```
 
 The direction of each carry is recorded in DS:1CC8..1CCB (`globals.md` §4).
