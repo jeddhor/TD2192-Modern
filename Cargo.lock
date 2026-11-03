@@ -967,6 +967,7 @@ dependencies = [
  "td-assets",
  "td-audio",
  "td-formats",
+ "td-input",
  "td-render",
  "td-sim",
  "thiserror",
@@ -985,6 +986,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "td-input"
+version = "0.1.0"
+
+[[package]]
 name = "td-opl"
 version = "0.1.0"
 dependencies = [
@@ -996,6 +1001,7 @@ name = "td-platform"
 version = "0.1.0"
 dependencies = [
  "sdl3",
+ "td-input",
  "td-render",
  "thiserror",
  "tracing",
@@ -1041,6 +1047,7 @@ dependencies = [
  "td-audio",
  "td-flow",
  "td-formats",
+ "td-input",
  "td-platform",
  "td-render",
  "tracing",

@@ -1,7 +1,6 @@
-//! Keyboard state tracking with edge detection.
-//!
-//! Keys are identified by USB HID usage IDs (the values of SDL scancodes), so bindings are
-//! independent of the keyboard layout.
+//! Input types shared by `td-platform` (which produces them) and `td-flow` (which consumes
+//! them). Keys are identified by USB HID usage IDs (the values of SDL scancodes), so bindings
+//! are independent of the keyboard layout.
 
 use std::collections::BTreeSet;
 
@@ -93,17 +92,19 @@ impl InputSnapshot {
     }
 }
 
+/// Accumulates key events between snapshots (used by the platform layer).
 #[derive(Debug, Default)]
-pub(crate) struct InputState {
+pub struct InputState {
     held: BTreeSet<Key>,
     pressed: Vec<Key>,
     repeated: Vec<Key>,
-    pub(crate) text: String,
-    pub(crate) quit: bool,
+    pub text: String,
+    pub quit: bool,
 }
 
 impl InputState {
-    pub(crate) fn key_down(&mut self, key: Key, repeat: bool) {
+    /// Records a key press (`repeat` = OS auto-repeat).
+    pub fn key_down(&mut self, key: Key, repeat: bool) {
         if repeat {
             self.repeated.push(key);
         } else if self.held.insert(key) {
@@ -111,11 +112,13 @@ impl InputState {
         }
     }
 
-    pub(crate) fn key_up(&mut self, key: Key) {
+    /// Records a key release.
+    pub fn key_up(&mut self, key: Key) {
         self.held.remove(&key);
     }
 
-    pub(crate) fn snapshot(&mut self) -> InputSnapshot {
+    /// Returns everything since the previous snapshot.
+    pub fn snapshot(&mut self) -> InputSnapshot {
         InputSnapshot {
             held: self.held.clone(),
             pressed: std::mem::take(&mut self.pressed),
@@ -123,6 +126,32 @@ impl InputState {
             text: std::mem::take(&mut self.text),
             quit: self.quit,
         }
+    }
+}
+
+/// Input delivered to one tick of the game flow: keys held now, and keys pressed since the
+/// previous tick (each press is delivered to exactly one tick, even if several display frames
+/// pass between ticks).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TickInput {
+    pub held: BTreeSet<Key>,
+    pub pressed: Vec<Key>,
+}
+
+impl TickInput {
+    /// True if `k` is held.
+    pub fn held(&self, k: Key) -> bool {
+        self.held.contains(&k)
+    }
+
+    /// True if `k` was pressed since the previous tick.
+    pub fn pressed(&self, k: Key) -> bool {
+        self.pressed.contains(&k)
+    }
+
+    /// True if any key was pressed since the previous tick ("hit any key").
+    pub fn any_pressed(&self) -> bool {
+        !self.pressed.is_empty()
     }
 }
 

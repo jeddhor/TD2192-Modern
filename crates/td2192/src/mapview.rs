@@ -10,16 +10,16 @@ use std::sync::Arc;
 use anyhow::{Context, Result, bail};
 use td_assets::DataDir;
 use td_audio::{AudioCommand, Pcm8, decode_voc};
+use td_flow::{FlowContext, Screen, Transition};
 use td_formats::cmf::Cmf;
 use td_formats::map::TileMap;
 use td_formats::palette::Palette;
 use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::{TILE_SIZE, Tileset};
-use td_platform::Key;
+use td_input::Key;
+use td_input::TickInput;
 use td_render::headings::CELL;
 use td_render::{Framebuffer, HeadingSprites, Image, Rect, draw_tile_map};
-
-use crate::run::{App, Control, TickInput};
 
 const MAPS: [(&str, &str, &str); 6] = [
     ("e1", "td.map", "td.blk"),
@@ -70,6 +70,7 @@ const SOUNDS: [&str; 17] = [
     "zeus.voc",
 ];
 
+#[derive(Debug)]
 pub struct MapView {
     maps: Vec<(TileMap, Tileset)>,
     current: usize,
@@ -134,11 +135,12 @@ impl MapView {
     }
 }
 
-impl App for MapView {
-    fn tick(&mut self, input: &TickInput, audio: &mut Vec<AudioCommand>) -> Control {
+impl Screen for MapView {
+    fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+        let audio = &mut *ctx.audio;
         self.tick += 1;
         if input.pressed(Key::ESCAPE) {
-            return Control::Quit;
+            return Transition::Quit;
         }
         let speed = if input.held(Key::LSHIFT) || input.held(Key::RSHIFT) {
             16
@@ -188,10 +190,10 @@ impl App for MapView {
             });
             self.sound = (self.sound + 1) % self.sounds.len();
         }
-        Control::Continue
+        Transition::None
     }
 
-    fn draw(&mut self, fb: &mut Framebuffer) {
+    fn draw(&self, fb: &mut Framebuffer) {
         fb.palette = self.palette.clone();
         let (map, tiles) = &self.maps[self.current];
         draw_tile_map(fb, map, tiles, self.cam.0, self.cam.1, Rect::SCREEN, 0);

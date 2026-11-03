@@ -5,7 +5,6 @@
 //! ([`Key`]), audio is pulled through a plain callback, and frames are taken as
 //! [`td_render::Framebuffer`]s. Everything here is thin glue; game logic lives elsewhere.
 
-mod input;
 mod present;
 
 use std::path::PathBuf;
@@ -17,8 +16,8 @@ use sdl3::{EventPump, Sdl};
 use td_render::Framebuffer;
 use thiserror::Error;
 
-pub use input::{InputSnapshot, Key};
 pub use present::{ScaleMode, WindowCapture};
+pub use td_input::{InputSnapshot, Key};
 
 /// Errors raised by the platform layer.
 #[derive(Debug, Error)]
@@ -126,7 +125,7 @@ pub struct Platform {
     canvas: WindowCanvas,
     presenter: present::Presenter,
     events: EventPump,
-    input: input::InputState,
+    input: td_input::InputState,
     audio: Option<AudioStreamOwner>,
     fullscreen: bool,
 }
@@ -160,7 +159,7 @@ impl Platform {
             canvas,
             presenter,
             events,
-            input: input::InputState::default(),
+            input: td_input::InputState::default(),
             audio: None,
             fullscreen: cfg.fullscreen,
         })

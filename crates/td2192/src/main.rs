@@ -126,10 +126,17 @@ fn real_main() -> Result<()> {
         settings.video.fullscreen = true;
     }
 
+    let resources = td_assets::ExeResources::load(&dir)?;
     let map = cli.dev_mapview.as_deref().unwrap_or("e1");
-    let app = mapview::MapView::new(&dir, map)?;
+    let first = Box::new(mapview::MapView::new(&dir, map)?);
     let options = run::RunOptions {
         exit_after_ticks: cli.dev_exit_after,
     };
-    run::run(app, &settings, &user_dir, &options)
+    let rd = run::RunData {
+        data: &dir,
+        resources: &resources,
+        settings: &settings,
+        user_dir: &user_dir,
+    };
+    run::run(td_flow::Flow::new(first), &rd, &options)
 }

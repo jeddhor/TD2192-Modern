@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+td-input.workspace = true
 td-formats.workspace = true
 td-assets.workspace = true
 td-sim.workspace = true

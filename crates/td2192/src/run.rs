@@ -1,12 +1,15 @@
-//! The main loop: fixed-timestep ticks, decoupled presentation, audio pulled by the device.
+//! The main loop: fixed-timestep ticks at the current screen's rate, decoupled presentation,
+//! and audio rendered on the main thread in step with the game.
 
 use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
+use td_assets::{DataDir, ExeResources};
 use td_audio::{AudioCommand, Mixer, SfxPolicy};
 use td_flow::settings::{Scale, SfxMode};
-use td_flow::{DEFAULT_TICK_HZ, FixedStep, Settings};
+use td_flow::{FixedStep, Flow, FlowContext, Settings};
+use td_input::TickInput;
 use td_platform::{InputSnapshot, Key, Platform, ScaleMode, WindowConfig};
 use td_render::Framebuffer;
 
@@ -14,38 +17,6 @@ use td_render::Framebuffer;
 pub const AUDIO_RATE: u32 = 48_000;
 /// Audio kept queued ahead of playback (about 43 ms).
 const AUDIO_TARGET_FRAMES: u32 = 2048;
-
-/// Input delivered to one simulation tick.
-#[derive(Debug, Default)]
-pub struct TickInput {
-    pub held: std::collections::BTreeSet<Key>,
-    /// Keys pressed since the previous tick (edges are delivered to exactly one tick).
-    pub pressed: Vec<Key>,
-}
-
-impl TickInput {
-    pub fn held(&self, k: Key) -> bool {
-        self.held.contains(&k)
-    }
-    pub fn pressed(&self, k: Key) -> bool {
-        self.pressed.contains(&k)
-    }
-}
-
-/// What an application asks the loop to do after a tick.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Control {
-    Continue,
-    Quit,
-}
-
-/// Something the loop can run.
-pub trait App {
-    /// Advances one tick; audio commands are queued in `audio`.
-    fn tick(&mut self, input: &TickInput, audio: &mut Vec<AudioCommand>) -> Control;
-    /// Draws the current state.
-    fn draw(&mut self, fb: &mut Framebuffer);
-}
 
 fn scale_mode(s: Scale) -> ScaleMode {
     match s {
@@ -62,13 +33,18 @@ pub struct RunOptions {
     pub exit_after_ticks: Option<u64>,
 }
 
-/// Runs `app` until it quits or the window closes.
-pub fn run(
-    mut app: impl App,
-    settings: &Settings,
-    user_dir: &Path,
-    options: &RunOptions,
-) -> Result<()> {
+/// Shared data a run needs.
+#[derive(Debug)]
+pub struct RunData<'a> {
+    pub data: &'a DataDir,
+    pub resources: &'a ExeResources,
+    pub settings: &'a Settings,
+    pub user_dir: &'a Path,
+}
+
+/// Runs `flow` until it ends or the window closes.
+pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()> {
+    let settings = rd.settings;
     let mut platform = Platform::new(&WindowConfig {
         fullscreen: settings.video.fullscreen,
         scale_mode: scale_mode(settings.video.scale),
@@ -89,33 +65,20 @@ pub fn run(
     }
     let mut audio_buf: Vec<f32> = Vec::new();
 
-    let mut step = FixedStep::new(settings.dev.tick_hz.unwrap_or(DEFAULT_TICK_HZ));
+    let rate_of = |flow: &Flow| settings.dev.tick_hz.unwrap_or_else(|| flow.tick_hz());
+    let mut hz = rate_of(&flow);
+    let mut step = FixedStep::new(hz);
+    let mut total_ticks: u64 = 0;
     let mut fb = Framebuffer::new();
     let mut pending = TickInput::default();
     let mut commands = Vec::new();
     let mut last = Instant::now();
-    loop {
+    while flow.running() {
         let snap: InputSnapshot = platform.poll();
         if snap.quit {
             break;
         }
-        if snap.was_pressed(Key::F11) {
-            platform.toggle_fullscreen()?;
-        }
-        if snap.was_pressed(Key::F10) {
-            let next = match platform.scale_mode() {
-                ScaleMode::Aspect4x3 => ScaleMode::IntegerSquare,
-                ScaleMode::IntegerSquare => ScaleMode::Stretch,
-                ScaleMode::Stretch => ScaleMode::Aspect4x3,
-            };
-            platform.set_scale_mode(next);
-        }
-        if snap.was_pressed(Key::F12) {
-            match crate::run::screenshot(&fb, user_dir) {
-                Ok(p) => tracing::info!("screenshot saved to {}", p.display()),
-                Err(e) => tracing::warn!("screenshot failed: {e:#}"),
-            }
-        }
+        handle_host_keys(&snap, &mut platform, &fb, rd.user_dir)?;
         pending.held = snap.held.clone();
         pending.pressed.extend(snap.pressed);
 
@@ -130,27 +93,25 @@ pub fn run(
                     pressed: Vec::new(),
                 },
             );
-            let control = app.tick(&input, &mut commands);
+            let mut ctx = FlowContext {
+                data: rd.data,
+                resources: rd.resources,
+                settings,
+                audio: &mut commands,
+            };
+            flow.tick(&mut ctx, &input);
             for c in commands.drain(..) {
                 mixer.command(c);
             }
-            if control == Control::Quit {
-                return Ok(());
+            total_ticks += 1;
+            if options.exit_after_ticks == Some(total_ticks) {
+                return dev_capture(&flow, &mut fb, &mut platform, rd.user_dir);
             }
-            if options.exit_after_ticks == Some(step.total_ticks()) {
-                app.draw(&mut fb);
-                let path = screenshot(&fb, user_dir)?;
-                println!("screenshot: {}", path.display());
-                let cap = platform.present_and_capture(&fb)?;
-                let wpath = path.with_extension("window.png");
-                save_rgba(&wpath, cap.width, cap.height, &cap.rgba)?;
-                println!(
-                    "window capture: {} ({}x{})",
-                    wpath.display(),
-                    cap.width,
-                    cap.height
-                );
-                return Ok(());
+            // A screen change may change the pace; restart the clock at the new rate.
+            if rate_of(&flow) != hz {
+                hz = rate_of(&flow);
+                step = FixedStep::new(hz);
+                break;
             }
         }
         let frames = platform.audio_frames_wanted(AUDIO_TARGET_FRAMES);
@@ -159,9 +120,57 @@ pub fn run(
             mixer.render(&mut audio_buf);
             platform.queue_audio(&audio_buf)?;
         }
-        app.draw(&mut fb);
+        flow.draw(&mut fb);
         platform.present(&fb)?;
     }
+    Ok(())
+}
+
+/// Keys handled by the host rather than the game: F10 scale mode, F11 fullscreen, F12 shot.
+fn handle_host_keys(
+    snap: &InputSnapshot,
+    platform: &mut Platform,
+    fb: &Framebuffer,
+    user_dir: &Path,
+) -> Result<()> {
+    if snap.was_pressed(Key::F11) {
+        platform.toggle_fullscreen()?;
+    }
+    if snap.was_pressed(Key::F10) {
+        let next = match platform.scale_mode() {
+            ScaleMode::Aspect4x3 => ScaleMode::IntegerSquare,
+            ScaleMode::IntegerSquare => ScaleMode::Stretch,
+            ScaleMode::Stretch => ScaleMode::Aspect4x3,
+        };
+        platform.set_scale_mode(next);
+    }
+    if snap.was_pressed(Key::F12) {
+        match screenshot(fb, user_dir) {
+            Ok(p) => tracing::info!("screenshot saved to {}", p.display()),
+            Err(e) => tracing::warn!("screenshot failed: {e:#}"),
+        }
+    }
+    Ok(())
+}
+
+fn dev_capture(
+    flow: &Flow,
+    fb: &mut Framebuffer,
+    platform: &mut Platform,
+    user_dir: &Path,
+) -> Result<()> {
+    flow.draw(fb);
+    let path = screenshot(fb, user_dir)?;
+    println!("screenshot: {}", path.display());
+    let cap = platform.present_and_capture(fb)?;
+    let wpath = path.with_extension("window.png");
+    save_rgba(&wpath, cap.width, cap.height, &cap.rgba)?;
+    println!(
+        "window capture: {} ({}x{})",
+        wpath.display(),
+        cap.width,
+        cap.height
+    );
     Ok(())
 }
 

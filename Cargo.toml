@@ -12,6 +12,7 @@ publish = false
 [workspace.dependencies]
 # Internal crates
 td-formats = { path = "crates/td-formats" }
+td-input = { path = "crates/td-input" }
 td-assets = { path = "crates/td-assets" }
 td-sim = { path = "crates/td-sim" }
 td-render = { path = "crates/td-render" }

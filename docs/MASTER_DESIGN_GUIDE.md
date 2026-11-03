@@ -371,7 +371,8 @@ flowchart TB
 | `td-audio` | Sample mixer, VOC/ADPCM decode, CMF sequencer, OPL bridge, PC-speaker synthesis (later). Produces PCM frames. No device I/O. | `td-assets`, `td-opl` | platform, render, sim |
 | `td-opl` | Safe wrapper over ymfm's YM3812 core via `ymfm-sys` | `ymfm-sys` | everything else |
 | `td-flow` | Top-level state machine: launcher/config equivalent, intro, menus, story cards, dialogue scenes, briefings, debriefings, save/load UI, episode progression; owns the `Sim` during missions | sim, render, audio, assets | platform |
-| `td-platform` | SDL3: window, presentation and scaling, input devices to an action snapshot, audio device, clock, filesystem locations, file dialog | `sdl3`, `td-render` types (framebuffer) | sim, flow internals |
+| `td-input` | Input types shared by platform and flow: `Key` (USB HID usage IDs), `TickInput`, `InputSnapshot`. No dependencies. | — | everything |
+| `td-platform` | SDL3: window, presentation and scaling, input devices to an action snapshot, audio device, clock, filesystem locations, file dialog | `sdl3`, `td-input`, `td-render` types (framebuffer) | sim, flow internals |
 | `td2192` (bin) | Wires platform and flow together; CLI flags; settings | all runtime crates | |
 | `tdtool` (bin) | Developer CLI: inventory, export, dump, render-scene, play, replay-verify, diff | all crates | |
 | `td-test-support` (dev) | Data-dir discovery for tests, `require_data!`, golden-hash helpers, synthetic fixtures | formats, assets | |
