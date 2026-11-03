@@ -100,11 +100,11 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M3-01 | VOC parser | IM | M0-06 | DONE | main-session | 2026-11-02; td-formats::voc; all 17 files parse |
 | M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | DONE | main-session | 2026-11-02; spec audio/voc-and-adpcm.md; decoder + vectors; decoded signals sane (lag-1 autocorr 0.79-1.00); A/B pending M3-08 |
 | M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | DONE | main-session | 2026-11-02; td-opl over ymfm-sys (YM3812) |
-| M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | main-session | 2026-11-02; spec audio/cmf.md; fixed channel map, rhythm mode, fine transpose; velocity ignored (U-034); 96 ticks/s (U-007) |
+| M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | IM-2 | 2026-11-02; spec audio/cmf.md rev 2: CmfDriver = WORX driver (clock 0x0C, -12 offset, voice allocation, lazy instrument loads, velocity ignored, fixed drum kit, start/stop/loop); L5 exact vs C-0001 and C-0002 DROs (b44d5d5) |
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | DONE | RE-4 | 2026-11-02; docs/spec/audio/cmf.md rev 2: WORX player exact (emulated driver = C-0001 capture 4,364/4,364 writes; model = driver on 17 songs, 146,595 writes); U-007, U-034, U-035 resolved; timing.md rev 2 |
-| M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | IN PROGRESS | main-session | Mixer + Classic/Polyphonic SFX policies done; Classic rule provisional (U-021), balance untuned |
+| M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | DONE | IM-2 | 2026-11-02; sfx-policy rev 1: Classic arbiter (priority, pre-emption, idle 0, 15-tile cut-off, OB-009 too far), effect->VOC table, SB Pro levels -> stereo gain (linear, untuned); music-cues rev 1 table + MusicCues::play_cue in td-audio (not wired); U-140, U-141 open (9a3814d) |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
-| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | IN PROGRESS | main-session | docs/parity/M3-audio.md: tempo, pitch table, 0xBD PASS vs DRO C-0001; voice allocation + velocity FAIL pending M3-05 |
+| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | IN PROGRESS | main-session | docs/parity/M3-audio.md: CMF register stream exact vs C-0001 (4,455 writes) and C-0002 (3,438), timing within 1.5 ticks (td-audio tests/oracle_parity.rs, IM-2); loop restart not captured; VOC and balance pending |
 
 ## M4: Platform shell
 
