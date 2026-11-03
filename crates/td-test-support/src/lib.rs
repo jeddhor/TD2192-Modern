@@ -37,6 +37,34 @@ macro_rules! require_data {
     };
 }
 
+/// Environment variable naming the oracle capture root (`re-work/captures/oracle`), used by
+/// L5 parity tests that compare our output with captures of the original (MDG §10.2).
+pub const ORACLE_ENV: &str = "TD2192_ORACLE";
+
+/// The oracle capture root from `TD2192_ORACLE`, if set and present.
+pub fn oracle_dir() -> Option<PathBuf> {
+    let path = PathBuf::from(std::env::var_os(ORACLE_ENV)?);
+    path.is_dir().then_some(path)
+}
+
+/// Returns the oracle capture root, or prints a skip notice and returns from the calling test.
+#[macro_export]
+macro_rules! require_oracle {
+    () => {
+        match $crate::oracle_dir() {
+            Some(dir) => dir,
+            None => {
+                eprintln!(
+                    "SKIPPED: {} not set (oracle parity test {})",
+                    $crate::ORACLE_ENV,
+                    module_path!()
+                );
+                return;
+            }
+        }
+    };
+}
+
 /// Lower-case hex SHA-256 of `bytes`.
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);

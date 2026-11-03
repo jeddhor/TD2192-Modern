@@ -7,6 +7,7 @@
 pub mod fade;
 pub mod framebuffer;
 pub mod headings;
+pub mod small_text;
 pub mod text;
 pub mod tilemap;
 

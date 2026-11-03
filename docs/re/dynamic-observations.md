@@ -209,3 +209,15 @@ Thirteen keys (Up, Down, Left, Right, Left Ctrl, Left Alt, Space, Insert, keypad
 - Everything here is DOSBox-X's model of a 386 at `cycles=fixed 20000` unless stated. Rates that depend on CPU speed (polling counts, load times, update rate below about 20,000 cycles) are not hardware facts.
 - DOSBox-X adds a small simulated overhead to each INT 21h AH=2Ch call. That affects how many polls fit in a frame, not the clock values.
 - The intro and menus were not tested with SB Pro or without sound; P1 is SB16. A one-time comparison with `sbtype=sbpro2` is still owed (ADG §11.1).
+
+## 12. Dialogue screen and small-font text (main session, black-box, 2026-11-02)
+
+From the C-0002 frames `dialogue-1/2/3` (f2283, f2433, f2573) and `script-choice`/`hint`, by exact pixel matching against decoded assets (no disassembly):
+
+- **Layout:** black background (no `.scr` backdrop) with two 160×100 portraits at the top, left and right. The dispatcher's monitor frame is part of his portrait. The speaker names are drawn below the portraits, a prompt line at y = 192, and dialogue text above it.
+- **Font:** dialogue, names and prompt use `td.lt2` **proportionally**. Each glyph is trimmed to its inked columns and followed by a 1-pixel gap; a space advances 4 pixels; all pixels take one solid colour (baked glyph colours are not used). Text starts at x = 4, so a line with two leading spaces starts at x = 12.
+- **Punctuation** (not in `td.lt2`), seen on screen: `.` = one pixel on the bottom row; `,` = 2 px wide, pixels (row 3, col 1) and (row 4, col 0); the data's `"` = an apostrophe, 2 px wide, pixels (row 0, col 1) and (row 1, col 0); `!` = a 1-px column with rows 0–2 and 4 set. Other punctuation has not been seen yet.
+- **Lines** are 7 pixels apart. New lines appear at the bottom (newest at y = 162) and earlier ones scroll up. The blank padding lines of a speech block take a line each.
+- **Colours:** a speaker's colour byte indexes `td.pal`, and that RGB is loaded into palette entry **249 + speaker slot** (slot 1 → 250, slot 2 → 251). Example: 0x2E → (39,39,63) in entry 250, 0x39 → (27,63,39) in entry 251. The prompt uses entry 254 (32,0,0).
+- **Parity check:** `crates/td-render/tests/oracle_parity.rs` renders the first line of scene 1 with these rules and matches the original frame pixel-for-pixel (rows 162–166, 0 differences).
+

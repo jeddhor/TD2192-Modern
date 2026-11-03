@@ -129,6 +129,7 @@ When sources disagree, the higher one wins. Then fix the lower one in the same c
 | Variable | Value | Used by |
 |---|---|---|
 | `TD2192_DATA` | `P:\msdos\TD2192\TD2192` | Data-gated tests, `td2192`, `tdtool` |
+| `TD2192_ORACLE` | `P:\msdos\TD2192\re-work\captures\oracle` | L5 oracle parity tests (`require_oracle!`), which compare our output with captured frames; they skip when unset |
 | `TD2192_REWORK` | `P:\msdos\TD2192\re-work` | Scripts |
 | `GHIDRA_HOME` | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC` | `tools/scripts/ghidra-headless.ps1` |
 | `JAVA_HOME` | `C:\Program Files\Eclipse Adoptium\jdk-25.0.5.8-hotspot` | Ghidra |
