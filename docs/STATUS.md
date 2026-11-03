@@ -14,7 +14,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
 | **Ghidra lock** | free |
-| **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) |
+| **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) · [2026-11-02-M6-01](handoffs/2026-11-02-M6-01.md) (flight-core specs: flight model drafted) |
 
 ### Blocking user decisions (MDG §14)
 
@@ -62,11 +62,11 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | TODO | | Needed before M6 code that mirrors file0001:0E8B:B880 / 0E8B:82DD |
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
-| M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
+| M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | REVIEW | RE-2 | docs/spec/flow/episode-program-flow.md rev 1 (start-up, menu, all 20 E1 mission blocks + flight 21, endings, debrief tiers, tdstatus.dat). Static; mission-1 path matches C-0002 |
 | M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
 | M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
-| M1-07 | Global data map + symbols | RE | M1-01 | TODO | | |
-| M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | TODO | | |
+| M1-07 | Global data map + symbols | RE | M1-01 | REVIEW | RE-2 | docs/re/globals.md (front end, input + flight keys, cheat chords, player/view state, slot/projectile/explosion arrays, buffers) + 158 symbol rows (functions and data; ApplySymbols-checked on a private copy) |
+| M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | REVIEW | RE-2 | docs/re/structures.md: units (tile+pixel), mission file load map with 501-byte path stride (FORMATS 7 corrected; M2-11 parser needs the fix), ship record 1065 B, slot/projectile/explosion arrays, class table (U-008), heading codes (U-003), tile attributes (U-009) |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
 | M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | TODO | | |
 | M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | TODO | | |
@@ -136,7 +136,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | TODO | | |
+| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | PAUSED | RE-2 | flight-model.md rev 1 drafted (static); world/units facts in docs/re/structures.md 1; camera/viewport/collision specs not started. Handoff: docs/handoffs/2026-11-02-M6-01.md |
 | M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom + BIT-EXACT Real48 (all ops incl. Sqrt/Sin/Cos/ArcTan; 1705/1705 vectors from the original) + state_hash + replay; tick/world skeleton waits for M1-08/M6-01 |
 | M6-03 | Player flight model | IM | M6-02 | TODO | | |
 | M6-04 | Map collision | IM | M6-02 | TODO | | |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `core/timing` |
-| **Revision** | 1 (draft, static analysis only) |
+| **Revision** | 2 (draft, static analysis only) |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for simulation steps per game tick (one fixed step per tick); T2 for the wall-clock tick rate and frame pacing |
 | **Confidence** | LIKELY (static). Needs the dynamic measurements in §8 before it can be CONFIRMED |
@@ -41,7 +41,7 @@ In flight, Episode 1 runs one simulation-and-render iteration per **game tick** 
 |---|---|---|---|
 | `g_TickPrevTime` | DS:1708 | 4 × u16 | Timestamp of the previous tick (LIKELY) |
 | `g_TickNowTime` | DS:1710 | 4 × u16 | Latest sample in the wait loop (LIKELY) |
-| `g_MissionTicks` | DS:1718 | u32 | Counter compared with 25, 200 and 15000 (HYPOTHESIS: mission ticks elapsed; 15000 ticks ≈ 13.5 min) |
+| `g_MissionTicks` | DS:1718 | u32 | Ticks since the flight started, +1 at the top of every tick (CONFIRMED: C-0002 RAM 20 → 39 between frames 3543 and 3613). 25 ends flight 21; 200 limits the IR notice; 15000 is used by `0E8B:8E87`/`9860` |
 | WORX fast-tick counter | CS:31BC in `2C37` | u16 | Counts up to `N`, then chains the BIOS handler (CONFIRMED) |
 | WORX chain interval `N` | CS:31BE in `2C37` | u16 | `65535 div d` (CONFIRMED) |
 | WORX re-entry guard | CS:42DC in `2C37` | i16 | Starts at −1 (HYPOTHESIS); the ISR's second-level work runs only when not re-entered |
@@ -56,8 +56,8 @@ Our reading of the tail of the per-tick loop (`file0001:0E8B:E041..E12C`):
 ```text
 each game tick, after the simulation and drawing of this tick:
   if joystick is available and the controller setting is "joystick": read joystick   (1EBF)
-  call 0E8B:9860                         # per-tick routine, purpose TBD (messages/HUD?)
-  call 0E8B:8E87                         # per-tick routine, purpose TBD
+  call 0E8B:9860                         # status panel, messages, ship switching (sim/tick-order.md)
+  call 0E8B:8E87                         # instruments: gauges, radar, guidance line
   repeat                                 # Sim_TickLimiter, 0E8B:E05C
     now  := DOS time as 16-bit hundredths (wrapping arithmetic)
     prev := g_TickPrevTime as 16-bit hundredths
@@ -110,7 +110,7 @@ Drawing goes to a hidden page of the unchained VGA memory. `Gfx_FlipPage` (`386E
 
 ### 4.5 Per tick vs per frame
 
-There is one frame per tick: draw, flip and simulate all happen once per loop iteration. Which subsystems run in which order inside the loop (input, AI, physics, collisions, missions, HUD) is not mapped yet (U-033, M1-04/M6-01).
+There is one frame per tick: draw, flip and simulate all happen once per loop iteration. The order of the work inside the tick is in [sim/tick-order.md](../sim/tick-order.md) (U-033): the world is drawn into the back page first, then the HUD, then the tick wait and the flip, and **player input and player physics run after the flip**, at the end of the tick. `g_MissionTicks` (DS:1718) is incremented once at the top of every tick (CONFIRMED: 19 per 70 frames in C-0002).
 
 ## 5. Edge cases and original bugs
 
@@ -165,3 +165,4 @@ Runtime address = (PSP + 10h + seg):off, where PSP is the program's PSP segment 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-1 (Archaeologist + Spec author) | Initial static draft |
+| 2 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Names for `0E8B:9860`/`8E87`; per-tick order moved to `sim/tick-order.md` (U-033); `g_MissionTicks` confirmed per tick |

@@ -129,16 +129,17 @@ Layout:
 
 | Offset | Size | Content | Evidence |
 |---:|---:|---|---|
-| 0 | 40 | Reserved: zero in 59 of 60 files (`m18.td3` has `0x4C` at offset 10; U-014) | All files scanned |
+| 0 | 20 | Per-slot byte A, slots 1..20 (loaded to DS:3A52); zero in 59 of 60 files (`m18.td3` has `0x4C` at offset 10; U-014, U-038) | All files scanned; load `file0001:0E8B:C151` |
+| 20 | 20 | Per-slot byte B (loaded to DS:3A8E); zero in all files (U-038) | Same |
 | 40 | 20 | **Slot class code** per ship slot 0..19: values 0..8, `0xFF` = slot unused | All files scanned; value histogram 0:128, 1:37, 2:22, 3:29, 4:48, 5:4, 6:33, 7:243, 8:124, FF:552 |
-| 60 | 20 | Reserved: zero in all files | All files scanned |
-| 80 | 20 × 500 | **X path** for slot *s* at `80 + s*500`: 500 bytes of tile-grid X coordinates (1..199) | Smooth monotonic runs, values within map bounds |
-| 10080 | 20 × 500 | **Y path** for slot *s* at `10080 + s*500` | Same as X |
+| 60 | 20 | Per-slot byte D (loaded to DS:3A66); zero in all files (U-038) | All files scanned; load `0E8B:C19F` |
+| 80 | 10,000 | **X paths**: elements (s, k) of an in-memory `array[1..20, 0..500]` (stride **501**), starting at element (1, 1). Slot s (1-based), step k is at `80 + (s−1)*501 + k − 1`. Tile-grid X (map column) | Load and use in `file0001:0E8B:C1A4..C3BF` (RE-2, [structures §2](structures.md#2-mission-file-mtd-20080-bytes-as-loaded)); C-0002 RAM |
+| 10080 | 10,000 | **Y paths**, same layout: `10080 + (s−1)*501 + k − 1` | Same |
 
 Observations:
 - Path runs are smooth (±1 per step) with plateaus, consistent with recorded or hand-drawn routes on the tile grid. Unused tail entries are 0.
-- The first byte of some slots' X arrays differs from the run that follows (`0xFF`, `0x80`, `0x11`, `0x64`, `0x02`, `0x50`, ...). It may be a flag, a delay or a start marker (U-015).
-- What the class codes mean is U-008. 7 and 8 are the most common; 1 appears in truck-heavy missions.
+- **Correction (RE-2, 2026-11-02):** the earlier reading of a 500-byte stride (`80 + s*500`) shifts slot s by s − 1 bytes. The "odd first bytes" (`0xFF`, `0x80`, `0x11`, `0x64`, ...) are element k = 0 of each slot, which the game never uses: it copies steps k = 1..500 into the ship records. Slot 20 has file data only for k ≤ 481. The loader also replaces `0xFF` by 0 in steps 1..500 of slot 2 (both arrays). U-015 resolved.
+- Class codes index the ship-class tables directly (0..8 used, 9 empty, `0xFF` = no ship); numbers and names in [structures §6](structures.md#6-ship-classes-u-008) (U-008). The flight setup overrides some slots' codes per mission (`0E8B:60D8`).
 - The reserved areas may be runtime state in the original's in-memory record (the file is probably block-read straight into a record).
 
 ## 8. Dialogue scripts (`dialogue.dat`, `dialogu2.dat`, `dialogu3.dat`, `safedial.dat`, `safedia2.dat`, `safedia3.dat`)
