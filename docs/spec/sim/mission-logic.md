@@ -140,7 +140,7 @@ A phase step is "if *condition* then *actions*". Several steps can fire in the s
 
 ### 4.4 Base test
 
-`succeeded := (viewX, viewY) = (102, 104) and phase = 100`, re-evaluated (and so possibly cleared) every tick at the top of the block. (102, 104) is the view tile at the start of every flight except 12, 13 and 15, so the player has to fly back to within the 32 × 32-pixel cell of the start view. Exceptions: flights 12 and 15 accept viewX = 102 and viewY = 99..100 (the helicopter pad); flight 13 accepts viewX = 175..177 and viewY = 152..154 (the depot). Flight 20 has no base test; `Msn_UpdateEvents` sets `succeeded` (§5.20).
+`succeeded := (viewX, viewY) = (102, 104) and phase = 100`, re-evaluated (and so possibly cleared) every tick at the top of the block. (102, 104) is the start view of flight 1 (C-0002; the start positions of the other flights are set by `Msn_Setup`, RE-5), so the player has to fly back to the 32-pixel cell in which the view started. Exceptions: flights 12 and 15 accept viewX = 102 and viewY = 99..100 (the helicopter pad); flight 13 accepts viewX = 175..177 and viewY = 152..154 (the depot). Flight 20 has no base test; `Msn_UpdateEvents` sets `succeeded` (§5.20).
 
 ### 4.5 Messages and transmissions
 
