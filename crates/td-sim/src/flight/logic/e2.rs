@@ -655,3 +655,6 @@ impl Flight {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
