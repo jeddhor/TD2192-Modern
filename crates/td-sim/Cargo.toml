@@ -15,6 +15,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+td-test-support.workspace = true
 
 [lints]
 workspace = true

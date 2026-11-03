@@ -137,9 +137,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | PAUSED | RE-2 | flight-model.md rev 1 drafted (static); world/units facts in docs/re/structures.md 1; camera/viewport/collision specs not started. Handoff: docs/handoffs/2026-11-02-M6-01.md |
-| M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom + BIT-EXACT Real48 (all ops incl. Sqrt/Sin/Cos/ArcTan; 1705/1705 vectors from the original) + state_hash + replay; tick/world skeleton waits for M1-08/M6-01 |
-| M6-03 | Player flight model | IM | M6-02 | TODO | | |
-| M6-04 | Map collision | IM | M6-02 | TODO | | |
+| M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom + bit-exact Real48 + state_hash + replay v2 (u64 input word = key down/made + joystick); td_sim::flight::Flight runs the tick-order steps that are specified, resumable at modal screens (pause, Esc menu, F5, F6); projectiles/mission ships pending specs |
+| M6-03 | Player flight model | IM | M6-02 | REVIEW | main-session | td_sim::flight::player from flight-model.md rev 1: biased speeds, drift/drag, thrust + half braking, 16-heading ring turn, full steering table, afterburner burst, shields/armour; vectors 1-3 pass; key table with make/break + game clears (td_sim::input) |
+| M6-04 | Map collision | IM | M6-02 | REVIEW | main-session | Player map collision + bounce, tile carry, map limits/edge alert (flight-model 4.3-4.4); E1 tile attributes; data test: E1M1 start bounces in place (RE-2 C-0007 observation) |
 | M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | TODO | | |
 | M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | TODO | | |
 | M6-07 | HUD frame + instruments | IM | M6-05 | TODO | | |
