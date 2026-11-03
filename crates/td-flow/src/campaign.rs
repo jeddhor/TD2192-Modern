@@ -1,18 +1,21 @@
 //! The Episode 1 campaign sequencer (`Main_CampaignLoop`): one mission block per call, from
 //! the pre-flight story through the flight, retries, debrief, post-flight story and endings.
 //!
-//! Spec: `docs/spec/flow/episode-program-flow.md` (rev 1) §4.3–§4.5 (the block, the per-mission
-//! table and the endings); music cues per `docs/spec/audio/music-cues.md` (rev 1) §4.1–§4.2.
-//! Fidelity: T2 for the order of screens, T1 for the state handed back to the menu.
+//! Spec: `docs/spec/flow/episode-program-flow.md` (rev 2) §4.3–§4.5 (the block, the per-mission
+//! table and the endings), `docs/spec/flow/screens.md` (rev 1) §3.7 (retry prompt) and §3.12
+//! (skip tests); music cues per `docs/spec/audio/music-cues.md` (rev 1) §4.1–§4.2.
+//! Fidelity: T2 for the order of screens, T1 for the state handed back to the menu and for the
+//! retry prompt's `Random(10)`.
 //!
 //! The flight itself is not part of this crate: a [`FlightLauncher`] supplied by the program
 //! starts it and reports a [`FlightResult`]. [`PlaceholderLauncher`] stands in until the real
 //! flight is connected.
 //!
-//! Notes on the skip flag (§4.3): Esc in the pre-flight story jumps to the flight. The
-//! pre-flight hint (and the `low` cue before it) belongs to the flight entry, because C-0002
-//! shows hint 1 after Esc in dialogue 1 (frames 2603 → 2788). Esc in the post-flight story ends
-//! the block; the mission still counts as completed.
+//! The skip flag (screens §3.12, U-125): the sequencer tests Esc after most steps. A set flag
+//! after a tested pre-flight step jumps to the flight itself (past any music change and hint
+//! left); after a tested post-flight step it ends the block (the mission still counts as
+//! completed). After an untested step ([`Block::untested`]) the story goes on, so Esc in
+//! dialogue 1 still shows hint 1 (C-0002 frames 2603 → 2788).
 
 use std::fmt;
 
@@ -118,8 +121,8 @@ pub enum Retry {
 #[derive(Debug, Clone, Copy)]
 pub struct Block {
     pub pre: &'static [Step],
-    /// Run before the flight, also when Esc skipped the rest of `pre`.
-    pub brief: &'static [Step],
+    /// Pre-flight steps with no skip test after them (screens §3.12).
+    pub untested: &'static [Step],
     pub retry: Retry,
     pub post: &'static [Step],
     /// Post-flight steps when the outcome is 0, if they differ (mission 17).
@@ -136,8 +139,15 @@ const VO: Bg = Voffice;
 /// The 20 Episode 1 blocks, transcribed from episode-program-flow §4.4.
 pub const E1_BLOCKS: [Block; 20] = [
     Block {
-        pre: &[T(0x478), M(3), C(H3, [0x494, 0x4A1, 0x4C1]), D(1)],
-        brief: &[M(8), H(1)],
+        pre: &[
+            T(0x478),
+            M(3),
+            C(H3, [0x494, 0x4A1, 0x4C1]),
+            D(1),
+            M(8),
+            H(1),
+        ],
+        untested: &[D(1), H(1)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -157,8 +167,10 @@ pub const E1_BLOCKS: [Block; 20] = [
             D(4),
             O,
             D(5),
+            M(8),
+            H(2),
         ],
-        brief: &[M(8), H(2)],
+        untested: &[D(5), H(2)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -176,7 +188,7 @@ pub const E1_BLOCKS: [Block; 20] = [
     },
     Block {
         pre: &[T(0x5A6), M(3), C(H3, [0x494, 0x4A1, 0x5C0]), D(11)],
-        brief: &[],
+        untested: &[D(11)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -199,7 +211,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0x607]),
             D(16),
         ],
-        brief: &[],
+        untested: &[D(16)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -230,7 +242,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0x618]),
             D(22),
         ],
-        brief: &[],
+        untested: &[A, D(22)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -244,8 +256,8 @@ pub const E1_BLOCKS: [Block; 20] = [
         post_failed: None,
     },
     Block {
-        pre: &[T(0x719), M(3), C(H3, [0x494, 0x4A1, 0x607]), D(24)],
-        brief: &[H(6)],
+        pre: &[T(0x719), M(3), C(H3, [0x494, 0x4A1, 0x607]), D(24), H(6)],
+        untested: &[D(24), H(6)],
         retry: Retry::Died,
         post: &[M(3), C(H3, [0x494, 0x4A1, 0x733]), D(25)],
         post_failed: None,
@@ -260,7 +272,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(SO, [0x4E0, 0x4A1, 0x768]),
             D(27),
         ],
-        brief: &[],
+        untested: &[D(27)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -286,7 +298,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0x7B8]),
             D(31),
         ],
-        brief: &[],
+        untested: &[D(31)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -308,7 +320,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0x4D0]),
             D(35),
         ],
-        brief: &[],
+        untested: &[D(35)],
         retry: Retry::Died,
         post: &[
             M(3),
@@ -333,7 +345,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(Briefing, [0x5E3, 0x844, 0x5A4]),
             D(39),
         ],
-        brief: &[],
+        untested: &[C(Eggbase, [0x810, 0x5A4, 0x5A4]), D(39)],
         retry: Retry::Died,
         post: &[M(3), C(H3, [0x494, 0x4A1, 0x7E3]), D(40)],
         post_failed: None,
@@ -348,7 +360,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(Shooting, [0x872, 0x886, 0x5A4]),
             D(42),
         ],
-        brief: &[],
+        untested: &[D(42)],
         retry: Retry::Died,
         post: &[M(5), C(VO, [0x56D, 0x58A, 0x898]), D(43)],
         post_failed: None,
@@ -366,7 +378,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(Helihang, [0x8D3, 0x8EA, 0x5A4]),
             D(46),
         ],
-        brief: &[],
+        untested: &[D(46)],
         retry: Retry::Died,
         post: &[
             M(6),
@@ -402,7 +414,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(Vhang, [0x9E8, 0x58A, 0x9F7]),
             D(53),
         ],
-        brief: &[],
+        untested: &[D(53)],
         retry: Retry::Died,
         post: &[
             M(13),
@@ -435,7 +447,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(VO, [0x56D, 0x58A, 0x5A4]),
             D(60),
         ],
-        brief: &[],
+        untested: &[D(60)],
         retry: Retry::Died,
         post: &[
             M(4),
@@ -463,7 +475,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(Helihang, [0xB5A, 0x898, 0x5A4]),
             D(109),
         ],
-        brief: &[],
+        untested: &[D(109)],
         retry: Retry::Died,
         post: &[
             M(13),
@@ -498,7 +510,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0x4F9]),
             D(71),
         ],
-        brief: &[],
+        untested: &[D(71)],
         retry: Retry::Died,
         post: &[M(5), C(VO, [0x56D, 0x58A, 0x898]), DOutcome(72, 105)],
         post_failed: None,
@@ -513,7 +525,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0xC91]),
             D(74),
         ],
-        brief: &[],
+        untested: &[D(74)],
         retry: Retry::DiedOrOutcome0,
         post: &[
             M(11),
@@ -538,7 +550,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(SO, [0xC45, 0x4A1, 0x607]),
             D(81),
         ],
-        brief: &[],
+        untested: &[D(81)],
         retry: Retry::DiedOrLost,
         post: &[
             M(3),
@@ -570,7 +582,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0xAF2]),
             D(87),
         ],
-        brief: &[],
+        untested: &[C(SO, [0xC45, 0x4A1, 0x898]), D(87)],
         retry: Retry::Died,
         post: &[
             M(5),
@@ -610,7 +622,7 @@ pub const E1_BLOCKS: [Block; 20] = [
             C(H3, [0x494, 0x4A1, 0x5C0]),
             D(95),
         ],
-        brief: &[],
+        untested: &[D(95)],
         retry: Retry::DiedOrLost,
         post: &[
             M(13),
@@ -794,7 +806,6 @@ pub struct BlockResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pos {
     Pre(usize),
-    Brief(usize),
     Fly,
     Retry,
     Debrief,
@@ -954,7 +965,7 @@ impl Campaign {
                         Retry::DiedOrLost => r.lost,
                     };
                 self.pos = if offered {
-                    self.child = Some(Child::Story(Box::new(self.retry_prompt(prog))));
+                    self.child = Some(Child::Story(Box::new(prog.retry_prompt())));
                     Pos::Retry
                 } else {
                     self.resolve()
@@ -970,16 +981,19 @@ impl Campaign {
             (Pos::Debrief, _) => self.pos = Pos::Post(0),
             (Pos::Pre(i), _) => {
                 let glued = self.block.pre.get(i + 1) == Some(&Glue);
-                self.pos = if skipped && !glued {
-                    Pos::Brief(0)
+                let tested = step.is_some_and(|s| !self.block.untested.contains(&s));
+                self.pos = if skipped && tested && !glued {
+                    Pos::Fly
                 } else {
                     Pos::Pre(i + 1)
                 };
             }
-            (Pos::Brief(i), _) => self.pos = Pos::Brief(i + 1),
             (Pos::Post(i), _) => {
                 let glued = self.post().get(i + 1) == Some(&Glue);
-                self.pos = if skipped && !glued {
+                // Untested post-flight steps (screens §3.12): the outcome branches, block 18's
+                // P15 and block 19's D89.
+                let tested = !matches!(step, Some(DOutcome(..) | P15 | D(89)));
+                self.pos = if skipped && tested && !glued {
                     Pos::Return
                 } else {
                     Pos::Post(i + 1)
@@ -1025,13 +1039,6 @@ impl Campaign {
     fn advance(&mut self, prog: &mut Program, ctx: &mut FlowContext<'_>) {
         let step = match self.pos {
             Pos::Pre(i) => match self.block.pre.get(i) {
-                Some(s) => *s,
-                None => {
-                    self.pos = Pos::Brief(0);
-                    return;
-                }
-            },
-            Pos::Brief(i) => match self.block.brief.get(i) {
                 Some(s) => *s,
                 None => {
                     self.pos = Pos::Fly;
@@ -1118,10 +1125,6 @@ impl Campaign {
         self.child = Some(Child::Flight(f));
     }
 
-    fn retry_prompt(&self, prog: &Program) -> StoryScreen {
-        prog.retry_prompt(self.attempts)
-    }
-
     fn debrief(&self, prog: &Program) -> StoryScreen {
         prog.debrief(
             self.mission,
@@ -1168,7 +1171,6 @@ mod tests {
             for s in b
                 .pre
                 .iter()
-                .chain(b.brief)
                 .chain(b.post)
                 .chain(b.post_failed.unwrap_or(&[]))
             {
