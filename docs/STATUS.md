@@ -69,7 +69,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | TODO | | |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
 | M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | TODO | | |
-| M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | TODO | | |
+| M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | REVIEW | RE-3 | 2026-11-02: file0001.toml 82 resources (all mission titles/cards, ending, objectives, flight messages, target info, 9 comms, debrief labels/tiers, retry, dossiers, hints, background story, script-choice notices, ship library, prompts); new file0000/td2/td3 maps (4/71/62) to register in td-assets MAPS; tdtool exe-res green for file0001 |
 | M1-12 | Unknowns triage | RE | M1-01..M1-11 | TODO | | |
 
 ## M2: Static assets

@@ -1,0 +1,417 @@
+# Resource map for td3.exe. See README.md in this folder and ADR-0003.
+# Offsets are FILE offsets of the ShortString length byte. Never put the text itself here.
+# M1-11, RE-3, 2026-11-02. Ids follow file0001.toml, with the prefix "e3." on every id (resource ids
+# share one namespace across all maps). Groups were found from the string export and the routines
+# that reference them; their meaning mirrors the Episode 1 routine at the same place.
+exe = "td3.exe"
+sha256 = "323bca8f244c01ac9b284bef69cdcfe77231a7bfbc6796e8c382310bcf3cb09c"
+
+[[resource]]
+id = "e3.story.preamble"
+kind = "pstring_seq"
+offset = 0x3CA4
+count = 11
+note = "strings before the first mission title"
+
+[[resource]]
+id = "e3.mission.01.title"
+kind = "pstring"
+offset = 0x3D74
+note = "mission 1 title card"
+
+[[resource]]
+id = "e3.mission.01.cards"
+kind = "pstring_seq"
+offset = 0x3D8A
+count = 7
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.02.title"
+kind = "pstring"
+offset = 0x3E1C
+note = "mission 2 title card"
+
+[[resource]]
+id = "e3.mission.02.cards"
+kind = "pstring_seq"
+offset = 0x3E39
+count = 10
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.04.title"
+kind = "pstring"
+offset = 0x3EEE
+note = "mission 4 title card"
+
+[[resource]]
+id = "e3.mission.04.cards"
+kind = "pstring_seq"
+offset = 0x3F0A
+count = 4
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.05.title"
+kind = "pstring"
+offset = 0x3F63
+note = "mission 5 title card"
+
+[[resource]]
+id = "e3.mission.05.cards"
+kind = "pstring_seq"
+offset = 0x3F7F
+count = 3
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.06.title"
+kind = "pstring"
+offset = 0x3FC7
+note = "mission 6 title card"
+
+[[resource]]
+id = "e3.mission.06.cards"
+kind = "pstring_seq"
+offset = 0x3FDF
+count = 3
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.07.title"
+kind = "pstring"
+offset = 0x401D
+note = "mission 7 title card"
+
+[[resource]]
+id = "e3.mission.07.cards"
+kind = "pstring_seq"
+offset = 0x403A
+count = 3
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.08.title"
+kind = "pstring"
+offset = 0x409B
+note = "mission 8 title card"
+
+[[resource]]
+id = "e3.mission.08.cards"
+kind = "pstring_seq"
+offset = 0x40BD
+count = 3
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.09.title"
+kind = "pstring"
+offset = 0x40F9
+note = "mission 9 title card"
+
+[[resource]]
+id = "e3.mission.10.title"
+kind = "pstring"
+offset = 0x4119
+note = "mission 10 title card"
+
+[[resource]]
+id = "e3.mission.11.title"
+kind = "pstring"
+offset = 0x4134
+note = "mission 11 title card"
+
+[[resource]]
+id = "e3.mission.12.title"
+kind = "pstring"
+offset = 0x414D
+note = "mission 12 title card"
+
+[[resource]]
+id = "e3.mission.13.title"
+kind = "pstring"
+offset = 0x416A
+note = "mission 13 title card"
+
+[[resource]]
+id = "e3.mission.13.cards"
+kind = "pstring_seq"
+offset = 0x418C
+count = 1
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.14.title"
+kind = "pstring"
+offset = 0x419E
+note = "mission 14 title card"
+
+[[resource]]
+id = "e3.mission.14.cards"
+kind = "pstring_seq"
+offset = 0x41B7
+count = 1
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.15.title"
+kind = "pstring"
+offset = 0x41CB
+note = "mission 15 title card"
+
+[[resource]]
+id = "e3.mission.15.cards"
+kind = "pstring_seq"
+offset = 0x41E1
+count = 2
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.16.title"
+kind = "pstring"
+offset = 0x4203
+note = "mission 16 title card"
+
+[[resource]]
+id = "e3.mission.17.title"
+kind = "pstring"
+offset = 0x4225
+note = "mission 17 title card"
+
+[[resource]]
+id = "e3.mission.17.cards"
+kind = "pstring_seq"
+offset = 0x4247
+count = 4
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.18.title"
+kind = "pstring"
+offset = 0x42A4
+note = "mission 18 title card"
+
+[[resource]]
+id = "e3.mission.18.cards"
+kind = "pstring_seq"
+offset = 0x42CB
+count = 14
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.mission.19.title"
+kind = "pstring"
+offset = 0x441B
+note = "mission 19 title card"
+
+[[resource]]
+id = "e3.mission.19.cards"
+kind = "pstring_seq"
+offset = 0x4441
+count = 3
+note = "story-card lines between this title and the next (locations, times, captions)"
+
+[[resource]]
+id = "e3.ending"
+kind = "pstring"
+offset = 0x448D
+note = "episode-end lines (after the last mission)"
+
+[[resource]]
+id = "e3.startup"
+kind = "pstring_seq"
+offset = 0x75AA
+count = 13
+note = "start-up help and configuration strings"
+
+[[resource]]
+id = "e3.script_choice.warning"
+kind = "pstring_seq"
+offset = 0xCB2A
+count = 7
+note = "script-choice warning screen lines"
+
+[[resource]]
+id = "e3.retry.taunts"
+kind = "pstring_seq"
+offset = 0xD00A
+count = 12
+note = "retry question and taunts"
+
+[[resource]]
+id = "e3.dossier.player"
+kind = "pstring_seq"
+offset = 0xD45B
+count = 7
+note = "player dossier fields"
+
+[[resource]]
+id = "e3.saves.restore"
+kind = "pstring_seq"
+offset = 0xD6ED
+count = 4
+note = "restore screen labels"
+
+[[resource]]
+id = "e3.debrief"
+kind = "pstring_seq"
+offset = 0xDED5
+count = 21
+note = "debriefing labels, rating tiers and notes"
+
+[[resource]]
+id = "e3.saves.save"
+kind = "pstring_seq"
+offset = 0xE68E
+count = 6
+note = "save screen labels"
+
+[[resource]]
+id = "e3.background_story"
+kind = "pstring_seq"
+offset = 0xF287
+count = 18
+note = "background story pages"
+
+[[resource]]
+id = "e3.comm.prompts"
+kind = "pstring_seq"
+offset = 0x15289
+count = 2
+note = "F6 transmission prompts"
+
+[[resource]]
+id = "e3.objectives"
+kind = "pstring_seq"
+offset = 0x15868
+count = 21
+note = "per-mission objective ticker text (padded)"
+
+[[resource]]
+id = "e3.ship_library"
+kind = "pstring_seq"
+offset = 0x16F2B
+count = 31
+note = "ship library class and stat lines"
+
+[[resource]]
+id = "e3.jurisdiction.warnings"
+kind = "pstring"
+offset = 0x17E18
+note = "leaving-the-sensor-range warning (ticker)"
+
+[[resource]]
+id = "e3.flight.map_prompts"
+kind = "pstring_seq"
+offset = 0x1990D
+count = 2
+note = "Tab/Esc prompts on the map view"
+
+[[resource]]
+id = "e3.joystick.prompt"
+kind = "pstring"
+offset = 0x1A107
+note = "joystick calibration prompt"
+
+[[resource]]
+id = "e3.flight.prompts"
+kind = "pstring_seq"
+offset = 0x1A824
+count = 2
+note = "infra-red and pause prompts"
+
+[[resource]]
+id = "e3.locations"
+kind = "pstring_seq"
+offset = 0x1F650
+count = 3
+note = "location names (target information)"
+
+[[resource]]
+id = "e3.target_info.01"
+kind = "pstring_seq"
+offset = 0x1F6AB
+count = 2
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.target_info.02"
+kind = "pstring"
+offset = 0x1F6EB
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.target_info.03"
+kind = "pstring"
+offset = 0x1F70A
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.target_info.04"
+kind = "pstring_seq"
+offset = 0x1F72A
+count = 2
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.target_info.05"
+kind = "pstring"
+offset = 0x1F7C6
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.target_info.06"
+kind = "pstring_seq"
+offset = 0x1F824
+count = 3
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.target_info.07"
+kind = "pstring_seq"
+offset = 0x1F883
+count = 96
+note = "fixed-width target information lines"
+
+[[resource]]
+id = "e3.flight_messages.01"
+kind = "pstring_seq"
+offset = 0x23E8F
+count = 10
+note = "in-flight ticker messages (mission events)"
+
+[[resource]]
+id = "e3.flight_messages.02"
+kind = "pstring_seq"
+offset = 0x24E04
+count = 9
+note = "in-flight ticker messages (mission events)"
+
+[[resource]]
+id = "e3.comms.01"
+kind = "pstring_seq"
+offset = 0x25A20
+count = 13
+note = "F6 transmission lines"
+
+[[resource]]
+id = "e3.comms.02"
+kind = "pstring_seq"
+offset = 0x25CC9
+count = 4
+note = "F6 transmission lines"
+
+[[resource]]
+id = "e3.comms.03"
+kind = "pstring_seq"
+offset = 0x25FEE
+count = 7
+note = "F6 transmission lines"
+
+[[resource]]
+id = "e3.comms.04"
+kind = "pstring_seq"
+offset = 0x26157
+count = 21
+note = "F6 transmission lines"
