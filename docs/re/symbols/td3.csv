@@ -322,7 +322,7 @@ address,kind,name,signature,comment,confidence,source_task
 311C:1A63,func,BP_UpCase,,"= E1 file0001:3A9A:1A63, identical. E1: UpCase(Ch): a..z to A..Z only",CONFIRMED,M1-09
 311C:1A76,func,BP_ClearBss,,"= E1 file0001:3A9A:1A76, same code, 1 operand(s) differ. E1: internal: zero DS:0502..9DF1 (uninitialised globals) at start-up",LIKELY,M1-09
 32C5:0264,data,k_ExitScreenText,u8[262],new in E2/E3: crunched text screen shown in text mode at program exit,CONFIRMED,M1-09
-32C5:036A,data,k_TileRadarColour,u8[80],"E1 file0001:3C43:0264, E3 contents (67 of the first 72 bytes differ from E1)",CONFIRMED,M1-09
+32C5:036A,data,k_TileRadarColour,u8[80],"E1 file0001:3C43:0264, E3 contents (67 of entries 0..70 differ from E1)",CONFIRMED,M1-09
 32C5:03BA,data,k_TileRadarColour2,u8[80],byte copy of the E2 alternate radar table; unreferenced in E3,LIKELY,M1-09
 32C5:040A,data,k_HeadingRing,u8[18],"= E1 file0001:3C43:02AC, DS offset by refs 1/1. E1: 16 headings clockwise with wrap entries (keypad codes)",LIKELY,M1-09
 32C5:041C,data,k_ClassMaxSpeed,u8[10],"= E1 file0001:3C43:02BE, DS offset by operand map. E1: max speed component per class (biased by 16)",LIKELY,M1-09

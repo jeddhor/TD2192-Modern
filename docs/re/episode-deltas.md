@@ -26,7 +26,7 @@ Where a section says **identical**, the E1 spec applies unchanged. Addresses use
 - **CONST**: same instruction skeleton, but some operand differs for no address reason.
 - **CHANGED**: the skeleton differs. Similarity is the difflib ratio of the skeleton token streams.
 
-Function counts are Ghidra functions. Some GONE/NEW entries are Ghidra artefacts: a body split in two (E2 `0E96:1874`, E3 `0C5D:DA99`) or a routine moved to another unit (§9.1).
+[Appendix A](#appendix-a-every-non-identical-routine) lists every non-identical routine with a one-line description. Function counts are Ghidra functions. Some GONE/NEW entries are Ghidra artefacts: a body split in two (E2 `0E96:1874`, E3 `0C5D:DA99`) or a routine moved to another unit (§9.1).
 
 | | E1 functions | Target functions | Matched | IDENT | CONST | CHANGED | E1 only | Target only |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -665,7 +665,7 @@ The per-mission content is for the M10 mission specs ([mission-logic.md](../spec
 |---|---|---|---|---|
 | Configuration text screen (crunched, uncrunched by the 3A92 helper) | DS:0002..0262 | same | same | 3 bytes differ (DS:0240, 024C, 0259): the episode digit of the exe name in three example command lines |
 | Exit notice screen (crunched, 262 bytes) | — | DS:0264..0369 | DS:0264..0369 (same bytes) | §8.3 |
-| `k_TileRadarColour` (map tile → radar colour) | DS:0264, 72 entries | DS:036A, 80 entries (last 8 zero); differs from E1 only at tiles 62..70 (E1 50h; E2 alternating 14h/1Ah) | DS:036A, its own contents (67 of 72 bytes differ) | Exe resources `e2.hud.radar_tile_colours`, `e3.hud.radar_tile_colours` |
+| `k_TileRadarColour` (map tile → radar colour) | DS:0264, 71 entries used (tiles 0..70) | DS:036A, 80 entries (71..79 are 0); differs from E1 only at tiles 62..70 (E1 50h; E2 alternating 14h/1Ah) | DS:036A, its own contents (67 of entries 0..70 differ from E1) | Exe resources `e2.hud.radar_tile_colours`, `e3.hud.radar_tile_colours` |
 | Alternate radar colours (map set 2) | — | DS:03BA, 80 entries; copied over DS:036A when `g_MapSet` = 2 | DS:03BA, a copy of E2's table, unreferenced | `e2.hud.radar_tile_colours_set2` |
 | Heading ring | DS:02AC | DS:040A | DS:040A | byte-identical (+15Eh) |
 | Class tables: max speed, armour, shields, accel | DS:02BE..02E4 | DS:041C..0442 | DS:041C..0442 | byte-identical. The E3 flight-16 runtime patch is in §4.1 |
@@ -712,7 +712,7 @@ Applied here: [dialogue-player.md](../spec/narrative/dialogue-player.md) (E2/E3 
 | U-203 | Is the E3 flight-16 magenta tint ever restored, and what does the player see? |
 | U-204 | Capture check of the E2/E3 double kill (OB-026) and of the palette-effect reordering (§4.1) |
 | U-205 | E2/E3 first-tick behaviour without the setup `AI_ChooseWaypoint` loop: when does each ship get its first waypoint, and in what RNG order? (mission-ships, M10) |
-| U-206 | E2/E3 `UI_LoadMainMenu` highlight changes and the "02 line uses its own entry" rule (dialogue-player §4.9) were not re-checked |
+| U-206 | Not analysed for E2/E3: the `UI_LoadMainMenu` highlight changes, the menu palette fades, `Scene_BackgroundStory`, and the "02 line uses its own entry" rule (dialogue-player §4.9) |
 | U-207 | E1 spec corrections in §13 to be confirmed and applied by the owners |
 
 ## 15. Provenance
@@ -726,6 +726,61 @@ Applied here: [dialogue-player.md](../spec/narrative/dialogue-player.md) (E2/E3 
 | Map statistics (§4.4) | Counts over the `.map` files | CONFIRMED |
 
 No dynamic captures of E2/E3 were made for M1-09. The first E2/E3 oracle scenarios belong in M10 (U-204).
+
+## Appendix A. Every non-identical routine
+
+This table lists every routine that is not IDENT in E2 or E3, plus the new routines, with a one-line description. IDENT routines are not listed (§2), and neither are the CONST rows of the shared units (DGROUP offsets only, §3.1). E2/E3 addresses are those of [td2.csv](symbols/td2.csv)/[td3.csv](symbols/td3.csv), after the hand corrections.
+
+| E1 | Routine | E2 | E3 | Change |
+|---|---|---|---|---|
+| `0000:0000`, `0000:0124` | Menu palette fades (`Flow_MenuFadeOut` and its neighbour) | `0000:0000`, `00D2` | same | Changed (similarity 0.80); not analysed in M1-09 |
+| `0000:0F06` | `Main_CampaignLoop` | `0000:0CC3` | `0000:0BC5` | Episode content: §8.1, §8.2 |
+| `0000:2E88` | `UI_LoadMainMenu` | `0000:2EC0` | `0000:29E5` | Plays `menu`; no free-memory readout; highlight changes not analysed (U-206) |
+| `0000:3381` | `UI_MainMenuLoop` | `0000:3304` | `0000:2E3F` | Items 6/7 shown in-process; no `tdstatus.dat`; own save names; episode ends at mission 21 (E3: 20) |
+| `0000:4526` | `Main_Entry` | `0000:4365` | `0000:3E8A` | `/?` switch, MemAvail gate, no `tdstatus.dat` read, exit notice screen (§8.3) |
+| `051A:1618` | `Dlg_LoadPortrait` | `04EC:176D` | `04A0:178D` | File name `newfaces.td2`/`.td3` |
+| `051A:1A40` | `Inp_WaitKeyOrButton` | `1DE6:01ED` | `1BB3:01ED` | Moved to the joystick unit, same logic |
+| `051A:1AA3` | `Flow_WaitSecondsOrKey` | identical | `04A0:0269` | E3 flushes keys and joystick buttons on entry |
+| `051A:1BF7` | `Dlg_ShowLine` | `04EC:1B95` | `04A0:1BB5` | Scroll region rows 101..199 (row count 64h) |
+| `051A:1DA1`, `2B26`, `4113`, `56D5`, `609D`, `62FD`, `6653` | String-once, hint screen, stills, missing-dialogue notice, assignment orders, enemy dossier | — | — | Removed (§9.1) |
+| `051A:1E5A..4F5A` (scene cards) | `Scene_*`, `Flow_Scene*` | 27 routines | 19 routines | One routine per background, with its own caption anchor, shadow, ink and wait (§9.2) |
+| `051A:527F` | `UI_ScriptChoice` | `04EC:689B` | `04A0:4980` | One line fewer; a missing dialogue file silently selects script 2 |
+| `051A:5852` | `Scene_MissionTitle` | `04EC:5A89` | identical | DGROUP palette address only |
+| `051A:596F` | `Scene_VultureCommand` | `04EC:5BA3` (`Scene_Hyde`) | — | Same layout, other background |
+| `051A:5EE9`, `5FC7` | `Gfx_LoadJavelin`, `Gfx_LoadCity` | `04EC:6693`, `6B77` | `04A0:4778`, `4C5C` | Slightly shorter; same files |
+| `051A:6A33` | `UI_RetryPrompt` | `04EC:6E62` | `04A0:4F47` | Taunt 5 text and x position |
+| `051A:6FF2` | `UI_Debrief` | identical | `04A0:5F7E` | E3 failure-note string, 15 s wait |
+| `051A:74B2` | `UI_PlayerDossier` | `04EC:712D` | `04A0:5212` | Same layout; local buffer size |
+| `051A:76EA` | `Sav_RestoreScreen` | `04EC:7B20` | `04A0:5450` | File names; keyboard/joystick flush moved |
+| `051A:8EAA` | `Scene_BackgroundStory` | `04EC:92EE` | `04A0:73DF` | One instruction fewer (similarity 0.999); not analysed in M1-09 |
+| `051A:92AF` | `Dlg_PlayScene` | `04EC:96A4` | `04A0:7795` | Face remaps, no bottom prompt, allocator 240..254 (§9.3) |
+| `0E8B:01F6`, `0426` | `Gfx_FadeInFlight`, `Gfx_FadeOutFlight` | `0E96:01F6`, `0426` | `0C5D:01F6`, `0422` | Entry ranges and hit-flash clear (§6) |
+| `0E8B:07ED` | `Snd_PlayMusic` | `0E96:07FB` | `0C5D:07F3` | Index table (§7) |
+| `0E8B:0984` | `Sim_ProjectilesAndHits` | `0E96:09A9` (+ `1874`) | `0C5D:09A7` | P1..P6 (§5.1) |
+| `0E8B:51FE`, `530B` | `UI_DrawCommPortraitA/B` | `0E96:51CA`, `52D7` | `0C5D:51D7`, `52E4` | File name `td2.ccm`/`td3.ccm` |
+| `0E8B:5435` | `UI_CommScreen` | `0E96:5401` | `0C5D:540E` | Dispatch to 7 / 4 comm text routines (§6) |
+| `0E8B:56ED` | `Sim_EndSequenceStep` | identical | `0C5D:568F` | One dead store (§4.1 step 11) |
+| `0E8B:60D8` | `Msn_Setup` | `0E96:60F9` | `0C5D:6149` | Per-flight content (§10) |
+| `0E8B:7374` | `UI_ShipLibrary` | `0E96:7653` | `0C5D:7337` | Which entries are hidden (§6) |
+| `0E8B:794C` | `UI_FlightMenu` | identical | `0C5D:7916` | Flight-16 tint re-applied (§6) |
+| `0E8B:7FDF` | `UI_HudTickerAndIndicator` | `0E96:8330` | `0C5D:7FD0` | One jurisdiction warning (§6) |
+| `0E8B:80D3` | `UI_CommViewer` | `0E96:83F9` | `0C5D:8099` | Per-episode (flight, phase) table (§6) |
+| `0E8B:82DD` | `UI_DrawGuidanceLine` | `0E96:8587` | `0C5D:81C1` | Home points, 39h dots in IR, no flight-7 rule (§6) |
+| `0E8B:9860` | `Msn_UpdateEvents` | — | — | Removed; replaced by `Msn_E2FlightEvents` / `Msn_E3TimedEvents` (§4.1) |
+| `0E8B:A714` | `UI_ShipSwitchScreen` | `0E96:9BEC` | `0C5D:9A99` | Every live ship selectable (§6) |
+| `0E8B:B1EC` | `Sim_PlayerSpecials` | inlined in `Sim_FlyMission` | inlined | E2 infra-red bug (OB-023) |
+| `0E8B:B880` | `Sim_FlyMission` | `0E96:A76E` | `0C5D:A9CC` | §4 |
+| — | `Gfx_HitFlashStep` (new) | `0E96:6D53` | `0C5D:A55B` | E1 inline block made a procedure (§4.1) |
+| — | `Msn_E2FlightEvents`, `Msn_E3TimedEvents` (new) | `0E96:99B8` | `0C5D:959E` | §4.1 |
+| `1E2A:006A` | `Snd_PlayEffect` | identical | `1B1E:006A` | DGROUP offset only |
+| `1EDE:0E6A` | Message tables | `1E0B:1475` | `1BD8:12A1` | Per-flight content (§10) |
+| `2404:0616`, `07DB` | `Msn_PlayerTouches`, `Msn_Near` | — | — | Removed |
+| `2404:06EE` | `Msn_NearLive` | `2236:0616` | `1FEB:0616` | Player tile = view + (5, 3) (§10) |
+| `2404:1426`, `3521` | `Msn_UpdateA`, `Msn_UpdateB` | `2236:0ADB`, `240A` | `1FEB:0A7F`, `19AD` | Per-flight content (§10) |
+| `2404:60FD` | `Unit2404_Init` | identical | — | No init part in E3 |
+| `2A15:*` (9 routines) | Comm texts | `2555:*` (7) | `2215:*` (4) | Same structure, other texts (§10) |
+| `3292:0011` | `AI_UpdateShips` | `2D26:0011` | `2935:0011` | Per-flight cases removed, alive-flag prologue (§5.2) |
+| `3A7E:009D` | `Dos_Exec` | — | — | Removed |
 
 ## 16. Revision history
 
