@@ -90,7 +90,7 @@ Menus and scenes set the split line to 400 (off) and the display end back to nor
 | Radar: player | 46h | |
 | Guidance, marker 32h (target) | dots 0..5: B0h, A5h, F9h, 7Ah, 5Ch, 5Ch | |
 | Guidance, marker 39h (friend) | B2h, A9h, 98h, 82h, 66h, 66h | |
-| Guidance, marker 3Dh (home) | B3h, ABh, 9Ch, D1h, 50h, 50h; palette mode 2: all six in the home lamp's entry, which is set to (63, 0, 0) | |
+| Guidance, marker 3Dh (home) | B3h, ABh, 9Ch, D1h, 50h, 50h; palette mode 2: all six in the home lamp's entry, whose DAC is set to (0, 0, 63) | |
 | Guidance shadow | 0 | |
 
 `k_TileRadarColour` replaces the two short tables that [globals](../../re/globals.md) §1 listed at DS:0295 and DS:02A2: they are its entries for tiles 49..59 and 62..70.
@@ -200,7 +200,7 @@ for j = 0..5:  colour 0 at (x[j] + 1, y[j]), (x[j] + 1, y[j] + 1), (x[j], y[j] +
 then, by the target's marker (3.4):
     32h or 39h: dot j in its colour at (x[j], y[j]), j = 0..5
     3Dh: flight 7 only: if dead(2, 3, 4): mission phase := 100     (a game rule; mission-logic 5.7)
-         palette mode 2: Gfx_SetDacEntry(home lamp entry, 63, 0, 0); all six dots in that entry
+         palette mode 2: DAC of the home lamp entry := (0, 0, 63) (DAC only); all six dots in that entry
          otherwise: dot j in its colour
     any other marker: only the shadows
 ```
