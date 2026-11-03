@@ -11,11 +11,14 @@
 //! Slots are 1-based here, as in the spec (`Ships::0[s - 1]`); slot 0 in a range rule is the
 //! player, whose position is the **view tile** (§2). Messages are carried as resource ids
 //! ([`Message`]); resolving text is the renderer's job.
+//!
+//! Episode 2 (`docs/spec/sim/e2-mission-logic.md` rev 1) is in [`e2`]; the primitives here
+//! serve both, and the episode-specific parts below branch on [`Flight::episode`].
 
-use super::Flight;
 use super::player::Event;
 use super::ships::{NO_SHIP, SHIP_SLOTS};
 use super::shots::Shot;
+use super::{Episode, Flight};
 use crate::hash::{HashState, StateHasher};
 use crate::real48::Real48;
 
@@ -49,6 +52,16 @@ pub enum Message {
     Jurisdiction(u8),
     /// `e1.flight_events.01[k]`.
     Events1(u8),
+    /// `e2.objectives[k]` (`td2.exe`).
+    E2Objective(u8),
+    /// `e2.flight_messages.01[k]` (E2 `M1[k]`).
+    E2Flight1(u8),
+    /// `e2.flight_messages.02[k]` (E2 `M2[k]`).
+    E2Flight2(u8),
+    /// `e2.jurisdiction.warnings` (one text).
+    E2Jurisdiction,
+    /// `e2.flight_events` (one text: the flight-18 base destruction).
+    E2Events,
 }
 
 impl Message {
@@ -60,8 +73,28 @@ impl Message {
             Self::Flight2(k) => ("e1.flight_messages.02", k),
             Self::Jurisdiction(k) => ("jurisdiction.warnings", k),
             Self::Events1(k) => ("e1.flight_events.01", k),
+            Self::E2Objective(k) => ("e2.objectives", k),
+            Self::E2Flight1(k) => ("e2.flight_messages.01", k),
+            Self::E2Flight2(k) => ("e2.flight_messages.02", k),
+            // Single texts (`ExeResources::text`), index 0.
+            Self::E2Jurisdiction => ("e2.jurisdiction.warnings", 0),
+            Self::E2Events => ("e2.flight_events", 0),
         };
         (id, usize::from(k))
+    }
+
+    /// True when the text is drawn with the flight font (`Txt_FlightDrawStringOpaque`): the
+    /// objectives, the jurisdiction warning and the E2 flight-18 event text (e2-mission-logic
+    /// §4.7.1); the mission messages use the mission glyph routine.
+    pub fn flight_font(self) -> bool {
+        matches!(
+            self,
+            Self::Objective(_)
+                | Self::Jurisdiction(_)
+                | Self::E2Objective(_)
+                | Self::E2Jurisdiction
+                | Self::E2Events
+        )
     }
 
     fn code(self) -> [u8; 2] {
@@ -71,6 +104,11 @@ impl Message {
             Self::Flight2(k) => [3, k],
             Self::Jurisdiction(k) => [4, k],
             Self::Events1(k) => [5, k],
+            Self::E2Objective(k) => [6, k],
+            Self::E2Flight1(k) => [7, k],
+            Self::E2Flight2(k) => [8, k],
+            Self::E2Jurisdiction => [9, 0],
+            Self::E2Events => [10, 0],
         }
     }
 }
@@ -159,6 +197,9 @@ pub struct MissionState {
     /// Flight 19: slot 19's tile and offsets while the player flies the Vulture II
     /// (DS:16EE/16F0/16F2/16F4).
     pub truck: [i16; 4],
+    /// E2 flight 18: the debris counter of `Msn_E2FlightEvents` (E2 DS:11E8, cleared at flight
+    /// start; e2-mission-logic §4.7.1).
+    pub debris: u16,
 }
 
 impl Default for MissionState {
@@ -180,6 +221,7 @@ impl Default for MissionState {
             bomb: false,
             white_out: false,
             truck: [0; 4],
+            debris: 0,
         }
     }
 }
@@ -203,6 +245,34 @@ impl MissionState {
         if let Some(k) = objective {
             let ink = if flight >= 12 { INK_ALERT } else { INK };
             self.ticker.post(Message::Objective(k), ink);
+        }
+    }
+
+    /// The mission-logic part of E2 flight start (e2-mission-setup §4.1 steps 1 and 3, §3.2):
+    /// the debris counter, comm pending and the trigger (`g_CutsceneRequest`) are cleared,
+    /// then `Msn_Setup` sets phase 1, the home marker 3Dh and the objective (ink 37 for flights
+    /// 1–7 and 9–11, 42 for 8 and 12–20); flight 11 starts with a transmission waiting.
+    pub fn setup_e2(&mut self, flight: u8) {
+        self.scripted = true;
+        self.debris = 0;
+        self.comm_pending = false;
+        self.cutscene = false;
+        self.transmission = 0;
+        self.scene = 0;
+        self.ticker.pos = 0;
+        if !(1..=20).contains(&flight) {
+            return;
+        }
+        self.phase = 1;
+        self.home_marker = MARK_HOME;
+        let ink = if flight == 8 || flight >= 12 {
+            INK_ALERT
+        } else {
+            INK
+        };
+        self.ticker.post(Message::E2Objective(flight - 1), ink);
+        if flight == 11 {
+            self.comm_pending = true;
         }
     }
 
@@ -236,7 +306,7 @@ impl HashState for MissionState {
             u8::from(self.bomb),
             u8::from(self.white_out),
         ]);
-        for w in [t.pos, t.draws, t.window, self.ion_timer] {
+        for w in [t.pos, t.draws, t.window, self.ion_timer, self.debris] {
             w.hash_state(h);
         }
         for w in self.truck {
@@ -331,11 +401,16 @@ impl Flight {
         (sh.tile_x, sh.tile_y)
     }
 
-    /// Position used by the range rules: the view tile (low bytes) for 0, else the slot tile.
+    /// Position used by the range rules: for 0 the view tile (low bytes) in E1, the player tile
+    /// (view tile + (5, 3), low bytes) in E2 (e2-mission-logic §3.1); else the slot tile.
     fn range_pos(&self, k: usize) -> (u8, u8) {
         if k == 0 {
-            let v = self.player.view;
-            (v.tile_x as u8, v.tile_y as u8)
+            if self.episode == Episode::E1 {
+                let v = self.player.view;
+                (v.tile_x as u8, v.tile_y as u8)
+            } else {
+                self.player_tile()
+            }
         } else {
             self.slot_tile(k)
         }
@@ -475,6 +550,11 @@ impl Flight {
     pub(super) fn msn_update(&mut self) {
         if !self.mission.scripted {
             return;
+        }
+        match self.episode {
+            Episode::E1 => {}
+            Episode::E2 => return self.e2_update(),
+            Episode::E3 => return,
         }
         match self.number {
             1 => self.flight_1(),
@@ -1316,7 +1396,11 @@ impl Flight {
 /// shields are capped at 10 and slot 19 stays where the truck was left.
 impl Flight {
     pub(super) fn flight_19_pin(&mut self) {
-        if self.number != 19 || !self.mission.scripted || self.phase() <= 1 {
+        if self.episode != Episode::E1
+            || self.number != 19
+            || !self.mission.scripted
+            || self.phase() <= 1
+        {
             return;
         }
         self.player.shields = self.player.shields.min(10);
@@ -1330,7 +1414,7 @@ impl Flight {
 /// Step 18: `Msn_UpdateEvents` (`0E8B:9860`, §4.7).
 impl Flight {
     pub(super) fn msn_update_events(&mut self, events: &mut Vec<Event>) {
-        if !self.mission.scripted {
+        if !self.mission.scripted || self.episode != Episode::E1 {
             return;
         }
         self.mission.scene = 0;
@@ -1504,8 +1588,12 @@ impl Flight {
         if !self.mission.scripted {
             return None;
         }
-        let (n, next) = transmission(self.number, self.phase())?;
-        if self.number == 14 {
+        let (n, next) = match self.episode {
+            Episode::E1 => transmission(self.number, self.phase())?,
+            Episode::E2 => e2::transmission(self.number, self.phase())?,
+            Episode::E3 => return None,
+        };
+        if self.episode == Episode::E1 && self.number == 14 {
             let all: Vec<usize> = (1..=20).collect();
             self.mark(&all, 0);
             self.mark(&[1, 2, 3, 4, 5, 6], MARK_TARGET);
@@ -1529,6 +1617,7 @@ impl Flight {
     pub(super) fn instruments(&mut self, events: &mut Vec<Event>) {
         // Guidance (hud §4.3): the flight-7 completion rule (mission-logic §5.7, U-180).
         if self.mission.scripted
+            && self.episode == Episode::E1
             && self.number == 7
             && self.guidance_marker() == MARK_HOME
             && self.dead(&[2, 3, 4])
@@ -1537,8 +1626,12 @@ impl Flight {
         }
         // Ticker (hud §4.7).
         if self.edge_hit {
-            let k = u8::from(matches!(self.number, 13 | 14));
-            self.post(Message::Jurisdiction(k));
+            // E2 has one warning text (episode-deltas §6).
+            let m = match self.episode {
+                Episode::E1 => Message::Jurisdiction(u8::from(matches!(self.number, 13 | 14))),
+                _ => Message::E2Jurisdiction,
+            };
+            self.post(m);
             self.edge_hit = false;
         }
         self.mission.ticker.step(self.draw_page);
@@ -1570,6 +1663,12 @@ impl Flight {
 
     /// `g_MissionOutcome` computed at teardown (§4.8).
     pub fn outcome(&self) -> bool {
+        match self.episode {
+            Episode::E1 => {}
+            Episode::E2 => return self.e2_outcome(),
+            // ASSUMPTION(M10-02): E3 outcome tests are not ported yet.
+            Episode::E3 => return true,
+        }
         let t = |s| self.slot_tile(s);
         match self.number {
             3 => t(4) == (107, 106),
@@ -1599,6 +1698,8 @@ impl Flight {
         self.end_ticks == 35
     }
 }
+
+pub mod e2;
 
 #[cfg(test)]
 mod tests;

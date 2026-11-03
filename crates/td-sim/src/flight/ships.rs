@@ -409,6 +409,14 @@ impl Ships {
         }
     }
 
+    /// The E2/E3 prologue of `AI_UpdateShips`: record +000h := 1 for every live slot, 0 for
+    /// the others (e2-mission-ships §4.2; nothing reads it, U-201).
+    pub fn flag_live(&mut self) {
+        for s in &mut self.0 {
+            s.record.fixed_done = u8::from(s.alive());
+        }
+    }
+
     /// `AI_OrderAttack(slot, target)` (§4.3.10), called by mission logic: `slot` is 0-based,
     /// `target` is a target selector ([`TARGET_PLAYER`], 1..=20, [`TARGET_RETURN`]). The
     /// attack starts at the ship's next waypoint arrival.

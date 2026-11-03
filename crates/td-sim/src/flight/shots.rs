@@ -5,11 +5,11 @@
 //! tests use the positions before the move. "Freeing" a slot writes FFh to its tile X, as the
 //! original does; later tests in the same pass then fail on distance by themselves.
 
-use super::World;
 use super::explosions::Explosions;
 use super::player::{Event, Player};
 use super::ships::{SHIP_SLOTS, Ships};
 use super::tables::{player_damage, ship_damage, shot_entry};
+use super::{Episode, World};
 use crate::hash::{HashState, StateHasher};
 use crate::rng::BpRandom;
 
@@ -84,6 +84,13 @@ impl Muzzles {
     }
 }
 
+/// E2 shot-table entries of class FFh: DS:0443 + 17 × 255 + m = DS:1533..1543, inside
+/// `g_FlightPalette`, as `td.pal` loads it (e2-mission-logic §6, OB-039).
+/// ASSUMPTION(U-246): the flight palette is unmodified when the ghost volleys fire.
+pub const E2_GHOST_ENTRIES: [u8; 17] = [
+    15, 27, 27, 15, 27, 39, 15, 15, 39, 27, 15, 39, 39, 15, 27, 39, 15,
+];
+
 /// Everything a shot update touches besides the pool itself.
 #[derive(Debug)]
 pub struct Combat<'a> {
@@ -103,6 +110,8 @@ pub struct Combat<'a> {
     pub flight: u8,
     /// Damage multiplier for hits on the player (DS:13DE, 1 by default).
     pub difficulty: u8,
+    /// Episode deltas of `Sim_ProjectilesAndHits` (episode-deltas §5.1, P1–P4).
+    pub episode: Episode,
 }
 
 /// The projectile pool.
@@ -174,7 +183,17 @@ impl Shots {
 
     /// Mission-ship volleys (mission-ships §4.4.2, tick-order step 30; the caller runs it when
     /// the back page is 1): one volley per fire request, along the ship's current heading.
-    pub fn ship_volleys(&mut self, ships: &Ships, muzzles: &Muzzles, events: &mut Vec<Event>) {
+    ///
+    /// The spawner tests no class. In E2 a class-FFh slot with a fire request (only E2 flight
+    /// 13's script raises one, OB-039) reads its shot-table entries from the flight palette
+    /// ([`E2_GHOST_ENTRIES`]); elsewhere such a slot spawns nothing.
+    pub fn ship_volleys(
+        &mut self,
+        ships: &Ships,
+        muzzles: &Muzzles,
+        episode: Episode,
+        events: &mut Vec<Event>,
+    ) {
         for (i, s) in ships.0.iter().enumerate() {
             for e in 2..=8 {
                 if !s.fire[e - 1] {
@@ -184,7 +203,11 @@ impl Shots {
                     let Some(slot) = self.highest_free(0..=40) else {
                         continue;
                     };
-                    let entry = shot_entry(s.class, m);
+                    let entry = if !s.alive() && episode == Episode::E2 {
+                        E2_GHOST_ENTRIES[m - 1]
+                    } else {
+                        shot_entry(s.class, m)
+                    };
                     if entry == 0 {
                         continue;
                     }
@@ -297,6 +320,13 @@ impl Shots {
                     && near(ship.world(), shot.world(), 40)
                 {
                     self.free(i);
+                    if c.episode == Episode::E2 {
+                        // P4: E2 plays the destruction sound at the ship first.
+                        c.events.push(Event::Sound {
+                            kind: 100,
+                            source: Some((ship.tile_x, ship.tile_y)),
+                        });
+                    }
                     *c.kills += 1;
                     *c.white_flash = 4;
                     let ship = &mut c.ships.0[s];
@@ -306,8 +336,8 @@ impl Shots {
                 }
             }
         }
-        // 4. Hits on mission ships.
-        if !(c.flight == 20 && self.0[i].owner == 1) {
+        // 4. Hits on mission ships (E1: not slot 1's shots in flight 20; P1 removed it).
+        if !(c.episode == Episode::E1 && c.flight == 20 && self.0[i].owner == 1) {
             for s in 0..SHIP_SLOTS {
                 let shot = self.0[i];
                 if c.ships.0[s].alive()
@@ -402,7 +432,11 @@ impl Shots {
             if shot.owner == 0 {
                 *c.kills += 1;
             }
-            ship.class = super::ships::NO_SHIP;
+            // P3: E2/E3 leave the class alone; the AI pass removes the wreck (armour < 1) and
+            // until then it can be hit again (OB-026).
+            if c.episode == Episode::E1 {
+                ship.class = super::ships::NO_SHIP;
+            }
             five_explosions(c.explosions, (ship.tile_x, ship.tile_y));
         } else if let Some(e) = c.explosions.idle_hit_slot() {
             // The Random calls sit inside the slot search (weapons rev 3): none without a slot.
