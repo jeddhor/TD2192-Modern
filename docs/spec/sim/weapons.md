@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/weapons` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions) · T2 for the drawing of shots |
 | **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); LIKELY for hits, damage, homing and enemy volleys (static) |
@@ -138,13 +138,15 @@ For each projectile slot i = 0..50 in order, if its tile X ≠ FFh:
      if armour(s) = 0:
          kind[s] := 1                     (original bug: writes the projectile kind array at index s)
          if owner = 0: mission kills += 1
-         class(s) := FFh; five explosions around the ship (fixed offsets)
-     else: one small explosion at ship offset + Random(16) on each axis (X first, then Y)
+         class(s) := FFh; five explosions around the ship (tiles and order: flow/flight-screens §4.7)
+     else: one small explosion at ship offset + Random(16) on each axis (X first, then Y);
+           only if an explosion slot 1..20 is idle: with all twenty busy, neither Random call is made
 5. if owner != 0 and DS:1703 = 0 and |player reference − shot| < 20 px on both axes:
      free the slot; hit sound (kind 9)
      if difficulty != 0: apply 2 × (kind + 1) × difficulty to shields, then armour, as in step 4
      if armour < 0: armour := 0;  if shields > 60 or < 0: shields := 0
-     explosion at the player: offset view + Random(8) − 8 on each axis (X first, then Y)
+     explosion at the player: offset view + Random(8) − 8 on each axis (X first, then Y);
+           again only if an explosion slot 1..20 is idle (no Random calls otherwise)
 6. kind 6: heading := principal direction from the shot's tile toward the target slot's tile
      (both axes differ: 3, 9, 1 or 7; same column: 2 if the target is below, else 8;
       same row: 6 if the target is to the right, else 4; DS:1CBC keeps the last value)
@@ -188,7 +190,7 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 ## 8. Open questions
 
 - [ ] Q1 (VE): capture a volley, a missile launch and a ship kill in E1M1 (class 4) with per-frame dumps of the projectile arrays (heap; follow the far pointers at DS:396E..398A) and the ship records.
-- [ ] Q2: the five destruction-explosion offsets and the `06C5` distance formula (presentation).
+- [x] Q2: explosion tiles, offsets, slot choice and drawing: [flow/flight-screens](../flow/flight-screens.md) §4.7 (RE-8); shot drawing §4.8. The `06C5` distance formula is in §7.
 - [x] Q3 (U-040): answered in [mission-ships §4.4.2](mission-ships.md): bytes at DS:035C + 34 × heading + 2m (other globals); port policy U-160.
 
 ## 9. Provenance
@@ -208,3 +210,4 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial |
 | 2 | 2026-11-02 | main session (Verifier) | Capture C-0011 (`wpn-e1m1.txt`); L5 test `crates/td-sim/tests/oracle_weapons.rs` matches every frame. Corrections: volley offset X has a −16; the cooldown decrements before the fire keys. Vectors 4–6 |
+| 3 | 2026-11-02 | RE-8 | The `Random` calls of the hit explosions run only when an explosion slot 1..20 is idle (T1: RNG order); explosion and shot presentation moved to flow/flight-screens §4.7–4.8 |
