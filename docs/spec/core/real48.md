@@ -378,7 +378,7 @@ None.
 
 - [ ] Q1 (VE, optional third line of evidence): spot-check a few rows of `real48-vectors.csv` in the DOSBox oracle, by breaking on a game call to `3A9A:132F` and comparing the registers before and after.
 - [ ] Q2: `Ln` (`3A9A:14ED`) and `Exp` (`3A9A:1596`) are linked in but not called by game code. If a later finding shows a call, they need the same treatment (coefficient tables at `3A9A:1572` and `3A9A:1609`).
-- [ ] Q3 (M1-09): E2 and E3 link the same System unit (`td2:350D`, `td3:311C`, identical size). Confirm byte-identity of `:1002..:17D6` before reusing this spec there.
+- [x] Q3 (M1-09): E2 and E3 link the same System unit (`td2:350D`, `td3:311C`, identical size). Confirm byte-identity of `:1002..:17D6` before reusing this spec there. **Resolved (RE-7):** System is code-identical in all three episodes apart from DGROUP offsets; this spec applies unchanged ([episode-deltas §3.1](../../re/episode-deltas.md#31-identical-units)).
 
 ## 9. Provenance
 
