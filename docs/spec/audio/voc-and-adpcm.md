@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/voc-and-adpcm` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for container parsing and ADPCM decoding; T2 for playback (resampling) |
-| **Confidence** | LIKELY: written from the public descriptions of the VOC container and the Sound Blaster ADPCM schemes. Decoder output still has to be checked against a DOSBox-X capture (M3-08). |
+| **Confidence** | LIKELY: written from the public descriptions of the VOC container and the Sound Blaster ADPCM schemes. The reference-byte rule is CONFIRMED from the DSP commands WORX issues (§3, U-035). Decoder output still has to be checked against a DOSBox-X capture (M3-08). |
 | **Tasks** | M3-01, M3-02 |
-| **Unknowns** | U-021 (SFX policy), U-035 (reference byte) |
+| **Unknowns** | U-021 (resolved, see [sfx-policy](sfx-policy.md)), U-035 (resolved) |
 
 ## 1. Summary
 
@@ -40,11 +40,15 @@ Blocks follow: a type byte, then (except for type 0) a 24-bit little-endian leng
 
 Codec byte: 0 = 8-bit unsigned PCM; 1 = 4-bit ADPCM; 2 = 2.6-bit ADPCM; 3 = 2-bit ADPCM.
 
+### 2.1 How WORX plays a VOC (for reference)
+
+The game loads each VOC into memory and plays it with WORX function 06h ([worx.md](../../re/worx.md)). WORX first stops the sound that is playing, so only one digital sound plays at a time ([sfx-policy](sfx-policy.md)). It then skips the 26-byte header and parses blocks. For a type-1 block it sends DSP `40h` with the block's time constant, programs DMA channel 1 in auto-init mode over a 4 KB buffer, and issues one long DSP transfer with the codec's command (§3). As the DSP consumes the buffer, WORX refills it from the timer interrupt; this is the "timer streaming" option the game turns on with function 3Eh. Type-2 blocks are appended to the same transfer. Type-3 silence is played as a buffer of silence. When the data ends, the rest of the buffer is filled with silence (80h for PCM, 00h for ADPCM) until WORX halts the DSP (`D0h`). Blocks of type 0 and 4–7 end playback. WORX does not scale or filter the samples: SFX loudness and panning are set through the SB Pro mixer ([sfx-policy §4.3](sfx-policy.md#43-volume-and-panning-sound-blaster)).
+
 ## 3. ADPCM decoding
 
 State: `sample` (signed, range −128..=127, centred so that unsigned PCM = `sample + 128`) and `step` (0..=3).
 
-1. **Reference byte:** the first data byte of each type-1 block is an uncompressed unsigned 8-bit sample. It becomes the first output sample and initialises `sample = byte − 128`, with `step = 0`. (Assumption U-035: all our ADPCM files start with a reference byte, as the DSP's "with reference" commands expect.)
+1. **Reference byte:** the first data byte of each type-1 block is an uncompressed unsigned 8-bit sample. It becomes the first output sample and initialises `sample = byte − 128`, with `step = 0`. CONFIRMED (U-035): WORX starts every type-1 block with the DSP's "with reference" command for the block's codec (`75h` 4-bit, `77h` 2.6-bit, `17h` 2-bit; `14h` for 8-bit PCM). A type-2 block continues the same DSP transfer, so it has no reference byte and the ADPCM state carries on (§2).
 2. **Code unpacking**, most significant bits first:
    - 4-bit: two codes per byte, `b >> 4` then `b & 0x0F`. Code width 4.
    - 2.6-bit: three codes per byte, `b >> 5`, `(b >> 2) & 7`, `(b & 3) << 1`. Code width 3; the last code has only 2 significant bits.
@@ -70,8 +74,8 @@ Vectors 1–4 follow from §3 by hand (they test the description, not the origin
 
 ## 5. Open questions
 
-- [ ] U-035: is the first byte always a reference byte in these files (as assumed), or does WORX use the "no reference" DSP commands for some?
-- [ ] Does WORX apply any volume scaling or filtering to SFX?
+- [x] U-035: resolved. WORX picks the DSP command from the table at `file0001:2C37:31DC` (`14 75 77 17 14 74 76 16`), indexed by the block's codec byte. Codecs 0..3 select the "with reference" commands. The "no reference" entries (index 4..7) are reachable only through WORX function 3Fh, which the game does not call.
+- [x] Does WORX apply any volume scaling or filtering to SFX? No: samples go to the DSP unchanged. The game sets the SB Pro mixer voice volume per effect (left/right panning and distance), see [sfx-policy](sfx-policy.md).
 
 ## 6. Provenance
 
@@ -79,9 +83,11 @@ Vectors 1–4 follow from §3 by hand (they test the description, not the origin
 |---|---|---|
 | Container layout and block types | Public VOC format documentation; header parse of all 17 files (FORMATS.md §15) | CONFIRMED (container) |
 | ADPCM algorithm | Public descriptions of the SB DSP ADPCM schemes, restated here | LIKELY |
+| Reference byte at the start of each type-1 block | DSP command table `file0001:2C37:31DC`; type-1 handler `2C37:643F` (codec byte → `2C37:4CEC`) and DSP start `2C37:4CF9` (command via the table, after `40h` + time constant) | CONFIRMED (static) |
 
 ## 7. Revision history
 
 | Rev | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | main session (SP) | Initial |
+| 2 | 2026-11-02 | RE-4 (Archaeologist) | U-035 confirmed from the DSP commands WORX uses; how WORX plays VOCs (§2.1) |

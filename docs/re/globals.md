@@ -59,7 +59,7 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | DS:13DC | u8 | `g_NoSoundDriver` | `/nosound` or `/pc`: never call WORX | CONFIRMED |
 | DS:1F4E | u8 | `g_SkipStory` | Esc pressed during a story screen | CONFIRMED |
 | DS:1F56..1F5C | u16 × 4 | `g_JoyCal` | Joystick calibration (saved in `tdstatus.dat`) | LIKELY |
-| DS:3946 | u16 | `g_SongSize` | Size of `g_SongBuffer` | LIKELY |
+| DS:3946 | u16 | `g_MusicSize` | Size of `g_SongBuffer` (name from M1-02) | CONFIRMED |
 
 ## 3. Input
 
@@ -181,7 +181,7 @@ Layouts and field meanings: [structures.md](structures.md) §2–§5.
 |---|---|---|---|
 | DS:1E34 | farptr | saved INT 1Ch vector (M1-03) | CONFIRMED |
 | DS:1E38..1E3B, 1E40 | | SFX unit state | HYPOTHESIS |
-| DS:1F0A | u8 | an effect is playing (cleared when WORX reports idle) | LIKELY |
+| DS:1F0A | u8 | `g_SfxPriority` (M1-02): priority of the effect playing, 0 = idle; cleared when WORX reports idle | CONFIRMED |
 | DS:1F0C..1F4C | | SFX channel table (6-byte entries) | HYPOTHESIS |
 
 ## 8. Notes for other tasks

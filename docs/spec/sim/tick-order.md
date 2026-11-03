@@ -107,7 +107,7 @@ each tick (0E8B:CC7F):
   23. pause key: show the pause text, clear all key bytes, wait until any key byte is set
   24. g_DrawPage := 1 - g_DrawPage
   25. Esc and not over: flight menu (may set g_MissionAborted)
-  26. SFX on Sound Blaster: when WORX reports idle, clear the "effect playing" byte DS:1F0A
+  26. SFX on Sound Blaster: when WORX reports idle, clear g_SfxPriority (DS:1F0A)
   27. shields < 1 -> 0; armour < 1 and not over -> mission over (player destroyed)
       shields < class maximum -> shields += 1
   28. player drift and drag, map collision, tile carry and map limits (flight-model.md 4.2-4.4)
