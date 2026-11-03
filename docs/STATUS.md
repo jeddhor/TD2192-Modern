@@ -167,7 +167,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M8-02 | Mission logic architecture + primitives spec | RE/SP | M1-04 | REVIEW | RE-6 | 2026-11-02 RE-6: spec/sim/mission-logic.md rev 1 (architecture, primitives, comm viewer, respawns, outcome tests, all flights 1-21; flights 1-3 complete, flight 1 confirmed by C-0010). Open: U-180..U-184; AI_SetTarget behaviour is RE-5's (U-045). Ready for M8-05/M8-10 IM |
 | M8-03 | AI behaviours spec | RE/SP | M1-08 | DONE | RE-5 | 2026-11-02 RE-5: sim/mission-ships.md rev 2 sections 4.3-4.4 (path/attack/detour/return, fire decision, shot spawn); CONFIRMED by C-0009; U-040/U-042/U-045/U-047 resolved; OB-013..OB-018; mission-logic attack orders (2404) left to RE-6 |
 | M8-04 | Path playback + AI | IM | M8-01, M8-03, M7-06 | DONE | IM-2 | 2026-11-02; mission-ships rev 2 + mission-setup rev 1: full slot arrays and record, setup (40 Random(2) incl. program start), AI state machine, movement, removal, flight 7/20 specials, enemy volleys; class tables + ships + RNG as Session (OB-018); Ships::order_attack and a step 8-9 hook for M8-05. L5 tests/oracle_ships.rs: C-0009 setup + 3,353 slot-ticks exact (attack orders and tick-1 removals copied). Open: flight 19 special (needs mission phase), drawing rules 4.7, U-143 |
-| M8-05 | Mission runtime + MissionScript API | IM | M8-02 | TODO | | |
+| M8-05 | Mission runtime + MissionScript API | IM | M8-02 | PAUSED | IM-2 | handoff docs/handoffs/2026-11-02-IM-2c.md (not started; IM-2 out of context after M8-04) |
 | M8-06 | Guidance line | IM | M8-05 | TODO | | |
 | M8-07 | Objective messages, comms, jurisdiction warnings | IM | M8-05, M2-14 | TODO | | |
 | M8-08 | Ship switching, wingmen, protected targets | IM | M8-05 | TODO | | |
