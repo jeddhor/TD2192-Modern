@@ -13,7 +13,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|
 | **Current milestone** | M0 (in progress); M2 started in parallel |
 | **Last updated** | 2026-11-02 |
-| **Ghidra lock** | free (RE-2 applied the merged file0001.csv, 394 rows, to the canonical project on 2026-11-02: 231 functions, 154 data, 9 labels, 0 skipped) |
+| **Ghidra lock** | RE-2 (2026-11-02: applying the merged file0001 symbols, RE-3 + RE-4 included) |
 | **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) · [2026-11-02-M6-01](handoffs/2026-11-02-M6-01.md) (flight-core specs: flight model drafted) |
 
 ### Blocking user decisions (MDG §14)
