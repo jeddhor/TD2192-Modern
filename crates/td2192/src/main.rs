@@ -144,12 +144,11 @@ fn real_main() -> Result<()> {
         }
         (None, None) => match cli.dev_mapview.as_deref() {
             Some(map) => Box::new(mapview::MapView::new(&dir, map)?),
-            // The Episode 1 program: script choice, menu, campaign. Flights use the
-            // placeholder launcher until the real flight is connected.
+            // The Episode 1 program: script choice, menu, campaign, flights.
             None => Box::new(td_flow::Episode1::new(
                 &dir,
                 &resources,
-                Box::new(td_flow::PlaceholderLauncher),
+                Box::new(flight::ArenaLauncher),
             )?),
         },
     };

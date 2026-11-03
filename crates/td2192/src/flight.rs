@@ -4,7 +4,11 @@
 //! `td_render::flight`. The mission's ships sit at their path starts (movement and AI are M8);
 //! weapons work. The radar and HUD gauges are not in yet. Keys as in the original: keypad
 //! 8/2/4/6 or the arrow keys thrust, Space fires, Tab switches to missiles, keypad + or keypad
-//! 0 fire the afterburner (classes 2 and 5), P pauses (any key resumes), Esc leaves.
+//! 0 fire the afterburner (classes 2 and 5), P pauses (any key resumes), Esc aborts the flight
+//! (the in-flight computer menu is not built yet). Debug builds only: F9 completes the mission
+//! (mission logic, M8-05, is not in yet; this lets the campaign be played through).
+//!
+//! [`FlightLauncher`] hands these flights to the Episode 1 campaign (`td_flow::Episode1`).
 //!
 //! Presentation details still unspecified (T2 placeholders): where ship, shot and explosion
 //! sprites sit relative to their world position, what shots look like, and the flame sprite.
@@ -15,7 +19,10 @@ use std::sync::Arc;
 use anyhow::{Result, bail};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_audio::{AudioCommand, Pcm8, decode_voc};
-use td_flow::{FLIGHT_TICK_HZ, FlowContext, Screen, Transition};
+use td_flow::{
+    FLIGHT_TICK_HZ, FlightResult, FlightScreen, FlowContext, PlaceholderLauncher, Screen,
+    Transition,
+};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
 use td_formats::palette::Palette;
@@ -195,6 +202,10 @@ impl Screen for FlightArena {
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
         self.events.clear();
+        if cfg!(debug_assertions) && input.pressed(Key(0x42)) {
+            // F9, debug builds only: complete the mission.
+            self.flight.succeeded = true;
+        }
         let result = match self.modal.take() {
             None => self.flight.tick(&self.world, &c, &mut self.events),
             // The original waits until any key byte is set.
@@ -204,6 +215,11 @@ impl Screen for FlightArena {
             }
             // The comm viewer and the ship-switch screen are not implemented yet: close them
             // at once.
+            // The flight menu is not built yet: Esc aborts the flight.
+            Some(Modal::FlightMenu) => {
+                self.flight.aborted = true;
+                self.flight.resume(&self.world, &c, &mut self.events)
+            }
             Some(_) => self.flight.resume(&self.world, &c, &mut self.events),
         };
         let v = self.flight.player.view;
@@ -217,7 +233,7 @@ impl Screen for FlightArena {
         }
         match result {
             TickResult::Done => Transition::None,
-            TickResult::Modal(Modal::FlightMenu) | TickResult::Finished => Transition::Quit,
+            TickResult::Finished => Transition::Pop,
             TickResult::Modal(m) => {
                 self.modal = Some(m);
                 Transition::None
@@ -320,6 +336,37 @@ impl Screen for FlightArena {
             draw_player(fb);
         }
         flight::draw_hud_bar(fb, &self.hud);
+    }
+}
+
+impl FlightScreen for FlightArena {
+    fn result(&self) -> FlightResult {
+        let f = &self.flight;
+        FlightResult {
+            died: f.end_ticks == 35,
+            aborted: f.aborted,
+            lost: f.lost,
+            // The mission-specific outcome tests (teardown) come with mission logic (M8-05).
+            outcome: true,
+            kills: f.kills,
+        }
+    }
+}
+
+/// Starts real flights for the campaign; falls back to the placeholder flight if a flight's
+/// data cannot be loaded.
+#[derive(Debug, Default)]
+pub struct ArenaLauncher;
+
+impl td_flow::FlightLauncher for ArenaLauncher {
+    fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
+        match FlightArena::new(ctx.data, ctx.resources, flight) {
+            Ok(arena) => Box::new(arena),
+            Err(e) => {
+                tracing::error!("flight {flight} could not start: {e:#}");
+                PlaceholderLauncher.launch(ctx, flight)
+            }
+        }
     }
 }
 
