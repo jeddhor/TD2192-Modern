@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Document** | RE knowledge base, cross-episode deltas |
-| **Revision** | 1 (2026-11-02) |
+| **Revision** | 2 (2026-11-02) |
 | **Task** | M1-09 (RE-7, Archaeologist + Spec author) |
 | **Read with** | The E1 specs under [docs/spec/](../spec/), [EXECUTABLES.md §1.1](EXECUTABLES.md#11-ghidra-image-base-segments-and-dgroup-m0-08-2026-11-02), symbol tables [td2.csv](symbols/td2.csv), [td3.csv](symbols/td3.csv) |
 | **Confidence** | Unit and function identity: CONFIRMED (instruction-level comparison of every function, §2). Behavioural deltas: CONFIRMED where a row says so (static reading of the instruction stream), otherwise as stated |
@@ -643,11 +643,11 @@ The per-mission content is for the M10 mission specs ([mission-logic.md](../spec
 |---|---|---|---|
 | `Msn_UpdateA` / `Msn_UpdateB` | `2404:1426` / `3521`: 1..9 / 10..20 | `2236:0ADB` / `240A`: 1..9 / 10..20 | `1FEB:0A7F` / `19AD`: 1..19, 21 |
 | `Msn_Setup` | `0E8B:60D8`: 1..21 | `0E96:60F9`: 1..20 | `0C5D:6149`: 1..11, 21, 12..20 (20 is dead) |
-| Message tables (called once from `Msn_Setup`; three parallel arrays) | `1EDE:0E6A`: 1..13, 15..20 | `1E0B:1475`: 1..20 | `1BD8:12A1`: 1..11, 21, 12..20 (20 is dead) |
+| F5 target information (`Msn_LoadTargetInfo`, called once from `Msn_Setup`; flags, X, Y and five lines per entry; rev 2: was "message tables") | `1EDE:0E6A`: 1..13, 15..20 | `1E0B:0DCC`: 1..20 ([sim/e2-mission-setup §3.4](../spec/sim/e2-mission-setup.md)) | `1BD8:12A1`: 1..11, 21, 12..20 (20 is dead) |
 | Per-tick event routine | `0E8B:9860` | `0E96:99B8` (17, 18) | `0C5D:959E` (§4.1) |
 | Comm text routines | 9 (`2A15`) | 7 (`2555`) | 4 (`2215`) |
 
-- **Ghidra artefacts.** Ghidra truncates E2 `Msn_UpdateB` at `2236:27E8`, so the code for flights 12–20 is not in its function body. Its similarity score is meaningless. The "new" routines `1E0B:0DCC`/`11C2` and `1BD8:0DCF`/`0FEE`/`116A`/`411C` are fragments of the message-table routine. M10 needs those ranges disassembled (re-run `SetupBp7Program` after marking them).
+- **Ghidra artefacts.** Ghidra truncated E2 `Msn_UpdateB` at `2236:27E8`, so the code for flights 12–20 was not in its function body and its similarity score is meaningless. Rev 2: RE-9 completed it (`2236:240A..31DD`) with `tools/ghidra/DisassembleAt.java`; E2 mission logic is in [sim/e2-mission-logic](../spec/sim/e2-mission-logic.md). The "new" routines `1E0B:0DCC`/`11C2` and `1BD8:0DCF`/`0FEE`/`116A`/`411C` are fragments of the message-table routine. M10 needs those ranges disassembled (re-run `SetupBp7Program` after marking them).
 - **Helpers:**
   - `Msn_DrawTickerGlyph`, `Msn_PostTicker` and `Msn_ExitAt` are identical.
   - The E1 helpers `2404:0616` (player touches) and `2404:07DB` (near) are gone.
@@ -690,7 +690,7 @@ New rows in [original-bugs.md](../spec/original-bugs.md): OB-023 (E2 infra-red t
 - AI (OB-013..OB-017);
 - the radar and guidance quirks (OB-019, OB-020).
 
-The E1 per-flight rules behind OB-018, OB-021 and OB-022 do not exist in E2/E3.
+The E1 per-flight rules behind OB-021 and OB-022 do not exist in E2/E3. OB-018 does have an E2 instance (rev 2): E2 flight 8 sets `k_ClassMaxSpeed[3]` := 20h (`td2:0E96:65FD`), which persists.
 
 ## 13. Corrections to other documents
 
@@ -702,16 +702,23 @@ Found during M1-09 and not yet applied to the owning spec (U-207):
 
 Applied here: [dialogue-player.md](../spec/narrative/dialogue-player.md) (E2/E3 allocator), [structures.md §8](structures.md#8-tile-attributes-u-009), [hardware-access.md](hardware-access.md), and the M1-09 questions in [real48.md](../spec/core/real48.md), [music-cues.md](../spec/audio/music-cues.md) and [sfx-policy.md](../spec/audio/sfx-policy.md).
 
+### 13.1 Corrections in rev 2 (RE-9, M10-01)
+
+- §4.3: the flight-7 armour store is at `td2:0E96:B98D` (`B986` is the test). §4.4: the "highest index" values are decimal (46h in `td.map`, 44h in `td2.map`).
+- §8.2 E2 table (details in [flow/e2-program-flow §4.4](../spec/flow/e2-program-flow.md)): block 16's outcome-0 retry and ending B can never run (OB-025, OB-042); block 18 has no outcome rule after the debrief; ending C also plays song 12 with looping off; the ending music calls are at `0000:2DE0`/`2E1D`/`2E60`.
+- §8.3: E1 also resets kills on New Game (`file0001:0000:38FF`), so that is not a delta; E2 menu items 0–5 also lose the item-3 highlight, DAC-255 and MemAvail rules (OB-041), the menu loop plays song 7 on entry, and item 3 calls `Gfx_InitUnchained` first. The `/?` text is 8 lines: four unmapped strings at file offset 0x826C, then `e2.startup[0..3]`.
+- §10: `e2.flight_messages.02` has 20 strings, not 7; `e2.target_info` (113 strings) replaces `e2.locations` and `e2.target_info.01..06` in [td2.toml](exe-resources/td2.toml).
+
 ## 14. Open questions
 
 | ID | Question |
 |---|---|
-| U-200 | What sets E2 DS:31DE (`g_CutsceneRequest`) for flights 17/18? The setters `td2:2236:2D1B`/`2F15` lie outside Ghidra's function bodies |
-| U-201 | Who reads the new E2/E3 ship-record flag +000h written by the `AI_UpdateShips` prologue? |
+| U-200 | What sets E2 DS:31DE (`g_CutsceneRequest`) for flights 17/18? **Resolved (rev 2):** [sim/e2-mission-logic §4.7.2](../spec/sim/e2-mission-logic.md) |
+| U-201 | Who reads the new E2/E3 ship-record flag +000h written by the `AI_UpdateShips` prologue? **Resolved (rev 2): nobody** ([sim/e2-mission-ships §4.2](../spec/sim/e2-mission-ships.md)) |
 | U-202 | Meaning of E3 DS:1EAD (set by the flight-18 timed event and by unit `1BD8`) |
 | U-203 | Is the E3 flight-16 magenta tint ever restored, and what does the player see? |
 | U-204 | Capture check of the E2/E3 double kill (OB-026) and of the palette-effect reordering (§4.1) |
-| U-205 | E2/E3 first-tick behaviour without the setup `AI_ChooseWaypoint` loop: when does each ship get its first waypoint, and in what RNG order? (mission-ships, M10) |
+| U-205 | E2/E3 first-tick behaviour without the setup `AI_ChooseWaypoint` loop. **Resolved for E2 (rev 2):** a null path step in tick 1, one-tick delay, no RNG change ([sim/e2-mission-ships §4.3](../spec/sim/e2-mission-ships.md), C-0015, C-0016) |
 | U-206 | Not analysed for E2/E3: the `UI_LoadMainMenu` highlight changes, the menu palette fades, `Scene_BackgroundStory`, and the "02 line uses its own entry" rule (dialogue-player §4.9) |
 | U-207 | E1 spec corrections in §13 to be confirmed and applied by the owners |
 
@@ -787,3 +794,4 @@ This table lists every routine that is not IDENT in E2 or E3, plus the new routi
 | Rev | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-7 (Archaeologist + Spec author) | Initial: matcher, unit identity, DS map, flight/weapons/AI/HUD/audio/front-end/narrative/mission-framework deltas, data tables |
+| 2 | 2026-11-02 | RE-9 (M10-01) | §10 message-table row is `Msn_LoadTargetInfo` `1E0B:0DCC`; `Msn_UpdateB` completed; OB-018 E2 instance; U-200, U-201, U-205 resolved; corrections §13.1. E2 per-flight content now lives in sim/e2-mission-setup, sim/e2-mission-logic, sim/e2-mission-ships and flow/e2-program-flow |

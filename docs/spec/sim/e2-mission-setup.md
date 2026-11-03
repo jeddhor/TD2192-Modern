@@ -8,7 +8,7 @@
 | **Fidelity tier** | T1 (setup state, order of writes, RNG use) · T2 for the objective text and F5 lines (presentation) |
 | **Confidence** | CONFIRMED (static) for every table value: constants read from the instruction stream of `td2:0E96:60F9..6D52`, `td2:0E96:A76E..BCC8` and `td2:1E0B:0DCC..429C` (the last one decoded from the raw bytes, §9). Test vectors are computed from the shipped `m<n>.td2` files with these rules; no E2 capture exists yet (U-241) |
 | **Tasks** | M10-01 (feeds M10 mission specs, mission-ships E2 first tick) |
-| **Unknowns** | U-205 (existing), U-240, U-241 |
+| **Unknowns** | U-205 (resolved: [e2-mission-ships](e2-mission-ships.md)), U-240, U-241 (vectors 1 and 2 confirmed by C-0015/C-0016) |
 | **Read with** | [mission-setup.md](mission-setup.md) rev 1 (E1), [mission-ships.md](mission-ships.md) §3.1/§4.1, [weapons.md](weapons.md) §3.2, [flight-screens.md](../flow/flight-screens.md) §3.4, [episode-deltas.md](../../re/episode-deltas.md) §3.2, §4.3, §4.4, §6, §10 |
 
 ## 1. Summary
@@ -321,7 +321,7 @@ Block address ranges (`1E0B:`): 1 `0DF2..11C1`, 2 `11C2..1474`, 3 `1475..165B`, 
 
 ## 6. Test vectors
 
-Static: computed from the shipped mission files with the rules above (U-241 asks for a capture). Lists are per slot 1..20; "× n" repeats. Tiles are (X, Y) = path step 1.
+Computed from the shipped mission files with the rules above. Vectors 1 and 2 are **confirmed** against the last setup frame and tick 1 of captures C-0015 (flight 1) and C-0016 (flight 9): slot classes, tiles, armour, aggression, markers (element 21 = 3Dh), player class, armour and shields, view offsets, map set, radar table (unchanged / set-2 copy) and the view after the start-view override (tick 1); shields and the F5 tables were not compared. The others remain static (U-241). Lists are per slot 1..20; "× n" repeats. Tiles are (X, Y) = path step 1.
 
 | # | Flight | Expected after setup (start of tick 1) | Evidence |
 |---|---|---|---|
@@ -347,7 +347,7 @@ Static: computed from the shipped mission files with the rules above (U-241 asks
 ## 8. Open questions
 
 - [ ] U-240: which empty-at-setup slots that receive markers, armour, aggression or F5 lines (§5) does E2 mission logic give a class, and when? To be closed by the E2 mission specs (RE-9).
-- [ ] U-241: no E2 capture yet. Confirm vectors 1–4 and 6 with a RAM dump at the first tick of E2 flights 1, 2, 8, 9 and 17 (slot arrays, ship records, class tables, DS:1E9C.., DS:1EFC..).
+- [ ] U-241: vectors 1 (flight 1, C-0015) and 2 (flight 9, C-0016) are confirmed. Still to confirm: vectors 3, 4 and 6 with a RAM dump at the first tick of E2 flights 2, 8 and 17 (reach them with a prepared `TD2.SAV`, [e2-program-flow §8](../flow/e2-program-flow.md)) (slot arrays, ship records, class tables, DS:1E9C.., DS:1EFC..).
 - [ ] U-205 (existing): first waypoint choice without the setup loop.
 - [ ] Resource map: `e2.target_info` (pstring_seq, file offset 22230h, count 113) is needed in `td2.toml`; it would replace `e2.locations` and `e2.target_info.01`..`.06`, which cover 104 of the 113 strings (§3.4). Not a question about the game; listed so the dependency is not lost.
 
@@ -369,7 +369,7 @@ Static: computed from the shipped mission files with the rules above (U-241 asks
 | Home points | `td2:0E96:858B..85E3`; element 21 read via `8D3B`, `90CB` | static | CONFIRMED |
 | Class tables and class-FFh bytes | `td2:36B6:041C..0443`, `0525`, `052F` (file bytes) | static (exe bytes; equal to E1) | CONFIRMED |
 | Map statistics | `td.map`, `td2.map` | asset decode | CONFIRMED |
-| Test vectors | `m1.td2`, `m2.td2`, `m7.td2`, `m8.td2`, `m9.td2`, `m17.td2` | computed (static) | LIKELY until U-241 |
+| Test vectors | `m1.td2`, `m2.td2`, `m7.td2`, `m8.td2`, `m9.td2`, `m17.td2` | computed (static); vectors 1, 2 checked against C-0015, C-0016 | CONFIRMED (1, 2); LIKELY (others, U-241) |
 
 ## 10. Revision history
 

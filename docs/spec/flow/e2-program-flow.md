@@ -8,7 +8,7 @@
 | **Fidelity tier** | As [episode-program-flow](episode-program-flow.md): T2 for the order of screens, scenes, dialogue, music and flights; T1 for the state that flows between missions (mission number, kills, outcome flags, the retry prompt's `Random` call); T0 for menu colours; T3 for the text-mode configuration screen, the `/?` usage text, the memory gate and the exit notice (the port's own shell replaces them) |
 | **Confidence** | LIKELY overall. CONFIRMED (static) for the call order of all 20 mission blocks, every branch and every write of the campaign state: complete token walk of `Main_CampaignLoop` plus a byte scan of the whole image for writes of the flags (§10). No E2 capture exists yet (U-249) |
 | **Tasks** | M10-01 |
-| **Unknowns** | U-206 (partly resolved here), U-249, U-250, U-251 (new); U-005 (consistent) |
+| **Unknowns** | U-206 (partly resolved here), U-249 (start-up path confirmed by C-0015/C-0016), U-250, U-251 (new); U-005 (consistent) |
 
 This is a **delta spec**. Implement [episode-program-flow](episode-program-flow.md) (E1) and change what this document says. Screen layouts are in [screens](screens.md) (E1) and [episode-deltas §9](../../re/episode-deltas.md#9-scenes-text-and-dialogue-unit-051a--04ec--04a0) (E2 scene cards: anchors, inks, waits). Addresses are `td2:<seg>:<off>` image-relative (ADG §7.8); the `td2:` prefix is dropped below. DGROUP is `36B6`, so `DS:x` means `36B6:x`. Text is named by its resource id in [td2.toml](../../re/exe-resources/td2.toml), never quoted.
 
@@ -324,6 +324,10 @@ Run on a **scratch copy** of the game directory: `td2.exe` writes `td.cfg` when 
 | 5 | Menu fades out; `vulture.cmf`; `marauder` card with the preamble | 10 s or a key | Esc → straight to flight 1 |
 | 6 | Flight 1 (`td01.cmf`; first file `td.map`) | — | — |
 
+**Confirmed (C-0015, C-0016):** with `TD2.EXE /sb` on a pristine copy in the oracle rig (preset P1), `2` 140 frames after `td-let.cin` opens, Enter 180 frames after `tdmen.pal` opens and Esc 90 frames after `marauder.scr` opens reach flight 1 at frame 598 (`m1.td2`), the first flight tick at frame 665. Nothing is written to the game directory on this path.
+
+**Any mission directly (C-0016):** set slot 1 of `TD2.SAV` (bytes 0..2) to `NN 00 00` (mission NN, 0 kills) in the scratch copy. At the menu press Down (cursor 0 → 2: items 1 and 3 are skipped with no game), Enter; on the restore screen Enter (cursor on slot 1; Space also selects); back at the menu the cursor is on item 3, Enter. Block NN starts; Esc at its first scene card skips the rest of the pre-flight sequence (block 9: `tdoffic2`; the title card comes first and is not skipped by this Esc). With NN = 9 the flight starts at frame 1375.
+
 Timing rules: the menu reads one key and **discards every other key already in the BIOS buffer**, so leave at least 0.5 s between Enter and Esc; after that, Esc may be pressed at any time (during the fade-out, loading or fade-in) because the scene card does not flush the buffer and its wait ends on a buffered key. Keys typed after `2` are not flushed (E2 change) and reach the menu. Without Esc the block runs: card 10 s → D1 (each page waits for a key, no timeout; Esc ends the scene and skips to the flight) → T01 5 s → `tdlab` card 10 s → D2 → `soffice` card → D3 → `hangar` card → D4 → flight 1. Each of these steps is followed by a skip test.
 
 After flight 1: death → retry prompt (keyboard, no timeout): any key but Esc flies again; Esc → ending A (`death.cmf` once, dossier 25 s or key) → menu with no game. Abort from the flight's Esc menu → menu at once, cursor highlight on item 3, mission still 1. Success → `low.cmf` debrief (10 s or key) → `hangar` card → D5 → `bunker` card → D6 → menu (mission 2, cursor 3). To quit: Esc in the menu, `Y`; the program returns to text mode, draws the exit notice and leaves the DOS cursor on row 10.
@@ -334,7 +338,7 @@ Waits without a timeout: script choice, configuration screen, joystick calibrati
 
 ### 9.1 Open questions
 
-- [ ] U-249: First E2 front-end capture: confirm §8's path and timings, the menu colours of OB-041 (DAC 224..233 after start-up and after a mission), the music cues of §7 (69 for items 6/7) and cursor 7 after block 20.
+- [ ] U-249: §8's start-up path is confirmed (C-0015, C-0016). Still to confirm: the menu colours of OB-041 (DAC 224..233 after start-up and after a mission), the music cues of §7 (69 for items 6/7) and cursor 7 after block 20.
 - [ ] U-250: Do `td2 /?` and the memory-gate halt leave WORX's INT 08h/63h handlers installed (no `WORX_Shutdown` before `Halt`), so that DOS or DOSBox hangs afterwards? The same applies to E1's memory gate and to E3.
 - [ ] U-251: Can `g_PlayerDied` and `g_MissionLost` both be 1 after flight 17 or 18 (lost set in the tick in which the end sequence reaches 35)? Decides whether the double retry prompt of OB-042 is reachable ([e2-mission-logic](../sim/e2-mission-logic.md), tick order).
 - U-206: menu fades and loader highlight resolved (§4.2); `Scene_BackgroundStory` resolved (only the skip-flag clear was dropped; no effect). The dialogue rule "02 line uses its own entry" is not covered here and stays open.
@@ -380,7 +384,7 @@ The §8.2 E2 table is correct for the order of every call in all 20 blocks (veri
 | Flight hand-off and outcome | `0E96:A76E..A7DE`, `EA1C..EB9F`, `7FC5`, `9B2E`, `9BB9` | static | CONFIRMED |
 | Dialogue coverage (124 of 125, not 33) | walk vs `dialogu2.dat` scene ids | static + decode | CONFIRMED |
 | Waits of cards and screens | `04EC:5A89`, `23AF`, `50AD`, `5201`, `712D`, `76AD`; episode-deltas §9.2 | static | LIKELY |
-| Verifier sequence (§8) | derived from the above | static | LIKELY until U-249 |
+| Verifier sequence (§8) | derived from the above; run in the oracle | static + C-0015, C-0016 | CONFIRMED (start to flight 1; restore to flight 9) |
 
 ## 11. Revision history
 
