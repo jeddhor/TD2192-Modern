@@ -136,7 +136,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | PAUSED | RE-2 | flight-model.md rev 1 drafted (static); world/units facts in docs/re/structures.md 1; camera/viewport/collision specs not started. Handoff: docs/handoffs/2026-11-02-M6-01.md |
+| M6-01 | Specs: world, units, flight model, map collision, camera, viewport | SP | M1-06, M1-08 | IN PROGRESS | RE-2 | flight-model rev 2 CONFIRMED by C-0007/C-0008 (215 ticks); weapons.md (U-041/U-043), mission-ships.md (partial, U-039/U-045), camera-viewport.md, collision.md (index) drafted. Handoff: docs/handoffs/2026-11-02-M6-01.md |
 | M6-02 | td-sim skeleton (tick, input, BpRandom, state_hash, record/replay) | IM | M6-01 | IN PROGRESS | main-session | BpRandom + BIT-EXACT Real48 (all ops incl. Sqrt/Sin/Cos/ArcTan; 1705/1705 vectors from the original) + state_hash + replay; tick/world skeleton waits for M1-08/M6-01 |
 | M6-03 | Player flight model | IM | M6-02 | TODO | | |
 | M6-04 | Map collision | IM | M6-02 | TODO | | |

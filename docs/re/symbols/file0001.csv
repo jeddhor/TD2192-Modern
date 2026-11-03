@@ -145,7 +145,7 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:5E47,func,WORX_DspWrite,,AL to the DSP write port (waits for ready),CONFIRMED,M3-05
 2C37:62D5,func,WORX_FnPlayVoc,,fn 06h handler: stop current; parse VOC blocks from memory,CONFIRMED,M3-05
 3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick: move and draw the 20 mission ships,HYPOTHESIS,U-033
-34E6:3449,func,AI_InitSlot,void near(Slot: Byte),initialises one mission slot at flight start,HYPOTHESIS,U-033
+34E6:3449,func,AI_ChooseWaypoint,"void far(Slot: Byte)",chooses the next waypoint of a mission ship (path step or behaviour-specific target); called for every slot at flight start and when a ship reaches its waypoint,LIKELY,U-039
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
 386E:0000,func,Gfx_HudRadarBlit,,"copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M2-09
 386E:012B,func,Gfx_HudFacFrame,,"(frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M2-09

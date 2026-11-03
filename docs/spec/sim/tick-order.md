@@ -38,7 +38,7 @@ Routines called once per tick, in call order (all `file0001:`):
 | 7 | `386E:024A`…`386E:172D` (one of 16) | `Gfx_DrawPlayerShip` | not late, end ticks < 15 |
 | 8 | `2404:1426` | `Msn_UpdateA` (mission triggers and messages) | always |
 | 9 | `2404:3521` | `Msn_UpdateB` (mission triggers and messages) | always |
-| 10 | `3292:0011(n)` | `AI_UpdateShips` (move and draw the 20 mission ships) | always |
+| 10 | `3292:0011(n)` | `AI_UpdateShips` (move and draw the 20 mission ships; [mission-ships](mission-ships.md)) | always |
 | 11 | `0E8B:56ED` | `Sim_EndSequenceStep` | mission over |
 | 12 | inline `0E8B:D68C..D86F` + `386E:191C` | `Gfx_RedrawOverlayTiles` (tiles drawn over ships) | not late |
 | 13 | inline `0E8B:D872..D93x` + `386E:024A` | `Gfx_DrawExplosions` (30 slots) | always |
