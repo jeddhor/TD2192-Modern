@@ -66,7 +66,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
 | M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
 | M1-07 | Global data map + symbols | RE | M1-01 | REVIEW | RE-2 | docs/re/globals.md (front end, input + flight keys, cheat chords, player/view state, slot/projectile/explosion arrays, buffers) + 158 symbol rows (functions and data; ApplySymbols-checked on a private copy) |
-| M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | IN PROGRESS | RE-2 | Ship/projectile records, class codes (U-008), class table |
+| M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | REVIEW | RE-2 | docs/re/structures.md: units (tile+pixel), mission file load map with 501-byte path stride (FORMATS 7 corrected; M2-11 parser needs the fix), ship record 1065 B, slot/projectile/explosion arrays, class table (U-008), heading codes (U-003), tile attributes (U-009) |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | TODO | | |
 | M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | TODO | | |
 | M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | TODO | | |
