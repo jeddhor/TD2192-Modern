@@ -9,8 +9,8 @@
 //! collision, thrust and steering, player weapons (volleys, missiles, Tab, infra-red toggle),
 //! the missile cooldown, the end-of-flight test, mission ships (step 10) and their fire
 //! requests and volleys (`mission-ships.md` rev 2), and per-flight setup (`mission-setup.md`
-//! rev 1). Not yet specified, so not implemented: mission logic (steps 8–9, M8-05). Cheat
-//! chords (34) are not ported (decision D5/D9).
+//! rev 1), and mission logic (steps 8–9, 15, 18 and the game rules of step 19:
+//! `mission-logic.md` rev 1, see [`logic`]). Cheat chords (34) are not ported (decision D5/D9).
 //!
 //! Session state: the original keeps the RNG, the class tables (patched by some flights,
 //! OB-018) and the ship slots and records across the flights of one program run. [`Session`]
@@ -23,6 +23,7 @@
 
 pub mod explosions;
 pub mod heading;
+pub mod logic;
 pub mod player;
 pub mod setup;
 pub mod ships;
@@ -37,6 +38,7 @@ use crate::input::{FlightKey, Joystick, KeyTable, TickControls};
 use crate::rng::BpRandom;
 use explosions::Explosions;
 use heading::Heading;
+use logic::{HudSnapshot, MissionState};
 use player::{Dirs, Event, Player, View};
 use ships::{AiContext, Ships};
 use shots::{Combat, Muzzles, Shots};
@@ -71,7 +73,7 @@ pub enum Modal {
     Pause,
     /// Esc: the flight menu, which may abort the flight (step 25).
     FlightMenu,
-    /// F5: the tactical map (step 29; flight-screens §4.3, changes no state).
+    /// F5: the tactical map (step 29; no game state changes, `flight-screens.md`).
     TacticalMap,
 }
 
@@ -100,6 +102,8 @@ pub struct DrawnFrame {
     pub flame: Option<u8>,
     /// White flash frame shown (4 white .. 1 restore), 0 = none.
     pub white_flash: u8,
+    /// What the instruments showed (step 19).
+    pub hud: HudSnapshot,
 }
 
 /// The moving objects as a tick drew them.
@@ -130,6 +134,8 @@ pub struct Session {
     /// The player tile the AI last saw (DS:9766/9767; 0 at program start). The AI reads it
     /// at setup, before the first tick writes it.
     pub ai_player: (u8, u8),
+    /// Mission-logic globals (setup re-initialises only part of them, [`MissionState`]).
+    pub mission: MissionState,
 }
 
 impl Session {
@@ -144,6 +150,7 @@ impl Session {
             classes: ClassTables::default(),
             ships,
             ai_player: (0, 0),
+            mission: MissionState::default(),
         }
     }
 }
@@ -173,10 +180,9 @@ pub struct Flight {
     pub late_draw: bool,
     /// F6 was pressed; the comm viewer opens on the next tick with back page 0.
     pub comm_request: bool,
-    /// The player touched the map limit (drives the jurisdiction warning).
+    /// `g_EdgeHit`: the view was pushed back at a map limit while the ticker was idle; the
+    /// instruments step posts the jurisdiction warning and clears it.
     pub edge_hit: bool,
-    /// Suppresses repeated edge alerts (set by the jurisdiction warning, not yet specified).
-    pub edge_latch: bool,
     /// Read the joystick each tick (controller = joystick).
     pub joystick_enabled: bool,
     pub joystick: Joystick,
@@ -191,6 +197,8 @@ pub struct Flight {
     pub classes: ClassTables,
     /// The player tile the AI last saw (session state, see [`Session`]).
     pub ai_player: (u8, u8),
+    /// Mission phase, ticker, transmission state and the other mission-logic globals.
+    pub mission: MissionState,
     /// `g_MissionKills`.
     pub kills: i16,
     /// Full-palette white flash countdown (`g_FlashFrames`).
@@ -243,12 +251,14 @@ impl Flight {
             mut classes,
             mut ships,
             ai_player,
+            mission: mut logic,
         } = session;
         ships.reset_records(&mut rng);
         if let Some(m) = mission {
             ships.load_mission(m, &classes);
         }
         let flags = setup::msn_setup(number, &mut ships, &mut classes);
+        logic.setup(number);
         let mut view = START_VIEW;
         if flags.late_draw {
             view.tile_y = 100;
@@ -274,6 +284,7 @@ impl Flight {
         f.classes = classes;
         f.ships = ships;
         f.ai_player = ai_player;
+        f.mission = logic;
         f
     }
 
@@ -284,6 +295,7 @@ impl Flight {
             classes: self.classes.clone(),
             ships: self.ships.clone(),
             ai_player: self.ai_player,
+            mission: self.mission,
         }
     }
 
@@ -293,8 +305,8 @@ impl Flight {
         ((v.tile_x + 5) as u8, (v.tile_y + 3) as u8)
     }
 
-    /// A flight with an explicit player (dev arena, tests). Weapons follow the player's class
-    /// (`weapons.md` §3.2; classes 0 and 1 keep weapon 1).
+    /// A flight with an explicit player (dev arena, tests), without mission logic. Weapons
+    /// follow the player's class (`weapons.md` §3.2; classes 0 and 1 keep weapon 1).
     pub fn with_player(number: u8, player: Player) -> Self {
         let (weapon, _, missiles) = tables::player_weapons(player.class).unwrap_or((1, 1, 0));
         Self {
@@ -309,7 +321,6 @@ impl Flight {
             late_draw: false,
             comm_request: false,
             edge_hit: false,
-            edge_latch: false,
             joystick_enabled: false,
             joystick: Joystick::default(),
             keys: KeyTable::default(),
@@ -319,6 +330,7 @@ impl Flight {
                 player_visible: true,
                 flame: None,
                 white_flash: 0,
+                hud: HudSnapshot::default(),
             },
             drawn: DrawnObjects::default(),
             ships: Ships::default(),
@@ -327,6 +339,7 @@ impl Flight {
             rng: BpRandom::new(),
             classes: ClassTables::default(),
             ai_player: (0, 0),
+            mission: MissionState::default(),
             kills: 0,
             white_flash: 0,
             difficulty: 1,
@@ -413,9 +426,8 @@ impl Flight {
                 self.frame.heading = self.player.heading;
                 self.frame.player_visible = self.end_ticks < 15;
             }
-            // 8–9. Mission logic (`Msn_UpdateA`/`Msn_UpdateB`, M8-05, RE-6 mission-logic.md):
-            // HOOK. It orders attacks (`Ships::order_attack`) and writes slot classes here,
-            // before the ships move; flight 1 removes slots 9–11 at tick 1.
+            // 8–9. Mission logic (`Msn_UpdateA`/`Msn_UpdateB`, mission-logic §4.2, §5).
+            self.msn_update();
             // 10. Mission ships: AI, movement, removal (mission-ships §4.2).
             self.ai_player = self.player_tile();
             let player = self.ai_player;
@@ -428,8 +440,9 @@ impl Flight {
                     player,
                 },
             );
-            // Flight 19 with mission phase > 1 caps the player's shields and moves slot 19
-            // (mission-ships §4.2.4): needs the mission phase (M8-05).
+            // Flight 19 with mission phase > 1 caps the player's shields and pins slot 19
+            // (mission-ships §4.2.4).
+            self.flight_19_pin();
             self.drawn.ships.clone_from(&self.ships);
             // 11. End sequence (provisional: counts the end ticks; its other effects are not
             // specified yet).
@@ -442,10 +455,14 @@ impl Flight {
             // 14. Palette effects: the white flash counts down.
             self.frame.white_flash = self.white_flash;
             self.white_flash = self.white_flash.saturating_sub(1);
-            // 15. Comm viewer on an even back page.
+            // 15. Comm viewer on an even back page: a transmission only when the table has
+            // one for this flight and phase (mission-logic §4.6); otherwise the request is
+            // consumed.
             if self.comm_request && self.draw_page == 0 {
                 self.comm_request = false;
-                return self.interrupt(16, Modal::CommViewer);
+                if self.comm_viewer().is_some() {
+                    return self.interrupt(16, Modal::CommViewer);
+                }
             }
         }
         if from <= 16 {
@@ -458,7 +475,25 @@ impl Flight {
             if self.joystick_enabled {
                 self.joystick = c.joystick();
             }
-            // 18–22: HUD, tick wait, flip (presentation and host timing). 23. Pause.
+            // 18. Mission events (respawns, scripted events; mission-logic §4.7).
+            self.msn_update_events(events);
+            // 19. Instruments: the flight-7 rule, the ticker and the transmission indicator
+            // (hud §4.3, §4.7, §4.8); the rest is presentation.
+            self.instruments(events);
+            self.frame.hud = HudSnapshot {
+                armour: self.player.armour,
+                shields: self.player.shields,
+                missiles: self.missiles,
+                missile_cooldown: self.missile_cooldown,
+                weapon: self.weapon,
+                palette_mode: self.palette_mode,
+                phase: self.mission.phase,
+                ticker: self.mission.ticker,
+                comm_pending: self.mission.comm_pending,
+                comm_phase: self.mission.comm_phase,
+                home_marker: self.mission.home_marker,
+            };
+            // 20–22: tick wait, flip (presentation and host timing). 23. Pause.
             if self.keys.get(FlightKey::P) {
                 return self.interrupt(24, Modal::Pause);
             }
@@ -476,12 +511,13 @@ impl Flight {
             if self.player.shields_step(&self.classes, self.mission_over) {
                 self.end_mission();
             }
-            // 28. Movement, map collision (skipped while drawing late), carry and limits.
-            if self.player.move_step(world, !self.late_draw) && !self.edge_latch {
+            // 28. Movement, map collision (skipped while drawing late), carry and limits;
+            // the edge alert is raised only while the ticker is idle (flight-model §4.4).
+            if self.player.move_step(world, !self.late_draw) && self.mission.ticker.idle() {
                 self.edge_hit = true;
             }
-            // 29. Comm request and tactical map.
-            if self.keys.get(FlightKey::F6) {
+            // 29. Comm request (not once the mission is over) and the F5 tactical map.
+            if self.keys.get(FlightKey::F6) && !self.mission_over {
                 self.comm_request = true;
             }
             if self.keys.get(FlightKey::F5) && self.number != 14 {
@@ -527,7 +563,8 @@ impl Flight {
                 }
             }
         }
-        // M replays the HUD ticker message (presentation, M6-07).
+        // M replays the HUD ticker message when it is idle.
+        self.ticker_replay();
         if (self.keys.get(Alt) || self.keys.get(RightAlt))
             && !self.mission_over
             && matches!(self.palette_mode, 1 | 2)
@@ -572,7 +609,6 @@ impl HashState for Flight {
             self.late_draw,
             self.comm_request,
             self.edge_hit,
-            self.edge_latch,
             self.joystick_enabled,
         ] {
             b.hash_state(h);
@@ -600,6 +636,7 @@ impl HashState for Flight {
             h.bytes(t);
         }
         h.bytes(&[self.ai_player.0, self.ai_player.1]);
+        self.mission.hash_state(h);
         self.kills.hash_state(h);
         h.bytes(&[
             self.white_flash,

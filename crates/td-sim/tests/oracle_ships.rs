@@ -7,11 +7,10 @@
 //! state after setup. The flight is built with `Flight::with_mission` as the first flight of a
 //! program run (the seed after setup is the seed after 40 `Random` steps from 0, as captured).
 //!
-//! Mission logic (steps 8–9, M8-05) is not implemented yet. Where it intervenes, the harness
-//! copies the original's change into the sim before the tick, as `oracle_flight.rs` does for
-//! the cheat chord: a slot the original has removed (class FFh) while ours is still live gets
-//! class FFh (flight 1 removes slots 9–11 at tick 1), and a slot whose state does not match is
-//! retried with `AI_OrderAttack(slot, player)` (the script re-orders attacks often; §4.3.10).
+//! Our own mission logic (`mission-logic.md` rev 1 §5.1) drives the flight: it removes slots
+//! 9–11 at tick 1 and orders the attacks; the harness only ticks and compares. The mission
+//! phase (DS:32BA), the ticker (DS:32BC) and the markers (DS:3958, in the slot arrays) are
+//! compared as well.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -20,7 +19,7 @@ use std::path::Path;
 use td_assets::DataDir;
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
-use td_sim::flight::ships::{NO_SHIP, RECORD_LEN, SHIP_SLOTS, Ship, TARGET_PLAYER};
+use td_sim::flight::ships::{NO_SHIP, RECORD_LEN, SHIP_SLOTS, Ship};
 use td_sim::flight::shots::Muzzles;
 use td_sim::flight::tables::episode1_tile_attributes;
 use td_sim::flight::{TickResult, World};
@@ -153,62 +152,36 @@ fn mission_ships_match_c0009_tick_by_tick() {
     assert!(bad.is_empty(), "after setup:\n{}", bad.join("\n"));
 
     let last = *ticks.keys().last().unwrap();
-    let (mut compared, mut orders, mut removals) = (0usize, 0usize, 0usize);
+    let mut compared = 0usize;
     let mut mismatches = Vec::new();
     for t in 1..=last {
         let d = &ticks[&t];
-        let before = f.clone();
-        let mut ordered: Vec<usize> = Vec::new();
-        loop {
-            f = before.clone();
-            // Mission logic: removals.
-            for i in 0..SHIP_SLOTS {
-                if d.class(i) == NO_SHIP && f.ships.0[i].alive() && before.ticks + 1 == t {
-                    let s = &f.ships.0[i];
-                    // Only removals the AI step would not make itself (exit marker, armour).
-                    let w = s.record.waypoint;
-                    if !(w.0 == 50 && w.1 < 2) && s.armour >= 1 && t == 1 {
-                        f.ships.0[i].class = NO_SHIP;
-                    }
-                }
-            }
-            for &i in &ordered {
-                f.ships.order_attack(i, TARGET_PLAYER);
-            }
-            assert_eq!(
-                f.tick(&world, &TickControls::default(), &mut vec![]),
-                TickResult::Done
-            );
-            let bad = (0..SHIP_SLOTS)
-                .filter(|&i| d.class(i) != NO_SHIP)
-                .find(|&i| diff(&f, d, i).is_some());
-            match bad {
-                Some(i) if !ordered.contains(&i) => ordered.push(i),
-                _ => break,
-            }
+        assert_eq!(
+            f.tick(&world, &TickControls::default(), &mut vec![]),
+            TickResult::Done
+        );
+        let ours = (f.mission.phase, f.mission.ticker.pos);
+        let orig = (d.u8(0x32BA), d.i16(0x32BC) as u16);
+        if ours != orig {
+            mismatches.push(format!(
+                "tick {t}: (phase, ticker) ours {ours:?} orig {orig:?}"
+            ));
         }
-        if t == 1 {
-            removals = (0..SHIP_SLOTS)
-                .filter(|&i| before.ships.0[i].alive() && !f.ships.0[i].alive())
-                .count();
-        }
-        orders += ordered.len();
-        for i in (0..SHIP_SLOTS).filter(|&i| d.class(i) != NO_SHIP) {
+        for i in 0..SHIP_SLOTS {
+            if d.class(i) == NO_SHIP && !f.ships.0[i].alive() {
+                continue;
+            }
             compared += 1;
             if let Some(m) = diff(&f, d, i) {
                 mismatches.push(format!("tick {t}: {m}"));
-                // Continue from the original's state for this slot is not possible field by
-                // field; stop at the first divergence.
             }
         }
+        // Stop at the first divergent tick: later ones follow from it.
         if !mismatches.is_empty() {
             break;
         }
     }
-    eprintln!(
-        "C-0009: {compared} slot-ticks compared over ticks 1..={last}; {orders} attack orders and \
-         {removals} removals copied from the original"
-    );
+    eprintln!("C-0009: {compared} slot-ticks compared over ticks 1..={last}");
     assert!(
         mismatches.is_empty(),
         "{} mismatches:\n{}",
