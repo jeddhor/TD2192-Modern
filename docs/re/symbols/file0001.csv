@@ -1,19 +1,77 @@
 address,kind,name,signature,comment,confidence,source_task
+0000:0124,func,Flow_MenuFadeOut,,palette fade-out before leaving the main menu,HYPOTHESIS,M1-04
+0000:02AF,func,UI_HelpScreens,,shows the td.hlp help pages (menu item 4),LIKELY,M1-04
 0000:0F06,func,Main_CampaignLoop,,mission sequencer: calls Sim_FlyMission 21 times,LIKELY,M1-06
+0000:2E88,func,UI_DrawMainMenu,void near(Fade: Byte),draws the main menu (td.men) and starts the menu song,LIKELY,M1-04
+0000:330E,func,UI_DrawMenuPrompt,void near(Kind: Byte),draws or clears the yes/no prompt box on the menu,HYPOTHESIS,M1-04
+0000:3381,func,Flow_MainMenu,,main menu loop: 9 items; calls Main_CampaignLoop; writes tdstatus.dat for items 6/7,LIKELY,M1-04
 0000:4526,func,Main_Entry,,"program entry: calls each unit init (System first), then the main body",CONFIRMED,M1-01
 0000:454E,label,Main_Body,,main block after the init chain,CONFIRMED,M1-01
+051A:1A40,func,Flow_WaitKeyOrEsc,,key wait used by story screens; sets g_SkipStory on Esc,HYPOTHESIS,M1-04
+051A:1AA3,func,Flow_WaitTimedOrKey,void far(N: Byte),timed wait on DOS time or key; sets g_SkipStory on Esc,HYPOTHESIS,M1-04
+051A:1E5A,func,Flow_SceneHangar,"void far(A, B, C: String)",scene card on hangar.scr with three text lines,LIKELY,M1-04
+051A:2055,func,Flow_SceneVlab,"void far(A, B, C: String)",scene card on vlab.scr,LIKELY,M1-04
+051A:22BE,func,Flow_SceneIntro2,"void far(A, B, C: String)",scene card on intro2.scr (also the catastrophe endings),LIKELY,M1-04
+051A:248A,func,Flow_SceneShooting,"void far(A, B, C: String)",scene card on shooting.scr,LIKELY,M1-04
+051A:2B26,func,Flow_MissionHint,void far(N: Byte),pre-flight hint screen n (1; 2; 6); waits for key or joystick,LIKELY,M1-04
+051A:3109,func,Flow_SceneVhang,"void far(A, B, C: String)",scene card on vhang.scr,LIKELY,M1-04
+051A:3371,func,Flow_SceneMarauder,"void far(A, B, C: String)",scene card on marauder.scr,LIKELY,M1-04
+051A:35B0,func,Flow_SceneBriefing,"void far(A, B, C: String)",scene card on briefing.scr,LIKELY,M1-04
+051A:380C,func,Flow_SceneTdlab,"void far(A, B, C: String)",scene card on tdlab.scr,LIKELY,M1-04
+051A:3A6B,func,Flow_SceneVelsroom,"void far(A, B, C: String)",scene card on velsroom.scr,LIKELY,M1-04
+051A:3CC0,func,Flow_SceneHelihangar,"void far(A, B, C: String)",scene card on helihang.scr,LIKELY,M1-04
+051A:3E8E,func,Flow_SceneEggbase,"void far(A, B, C: String)",scene card on eggbase.scr,LIKELY,M1-04
+051A:4113,func,Flow_StoryStills,"void far(A, B, C: String; Set: Byte)",story still sequence (td1-13/14/16/20.pic) chosen by set 1..4,LIKELY,M1-04
+051A:471B,func,Flow_SceneStill18,"void far(A, B, C: String)",td1-18.pic with text,LIKELY,M1-04
+051A:4979,func,Flow_Still15,,td1-15.pic with split-screen effect and timed wait,LIKELY,M1-04
+051A:4A66,func,Flow_SceneSoffice,"void far(A, B, C: String)",scene card on soffice.scr,LIKELY,M1-04
+051A:4D66,func,Flow_SceneSbar,"void far(A, B, C: String)",scene card on sbar.scr,LIKELY,M1-04
+051A:4F5A,func,Flow_ScenePic4,"void far(A, B, C: String)",scene card on pic4.td,LIKELY,M1-04
+051A:527F,func,Flow_ScriptChoice,,asks original or edited script; sets g_ScriptChoice,LIKELY,M1-04
+051A:56D5,func,Flow_ScriptMissingNotice,,notice shown when dialogue.dat is missing (script 2 forced),LIKELY,M1-04
+051A:5852,func,Flow_TextCard,"void far(S: String; Colour, A, B: Byte)",full-screen text card in td-let.cin (titles and captions),LIKELY,M1-04
+051A:596F,func,Flow_SceneVoffice,"void far(A, B, C: String)",scene card on voffice.scr,LIKELY,M1-04
+051A:62FD,func,Flow_OrdersPrintout,,assignment printout before mission 2,LIKELY,M1-04
+051A:6653,func,Flow_AceDossier,,enemy-ace dossier before mission 5,LIKELY,M1-04
+051A:6A33,func,Flow_RetryPrompt,Boolean far,retry prompt after a failed flight; true = retry,LIKELY,M1-04
+051A:6FF2,func,Flow_Debrief,"void far(Kills, KillsToDate: Integer; Outcome: Byte)",debriefing; rating tier by total kills; cheater if total < 0 or > 29999,LIKELY,M1-04
+051A:74B2,func,Flow_PilotDossierEnd,void far(TotalKills: Integer),end-game pilot dossier (death ending),LIKELY,M1-04
+051A:76EA,func,Sav_RestoreGame,,restore-game screen (menu item 2),LIKELY,M1-04
+051A:7EEA,func,Sav_SaveGame,void far(Mission: Byte; Kills: Integer; Pal),save-game screen (menu item 1),LIKELY,M1-04
+051A:8EAA,func,Flow_StorySoFar,,story-so-far screen (menu item 5),LIKELY,M1-04
+051A:92AF,func,Flow_DialogueScene,void far(Id: Byte),plays dialogue scene Id from dialogue.dat or safedial.dat,CONFIRMED,M1-04
 051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
 0E8B:0052,func,Gfx_WaitRetraceStart,,polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace,CONFIRMED,M1-03
+0E8B:01F6,func,Gfx_FadeInFlight,,retrace-paced palette fade in from g_FlightPalette (Real48 scaling),HYPOTHESIS,U-033
+0E8B:0426,func,Gfx_FadeOutFlight,,retrace-paced palette fade out (Real48 scaling),HYPOTHESIS,U-033
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
+0E8B:07ED,func,Snd_PlayMusic,void far(N: Byte),stops the current song and plays CMF n (1..14; table in flow spec 3.1) when music is on,CONFIRMED,M1-04
+0E8B:0984,func,Sim_ProjectilesAndHits,,per tick: projectiles; hits; kills (+g_MissionKills); frees destroyed slots,HYPOTHESIS,U-033
+0E8B:4947,func,Txt_DrawFlightText,,draws a text line in flight (IR notice and pause),HYPOTHESIS,U-033
+0E8B:56ED,func,Sim_EndSequenceStep,,per tick while g_MissionOver: end-sequence explosions and g_EndTicks,LIKELY,U-033
+0E8B:60D8,func,Msn_SetupMission,,per-mission overrides at flight start: player class; slot classes; positions,LIKELY,U-033
+0E8B:7374,func,UI_ShipRecognitionChart,,ship class chart with sprites and stat lines,LIKELY,M1-04
+0E8B:794C,func,UI_FlightMenu,,Esc menu in flight (td.men); may set g_MissionAborted,LIKELY,U-033
+0E8B:7FDF,func,Msn_JurisdictionWarning,,shows the leave-jurisdiction warning and plays its sound,LIKELY,U-033
+0E8B:80D3,func,UI_CommViewer,,F6 comm viewer (modal; td.cmm),LIKELY,U-033
+0E8B:82DD,func,UI_DrawGuidanceLine,,guidance line to the current target (ArcTan; Sqrt),HYPOTHESIS,U-033
+0E8B:8E87,func,UI_DrawInstruments,,per tick: armour and shield gauges; radar; guidance; jurisdiction check,LIKELY,U-033
+0E8B:9860,func,UI_UpdateStatusPanel,,per tick: messages; ship info panel; ship switching; mission events,HYPOTHESIS,U-033
 0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
+0E8B:AF1F,func,Inp_CalibrateJoystick,,joystick calibration screen at start-up,LIKELY,M1-04
+0E8B:B1EC,func,Sim_PlayerSpecials,,per tick after thrust: afterburner (Alt) and special weapon (Space),HYPOTHESIS,U-033
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
+0E8B:CC7F,label,Sim_TickTop,,top of the in-flight tick loop (back edge at 0E8B:F842),CONFIRMED,U-033
 0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
+0E8B:E117,label,Sim_TickAfterWait,,first instruction after the tick wait,CONFIRMED,U-033
 0E8B:F9E7,func,Unit0E8B_Init,,unit init part (7th in chain),CONFIRMED,M1-01
 1E2A:0000,func,Snd_Int1CHandler,,INT 1Ch (BIOS user tick) handler installed by 1E2A:06C6,HYPOTHESIS,M1-03
 1E2A:06C6,func,Snd_InstallTick,,saves INT 1Ch to DS:1E34 and installs 1E2A:0000,LIKELY,M1-03
 1EBF:0000,func,Inp_JoystickAvailable,,returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead,HYPOTHESIS,M1-03
 1EBF:0026,func,Inp_JoystickRead,,port 201h trigger and timing loop for axes and buttons (all joystick port I/O),LIKELY,M1-03
 1EDE:5247,func,Unit1EDE_Init,,unit init part (6th in chain),CONFIRMED,M1-01
+2404:1426,func,Msn_UpdateA,,per tick: mission triggers and objective messages (part A),HYPOTHESIS,U-033
+2404:3521,func,Msn_UpdateB,,per tick: mission triggers and objective messages (part B),HYPOTHESIS,U-033
 2404:60FD,func,Unit2404_Init,,unit init part (5th in chain),CONFIRMED,M1-01
 2A15:220F,func,Unit2A15_Init,,unit init part (4th in chain),CONFIRMED,M1-01
 2C37:0000,func,WORX_CallDriver,,Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h,LIKELY,M1-03
@@ -22,6 +80,8 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:34EE,label,WORX_Int63Handler,,WORX driver API (software interrupt 63h),LIKELY,M1-03
 2C37:4558,func,WORX_TimerIsr,,INT 08h: music tick if active; chains BIOS every N fast ticks; else EOI,CONFIRMED,M1-06
 2C37:4A72,func,WORX_SetTimerRate,,AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick,CONFIRMED,M1-06
+3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick: move and draw the 20 mission ships,HYPOTHESIS,U-033
+34E6:3449,func,AI_InitSlot,void near(Slot: Byte),initialises one mission slot at flight start,HYPOTHESIS,U-033
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
 386E:1991,func,Gfx_SetLogicalWidth,,CRTC 13h (offset) write,LIKELY,M1-03
 386E:19A0,func,Gfx_SetSplitLine,,"waits for a full vertical retrace, then programs line compare (CRTC 18h/07h/09h)",LIKELY,M1-03
@@ -149,6 +209,14 @@ address,kind,name,signature,comment,confidence,source_task
 3A9A:1A1E,func,BP_FileQueryPos,,internal: current position and size via INT 21h AX=4201h/4202h/4200h,HYPOTHESIS,M1-01
 3A9A:1A63,func,BP_UpCase,,UpCase(Ch): a..z to A..Z only,CONFIRMED,M1-01
 3A9A:1A76,func,BP_ClearBss,,internal: zero DS:0502..9DF1 (uninitialised globals) at start-up,LIKELY,M1-01
+3C43:0000,data,k_ConfigScreenText,u8[611],text-mode configuration screen and help text (typed constant),LIKELY,M1-07
+3C43:02AC,data,k_HeadingRing,u8[18],16 headings clockwise with wrap entries (keypad codes),CONFIRMED,M1-07
+3C43:02BE,data,k_ClassMaxSpeed,u8[10],max speed component per class (biased by 16),CONFIRMED,M1-07
+3C43:02C8,data,k_ClassArmour,u8[10],armour per class (mission ships x2),LIKELY,M1-07
+3C43:02D2,data,k_ClassShields,u8[10],shields per class and regeneration cap,LIKELY,M1-07
+3C43:02DC,data,k_ClassAccel,u8[10],thrust step per tick per class,CONFIRMED,M1-07
+3C43:02E5,data,k_ClassShotTable,u8[170],per class 17 muzzle entries (0 = none),LIKELY,M1-07
+3C43:035C,data,k_MuzzleOffsets,,"muzzle (dx,dy) per heading digit and muzzle 1..17 (34 bytes per heading)",LIKELY,M1-07
 3C43:04B2,data,g_OvrCodeList,u16,System typed constants start here,LIKELY,M1-01
 3C43:04B4,data,g_OvrHeapSize,u16,,LIKELY,M1-01
 3C43:04C4,data,g_OvrEmsHandle,u16,initial FFFFh,CONFIRMED,M1-01
@@ -173,13 +241,103 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:04FD,data,g_Test8087,u8,FPU class,LIKELY,M1-01
 3C43:04FE,data,g_FileMode,u8,open mode for Reset (initial 2),CONFIRMED,M1-01
 3C43:0500,data,k_CrLf,u8[2],CR LF used by WriteLn,LIKELY,M1-01
+3C43:0502,data,g_SoundCard,u16,WORX card detection result (FFFFh none),LIKELY,M1-07
+3C43:060F,data,g_GameOver,u8,set by every ending of a mission block,LIKELY,M1-07
+3C43:0610,data,g_MissionAdvance,u8,1 = mission block completed (menu advances),LIKELY,M1-07
+3C43:0752,data,g_ResumeStatus,u8,tdstatus.dat status byte (1 ordering; 2 about),CONFIRMED,M1-07
+3C43:0754,data,g_MenuCursor,u8,main menu cursor 0..8,CONFIRMED,M1-07
+3C43:0758,data,g_KeyChar,u8,last ReadKey character (menus),CONFIRMED,M1-07
+3C43:0759,data,g_KeyScan,u8,last extended scan code (menus),CONFIRMED,M1-07
+3C43:075A,data,g_File,u8[128],FileRec shared by the main program,CONFIRMED,M1-07
+3C43:0D28,data,g_ScriptChoice,u8,1 dialogue.dat; 2 safedial.dat,CONFIRMED,M1-07
+3C43:0D29,data,g_MissionNumber,u8,0 = no game; 1..20 next mission,CONFIRMED,M1-07
+3C43:0D2A,data,g_KillsToDate,i16,kills before the current mission,CONFIRMED,M1-07
+3C43:12C4,data,g_HitFlash,u16,red hit-flash intensity,LIKELY,M1-07
+3C43:12C6,data,g_CfgMusic,u8,1 off; 2 on; 0 = show config screen,CONFIRMED,M1-07
+3C43:12C7,data,g_CfgSfx,u8,1 off; 2 Sound Blaster; 3 PC speaker,LIKELY,M1-07
+3C43:12C8,data,g_CfgController,u8,1 keyboard; 2 joystick,CONFIRMED,M1-07
+3C43:12CA,data,g_MissionKills,i16,kills in the current flight,CONFIRMED,M1-07
+3C43:12CC,data,g_MissionLost,u8,mission failed by objective,LIKELY,M1-07
+3C43:12CD,data,g_PlayerDied,u8,flight ended by the player's death,LIKELY,M1-07
+3C43:12CE,data,g_MissionAborted,u8,player quit the flight from the Esc menu,LIKELY,M1-07
+3C43:12CF,data,g_MissionOutcome,u8,mission-specific success flag (alternative dialogue; debrief),LIKELY,M1-07
+3C43:12D0,data,g_SongHandle,u16,WORX handle of the playing song,LIKELY,M1-07
+3C43:12D2,data,g_SongBuffer,farptr,loaded CMF data,CONFIRMED,M1-07
+3C43:13DC,data,g_NoSoundDriver,u8,/nosound or /pc: WORX never called,CONFIRMED,M1-07
+3C43:13E6,data,g_FlightPalette,u8[768],td.pal copy for fades and flashes,CONFIRMED,M1-07
+3C43:16F6,data,g_PlayerSprite,u8,sprite set used to draw the player,LIKELY,M1-07
+3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
+3C43:1703,data,g_PlayerDrawLate,u8,draw the player after the mission ships,LIKELY,M1-07
+3C43:1704,data,g_PaletteMode,u8,0 normal; 1 infra-red; 2 red-only,LIKELY,M1-07
+3C43:1706,data,g_CommRequest,u8,F6 pressed (comm viewer pending),LIKELY,M1-07
 3C43:1708,data,g_TickPrevTime,u16[4],"hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-06
 3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
 3C43:1718,data,g_MissionTicks,u32,"per-mission counter compared with 25, 200 and 15000",HYPOTHESIS,M1-06
+3C43:1828,data,g_FlashFrames,u8,full-palette flash countdown,LIKELY,M1-07
+3C43:1836,data,g_GunAnimFrame,u8,muzzle-flash animation frame (classes 2 and 5),LIKELY,M1-07
+3C43:1837,data,g_GunAnimHeading,u8,heading at the start of the muzzle animation,LIKELY,M1-07
 3C43:18C2,data,g_OldInt09,farptr,saved keyboard vector,CONFIRMED,M1-03
+3C43:194C,data,g_FlightFile,u8[128],FileRec for flight loads,CONFIRMED,M1-07
+3C43:1A52,data,g_I,u16,shared global loop counter,CONFIRMED,M1-07
+3C43:1A54,data,g_J,u16,shared global loop counter,CONFIRMED,M1-07
+3C43:1A56,data,g_PlayerHeading,u8,player heading (keypad code),CONFIRMED,M1-07
+3C43:1A57,data,g_PlayerClass,u8,player ship class,CONFIRMED,M1-07
+3C43:1A5A,data,g_PlayerTurnDir,u8,1 counter-clockwise; 2 clockwise,CONFIRMED,M1-07
 3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
+3C43:1CB3,data,g_AnyKeyLatch,u8,pause: any key pressed,LIKELY,M1-07
 3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
+3C43:1CB9,data,g_AfterburnerCharge,u8,afterburner energy,LIKELY,M1-07
+3C43:1CBB,data,g_PlayerTargetHeading,u8,heading requested by the steering keys,CONFIRMED,M1-07
+3C43:1E2E,data,g_EdgeHit,u16,player touched the map limit,LIKELY,M1-07
 3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03
+3C43:1F4E,data,g_SkipStory,u8,Esc pressed during a story screen,CONFIRMED,M1-07
+3C43:1F56,data,g_JoyCal,u16[4],joystick calibration (kept in tdstatus.dat),LIKELY,M1-07
+3C43:1F67,data,g_JoyX,i8,joystick X: 1 left; -1 right,LIKELY,M1-07
+3C43:1F68,data,g_JoyY,i8,joystick Y: 1 up; -1 down,LIKELY,M1-07
+3C43:1F69,data,g_JoyButton2,u8,second joystick button,LIKELY,M1-07
+3C43:1F6A,data,g_JoyButton1,u8,first joystick button (fire),LIKELY,M1-07
+3C43:329E,data,g_MissionSucceeded,u8,ends the flight normally,LIKELY,M1-07
+3C43:32B7,data,g_MissionOver,u8,flight is ending,LIKELY,M1-07
+3C43:32B8,data,g_EndTicks,u8,ticks since g_MissionOver (player hidden from 15; loop ends at 35),LIKELY,M1-07
+3C43:32B9,data,g_FlightNumber,u8,Sim_FlyMission argument 1..21,CONFIRMED,M1-07
+3C43:32BA,data,g_MissionPhase,u8,mission-script state,LIKELY,M1-07
+3C43:3946,data,g_SongSize,u16,size of g_SongBuffer,LIKELY,M1-07
+3C43:396E,data,g_ProjOwner,farptr,projectile array: shooter slot,LIKELY,M1-08
+3C43:3972,data,g_ProjFlag,farptr,projectile array: 1 = enemy shot,HYPOTHESIS,M1-08
+3C43:3976,data,g_ProjSubX,farptr,projectile array: i16 pixel offset X,LIKELY,M1-08
+3C43:397A,data,g_ProjSubY,farptr,projectile array: i16 pixel offset Y,LIKELY,M1-08
+3C43:397E,data,g_ProjHeading,farptr,projectile array: heading,LIKELY,M1-08
+3C43:3982,data,g_ProjKind,farptr,projectile array: shot kind,HYPOTHESIS,M1-08
+3C43:3986,data,g_ProjTileX,farptr,projectile array: tile X (FFh = free),LIKELY,M1-08
+3C43:398A,data,g_ProjTileY,farptr,projectile array: tile Y,LIKELY,M1-08
+3C43:398E,data,g_PlayerArmour,i8,player armour (< 1 destroyed),CONFIRMED,M1-07
+3C43:398F,data,g_PlayerShields,i8,player shields (+1 per tick to the class cap),CONFIRMED,M1-07
+3C43:3995,data,g_PlayerSpeed,u8[4],speed components up; down; left; right (biased by 16),CONFIRMED,M1-07
+3C43:399A,data,g_ExplFrame,u8[30],explosion frame (8 = idle),LIKELY,M1-08
+3C43:39B8,data,g_ExplTileX,u8[30],explosion tile X,LIKELY,M1-08
+3C43:39D6,data,g_ExplTileY,u8[30],explosion tile Y,LIKELY,M1-08
+3C43:39F4,data,g_ExplSubX,u8[30],explosion pixel offset X,LIKELY,M1-08
+3C43:3A12,data,g_ExplSubY,u8[30],explosion pixel offset Y,LIKELY,M1-08
+3C43:3A30,data,g_DrawPage,u8,back page 0/1,CONFIRMED,M1-07
+3C43:3A36,data,g_ViewTileX,i16,view origin tile X (6..183),CONFIRMED,M1-07
+3C43:3A38,data,g_ViewTileY,i16,view origin tile Y (7..190),CONFIRMED,M1-07
+3C43:3A3A,data,g_ViewSubX,i16,view pixel offset in tile (10h..30h),CONFIRMED,M1-07
+3C43:3A3C,data,g_ViewSubY,i16,view pixel offset in tile (10h..30h),CONFIRMED,M1-07
+3C43:3A52,data,g_SlotHdrA,u8[20],mission file bytes 0..19 (slot 1..20),CONFIRMED,M1-08
+3C43:3A66,data,g_SlotHdrD,u8[20],mission file bytes 60..79,CONFIRMED,M1-08
+3C43:3A7A,data,g_SlotClass,u8[20],slot class code (file bytes 40..59; FFh empty),CONFIRMED,M1-08
+3C43:3A8E,data,g_SlotHdrB,u8[20],mission file bytes 20..39,CONFIRMED,M1-08
+3C43:3AA2,data,g_SlotHeading,u8[20],slot heading (keypad code),LIKELY,M1-08
+3C43:3ACA,data,g_SlotSubX,i16[20],slot pixel offset X,LIKELY,M1-08
+3C43:3AF2,data,g_SlotSubY,i16[20],slot pixel offset Y,LIKELY,M1-08
+3C43:3B2E,data,g_SlotTileX,u8[20],slot tile X,CONFIRMED,M1-08
+3C43:3B42,data,g_SlotTileY,u8[20],slot tile Y,CONFIRMED,M1-08
+3C43:3BEC,data,g_PathX,farptr,X paths: 20 x 501 bytes,CONFIRMED,M1-08
+3C43:3BF0,data,g_PathY,farptr,Y paths: 20 x 501 bytes,CONFIRMED,M1-08
+3C43:3BF6,data,g_FireRequest,u8[180],fire requests [slot 1..20; entry 1..9],LIKELY,M1-08
+3C43:3CAA,data,g_TileAttr,farptr,tile attribute table: 1 solid; 2 open,CONFIRMED,M1-08
+3C43:442E,data,g_Map,farptr,201 x 201 map; column-major,CONFIRMED,M1-08
+3C43:4432,data,g_Ships,,20 ship records of 1065 bytes (structures.md 3),LIKELY,M1-08
 3C43:9B8A,data,g_CrtCheckBreak,u8,Crt.CheckBreak,LIKELY,M1-01
 3C43:9B8E,data,g_CrtLastMode,u16,Crt.LastMode,HYPOTHESIS,M1-01
 3C43:9B90,data,g_CrtTextAttr,u8,Crt.TextAttr,CONFIRMED,M1-01
