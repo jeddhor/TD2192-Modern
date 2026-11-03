@@ -45,7 +45,7 @@ def loads(run: pathlib.Path, prog_filter: str | None) -> None:
         elif ah in ('3F', '42', '3E') and r['handle'] in by_handle:
             s = by_handle[r['handle']]
             if ah == '3F' and r['cf'] == '0' and r['result'].startswith('bytes='):
-                s['bytes'] += int(r['result'][6:])
+                s['bytes'] += int(r['result'][6:].split(',')[0])
                 s['reads'] += 1
             elif ah == '42':
                 s['seeks'] += 1
@@ -68,11 +68,12 @@ def loads(run: pathlib.Path, prog_filter: str | None) -> None:
 def pit(run: pathlib.Path) -> None:
     rows = read_tsv(run / 'pit.tsv')
     print('## PIT programming\n')
-    print('| frame | ms | port | value | decoded |')
-    print('|---|---|---|---|---|')
+    print('| frame | ms | prog | caller (rel) | port | value | decoded |')
+    print('|---|---|---|---|---|---|---|')
     for r in rows:
         if 'count=' in r['decoded'] or 'control' in r['decoded']:
-            print(f"| {r['frame']} | {float(r['ms']):.1f} | {r['port']} | {r['val']} | {r['decoded']} |")
+            print(f"| {r['frame']} | {float(r['ms']):.1f} | {r.get('prog', '')} | {r.get('rel', '')} | {r['port']} | "
+                  f"{r['val']} | {r['decoded']} |")
     print()
 
 
@@ -96,6 +97,68 @@ def stats_table(frames, ranges) -> None:
     print()
 
 
+def cadence_table(frames, ranges) -> None:
+    """Means and retrace-wait cadence per range (timing questions, U-001)."""
+    print('| range | label | frames | IRQ0/frame (mean) | IRQ0 rate Hz | frames with 3DAh reads | frames with a retrace hit '
+          '| gap between retrace-hit frames (mean / most common) | 3DAh reads per polling frame (mean) '
+          '| DOS clock calls/frame (mean) | 3C9h writes/frame (mean) | frames with >=768 3C9h writes |')
+    print('|---|---|---|---|---|---|---|---|---|---|---|---|')
+    for a, b, label in ranges:
+        sel = [f for f in frames if a <= int(f['frame']) <= b]
+        if not sel:
+            continue
+        n = len(sel)
+        dur = sum(float(f['dur_ms']) for f in sel)
+        irq = sum(int(f['irq0']) for f in sel)
+        polling = [f for f in sel if int(f['p3da']) > 0]
+        hits = [int(f['frame']) for f in sel if int(f['p3da_vr']) > 0]
+        gaps = [y - x for x, y in zip(hits, hits[1:])]
+        gap_mean = f'{statistics.mean(gaps):.3f}' if gaps else '-'
+        gap_mode = statistics.mode(gaps) if gaps else '-'
+        reads = f"{statistics.mean(int(f['p3da']) for f in polling):.0f}" if polling else '-'
+        clock = f"{statistics.mean(int(f['int21_clock']) for f in sel):.1f}" if 'int21_clock' in sel[0] else 'n/a'
+        dac = statistics.mean(int(f['dac_3c9']) for f in sel)
+        full = sum(1 for f in sel if int(f['dac_3c9']) >= 768)
+        print(f'| {a}-{b} | {label} | {n} | {irq / n:.3f} | {irq * 1000 / dur:.2f} | {len(polling)} | {len(hits)} '
+              f'| {gap_mean} / {gap_mode} | {reads} | {clock} | {dac:.1f} | {full} |')
+    print()
+
+
+def fb_cadence(run: pathlib.Path, tag: str) -> None:
+    """For consecutive-frame framebuffer dumps with a tag: how often the displayed image changes,
+    and where the changes fall relative to frames that saw the start of vertical retrace."""
+    import collections
+    frames = {int(r['frame']): r for r in read_tsv(run / 'frames.tsv')}
+    fb = {}
+    # FB rows carry more tab-separated fields than the header names, so split raw lines
+    with (run / 'events.tsv').open(encoding='utf-8') as f:
+        next(f)
+        for line in f:
+            p = line.rstrip('\n').split('\t')
+            if p[2] == 'FB' and p[3].endswith(f'_{tag}.vga'):
+                fb[int(p[0])] = next(x for x in p if x.startswith('fnv_pixels='))
+    fs = sorted(fb)
+    if len(fs) < 2:
+        print(f'no consecutive dumps tagged {tag}')
+        return
+    changes = [b for a, b in zip(fs, fs[1:]) if fb[a] != fb[b] and b == a + 1]
+    gaps = [b - a for a, b in zip(changes, changes[1:])]
+    hits = [f for f in fs if f in frames and int(frames[f]['p3da_vr']) > 0]
+    rel = collections.Counter()
+    for c in changes:
+        prev = [h for h in hits if h <= c]
+        rel[(c - prev[-1]) if prev else 'none'] += 1
+    print(f'## Image-change cadence for dumps tagged `{tag}`\n')
+    print(f'- dumped frames: {len(fs)} ({fs[0]}..{fs[-1]})')
+    print(f'- frames whose image differs from the previous frame: {len(changes)}')
+    if gaps:
+        print(f'- frames between image changes: mean {statistics.mean(gaps):.3f}, '
+              f'distribution {dict(sorted(collections.Counter(gaps).items()))}')
+    print(f'- frames with a retrace hit (3DAh bit 3 seen): {len(hits)}')
+    print(f'- image-change frame minus latest retrace-hit frame: {dict(sorted(rel.items(), key=str))}')
+    print()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('run')
@@ -104,8 +167,13 @@ def main() -> int:
     ap.add_argument('--window', type=int, default=0)
     ap.add_argument('--range', action='append', default=[])
     ap.add_argument('--int21-filter')
+    ap.add_argument('--cadence', action='store_true', help='with --range: means and retrace-wait cadence')
+    ap.add_argument('--fb-cadence', metavar='TAG', help='image-change cadence of consecutive fb dumps with this tag')
     a = ap.parse_args()
     run = pathlib.Path(a.run)
+    if a.fb_cadence:
+        fb_cadence(run, a.fb_cadence)
+        return 0
     everything = not (a.loads or a.pit or a.window or a.range)
     if a.loads or everything:
         loads(run, a.int21_filter)
@@ -118,8 +186,12 @@ def main() -> int:
             span, _, label = spec.partition(':')
             lo, _, hi = span.partition('-')
             ranges.append((int(lo), int(hi), label))
-        print('## Per-frame counters by range\n')
-        stats_table(frames, ranges)
+        if a.cadence:
+            print('## Cadence by range\n')
+            cadence_table(frames, ranges)
+        else:
+            print('## Per-frame counters by range\n')
+            stats_table(frames, ranges)
     if a.window or everything:
         n = a.window or 700
         last = int(frames[-1]['frame']) if frames else 0

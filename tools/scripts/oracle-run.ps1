@@ -64,6 +64,8 @@ param(
     [switch]$RealTime,
     [switch]$Png,
     [switch]$Register,
+    [switch]$KeepState,
+    [string]$Original = $(if ($env:TD2192_DATA) { $env:TD2192_DATA } else { 'P:\msdos\TD2192\TD2192' }),
     [string]$Exe = 'td1.exe',
     [string]$SceneDesc = '',
     [string]$Description = '',
@@ -87,8 +89,34 @@ foreach ($f in @($playConf, $oracleConf)) { if (-not (Test-Path $f)) { throw "Mi
 
 # Safety: the mounted C: must be the writable copy and must not contain DOS\LABEL.EXE.
 $cRoot = Join-Path $dosboxDir 'c'
+$gameCopy = Join-Path $cRoot 'TD'
 if (Test-Path (Join-Path $cRoot 'DOS\LABEL.EXE')) { throw "Refusing to run: $cRoot\DOS\LABEL.EXE exists." }
-if (-not (Test-Path (Join-Path $cRoot 'TD\FILE0001.EXE'))) { throw "Game copy not found under $cRoot\TD" }
+if (-not (Test-Path (Join-Path $gameCopy 'FILE0001.EXE'))) { throw "Game copy not found under $gameCopy" }
+if ((Resolve-Path $gameCopy).Path -eq (Resolve-Path $Original).Path) { throw 'The game copy must not be the original install.' }
+
+# Reset the game copy to the pristine install so every run starts from the same state: the game
+# writes td.cfg, tdstatus.dat, saves and score files. Reads the original, writes only the copy.
+$resetLog = @()
+if (-not $KeepState) {
+    $orig = @{}
+    foreach ($f in Get-ChildItem $Original -File) { $orig[$f.Name.ToUpperInvariant()] = $f }
+    foreach ($f in Get-ChildItem $gameCopy -File) {
+        if (-not $orig.ContainsKey($f.Name.ToUpperInvariant())) {
+            Remove-Item $f.FullName -Force
+            $resetLog += "removed $($f.Name)"
+        }
+    }
+    foreach ($o in $orig.Values) {
+        $dst = Join-Path $gameCopy $o.Name
+        $same = (Test-Path $dst) -and ((Get-Item $dst).Length -eq $o.Length) -and
+            ((Get-FileHash $dst -Algorithm SHA256).Hash -eq (Get-FileHash $o.FullName -Algorithm SHA256).Hash)
+        if (-not $same) {
+            Copy-Item $o.FullName $dst -Force
+            $resetLog += "restored $($o.Name)"
+        }
+    }
+    foreach ($f in Get-ChildItem $gameCopy -File) { if ($f.IsReadOnly) { $f.IsReadOnly = $false } }
+}
 
 $captureId = $null
 if ($Register) {
@@ -147,6 +175,8 @@ if (-not $Window) { $argv += '-exit' }
 
 $cmdline = "DBX_ORACLE=$iniPath`n" + ($argv | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
 [IO.File]::WriteAllText((Join-Path $Out 'cmdline.txt'), "$DosboxExe $cmdline`n")
+$resetText = if ($KeepState) { 'game copy NOT reset (-KeepState)' } elseif ($resetLog.Count) { $resetLog -join "`n" } else { 'game copy already pristine' }
+[IO.File]::WriteAllText((Join-Path $Out 'reset.txt'), "$resetText`n")
 
 $saved = @{ DBX_ORACLE = $env:DBX_ORACLE; SDL_VIDEODRIVER = $env:SDL_VIDEODRIVER; SDL_AUDIODRIVER = $env:SDL_AUDIODRIVER }
 try {
