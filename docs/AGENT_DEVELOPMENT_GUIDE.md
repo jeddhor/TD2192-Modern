@@ -122,7 +122,7 @@ When sources disagree, the higher one wins. Then fix the lower one in the same c
 | .NET | 10.0 SDK (not used by the project) |
 | Java | Temurin JDK 25 at `C:\Program Files\Eclipse Adoptium\jdk-25.0.5.8-hotspot` (**not on PATH**; set `JAVA_HOME` for Ghidra) |
 | Ghidra | 12.2 at `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC` (GUI `ghidraRun.bat`, headless `support\analyzeHeadless.bat`, PyGhidra `support\pyghidraRun.bat`) |
-| DOSBox-X | Source at `P:\msdos\TD2192\dosbox-x` (GPL). Built locally (VS solution `vs\dosbox-x.sln`, Release x64, `/p:PlatformToolset=v145`; `C_DEBUG` and `C_HEAVY_DEBUG` are on in `vs\config.h`). It is a **tool only**: Implementers must not consult its sound, ADPCM or OPL source when writing the port's equivalents. Write those from public format descriptions. |
+| DOSBox-X | Source at `P:\msdos\TD2192\dosbox-x` (GPL). Built locally (VS solution `vs\dosbox-x.sln`, Release x64, `/p:PlatformToolset=v145`; `C_DEBUG` and `C_HEAVY_DEBUG` are on in `vs\config.h`), with our td2192-oracle instrumentation patch (inert unless `DBX_ORACLE` is set; `re-work\dosbox\ORACLE.md`, §11.1). It is a **tool only**: Implementers must not consult its sound, ADPCM or OPL source when writing the port's equivalents. Write those from public format descriptions. |
 
 ### 4.2 Environment variables
 
@@ -371,10 +371,10 @@ Always say which notation you use if it is not this one.
 
 ### 7.9 Dynamic analysis with DOSBox
 
-- Use a debugger-enabled DOSBox (DOSBox-X has a built-in debugger in its standard builds; DOSBox Staging has heavy-debug builds). Run the **copy** in `re-work\dosbox\c\TD`.
+- Use a debugger-enabled DOSBox (DOSBox-X has a built-in debugger in its standard builds; DOSBox Staging has heavy-debug builds). Run the **copy** in `re-work\dosbox\c\TD`. Our oracle build (§11.1) is debugger-enabled and adds machine-readable logs that answer many of the questions below without breakpoints: `int21.tsv` gives every file open, read, seek and EXEC with the caller's image-relative address (load order and load sites), `pit.tsv` and `io_sites.tsv` give every PIT, DAC and 3DAh access site, `frames.tsv` gives per-frame IRQ 0 / retrace / palette counts, and scenario `mem` dumps are frame-exact and reproducible.
 - Typical commands (classic DOSBox debugger syntax; confirm in your build's help): `BP seg:off`, `BPINT 21 3D` (break on DOS open), `BPLIST`, `BPDEL n`, `D seg:off` (data view), `MEMDUMPBIN seg:off len` (dump memory to file), `SR reg val`, `LOG n` (trace n instructions), `F5` continue, `F10`/`F11` step.
 - Recipes:
-  - **Asset load order:** `BPINT 21 3D`, then log `DS:DX` (filename) at each hit while playing E1 up to mission 1.
+  - **Asset load order:** run a scenario with the oracle and read `int21.tsv` (`python tools/scripts/oracle-summary.py <run> --loads`). By hand: `BPINT 21 3D`, then log `DS:DX` (filename) at each hit while playing E1 up to mission 1.
   - **Structure discovery:** pause in flight, `MEMDUMPBIN` the DGROUP segment, move the ship, dump again, diff. The fields that change identify position, velocity and heading.
   - **Tick rate:** breakpoint on the main-loop head; count hits over 10 seconds of game time at different `cycles` settings (U-001).
   - **RNG:** watch `RandSeed` across ticks.
@@ -535,16 +535,47 @@ fn decodes_all_full_screens() {
 
 ### 11.1 DOSBox reference setup
 
-- `re-work\dosbox\c\TD` is a **copy** of the original install. The game writes `td.cfg`, saves and `tdstatus.dat` into its directory.
-- Configure sound as SB16 (or SB Pro 2 for authenticity: compare both once), OPL emulation, and a fixed `cycles` value recorded in the capture manifest. Speed-sensitive behaviour (U-001) must be captured at a documented cycles setting.
-- Keep separate DOSBox configs per purpose (`ref-play.conf`, `ref-debug.conf`) under `re-work\dosbox\`.
+The reference oracle is DOSBox-X with our small instrumentation patch ("td2192-oracle"), running the writable copy of the game. **Full documentation (build, every option, scenario syntax, file formats): `P:\msdos\TD2192\re-work\dosbox\ORACLE.md`.** The patch is GPL and lives only in the DOSBox-X checkout; the repo holds only scripts that invoke `dosbox-x.exe`.
+
+| What | Where |
+|---|---|
+| Oracle build | `P:\msdos\TD2192\dosbox-x\bin\x64\Release\dosbox-x.exe` (DOSBox-X 2026.10.01 `f1c4414` + td2192-oracle, SDL1, debugger on) |
+| Game copy (C:\TD in DOSBox) | `re-work\dosbox\c\TD` (218 files; the game writes `td.cfg`, saves and `tdstatus.dat` here). Only `re-work\dosbox\c` is mounted; it has no `DOS\LABEL.EXE` and `automount=false`, so the `c:\dos\label.exe` path cannot reach a host drive. |
+| Base config, preset **P1** | `re-work\dosbox\ref-play.conf`: `machine=vgaonly`, `core=normal`, `cputype=386`, **`cycles=fixed 20000`**, SB16 220h/IRQ 7/DMA 1/HDMA 5, OPL3 `oplemu=nuked`, PC speaker, no GUS/MPU/joystick, `lfn=false`, `keyboardlayout=us` |
+| Unattended overlay | `re-work\dosbox\ref-oracle.conf`: `turbo=true`, `doublescan=false` (mode 13h renders 320×200; raster timing unchanged), `frameskip=0` |
+| Scenarios | `re-work\dosbox\scenarios\*.txt` |
+
+- **Interactive play:** `& 'P:\msdos\TD2192\dosbox-x\bin\x64\Release\dosbox-x.exe' -conf P:\msdos\TD2192\re-work\dosbox\ref-play.conf -c TD1.EXE`. Use the window's *Capture* menu for ad-hoc screenshots, WAV or AVI, then register them with `tools/scripts/capture-add.ps1`.
+- **Unattended, deterministic runs:** `tools/scripts/oracle-run.ps1` (below). Same build + configs + scenario + options ⇒ bit-identical logs, dumps and recordings (verified: C-0002 vs C-0003, [dynamic-observations.md](re/dynamic-observations.md) §1). It runs headless (`SDL_VIDEODRIVER=dummy`), faster than real time (about 1–2 emulated seconds per wall second with logging), with a fixed guest clock (`1994-11-01 09:00:00`) so DOS-time-based seeds repeat, and it **resets `re-work\dosbox\c\TD` to the pristine install before every run** (the game writes `td.cfg` and `tdstatus.dat`; `-KeepState` skips the reset).
+- Write scenarios with one key per game state and anchor each key on a game event (`open:` / `exec:`), not on a guessed time. Whether an early key is consumed depends on CPU speed (example: [dynamic-observations.md](re/dynamic-observations.md) §7), and a key that arrives early is buffered for the next screen.
+- Speed-sensitive behaviour (U-001) must be captured at a documented `cycles` setting; pass `-Cycles N` and say so in the manifest (the script does).
+- Stock DOSBox-X `AUTOTYPE` waits on the host clock and is not reproducible; use scenario key lines instead.
 
 ### 11.2 Captures
 
-- Every capture gets an ID and a manifest row in `re-work\captures\MANIFEST.md`: `id, date, exe, episode/mission/scene, method (screenshot/video/audio/ram), dosbox build + cycles, description, file path`.
-- Screenshots: DOSBox raw-mode capture at 320×200 (no scaling or filtering) so pixel comparison is exact.
-- Audio: DOSBox WAV capture.
-- Video: DOSBox capture (ZMBV AVI) for timing analysis. Count frames for tick timing.
+- Every capture gets an ID and a manifest row in `re-work\captures\MANIFEST.md`: `id, date, exe, episode/mission/scene, method (screenshot/video/audio/ram), dosbox build + cycles, description, file path`. `oracle-run.ps1 -Register` allocates the next `C-NNNN`, writes to `re-work\captures\oracle\C-NNNN\` and appends the row; `capture-add.ps1` does the same for manual captures (`-NextId` prints the next free ID).
+- **Screenshots:** oracle framebuffer dumps (`fb\*.vga`: 768-byte 6-bit DAC palette + W×H indexed pixels, exactly as displayed; a mode 13h dump is 320×200, the same layout as a `.scr` file). Request them per frame (`fb` scenario action) or periodically (`-FbEvery N`). Convert with `python tools/scripts/oracle-fb2png.py <dir> --sheet 8`. PNGs stay in the RE work area.
+- **Audio:** `-Record wav` (DOSBox-X `DX-CAPTURE /A`, 48 kHz stereo, whole run). `-Record opl` records the raw OPL register stream (DRO v2) for M3 music verification; `-Record all` = video + WAV + DRO.
+- **Video:** `-Record video` (ZMBV AVI at the emulated 70.086 Hz; a new file starts at each video-mode change). For tick timing prefer `frames.tsv` (one row per emulated frame with IRQ 0, PIT, DAC, 3DAh and INT 21h counts) and consecutive-frame `fb` dumps.
+- **RAM:** scenario `mem SSSS:OOOO <len>` and `vram` actions.
+- **Logs:** every run also writes `int21.tsv` (file, clock, vector and EXEC calls with the caller's image-relative address, read/write sizes and file positions), `pit.tsv`, `io_sites.tsv` (which instructions touch the PIT, DAC and 3DAh) and `events.tsv`. Summarise with `python tools/scripts/oracle-summary.py <run dir>` (`--loads`, `--pit`, `--range A-B:label --cadence`, `--fb-cadence <tag>`).
+
+```powershell
+# Intro, one framebuffer per second, WAV + DRO + AVI, registered as a capture (this is C-0001)
+pwsh tools/scripts/oracle-run.ps1 -Scenario P:\msdos\TD2192\re-work\dosbox\scenarios\intro-full.txt `
+    -Seconds 150 -FbEvery 70 -Record all -Png -Register -Exe 'td1.exe, file0000.exe' `
+    -SceneDesc 'full intro' -Description 'intro-full.txt'
+
+# Power-on to E1 mission 1 (this is C-0002); the scenario ends the run itself
+pwsh tools/scripts/oracle-run.ps1 -Scenario P:\msdos\TD2192\re-work\dosbox\scenarios\e1-to-m1.txt `
+    -Seconds 100 -Record wav -Out P:\msdos\TD2192\re-work\scratch\try1
+
+# The same inputs at another CPU speed (U-001): use the portable scenario (no absolute frames)
+pwsh tools/scripts/oracle-run.ps1 -Scenario P:\msdos\TD2192\re-work\dosbox\scenarios\e1-to-m1-portable.txt `
+    -Seconds 400 -Cycles 3000 -Out P:\msdos\TD2192\re-work\scratch\try-3000
+```
+
+Scenario lines are `<when> <action>`: `f1200 press esc`, `t15000 press 1`, `open:menu.cmf+70 fb menu`, `exec:file0001.exe+140 mem 0000:0000 0xA0000`, `f3473-4172 fb flight`, `f6400 exit`. Anchors (`open:` / `exec:`) keep scenarios valid when timing changes; absolute frame numbers are only valid for the preset they were written for. See ORACLE.md §5.
 
 ### 11.3 Comparison methods
 
