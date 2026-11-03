@@ -10,6 +10,7 @@ pub mod flight;
 pub mod flight_palette;
 pub mod framebuffer;
 pub mod headings;
+pub mod hud;
 pub mod small_text;
 pub mod text;
 pub mod tilemap;
