@@ -10,7 +10,7 @@ Raw facts measured by running the original game in the reference oracle (DOSBox-
 
 | | |
 |---|---|
-| Emulator | DOSBox-X 2026.10.01 (commit `f1c4414`) + td2192-oracle patch 1; Release x64, SDL1, `C_DEBUG`/`C_HEAVY_DEBUG`. Binary SHA-256 `e6fa2aea028b1134374f8199e70a7e8aca740d774416b61c9475fd7cb3858a78` (C-0002 onward; C-0001 used the same source minus the small-read `data=` logging). |
+| Emulator | DOSBox-X 2026.10.01 (commit `f1c4414`) + td2192-oracle patch 1; Release x64, SDL1, `C_DEBUG`/`C_HEAVY_DEBUG`. Binary SHA-256 `e6fa2aea028b1134374f8199e70a7e8aca740d774416b61c9475fd7cb3858a78` for all six captures; a pinned copy is in `re-work\dosbox\bin\oracle-1\`. |
 | Preset | **P1**: `ref-play.conf` + `ref-oracle.conf`: `machine=vgaonly`, `core=normal`, `cputype=386`, `cycles=fixed 20000` (unless the table says otherwise), SB16 220h/IRQ 7/DMA 1/HDMA 5, OPL3 (`nuked`), no joystick, `doublescan=false`, `turbo=true`. |
 | Guest clock | Fixed at power-on: 1994-11-01 09:00:00. |
 | Game copy | `re-work\dosbox\c\TD`, reset to the pristine install before every run (`td.cfg` restored, `tdstatus.dat` removed). |
