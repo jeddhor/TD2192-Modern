@@ -27,6 +27,9 @@ struct Cli {
     /// Developer flight arena: fly flight N (1..21) on the Episode 1 map.
     #[arg(long, value_name = "N")]
     dev_flight: Option<u8>,
+    /// Developer: play one dialogue scene: ID (episode 1), eN:ID, or eN-safe:ID (edited script).
+    #[arg(long, value_name = "SCENE")]
+    dev_dialogue: Option<String>,
     /// Start in fullscreen (overrides settings).
     #[arg(long)]
     fullscreen: bool,
@@ -131,9 +134,15 @@ fn real_main() -> Result<()> {
     }
 
     let resources = td_assets::ExeResources::load(&dir)?;
-    let first: Box<dyn td_flow::Screen> = match cli.dev_flight {
-        Some(n) => Box::new(flight::FlightArena::new(&dir, n)?),
-        None => {
+    let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
+        (Some(n), _) => Box::new(flight::FlightArena::new(&dir, n)?),
+        (None, Some(spec)) => {
+            let (episode, choice, id) = td_flow::dialogue::parse_scene_spec(spec)?;
+            Box::new(td_flow::DialogueScene::load(
+                &dir, &resources, episode, choice, id,
+            )?)
+        }
+        (None, None) => {
             let map = cli.dev_mapview.as_deref().unwrap_or("e1");
             Box::new(mapview::MapView::new(&dir, map)?)
         }

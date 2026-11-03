@@ -1,9 +1,9 @@
-//! Drawing text with the original bitmap fonts.
+//! Fixed-pitch text with any of the bitmap fonts, for tools and debug overlays only.
 //!
-//! Fidelity: T0 for glyph pixels; layout is provisional. ASSUMPTION(M2-08): glyphs advance by
-//! their width plus 1 pixel, a space advances by the glyph width + 1, and characters without a
-//! glyph are skipped like spaces. The text routines in the executables decide the real
-//! spacing, colouring and wrapping (`docs/spec/render/text.md`, to be written).
+//! **Not original behaviour.** The game's text follows `docs/spec/render/text.md` (rev 1):
+//! use [`crate::small_text`] (`td.lt2`) and [`crate::title_text`] (`td-let.cin`) for anything
+//! the original draws. This module advances every glyph by its width plus 1 pixel, can show
+//! the fonts' baked colours (which the game never does), and skips characters without a glyph.
 
 use td_formats::font::Font;
 

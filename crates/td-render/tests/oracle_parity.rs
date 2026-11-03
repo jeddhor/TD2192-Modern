@@ -1,89 +1,170 @@
-//! L5 parity tests: our rendering compared pixel-for-pixel with frames captured from the
-//! original game (oracle, `docs/re/dynamic-observations.md`). They need both TD2192_DATA and
-//! TD2192_ORACLE and skip otherwise. No captured pixels are stored in the repository.
+//! L5 parity tests: our text and dialogue drawing compared pixel for pixel with frames captured
+//! from the original game (oracle capture C-0002, `docs/re/dynamic-observations.md`). They need
+//! both TD2192_DATA and TD2192_ORACLE and skip otherwise. No captured pixels are stored in the
+//! repository.
+//!
+//! These are component checks of `docs/spec/render/text.md` §6 and
+//! `docs/spec/narrative/dialogue-player.md` §6. Whole dialogue frames, played by the scene
+//! player, are checked in `td-flow/tests/dialogue_parity.rs`.
 
 use std::fs;
+use std::path::Path;
 
-use td_formats::dialogue::{DialogueScript, Item};
+use td_assets::{DataDir, ExeResources};
 use td_formats::font::{Font, FontKind};
-use td_render::{Framebuffer, Rect, small_text};
+use td_formats::palette::Palette;
+use td_formats::portraits::Portraits;
+use td_render::dialogue::{self, Side};
+use td_render::{Framebuffer, small_text, title_text};
 use td_test_support::{require_data, require_oracle};
 
-fn oracle_frame(name: &str) -> Vec<u8> {
-    let dir = require_oracle_dir();
-    let bytes = fs::read(dir.join("C-0002").join("fb").join(name)).unwrap();
-    bytes[768..].to_vec()
+/// A C-0002 framebuffer dump: the DAC palette and 320x200 pixels.
+fn oracle_frame(oracle: &Path, name: &str) -> (Palette, Vec<u8>) {
+    let raw = fs::read(oracle.join("C-0002").join("fb").join(name)).unwrap();
+    assert_eq!(raw.len(), 768 + 320 * 200, "{name}");
+    (Palette::parse_prefix(&raw).unwrap(), raw[768..].to_vec())
 }
 
-fn require_oracle_dir() -> std::path::PathBuf {
-    td_test_support::oracle_dir().expect("checked by require_oracle!")
-}
+const F2283: &str = "f00002283_320x200_dialogue-1.vga";
+const F2433: &str = "f00002433_320x200_dialogue-2.vga";
 
-#[test]
-fn first_dialogue_line_matches_the_original() {
-    let data = require_data!();
-    let _oracle = require_oracle!();
-    let font = Font::parse(&fs::read(data.join("td.lt2")).unwrap(), FontKind::Small).unwrap();
-    let script = DialogueScript::parse(&fs::read(data.join("dialogue.dat")).unwrap()).unwrap();
-    let scene = script.scene(1).unwrap();
-    // The first speech block: blank line, then the spoken line (second item).
-    let Item::Line { text, .. } = &scene.segments[0][1] else {
-        panic!("expected a text line");
-    };
-    let mut fb = Framebuffer::new();
-    small_text::draw(&mut fb, &font, text, (4, 162), 251, Rect::SCREEN);
-    let frame = oracle_frame("f00002283_320x200_dialogue-1.vga");
-    let rows = 162 * 320..167 * 320;
-    let diff = fb.pixels[rows.clone()]
+/// Pixels that differ in rows `rows`, as (x, y, ours, original), at most 12 listed.
+fn diff_rows(ours: &[u8], theirs: &[u8], rows: std::ops::Range<usize>) -> (usize, Vec<String>) {
+    let idx: Vec<usize> = (rows.start * 320..rows.end * 320)
+        .filter(|&i| ours[i] != theirs[i])
+        .collect();
+    let first = idx
         .iter()
-        .zip(&frame[rows])
-        .filter(|(a, b)| a != b)
-        .count();
-    assert_eq!(
-        diff, 0,
-        "pixels differing from the original in rows 162-166"
-    );
+        .take(12)
+        .map(|&i| format!("({}, {}): {} vs {}", i % 320, i / 320, ours[i], theirs[i]))
+        .collect();
+    (idx.len(), first)
+}
+
+fn small_font(data: &Path) -> Font {
+    Font::parse(&fs::read(data.join("td.lt2")).unwrap(), FontKind::Small).unwrap()
 }
 
 #[test]
-fn dialogue_portraits_names_and_palette_match_the_original() {
-    use td_formats::palette::Palette;
-    use td_formats::portraits::Portraits;
-    use td_render::dialogue;
+fn typed_dialogue_line_matches_the_original() {
+    // text.md §6 vector 4 / dialogue-player.md §6 vector 5: the second line of scene 1 (two
+    // leading spaces), typed at pen (2, 175) in entry 251 and scrolled by two lines.
     let data = require_data!();
-    let _oracle = require_oracle!();
-    let font = Font::parse(&fs::read(data.join("td.lt2")).unwrap(), FontKind::Small).unwrap();
+    let oracle = require_oracle!();
+    let font = small_font(&data);
+    let raw = fs::read(data.join("dialogue.dat")).unwrap();
+    let lines = td_formats::dialogue::read_scene(&raw, 1).unwrap();
+    let text = lines
+        .iter()
+        .find_map(|c| match c {
+            td_formats::dialogue::Command::Line { text, .. } if text.trim().len() > 1 => {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    let mut fb = Framebuffer::new();
+    let mut t = small_text::Typewriter::new(&text, dialogue::TEXT_PEN, 251, 0);
+    t.finish(&mut fb, &font);
+    dialogue::scroll_text_area(&mut fb);
+    dialogue::scroll_text_area(&mut fb);
+    let (_, frame) = oracle_frame(&oracle, F2283);
+    let (n, first) = diff_rows(&fb.pixels, &frame, 162..167);
+    assert_eq!(n, 0, "rows 162-166 differ: {first:?}");
+}
+
+#[test]
+fn portraits_names_and_palette_match_the_original() {
+    // dialogue-player.md §6 vectors 1, 3 and 4; text.md §6 vector 2.
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let font = small_font(&data);
     let faces = Portraits::parse(&fs::read(data.join("newfaces.td")).unwrap()).unwrap();
     let td_pal = Palette::parse(&fs::read(data.join("td.pal")).unwrap()).unwrap();
-    let script = DialogueScript::parse(&fs::read(data.join("dialogue.dat")).unwrap()).unwrap();
-    let scene = script.scene(1).unwrap();
-    // In frame f2283 the dispatcher (slot 2) is speaking.
+    // Scene 1: slot 1 = face 1, colour 2Eh, 13-character name; slot 2 = face 2, colour 39h.
+    let raw = fs::read(data.join("dialogue.dat")).unwrap();
+    let cmds = td_formats::dialogue::read_scene(&raw, 1).unwrap();
     let mut fb = Framebuffer::new();
-    for sp in &scene.speakers {
-        let face = faces.by_face_byte(sp.face).unwrap();
-        dialogue::draw_portrait(&mut fb, sp.slot, face, sp.slot == 2);
-        dialogue::set_speaker_color(&mut fb.palette, sp.slot, &td_pal, sp.color);
-        dialogue::draw_name(&mut fb, &font, sp.slot, &sp.name);
+    let mut pal = Palette::default();
+    let mut entry = 250u8;
+    for c in &cmds {
+        if let td_formats::dialogue::Command::Speaker {
+            slot,
+            face,
+            color,
+            name,
+        } = c
+        {
+            let side = Side::of_slot(*slot);
+            let portrait = faces.by_face_byte(*face).unwrap();
+            pal.colors[usize::from(entry)] = td_pal.colors[usize::from(*color)];
+            dialogue::load_face_palette(&mut pal, side, &portrait.palette);
+            dialogue::draw_portrait(&mut fb, side, &portrait.pixels);
+            dialogue::draw_name(&mut fb, &font, side, name, entry);
+            entry += 1;
+        }
     }
-    let raw = fs::read(
-        td_test_support::oracle_dir()
-            .unwrap()
-            .join("C-0002/fb/f00002283_320x200_dialogue-1.vga"),
-    )
-    .unwrap();
-    let frame = &raw[768..];
-    let diffs: Vec<(usize, usize, u8, u8)> = (0..100 * 320)
-        .filter(|&i| fb.pixels[i] != frame[i])
-        .map(|i| (i % 320, i / 320, fb.pixels[i], frame[i]))
-        .collect();
-    assert!(
-        diffs.is_empty(),
-        "{} pixels differ in rows 0-99; first (x, y, ours, original): {:?}",
-        diffs.len(),
-        &diffs[..diffs.len().min(12)]
-    );
-    let pal = Palette::parse_prefix(&raw).unwrap();
-    for i in (0..224).chain([250, 251]) {
-        assert_eq!(fb.palette.colors[i], pal.colors[i], "palette entry {i}");
+    assert_eq!(entry, 252, "two header speakers");
+    for (frame_name, speaker) in [(F2283, Side::Right), (F2433, Side::Left)] {
+        let (dac, frame) = oracle_frame(&oracle, frame_name);
+        let (n, first) = diff_rows(&fb.pixels, &frame, 0..100);
+        assert_eq!(n, 0, "{frame_name}: rows 0-99 differ: {first:?}");
+        let mut ours = Palette::default();
+        td_render::fade::write_level(&mut ours, &pal, 16);
+        dialogue::highlight(&mut ours, &pal, speaker);
+        for i in (0..224).chain([250, 251]) {
+            assert_eq!(
+                ours.colors[i], dac.colors[i],
+                "{frame_name}: palette entry {i}"
+            );
+        }
     }
+}
+
+#[test]
+fn dialogue_prompt_matches_the_original() {
+    // text.md §6 vector 3: the scene-1 prompt at pen (1, 191) in entry 254, 539 ink pixels.
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let dir = DataDir::open(&data).unwrap();
+    let res = ExeResources::load(&dir).unwrap();
+    let prompt = res
+        .text("dialogue.prompt")
+        .expect("file0001.exe resource map");
+    let font = small_font(&data);
+    let mut fb = Framebuffer::new();
+    dialogue::draw_prompt(&mut fb, &font, prompt);
+    let ink = fb
+        .pixels
+        .iter()
+        .filter(|&&p| p == dialogue::PROMPT_ENTRY)
+        .count();
+    assert_eq!(ink, 539);
+    let (dac, frame) = oracle_frame(&oracle, F2433);
+    let (n, first) = diff_rows(&fb.pixels, &frame, 190..200);
+    assert_eq!(n, 0, "rows 190-199 differ: {first:?}");
+    assert_eq!(dac.colors[254], dialogue::PROMPT_RGB);
+}
+
+#[test]
+fn mission_title_card_matches_the_original() {
+    // text.md §6 vector 1: mission 1 title, measured width 185, pen x 67, y 90, entry 85.
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let dir = DataDir::open(&data).unwrap();
+    let res = ExeResources::load(&dir).unwrap();
+    let title = res
+        .text("e1.mission.01.title")
+        .expect("file0001.exe resource map");
+    assert_eq!(title.len(), 27);
+    let font = Font::parse(&fs::read(data.join("td-let.cin")).unwrap(), FontKind::Title).unwrap();
+    assert_eq!(title_text::width(title), 185);
+    let x = title_text::centred_x(title);
+    assert_eq!(x, 67);
+    let mut fb = Framebuffer::new();
+    title_text::draw(&mut fb, &font, title, (x, 90), 85);
+    assert_eq!(fb.pixels.iter().filter(|&&p| p == 85).count(), 729);
+    let (_, frame) = oracle_frame(&oracle, "f00001162_320x200_mission-title.vga");
+    let (n, first) = diff_rows(&fb.pixels, &frame, 0..200);
+    assert_eq!(n, 0, "title card differs: {first:?}");
 }

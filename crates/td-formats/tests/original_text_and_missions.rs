@@ -54,6 +54,56 @@ fn dialogue_scripts_parse_strictly() {
 }
 
 #[test]
+fn player_reader_agrees_with_the_strict_parser() {
+    use td_formats::dialogue::{Command, read_scene};
+    let dir = require_data!();
+    for name in [
+        "dialogue.dat",
+        "safedial.dat",
+        "dialogu2.dat",
+        "safedia2.dat",
+        "dialogu3.dat",
+        "safedia3.dat",
+    ] {
+        let data = read(&dir, name);
+        let script = DialogueScript::parse(&data).unwrap();
+        for sc in &script.scenes {
+            let cmds = read_scene(&data, sc.number)
+                .unwrap_or_else(|| panic!("{name}: scene {} not found", sc.number));
+            let count = |f: fn(&Command) -> bool| cmds.iter().filter(|c| f(c)).count();
+            let lines = sc.segments.iter().flatten();
+            let items = |f: fn(&Item) -> bool| lines.clone().filter(|i| f(i)).count();
+            let what = format!("{name} scene {}", sc.number);
+            assert_eq!(
+                count(|c| matches!(c, Command::Line { .. })),
+                items(|i| matches!(i, Item::Line { .. })),
+                "{what}"
+            );
+            assert_eq!(
+                count(|c| matches!(c, Command::PageBreak)),
+                items(|i| matches!(i, Item::PageBreak)),
+                "{what}"
+            );
+            assert_eq!(
+                count(|c| matches!(c, Command::Speaker { .. })),
+                sc.speakers.len() + items(|i| matches!(i, Item::Speaker(_) | Item::Face { .. })),
+                "{what}"
+            );
+            assert_eq!(
+                count(|c| *c == Command::SegmentStart),
+                sc.segments.len(),
+                "{what}"
+            );
+            assert_eq!(
+                count(|c| *c == Command::SegmentEnd),
+                sc.segments.len(),
+                "{what}"
+            );
+        }
+    }
+}
+
+#[test]
 fn mission_files_parse() {
     let dir = require_data!();
     let mut files = Vec::new();
