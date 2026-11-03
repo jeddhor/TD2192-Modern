@@ -11,6 +11,7 @@ pub mod headings;
 pub mod small_text;
 pub mod text;
 pub mod tilemap;
+pub mod title_text;
 
 pub use fade::Fade;
 pub use framebuffer::{Framebuffer, HEIGHT, Image, Rect, WIDTH};

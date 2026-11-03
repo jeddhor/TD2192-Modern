@@ -1,22 +1,21 @@
 //! The three bitmap fonts: `td.lt2` (5x5), `td-let.cin` (8x8) and `td.ltr` (12x16).
 //!
-//! Spec: `docs/re/FORMATS.md` §9. Fidelity: T0 for glyph pixels.
-//! Glyph geometry is CONFIRMED by decoding; the character maps (which glyph a character uses)
-//! are LIKELY, from the visible glyph order, until the text routines are analysed (M2-08).
-//! The fonts have upper-case letters, digits and a few symbols only; game text is lower case
-//! and maps onto the same glyphs. Glyph colours are baked into the pixels (index 0 =
-//! transparent).
+//! Spec: `docs/re/FORMATS.md` §9 and `docs/spec/render/text.md` (rev 1) §3. Fidelity: T0 for
+//! glyph pixels and character maps (both CONFIRMED). The files carry baked colours, but the game
+//! recolours every glyph when it draws (`td-render::small_text`, `td-render::title_text`), so
+//! the stored values only matter as "ink or not" (small font: non-zero; title font: `F7h`).
+//! `td.ltr` is never opened by the game (U-017).
 
 use crate::{FormatError, Result};
 
 /// Which original font.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FontKind {
-    /// `td.lt2`: 38 glyphs of 5x5 (A-Z, two block glyphs, 0-9).
+    /// `td.lt2`: 38 glyphs of 5x5 (a-z, two solid blocks, 0-9).
     Small,
     /// `td-let.cin`: 40 glyphs of 8x8 (A-Z, 1-9, 0, `-`, `?`, `!`, `:`).
     Title,
-    /// `td.ltr`: 78 cells of 12x16 (A-Z, 1-9, 0, blank, `-`, then blank cells).
+    /// `td.ltr`: 78 cells of 12x16 (A-Z, 1-9, 0, blank, `-`, then blank cells). Unused.
     Large,
 }
 
@@ -39,26 +38,37 @@ impl FontKind {
         }
     }
 
-    /// Glyph index for a character, if the font has one (letters are case-insensitive).
+    /// Glyph index for a character, if the font's table has one.
+    ///
+    /// * Small (text.md §3.1): `a`..`z` → 0..25, `{` → 26, `|` → 27 (the typing cursor),
+    ///   `0`..`9` → 28..37. Case-sensitive: upper case and punctuation have no glyph (the six
+    ///   marks `. , " ? - !` are drawn by code, text.md §3.3).
+    /// * Title (text.md §3.4): the character is upper-cased first (`UpCase`, only `a`..`z`
+    ///   change), then `A`..`Z` → 0..25, `1`..`9` → 26..34, `0` → 35, `-` → 36, `?` → 37,
+    ///   `!` → 38, `:` → 39 (present in the file, but the game never loads it).
+    /// * Large: same order as the title font for letters and digits, `-` → 37 (unused font).
     pub fn glyph_index(self, c: char) -> Option<usize> {
-        let c = c.to_ascii_lowercase();
-        if c.is_ascii_lowercase() {
-            return Some(c as usize - 'a' as usize);
-        }
         match self {
-            FontKind::Small => c.to_digit(10).map(|d| 28 + d as usize),
+            FontKind::Small => match c {
+                'a'..='z' => Some(c as usize - 'a' as usize),
+                '{' => Some(26),
+                '|' => Some(27),
+                '0'..='9' => Some(28 + (c as usize - '0' as usize)),
+                _ => None,
+            },
             FontKind::Title | FontKind::Large => {
-                let digit = c
-                    .to_digit(10)
-                    .map(|d| if d == 0 { 35 } else { 25 + d as usize });
-                digit.or(match (self, c) {
+                let c = c.to_ascii_uppercase();
+                match (self, c) {
+                    (_, 'A'..='Z') => Some(c as usize - 'A' as usize),
+                    (_, '1'..='9') => Some(26 + (c as usize - '1' as usize)),
+                    (_, '0') => Some(35),
                     (FontKind::Title, '-') => Some(36),
                     (FontKind::Title, '?') => Some(37),
                     (FontKind::Title, '!') => Some(38),
                     (FontKind::Title, ':') => Some(39),
                     (FontKind::Large, '-') => Some(37),
                     _ => None,
-                })
+                }
             }
         }
     }
@@ -98,14 +108,28 @@ mod tests {
 
     #[test]
     fn character_maps() {
-        assert_eq!(FontKind::Small.glyph_index('a'), Some(0));
-        assert_eq!(FontKind::Small.glyph_index('Z'), Some(25));
-        assert_eq!(FontKind::Small.glyph_index('0'), Some(28));
-        assert_eq!(FontKind::Small.glyph_index('9'), Some(37));
-        assert_eq!(FontKind::Small.glyph_index('.'), None);
-        assert_eq!(FontKind::Title.glyph_index('1'), Some(26));
-        assert_eq!(FontKind::Title.glyph_index('0'), Some(35));
-        assert_eq!(FontKind::Title.glyph_index(':'), Some(39));
+        let small = FontKind::Small;
+        assert_eq!(small.glyph_index('a'), Some(0));
+        assert_eq!(small.glyph_index('z'), Some(25));
+        assert_eq!(small.glyph_index('{'), Some(26));
+        assert_eq!(small.glyph_index('|'), Some(27));
+        assert_eq!(small.glyph_index('0'), Some(28));
+        assert_eq!(small.glyph_index('9'), Some(37));
+        for c in ['Z', 'A', '.', ',', '"', '!', '?', '-', ':', ' ', '\''] {
+            assert_eq!(small.glyph_index(c), None, "{c:?}");
+        }
+        let title = FontKind::Title;
+        assert_eq!(title.glyph_index('a'), Some(0), "UpCase first");
+        assert_eq!(title.glyph_index('Z'), Some(25));
+        assert_eq!(title.glyph_index('1'), Some(26));
+        assert_eq!(title.glyph_index('9'), Some(34));
+        assert_eq!(title.glyph_index('0'), Some(35));
+        assert_eq!(title.glyph_index('-'), Some(36));
+        assert_eq!(title.glyph_index('?'), Some(37));
+        assert_eq!(title.glyph_index('!'), Some(38));
+        assert_eq!(title.glyph_index(':'), Some(39));
+        assert_eq!(title.glyph_index('.'), None);
+        assert_eq!(title.glyph_index(' '), None);
         assert_eq!(FontKind::Large.glyph_index('-'), Some(37));
     }
 
