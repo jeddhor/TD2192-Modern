@@ -362,65 +362,25 @@ count = 2
 note = "infra-red and pause prompts"
 
 [[resource]]
-id = "e2.locations"
+id = "e2.target_info"
 kind = "pstring_seq"
 offset = 0x22230
-count = 4
-note = "location names (target information)"
-
-[[resource]]
-id = "e2.target_info.01"
-kind = "pstring"
-offset = 0x222AD
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e2.target_info.02"
-kind = "pstring"
-offset = 0x222EB
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e2.target_info.03"
-kind = "pstring_seq"
-offset = 0x22368
-count = 3
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e2.target_info.04"
-kind = "pstring_seq"
-offset = 0x22405
-count = 3
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e2.target_info.05"
-kind = "pstring_seq"
-offset = 0x224A3
-count = 2
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e2.target_info.06"
-kind = "pstring_seq"
-offset = 0x22502
-count = 90
-note = "fixed-width target information lines"
+count = 113
+note = "F5 target information: location names and fixed-width lines, td2:1E0B:0000..0DCB; Msn_LoadTargetInfo (1E0B:0DCC) copies up to 30 per flight (sim/e2-mission-setup 3.4; RE-9 replaced e2.locations and e2.target_info.01..06, which skipped 9 strings)"
 
 [[resource]]
 id = "e2.flight_messages.01"
 kind = "pstring_seq"
 offset = 0x26BEF
 count = 11
-note = "in-flight ticker messages (mission events)"
+note = "in-flight ticker messages (mission events): M1[k] of sim/e2-mission-logic; td2:2236:070F..0ADA"
 
 [[resource]]
 id = "e2.flight_messages.02"
 kind = "pstring_seq"
 offset = 0x2820A
-count = 7
-note = "in-flight ticker messages (mission events)"
+count = 20
+note = "in-flight ticker messages (mission events): M2[k] of sim/e2-mission-logic; td2:2236:1D2A..2409"
 
 [[resource]]
 id = "e2.comms.01"
