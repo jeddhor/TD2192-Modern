@@ -33,7 +33,7 @@ Routines called once per tick, in call order (all `file0001:`):
 | 2 | inline `0E8B:CCBE..CCDD` | clear per-tick flags DS:3BE2..3BEA | always |
 | 3 | inline `0E8B:CCE3..CD22` | `Sim_PlayerTurnStep` | target heading ≠ heading |
 | 4 | `386E:191C` × 66 | `Gfx_DrawTile` (11 × 6 map window) | always |
-| 5 | inline `0E8B:CDA0..D160` + `1E2A:006A` | `Sim_PlayerGunAnim` (muzzle flash, recoil, shot sound) | fire key, player class 2 or 5 |
+| 5 | inline `0E8B:CDA0..D160` + `1E2A:006A` | `Sim_AfterburnerBurst` (flame sprites, speed kick, sound) | Ins / keypad + / joystick button 1, player class 2 or 5 |
 | 6 | `0E8B:0984` | `Sim_ProjectilesAndHits` | always |
 | 7 | `386E:024A`…`386E:172D` (one of 16) | `Gfx_DrawPlayerShip` | not late, end ticks < 15 |
 | 8 | `2404:1426` | `Msn_UpdateA` (mission triggers and messages) | always |
@@ -59,7 +59,7 @@ Routines called once per tick, in call order (all `file0001:`):
 | 28 | `0E8B:A714` | ship-switch screen (F5) | F5 held, mission ≠ 14 |
 | 29 | inline `0E8B:EA2B..F3xx` | `Sim_PlayerThrust` and steering | always |
 | 30 | inline `0E8B:F3xx..F6A0` + `1E2A:006A` | `AI_FireRequests` (spawn mission-ship shots) | back page ≠ 0 |
-| 31 | `0E8B:B1EC` | `Sim_PlayerSpecials` (afterburner, secondary weapon) | always |
+| 31 | `0E8B:B1EC` | `Sim_PlayerSpecials` (fire on Space, infra-red toggle on Alt) | always |
 | 32 | inline `0E8B:F6B5..F7E0` (+ `3A7E:009D`) | cheat key chords | chord held |
 | 33 | inline `0E8B:F7E0..F842` | end-of-flight test | always |
 
@@ -81,9 +81,9 @@ setup (0E8B:B880..CC7E), once per flight:
 each tick (0E8B:CC7F):
    1. g_MissionTicks += 1 (u32). Flight 21: when it becomes 25, mission over := 1, end ticks := 1
    2. clear the 9 per-tick bytes DS:3BE2..3BEA
-   3. player turn step (flight-model.md 4.3)
+   3. player turn step (flight-model.md 4.6)
    4. draw the 11 x 6 tile window: tile (viewX + i, viewY + j), i = 0..10, j = 0..5, into the back page
-   5. gun animation of player classes 2 and 5 (flight-model.md 4.6)
+   5. afterburner burst of player classes 2 and 5 (flight-model.md 4.7)
    6. projectiles, hits and kills (0E8B:0984)
    7. if not late and end ticks < 15: draw the player ship sprite for the current heading
    8. mission logic part A (2404:1426)
@@ -110,9 +110,9 @@ each tick (0E8B:CC7F):
   26. SFX on Sound Blaster: when WORX reports idle, clear the "effect playing" byte DS:1F0A
   27. shields < 1 -> 0; armour < 1 and not over -> mission over (player destroyed)
       shields < class maximum -> shields += 1
-  28. player movement, collision and map edges (flight-model.md 4.1-4.2, 4.4)
+  28. player drift and drag, map collision, tile carry and map limits (flight-model.md 4.2-4.4)
   29. flush the BIOS keyboard buffer; F6 -> comm request; F5 -> ship-switch screen (not in mission 14)
-  30. thrust and steering from the arrow keys or joystick (flight-model.md 4.3)
+  30. thrust and steering from the arrow keys or joystick (flight-model.md 4.5-4.6)
   31. every second tick (back page currently 1): for each slot 1..20 and each request entry 2..8
       that is set (g_FireRequest, DS:3BEC + 9*slot + entry), and for each muzzle m = 1..17 whose
       entry in the class's shot table (DS:02E5 + 17*class + m) is non-zero: take the highest-numbered
@@ -120,7 +120,7 @@ each tick (0E8B:CC7F):
       muzzle offset for its heading (DS:035C + 34*heading + 2m), play one sound
       (structures.md section 4)
   32. clear all fire requests (slots 1..20, entries 1..9)
-  33. player specials (0E8B:B1EC)
+  33. player specials (0E8B:B1EC): fire (Space), infra-red toggle (Alt)
   34. cheat chords (globals.md section 5)
   35. if aborted, or end ticks = 35, or mission lost, or mission succeeded: leave the loop
 teardown (0E8B:F826..F990):

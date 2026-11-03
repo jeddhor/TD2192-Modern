@@ -8,7 +8,7 @@ Record layouts and tables of the flight engine (M1-08): the mission file as load
 
 - **World position = tile + pixel offset.** Every position in flight is a pair (tile, offset) per axis: tile = map column or row (1..201), offset = pixels inside the tile. World pixel = `tile × 32 + offset` (offsets may exceed 31 temporarily; see below). The original stores tiles as u8 (slots, projectiles, explosions) or i16 (the view) and offsets as u8 or i16. There is no sub-pixel fraction anywhere in the player or ship positions.
 - **The view** (`g_ViewTileX/Y` DS:3A36/3A38, `g_ViewSubX/Y` DS:3A3A/3A3C) is the camera. Its offsets are kept in 10h..30h (16..48): when an offset leaves that range the tile changes by one and the offset by 32. The visible playfield's top-left world pixel is `(tileX × 32 + subX − 16, tileY × 32 + subY − 16)`. Check: C-0002 frame 3543 has view (102, 104, 32, 16) → (3280, 3328), which matches the Verifier's tile match on frame 3500 (top-left tile (103, 104) at pixel offset (16, 0)).
-- **The player** is not stored separately: it is drawn at the centre of the 320 × 160 playfield (screen (160, 80), per the Verifier), so the player's world position is the view position plus a constant. Collision tests use the map cells at view tile + (4..6, 2..4) ([flight-model](../spec/sim/flight-model.md) §4.4).
+- **The player** is not stored separately: it is drawn at the centre of the 320 × 160 playfield (screen (160, 80), per the Verifier), so the player's world position is the view position plus a constant. Collision tests use the map cells at view tile + (4..6, 2..4) ([flight-model](../spec/sim/flight-model.md) §4.3).
 - **Map storage is column-major**: tile (x, y) is byte `x × 201 + y` of the 201 × 201 map (DS:442E far pointer). The tile window drawn each tick is `(viewTileX + i, viewTileY + j)` for i = 0..10, j = 0..5 (`0E8B:CD22`); the inner index is the second (y) one. This agrees with the Verifier's finding (FORMATS §5 on main, 2026-11-02).
 
 ## 2. Mission file (`m<n>.td`, 20,080 bytes) as loaded
@@ -148,7 +148,7 @@ The muzzle table DS:035C is indexed with `heading × 34`, which is only meaningf
 | 69 | 2 open |
 | 70 | 1 solid |
 
-66% of `td.map` is open (the five most common tiles 49, 50, 16, 15, 61 are all open). Collision is per tile against fixed cells around the player, with a bounce response ([flight-model](../spec/sim/flight-model.md) §4.4). Tiles 42h, 44h, 45h, 46h are redrawn over ships each tick (overpasses; tick-order step 12). The table is the same for every E1 flight; E2/E3 were not checked (M1-09).
+66% of `td.map` is open (the five most common tiles 49, 50, 16, 15, 61 are all open). Collision is per tile against fixed cells around the player, with a bounce response ([flight-model](../spec/sim/flight-model.md) §4.3). Tiles 42h, 44h, 45h, 46h are redrawn over ships each tick (overpasses; tick-order step 12). The table is the same for every E1 flight; E2/E3 were not checked (M1-09).
 
 ## 9. Provenance
 

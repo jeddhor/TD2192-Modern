@@ -59,7 +59,7 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:9860,func,UI_UpdateStatusPanel,,per tick: messages; ship info panel; ship switching; mission events,HYPOTHESIS,U-033
 0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
 0E8B:AF1F,func,Inp_CalibrateJoystick,,joystick calibration screen at start-up,LIKELY,M1-04
-0E8B:B1EC,func,Sim_PlayerSpecials,,per tick after thrust: afterburner (Alt) and special weapon (Space),HYPOTHESIS,U-033
+0E8B:B1EC,func,Sim_PlayerSpecials,,per tick after thrust: fire (Space) and infra-red toggle (Alt),HYPOTHESIS,U-033
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
 0E8B:CC7F,label,Sim_TickTop,,top of the in-flight tick loop (back edge at 0E8B:F842),CONFIRMED,U-033
 0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
@@ -274,8 +274,8 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
 3C43:1718,data,g_MissionTicks,u32,"per-mission counter compared with 25, 200 and 15000",HYPOTHESIS,M1-06
 3C43:1828,data,g_FlashFrames,u8,full-palette flash countdown,LIKELY,M1-07
-3C43:1836,data,g_GunAnimFrame,u8,muzzle-flash animation frame (classes 2 and 5),LIKELY,M1-07
-3C43:1837,data,g_GunAnimHeading,u8,heading at the start of the muzzle animation,LIKELY,M1-07
+3C43:1836,data,g_BurstFrame,u8,afterburner burst frame (classes 2 and 5; Ins or keypad +),LIKELY,M1-07
+3C43:1837,data,g_BurstHeading,u8,heading at the start of the afterburner burst,LIKELY,M1-07
 3C43:18C2,data,g_OldInt09,farptr,saved keyboard vector,CONFIRMED,M1-03
 3C43:194C,data,g_FlightFile,u8[128],FileRec for flight loads,CONFIRMED,M1-07
 3C43:1A52,data,g_I,u16,shared global loop counter,CONFIRMED,M1-07
@@ -286,7 +286,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
 3C43:1CB3,data,g_AnyKeyLatch,u8,pause: any key pressed,LIKELY,M1-07
 3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
-3C43:1CB9,data,g_AfterburnerCharge,u8,afterburner energy,LIKELY,M1-07
+3C43:1CB9,data,g_WeaponCharge,u8,weapon charge or ammunition (HUD bar),HYPOTHESIS,M1-07
 3C43:1CBB,data,g_PlayerTargetHeading,u8,heading requested by the steering keys,CONFIRMED,M1-07
 3C43:1E2E,data,g_EdgeHit,u16,player touched the map limit,LIKELY,M1-07
 3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03
