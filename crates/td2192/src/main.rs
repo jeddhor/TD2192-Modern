@@ -135,7 +135,7 @@ fn real_main() -> Result<()> {
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
-        (Some(n), _) => Box::new(flight::FlightArena::new(&dir, n)?),
+        (Some(n), _) => Box::new(flight::FlightArena::new(&dir, &resources, n)?),
         (None, Some(spec)) => {
             let (episode, choice, id) = td_flow::dialogue::parse_scene_spec(spec)?;
             Box::new(td_flow::DialogueScene::load(

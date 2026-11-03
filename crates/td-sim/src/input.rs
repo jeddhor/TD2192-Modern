@@ -54,11 +54,15 @@ pub enum FlightKey {
     F6,
     /// S (1Fh).
     S,
+    /// Tab (0Fh).
+    Tab,
+    /// M (32h).
+    M,
 }
 
 impl FlightKey {
     /// Every key, in bit order.
-    pub const ALL: [FlightKey; 18] = [
+    pub const ALL: [FlightKey; 20] = [
         Self::Kp8,
         Self::Up,
         Self::Kp2,
@@ -77,6 +81,8 @@ impl FlightKey {
         Self::F5,
         Self::F6,
         Self::S,
+        Self::Tab,
+        Self::M,
     ];
 
     /// The original's key-table index (set-1 scan code, `+100h` after E0).
@@ -100,6 +106,8 @@ impl FlightKey {
             Self::F5 => 0x3F,
             Self::F6 => 0x40,
             Self::S => 0x1F,
+            Self::Tab => 0x0F,
+            Self::M => 0x32,
         }
     }
 
@@ -280,6 +288,6 @@ mod tests {
             }
         );
         assert!(back.is_down(FlightKey::Right) && !back.is_down(FlightKey::Left));
-        assert_eq!(FlightKey::ALL.len(), FlightKey::S as usize + 1);
+        assert_eq!(FlightKey::ALL.len(), FlightKey::M as usize + 1);
     }
 }

@@ -11,6 +11,7 @@ fn open_world() -> World {
     World {
         map: TileMap::parse_episode(&vec![0u8; 201 * 201]).unwrap(),
         tile_attr: attr,
+        muzzles: shots::Muzzles(vec![0; 342]),
     }
 }
 
@@ -218,6 +219,7 @@ fn bounce_swaps_opposite_components() {
     let w = World {
         map: TileMap::parse_episode(&cells).unwrap(),
         tile_attr: open_world().tile_attr,
+        muzzles: shots::Muzzles(vec![0; 342]),
     };
     let mut f = Flight::new(1);
     let mut ev = vec![];
@@ -250,4 +252,147 @@ fn state_hash_changes_with_input() {
     a.tick(&w, &held(&[FlightKey::Kp8]), &mut ev);
     b.tick(&w, &TickControls::default(), &mut ev);
     assert_ne!(crate::state_hash(&a), crate::state_hash(&b));
+}
+
+// ---- weapons.md §6 ----
+
+use super::ships::Ship;
+use super::shots::Shot;
+
+/// A shot of `kind` from `owner`, placed at world pixel `at` (tile + offset 16).
+fn shot_at(kind: u8, owner: u8, at: (i32, i32), heading: u8) -> Shot {
+    Shot {
+        tile_x: (at.0 / 32) as u8,
+        tile_y: (at.1 / 32) as u8,
+        off_x: (at.0 % 32) as i16,
+        off_y: (at.1 % 32) as i16,
+        heading,
+        kind,
+        life: 1,
+        owner,
+    }
+}
+
+fn ship(class: u8, tile: (u8, u8), shields: i16, armour: i16) -> Ship {
+    Ship {
+        class,
+        tile_x: tile.0,
+        tile_y: tile.1,
+        sub_x: 16,
+        sub_y: 16,
+        heading: 2,
+        shields,
+        armour,
+    }
+}
+
+#[test]
+fn weapons_vector_1_volleys_every_second_tick() {
+    let w = open_world();
+    let mut f = Flight::new(6); // class 2: four muzzles, kind 0
+    let mut ev = vec![];
+    let mut space = held(&[FlightKey::Space]);
+    for t in 0..4 {
+        f.tick(&w, &space, &mut ev);
+        if t == 0 {
+            let used: Vec<usize> = (0..51).filter(|&i| f.shots.0[i].alive()).collect();
+            assert_eq!(used, [45, 46, 47, 48]);
+            assert!(
+                used.iter()
+                    .all(|&i| f.shots.0[i].kind == 0 && f.shots.0[i].owner == 0)
+            );
+        }
+        space = TickControls::default();
+        space.set_down(FlightKey::Space); // held: the volley does not need new make codes
+    }
+    assert_eq!(f.shots.0.iter().filter(|s| s.alive()).count(), 8);
+    assert!(f.shots.0[41].alive() && !f.shots.0[40].alive());
+}
+
+#[test]
+fn weapons_vector_2_shields_absorb() {
+    let w = open_world();
+    let mut f = Flight::new(1);
+    f.ships.0[0] = ship(7, (110, 100), 25, 50);
+    f.shots.0[30] = shot_at(1, 0, f.ships.0[0].world(), 8);
+    let seed = f.rng.seed();
+    f.tick(&w, &TickControls::default(), &mut vec![]);
+    assert_eq!((f.ships.0[0].shields, f.ships.0[0].armour), (15, 50));
+    assert!(!f.shots.0[30].alive());
+    assert_ne!(
+        f.rng.seed(),
+        seed,
+        "a non-lethal hit draws Random(16) twice"
+    );
+    assert_eq!(f.explosions.0.iter().filter(|e| e.frame < 8).count(), 1);
+}
+
+#[test]
+fn weapons_vector_3_player_hit() {
+    let w = open_world();
+    let mut f = Flight::new(1);
+    f.player.shields = 1;
+    f.player.armour = 25;
+    // Stop shield regeneration from hiding the result: class 4 regenerates +1 per tick, so
+    // read the values after the hit and before step 27 by making the hit the only change.
+    let at = shots::player_ref(&f.player);
+    f.shots.0[0] = shot_at(0, 3, at, 8);
+    f.tick(&w, &TickControls::default(), &mut vec![]);
+    // Hit: shields 0, armour 24; then step 27 regenerates one shield point.
+    assert_eq!((f.player.shields, f.player.armour), (1, 24));
+}
+
+#[test]
+fn destroying_a_ship_counts_a_kill_and_frees_the_slot() {
+    let w = open_world();
+    let mut f = Flight::new(1);
+    f.ships.0[2] = ship(1, (110, 100), 0, 4);
+    f.shots.0[3].kind = 2;
+    f.shots.0[30] = shot_at(0, 0, f.ships.0[2].world(), 8);
+    f.tick(&w, &TickControls::default(), &mut vec![]);
+    assert_eq!(f.ships.0[2].class, ships::NO_SHIP);
+    assert_eq!(f.kills, 1);
+    assert_eq!(
+        f.shots.0[3].kind, 1,
+        "original bug: projectile kind[slot] := 1"
+    );
+    assert_eq!(f.explosions.0.iter().filter(|e| e.frame < 8).count(), 5);
+}
+
+#[test]
+fn shots_move_a_tile_per_tick_and_expire() {
+    let w = open_world();
+    let mut f = Flight::new(1);
+    f.shots.0[10] = shot_at(0, 5, (100 * 32 + 16, 100 * 32 + 16), 6);
+    for t in 1..=24 {
+        f.tick(&w, &TickControls::default(), &mut vec![]);
+        assert_eq!(f.shots.0[10].tile_x, 100 + t, "tick {t}");
+    }
+    f.tick(&w, &TickControls::default(), &mut vec![]);
+    assert!(!f.shots.0[10].alive(), "life > 25");
+}
+
+#[test]
+fn missiles_need_a_new_press_and_a_cooldown() {
+    let w = open_world();
+    let mut f = Flight::new(1); // class 4: weapon 2, missile weapon 4, 4 missiles
+    assert_eq!((f.weapon, f.missiles), (2, 4));
+    let mut ev = vec![];
+    f.tick(&w, &held(&[FlightKey::Tab]), &mut ev);
+    assert_eq!(f.weapon, 4);
+    f.tick(&w, &held(&[FlightKey::Space]), &mut ev);
+    assert_eq!((f.missiles, f.missile_cooldown), (3, 3));
+    // Held without a new make code: no second missile.
+    let mut still = TickControls::default();
+    still.set_down(FlightKey::Space);
+    f.tick(&w, &still, &mut ev);
+    assert_eq!(f.missiles, 3);
+    // A new press during the cooldown does nothing; after it, one more missile.
+    f.tick(&w, &held(&[FlightKey::Space]), &mut ev);
+    assert_eq!(f.missiles, 3);
+    for _ in 0..2 {
+        f.tick(&w, &TickControls::default(), &mut ev);
+    }
+    f.tick(&w, &held(&[FlightKey::Space]), &mut ev);
+    assert_eq!(f.missiles, 2);
 }

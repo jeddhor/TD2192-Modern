@@ -26,6 +26,53 @@ pub fn player_class(flight: u8) -> u8 {
     }
 }
 
+/// Muzzles (1..=17) with a shot-table entry, and that entry (shot kind + 1), per class
+/// (`weapons.md` §3.1; the table at DS:02E5).
+const SHOT_TABLE: [(u8, &[usize], u8); 7] = [
+    (2, &[1, 2, 4, 5], 1),
+    (3, &[8, 9], 1),
+    (4, &[6, 7], 2),
+    (5, &[3], 2),
+    (6, &[10, 11], 3),
+    (7, &[12, 13], 2),
+    (8, &[14, 15, 16, 17], 1),
+];
+
+/// The shot-table entry (kind + 1, or 0 = no shot) for `class` and muzzle `m` (1..=17).
+pub fn shot_entry(class: u8, m: usize) -> u8 {
+    SHOT_TABLE
+        .iter()
+        .find(|(c, muzzles, _)| *c == class && muzzles.contains(&m))
+        .map_or(0, |e| e.2)
+}
+
+/// The player's weapons for a class (`weapons.md` §3.2): primary weapon (1..=3), missile
+/// weapon, and missiles at flight start. `None` for classes 0 and 1 (unarmed; the weapon is
+/// left as it was).
+pub fn player_weapons(class: u8) -> Option<(u8, u8, u8)> {
+    match class {
+        2 => Some((1, 4, 6)),
+        3 => Some((1, 5, 20)),
+        4 => Some((2, 4, 4)),
+        5 => Some((2, 6, 1)),
+        6 => Some((3, 5, 6)),
+        7 => Some((2, 2, 0)),
+        8 => Some((1, 1, 0)),
+        _ => None,
+    }
+}
+
+/// Damage of a shot of `kind` to a mission ship (kind 6 destroys outright, handled apart).
+pub fn ship_damage(kind: u8) -> i16 {
+    let k = i16::from(kind);
+    (k + 1) * (k + 1) + 4 + 2 * k
+}
+
+/// Damage of a shot of `kind` to the player.
+pub fn player_damage(kind: u8, difficulty: u8) -> i16 {
+    2 * (i16::from(kind) + 1) * i16::from(difficulty)
+}
+
 /// Tile attribute: the ship can fly over the tile.
 pub const TILE_OPEN: u8 = 2;
 /// Tile attribute: solid.
@@ -52,6 +99,20 @@ mod tests {
         let a = episode1_tile_attributes();
         let open: Vec<usize> = (0..=70).filter(|&t| a[t] == TILE_OPEN).collect();
         assert_eq!(open, [15, 16, 49, 50, 51, 56, 57, 58, 59, 60, 61, 69]);
+    }
+
+    #[test]
+    fn weapons_tables() {
+        let volley = |c| (1..=17).filter(|&m| shot_entry(c, m) != 0).count();
+        assert_eq!(
+            (0..=8).map(volley).collect::<Vec<_>>(),
+            [0, 0, 4, 2, 2, 1, 2, 2, 4]
+        );
+        assert_eq!(
+            (0..=5).map(ship_damage).collect::<Vec<_>>(),
+            [5, 10, 17, 26, 37, 50]
+        );
+        assert_eq!(player_damage(1, 1), 4);
     }
 
     #[test]

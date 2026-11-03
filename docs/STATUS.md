@@ -153,9 +153,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M7-01 | Ship-class table spec (all episodes) | RE/SP | M1-08 | TODO | | |
 | M7-02 | Weapons spec | RE/SP | M1-08 | TODO | | |
 | M7-03 | Damage model spec | RE/SP | M1-08 | TODO | | |
-| M7-04 | Entity arenas | IM | M6-02 | TODO | | |
-| M7-05 | Weapons + projectiles | IM | M7-02, M7-04 | TODO | | |
-| M7-06 | Damage, destruction, effects, SFX events | IM | M7-03, M7-05 | TODO | | |
+| M7-04 | Entity arenas | IM | M6-02 | REVIEW | main-session | td_sim::flight ships (20 slots, from mission file; movement pending M8), shots (51-slot pool), explosions (30 slots); drawn-object snapshots per tick step |
+| M7-05 | Weapons + projectiles | IM | M7-02, M7-04 | REVIEW | main-session | weapons.md rev 1: player volleys (every 2nd tick), missiles (cooldown 4, new press), homing target, Tab/auto-switch, IR toggle; shot update steps 1-8 (bounds, life, map test, homing kill, ship hits, player hits, steering, tile moves); muzzle table read from file0001.exe (resource flight.muzzle_offsets); vectors 1-3 pass |
+| M7-06 | Damage, destruction, effects, SFX events | IM | M7-03, M7-05 | IN PROGRESS | main-session | Damage/absorb, destruction (class FFh, kills, kind[s] bug), explosions (5 fixed offsets ASSUMED), white flash, SFX events -> PlayEffect in the arena; enemy fire waits for mission-ship AI (M8); sprite placement of ships/shots/explosions is a T2 placeholder |
 | M7-07 | Arena hostiles | IM | M7-05 | TODO | | |
 | M7-08 | Combat parity | VE | M7-06 | TODO | | |
 

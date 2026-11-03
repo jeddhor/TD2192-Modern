@@ -562,3 +562,13 @@ kind = "pstring_seq"
 offset = 0x30BD5
 count = 12
 note = "F6 transmission 9 (lines)"
+
+# Flight tables (main session, M7-05, 2026-11-02). DGROUP is image segment 3C43h, so DS:x is
+# file offset 19136 + 3C430h + x.
+
+[[resource]]
+id = "flight.muzzle_offsets"
+kind = "u8_table"
+offset = 0x4124C
+count = 342
+note = "DS:035C: signed (dx, dy) byte pairs; muzzle m of heading digit h at 34*h + 2*m (weapons.md 3.1)"

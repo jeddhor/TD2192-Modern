@@ -16,6 +16,7 @@ fn e1_world(dir: &std::path::Path) -> World {
     World {
         map: TileMap::parse_episode(&data.read("td.map").expect("td.map")).expect("map"),
         tile_attr: episode1_tile_attributes(),
+        muzzles: td_sim::flight::shots::Muzzles(vec![0; 342]),
     }
 }
 

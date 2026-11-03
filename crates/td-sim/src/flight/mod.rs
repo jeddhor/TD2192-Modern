@@ -1,36 +1,46 @@
 //! One flight (`Sim_FlyMission`): the per-tick order and the player's ship.
 //!
-//! Spec: `docs/spec/sim/tick-order.md` rev 1 (step numbers below are its §4 list) and
-//! `docs/spec/sim/flight-model.md` rev 1. Fidelity: T1.
+//! Spec: `docs/spec/sim/tick-order.md` rev 1 (step numbers below are its §4 list),
+//! `docs/spec/sim/flight-model.md` rev 2 and `docs/spec/sim/weapons.md` rev 1. Fidelity: T1.
 //!
-//! Implemented: tick counter, turn step, afterburner burst, end-sequence counting, the
-//! per-tick page toggle, modal interruptions (comm viewer, pause, flight menu, ship switch),
-//! shields and destruction, player movement with map collision, thrust and steering, and the
-//! end-of-flight test. Not yet specified, so not implemented: projectiles and hits (step 6,
-//! U-041), mission logic and mission ships (steps 8–10, M8), enemy fire (31–32), player
-//! weapons and infra-red (33, U-043). Cheat chords (34) are not ported (decision D5/D9).
+//! Implemented: tick counter, turn step, afterburner burst, projectiles and hits, end-sequence
+//! counting, explosions, the white flash, the per-tick page toggle, modal interruptions (comm
+//! viewer, pause, flight menu, ship switch), shields and destruction, player movement with map
+//! collision, thrust and steering, player weapons (volleys, missiles, Tab, infra-red toggle),
+//! the missile cooldown, and the end-of-flight test. Not yet specified, so not implemented:
+//! mission logic and mission-ship movement (steps 8–10, M8) and enemy fire (31–32). Cheat
+//! chords (34) are not ported (decision D5/D9).
 //!
 //! Modal screens run *inside* a tick in the original: the tick stops at that point and
 //! continues when the screen closes. [`Flight::tick`] returns [`TickResult::Modal`] there;
 //! the caller shows the screen and then calls [`Flight::resume`], which clears the key table
 //! (the original's modal screens do) and runs the rest of the tick.
 
+pub mod explosions;
 pub mod heading;
 pub mod player;
+pub mod ships;
+pub mod shots;
 pub mod tables;
 
 use td_formats::map::TileMap;
+use td_formats::mission::Mission;
 
 use crate::hash::{HashState, StateHasher};
 use crate::input::{FlightKey, Joystick, KeyTable, TickControls};
+use crate::rng::BpRandom;
+use explosions::Explosions;
 use heading::Heading;
 use player::{Dirs, Event, Player, View};
+use ships::Ships;
+use shots::{Combat, Muzzles, Shots};
 
-/// The static world of a flight: the map and its tile attributes.
+/// The static world of a flight: the map, its tile attributes and the muzzle table.
 #[derive(Debug, Clone)]
 pub struct World {
     pub map: TileMap,
     pub tile_attr: [u8; 256],
+    pub muzzles: Muzzles,
 }
 
 impl World {
@@ -81,6 +91,16 @@ pub struct DrawnFrame {
     pub player_visible: bool,
     /// Afterburner flame sprite (9 + burst frame), if drawn.
     pub flame: Option<u8>,
+    /// White flash frame shown (4 white .. 1 restore), 0 = none.
+    pub white_flash: u8,
+}
+
+/// The moving objects as a tick drew them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DrawnObjects {
+    pub shots: Shots,
+    pub ships: Ships,
+    pub explosions: Explosions,
 }
 
 /// Default view at flight start (flight-model §3).
@@ -119,8 +139,30 @@ pub struct Flight {
     pub joystick: Joystick,
     pub keys: KeyTable,
     pub player: Player,
+    pub ships: Ships,
+    pub shots: Shots,
+    pub explosions: Explosions,
+    /// The program's `Random` generator (its state carries across flights).
+    pub rng: BpRandom,
+    /// `g_MissionKills`.
+    pub kills: i16,
+    /// Full-palette white flash countdown (`g_FlashFrames`).
+    pub white_flash: u8,
+    /// Damage multiplier for hits on the player (DS:13DE).
+    pub difficulty: u8,
+    /// Selected weapon: 1..=3 fire the class volley, 4..=6 a missile (`g_Weapon`).
+    pub weapon: u8,
+    /// Missiles left (`g_Missiles`).
+    pub missiles: u8,
+    /// Ticks until the next missile launch (`g_MissileCooldown`).
+    pub missile_cooldown: u8,
+    /// 0 normal, 1 infra-red, 2 red-only (`g_PaletteMode`).
+    pub palette_mode: u8,
     /// What the last tick drew.
     pub frame: DrawnFrame,
+    /// Shots, ships and explosions as the last tick drew them (steps 6, 10 and 13); not part
+    /// of the state hash.
+    pub drawn: DrawnObjects,
     /// Step to continue at after a modal screen.
     resume_at: u8,
 }
@@ -139,8 +181,18 @@ impl Flight {
         Self::with_player(number, Player::new(tables::player_class(number), view))
     }
 
-    /// A flight with an explicit player (dev arena, tests).
+    /// The state after setup for flight `number` with the mission file's ships.
+    pub fn with_mission(number: u8, mission: &Mission) -> Self {
+        Self {
+            ships: Ships::from_mission(mission),
+            ..Self::new(number)
+        }
+    }
+
+    /// A flight with an explicit player (dev arena, tests). Weapons follow the player's class
+    /// (`weapons.md` §3.2; classes 0 and 1 keep weapon 1).
     pub fn with_player(number: u8, player: Player) -> Self {
+        let (weapon, _, missiles) = tables::player_weapons(player.class).unwrap_or((1, 1, 0));
         Self {
             number,
             ticks: 0,
@@ -162,7 +214,20 @@ impl Flight {
                 heading: player.heading,
                 player_visible: true,
                 flame: None,
+                white_flash: 0,
             },
+            drawn: DrawnObjects::default(),
+            ships: Ships::default(),
+            shots: Shots::default(),
+            explosions: Explosions::default(),
+            rng: BpRandom::new(),
+            kills: 0,
+            white_flash: 0,
+            difficulty: 1,
+            weapon,
+            missiles,
+            missile_cooldown: 0,
+            palette_mode: 0,
             player,
             resume_at: 1,
         }
@@ -222,19 +287,40 @@ impl Flight {
                 self.mission_over,
                 events,
             );
-            // 6. Projectiles and hits: U-041.
+            // 6. Projectiles and hits.
+            self.shots.update(&mut Combat {
+                world,
+                ships: &mut self.ships,
+                player: &mut self.player,
+                explosions: &mut self.explosions,
+                rng: &mut self.rng,
+                events,
+                kills: &mut self.kills,
+                white_flash: &mut self.white_flash,
+                late_draw: self.late_draw,
+                flight: self.number,
+                difficulty: self.difficulty,
+            });
+            self.drawn.shots.clone_from(&self.shots);
             // 7. Player ship (unless drawn late).
             if !self.late_draw {
                 self.frame.heading = self.player.heading;
                 self.frame.player_visible = self.end_ticks < 15;
             }
-            // 8–10. Mission logic and mission ships: M8.
+            // 8–10. Mission logic and mission ships: M8 (ships are drawn where they are).
+            self.drawn.ships.clone_from(&self.ships);
             // 11. End sequence (provisional: counts the end ticks; its other effects are not
             // specified yet).
             if self.mission_over {
                 self.end_ticks = self.end_ticks.saturating_add(1);
             }
-            // 12–14 are presentation. 15. Comm viewer on an even back page.
+            // 12 is presentation. 13. Explosions advance after being drawn.
+            self.drawn.explosions.clone_from(&self.explosions);
+            self.explosions.step();
+            // 14. Palette effects: the white flash counts down.
+            self.frame.white_flash = self.white_flash;
+            self.white_flash = self.white_flash.saturating_sub(1);
+            // 15. Comm viewer on an even back page.
             if self.comm_request && self.draw_page == 0 {
                 self.comm_request = false;
                 return self.interrupt(16, Modal::CommViewer);
@@ -283,12 +369,62 @@ impl Flight {
         // 30. Thrust and steering.
         let dirs = Dirs::read(&self.keys, self.joystick);
         self.player.thrust_and_steer(&dirs, self.mission_over);
-        // 31–32 enemy fire (M8), 33 player weapons (U-043), 34 cheats (not ported).
+        // 31–32 enemy fire (M8). 33. Player weapons and infra-red.
+        self.player_specials(world, events);
+        // 34. Missile cooldown (the cheat chords checked here are not ported).
+        self.missile_cooldown = self.missile_cooldown.saturating_sub(1);
         // 35. End of flight.
         if self.aborted || self.end_ticks == 35 || self.lost || self.succeeded {
             TickResult::Finished
         } else {
             TickResult::Done
+        }
+    }
+}
+
+impl Flight {
+    /// Tab, infra-red toggle and fire (`weapons.md` §4.1, tick-order step 33).
+    fn player_specials(&mut self, world: &World, events: &mut Vec<Event>) {
+        use FlightKey::{Alt, RightAlt, Space, Tab};
+        let class = self.player.class;
+        if self.keys.get(Tab) || (self.weapon > 3 && self.missiles == 0) {
+            self.keys.clear(Tab);
+            if let Some((primary, missile, _)) = tables::player_weapons(class) {
+                if self.weapon > 3 {
+                    self.weapon = primary;
+                } else if self.missiles > 0 {
+                    self.weapon = missile;
+                }
+            }
+        }
+        // M replays the HUD ticker message (presentation, M6-07).
+        if (self.keys.get(Alt) || self.keys.get(RightAlt))
+            && !self.mission_over
+            && matches!(self.palette_mode, 1 | 2)
+        {
+            self.palette_mode = 3 - self.palette_mode;
+            self.keys.clear(Alt);
+            self.keys.clear(RightAlt);
+        }
+        if self.keys.get(Space) || self.joystick.button2 {
+            if self.weapon > 3
+                && self.missiles > 0
+                && self.missile_cooldown == 0
+                && !self.mission_over
+            {
+                if self
+                    .shots
+                    .player_missile(&self.player, self.weapon, &self.ships, events)
+                {
+                    self.missiles -= 1;
+                    self.missile_cooldown = 4;
+                }
+                self.keys.clear(Space);
+            }
+            if self.weapon <= 3 && !self.mission_over && self.draw_page == 1 {
+                self.shots
+                    .player_volley(&self.player, &world.muzzles, self.late_draw, events);
+            }
         }
     }
 }
@@ -321,6 +457,19 @@ impl HashState for Flight {
         ]);
         self.keys.hash_state(h);
         self.player.hash_state(h);
+        self.ships.hash_state(h);
+        self.shots.hash_state(h);
+        self.explosions.hash_state(h);
+        self.rng.hash_state(h);
+        self.kills.hash_state(h);
+        h.bytes(&[
+            self.white_flash,
+            self.difficulty,
+            self.weapon,
+            self.missiles,
+            self.missile_cooldown,
+            self.palette_mode,
+        ]);
         self.resume_at.hash_state(h);
     }
 }
