@@ -169,6 +169,44 @@ impl Shots {
         }
     }
 
+    /// Mission-ship volleys (mission-ships §4.4.2, tick-order step 30; the caller runs it when
+    /// the back page is 1): one volley per fire request, along the ship's current heading.
+    pub fn ship_volleys(&mut self, ships: &Ships, muzzles: &Muzzles, events: &mut Vec<Event>) {
+        for (i, s) in ships.0.iter().enumerate() {
+            for e in 2..=8 {
+                if !s.fire[e - 1] {
+                    continue;
+                }
+                for m in 1..=17 {
+                    let Some(slot) = self.highest_free(0..=40) else {
+                        continue;
+                    };
+                    let entry = shot_entry(s.class, m);
+                    if entry == 0 {
+                        continue;
+                    }
+                    // Two-digit headings read past the muzzle table (OB-017): (0, 0) here
+                    // (U-160 proposal); such a shot is deleted by its first move.
+                    let (dx, dy) = muzzles.get(s.heading, m);
+                    self.0[slot] = Shot {
+                        tile_x: s.tile_x,
+                        tile_y: s.tile_y,
+                        off_x: dx + s.sub_x - 16,
+                        off_y: dy + s.sub_y - 16,
+                        heading: s.heading,
+                        kind: entry - 1,
+                        life: 1,
+                        owner: i as u8 + 1,
+                    };
+                    events.push(Event::Sound {
+                        kind: s.class,
+                        source: Some((s.tile_x, s.tile_y)),
+                    });
+                }
+            }
+        }
+    }
+
     /// Player missile (§4.2). Returns false when no slot was free (the original then writes
     /// outside its arrays; the port skips the launch).
     pub fn player_missile(

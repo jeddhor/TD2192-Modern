@@ -163,19 +163,21 @@ impl FlightArena {
         if hud.len() != HUD_W * HUD_H {
             bail!("td.win has an unexpected size");
         }
+        let world = World {
+            map: TileMap::parse_episode(&dir.read("td.map")?)?,
+            tile_attr: episode1_tile_attributes(),
+            muzzles: Muzzles(muzzles),
+        };
+        let flight = Flight::with_mission(number, &mission, &world);
         Ok(Self {
-            world: World {
-                map: TileMap::parse_episode(&dir.read("td.map")?)?,
-                tile_attr: episode1_tile_attributes(),
-                muzzles: Muzzles(muzzles),
-            },
+            world,
             tiles: Tileset::parse(&dir.read("td.blk")?)?,
             palette: Palette::parse(&dir.read("td.pal")?)?,
             ships,
             bank,
             effects,
             hud,
-            flight: Flight::with_mission(number, &mission),
+            flight,
             modal: None,
             binds: bindings(),
             typematic: Typematic::default(),

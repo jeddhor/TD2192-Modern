@@ -15,6 +15,49 @@ pub const CLASS_SHIELDS: [u8; CLASSES] = [0, 0, 18, 20, 25, 20, 31, 25, 25, 0];
 /// Thrust step per tick per class.
 pub const CLASS_ACCEL: [u8; CLASSES] = [2, 4, 4, 4, 4, 4, 2, 4, 4, 0];
 
+/// The class tables as the running program holds them. They start as the constants above, and
+/// per-flight setup patches them for the rest of the program run (mission-setup §3.3, OB-018),
+/// so they are session state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassTables {
+    pub max_speed: [u8; CLASSES],
+    pub armour: [u8; CLASSES],
+    pub shields: [u8; CLASSES],
+    pub accel: [u8; CLASSES],
+}
+
+impl Default for ClassTables {
+    fn default() -> Self {
+        Self {
+            max_speed: CLASS_MAX_SPEED,
+            armour: CLASS_ARMOUR,
+            shields: CLASS_SHIELDS,
+            accel: CLASS_ACCEL,
+        }
+    }
+}
+
+/// Entry `class` of `table`. Classes past the table (FFh = empty slot) read other globals in
+/// the original (mission-ships §5, "Class FFh at setup"); they give 0 here (U-143).
+fn entry(table: &[u8; CLASSES], class: u8) -> u8 {
+    table.get(usize::from(class)).copied().unwrap_or(0)
+}
+
+impl ClassTables {
+    pub fn max_speed(&self, class: u8) -> u8 {
+        entry(&self.max_speed, class)
+    }
+    pub fn armour(&self, class: u8) -> u8 {
+        entry(&self.armour, class)
+    }
+    pub fn shields(&self, class: u8) -> u8 {
+        entry(&self.shields, class)
+    }
+    pub fn accel(&self, class: u8) -> u8 {
+        entry(&self.accel, class)
+    }
+}
+
 /// The player's class in each flight 1..=21 (`structures.md` §6, per-mission setup).
 pub fn player_class(flight: u8) -> u8 {
     match flight {
