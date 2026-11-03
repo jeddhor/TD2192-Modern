@@ -1,6 +1,9 @@
-//! City maps: a square grid of one-byte tile indices, row-major.
+//! City maps: a square grid of one-byte tile indices, stored **column-major**
+//! (`index = x * size + y`).
 //!
-//! Spec: `docs/re/FORMATS.md` §5 (CONFIRMED for `td.map`). Fidelity: T0.
+//! Spec: `docs/re/FORMATS.md` §5 (CONFIRMED against oracle flight frame C-0002 f3500: with
+//! column-major indexing all 42 identifiable 32x32 tiles in view match one map position; with
+//! row-major indexing none does). Fidelity: T0.
 //! Episode maps (`td.map`, `td2.map`, `td3.map`, `td4.map`) are 201x201; `intro.map` is 200x200.
 
 use crate::{FormatError, Result};
@@ -56,10 +59,10 @@ impl TileMap {
 
     /// Tile index at (x, y), or `None` outside the map.
     pub fn get(&self, x: usize, y: usize) -> Option<u8> {
-        (x < self.size && y < self.size).then(|| self.cells[y * self.size + x])
+        (x < self.size && y < self.size).then(|| self.cells[x * self.size + y])
     }
 
-    /// All cells, row-major.
+    /// All cells in file order (column-major: x-major, y-minor).
     pub fn cells(&self) -> &[u8] {
         &self.cells
     }
@@ -70,12 +73,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn indexes_row_major() {
+    fn indexes_column_major() {
         let mut data = vec![0u8; 201 * 201];
-        data[201 * 3 + 5] = 42;
+        data[201 * 3 + 5] = 42; // x = 3, y = 5
         let m = TileMap::parse_episode(&data).unwrap();
         assert_eq!(m.size(), 201);
-        assert_eq!(m.get(5, 3), Some(42));
+        assert_eq!(m.get(3, 5), Some(42));
+        assert_eq!(m.get(5, 3), Some(0));
         assert_eq!(m.get(201, 0), None);
         assert!(TileMap::parse_intro(&data).is_err());
         assert_eq!(TileMap::parse_any(&data).unwrap().size(), 201);

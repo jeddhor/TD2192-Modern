@@ -195,3 +195,26 @@ fn fonts_parse_with_visible_glyphs() {
         }
     }
 }
+
+#[test]
+fn map_orientation_matches_oracle_flight_frame() {
+    // Tile indices visible in oracle capture C-0002 frame 3500 (E1M1 flight), read off the
+    // frame by exact 32x32 tile matching; -1 = covered by the player's ship. The block's
+    // top-left visible tile is (103, 104) in column-major order (FORMATS.md §5).
+    const SEEN: [[i16; 9]; 5] = [
+        [49, 50, 59, 62, 63, 64, 49, 50, 61],
+        [50, 49, 61, 65, -1, 67, 49, 49, 61],
+        [50, 49, 61, 68, -1, 70, 49, 50, 61],
+        [49, 50, 61, 61, -1, 60, 50, 49, 50],
+        [50, 49, 49, 49, 49, 49, 50, 50, 49],
+    ];
+    let dir = require_data!();
+    let m = TileMap::parse_episode(&read(&dir, "td.map")).unwrap();
+    for (r, row) in SEEN.iter().enumerate() {
+        for (c, &t) in row.iter().enumerate() {
+            if t >= 0 {
+                assert_eq!(m.get(103 + c, 104 + r), Some(t as u8), "row {r} col {c}");
+            }
+        }
+    }
+}

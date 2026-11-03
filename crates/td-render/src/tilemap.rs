@@ -64,9 +64,9 @@ mod tests {
         }
         let tiles = Tileset::parse(&blk).unwrap();
         let mut cells = vec![0u8; 201 * 201];
-        cells[0] = 1;
-        cells[1] = 2;
-        cells[201] = 3;
+        cells[0] = 1; // (0, 0)
+        cells[201] = 2; // (1, 0): the file is column-major
+        cells[1] = 3; // (0, 1)
         let map = TileMap::parse_episode(&cells).unwrap();
         let mut fb = Framebuffer::new();
         draw_tile_map(&mut fb, &map, &tiles, 16, 16, Rect::SCREEN, 99);

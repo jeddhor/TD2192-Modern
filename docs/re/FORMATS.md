@@ -53,7 +53,7 @@ Conversion to 8-bit for presentation: `c8 = (c6 << 2) | (c6 >> 4)`. Keep 6-bit v
 | | |
 |---|---|
 | Confidence | **CONFIRMED** for `td.map` (rendered with `td.blk`; coherent city) · LIKELY for the others |
-| Episode maps | `td.map`, `td2.map`, `td3.map`, `td4.map`: 40,401 bytes = **201 × 201** tile indices, row-major (`index = y*201 + x`), 1 byte each |
+| Episode maps | `td.map`, `td2.map`, `td3.map`, `td4.map`: 40,401 bytes = **201 × 201** tile indices, **column-major** (`index = x*201 + y`), 1 byte each. CONFIRMED 2026-11-02 against oracle flight frame C-0002 f3500: with column-major indexing all 42 identifiable tiles in view match one map position (top-left visible tile (103, 104), tile-grid offset x 16 / y 0); with row-major indexing none does. The first survey's row-major render looked plausible only because a transposed city still looks like a city. |
 | Intro map | `intro.map`: 40,000 bytes = **200 × 200** |
 | World size | 201 × 32 = 6,432 pixels square |
 
@@ -68,7 +68,9 @@ Observed statistics:
 | `intro.map` | 10 | 73 | 15, 16, 72, 71, 73 |
 
 Notes:
-- The E1 city is surrounded by desert (tile indices 15/16 alternate pseudo-randomly as desert texture). An approach road enters from the west edge.
+- The E1 city is surrounded by desert (tile indices 15/16 alternate pseudo-randomly as desert texture). An approach road enters from the north edge (the west edge in the first, transposed survey render).
+- `intro.map` (200 × 200) is assumed to use the same column-major order; to be confirmed against an intro frame.
+- In flight the playfield is 320×160 with the player's ship drawn at its centre (oracle C-0002), and the HUD bar `td.win` occupies rows 160–191 of a 320×192 display (U-025).
 - `td3.map` and `td4.map` begin with near-identical bytes. Which episode uses which map (E3 has two settings: a mining station and Kolor) is U-006.
 - Which tile indices are solid (collision) is U-009.
 
