@@ -155,7 +155,9 @@ impl Shots {
             self.0[slot] = Shot {
                 tile_x: (v.tile_x + 4) as u8,
                 tile_y: (v.tile_y + 3) as u8,
-                off_x: 4 * (v.sub_x + 2).div_euclid(4) + dx,
+                // weapons.md §4.2 says `4·Round(subX/4) + dx`; the original subtracts 16 more
+                // (C-0011: dx 7 → 23 and 22 → 38 at subX 32).
+                off_x: 4 * (v.sub_x + 2).div_euclid(4) - 16 + dx,
                 off_y: v.sub_y - 28 + dy,
                 heading,
                 kind: entry - 1,

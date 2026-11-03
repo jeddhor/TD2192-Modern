@@ -369,10 +369,12 @@ impl Flight {
         // 30. Thrust and steering.
         let dirs = Dirs::read(&self.keys, self.joystick);
         self.player.thrust_and_steer(&dirs, self.mission_over);
-        // 31–32 enemy fire (M8). 33. Player weapons and infra-red.
-        self.player_specials(world, events);
-        // 34. Missile cooldown (the cheat chords checked here are not ported).
+        // 31–32 enemy fire (M8). 33–34. The missile cooldown counts down *before* the fire
+        // keys are handled (C-0011: 4, 3, 2, 1, 0 in the ticks after a launch, where weapons.md
+        // §2 implies 3, 2, 1, 0), then weapons and infra-red; the cheat chords checked at step 34
+        // are not ported.
         self.missile_cooldown = self.missile_cooldown.saturating_sub(1);
+        self.player_specials(world, events);
         // 35. End of flight.
         if self.aborted || self.end_ticks == 35 || self.lost || self.succeeded {
             TickResult::Finished

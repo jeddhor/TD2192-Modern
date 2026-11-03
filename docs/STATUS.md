@@ -157,7 +157,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M7-05 | Weapons + projectiles | IM | M7-02, M7-04 | REVIEW | main-session | weapons.md rev 1: player volleys (every 2nd tick), missiles (cooldown 4, new press), homing target, Tab/auto-switch, IR toggle; shot update steps 1-8 (bounds, life, map test, homing kill, ship hits, player hits, steering, tile moves); muzzle table read from file0001.exe (resource flight.muzzle_offsets); vectors 1-3 pass |
 | M7-06 | Damage, destruction, effects, SFX events | IM | M7-03, M7-05 | IN PROGRESS | main-session | Damage/absorb, destruction (class FFh, kills, kind[s] bug), explosions (5 fixed offsets ASSUMED), white flash, SFX events -> PlayEffect in the arena; enemy fire waits for mission-ship AI (M8); sprite placement of ships/shots/explosions is a T2 placeholder |
 | M7-07 | Arena hostiles | IM | M7-05 | TODO | | |
-| M7-08 | Combat parity | VE | M7-06 | TODO | | |
+| M7-08 | Combat parity | VE | M7-06 | IN PROGRESS | main-session | C-0011 (wpn-e1m1.txt) + L5 td-sim/tests/oracle_weapons.rs: player volleys, Tab, missiles, cooldown and shot movement/expiry match every dumped frame; weapons.md rev 2 corrections (volley X -16, cooldown order). Hits, damage, homing, enemy fire not captured yet |
 
 ## M8: AI & mission runtime
 
