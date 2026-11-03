@@ -207,7 +207,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|---|---|---|---|---|
 | M10-01 | E2 engine deltas + data set | RE/SP | M1-09 | DONE | RE-9 | 2026-11-02: sim/e2-mission-setup.md, sim/e2-mission-logic.md (flights 1-20, Msn_E2FlightEvents), sim/e2-mission-ships.md (U-205), flow/e2-program-flow.md (rev 1 each); episode-deltas rev 2; td2.csv +25/~21; td2.toml e2.target_info, e2.flight_messages.02 = 20; captures C-0015 (E2 flight 1), C-0016 (E2 flight 9 via prepared TD2.SAV); U-200, U-201, U-205 resolved; U-240..U-252; OB-035..OB-042; open: U-204 (combat captures), U-241 (vectors 3, 4, 6) |
 | M10-02 | E3 engine deltas + data set + mission numbering (U-012) | RE/SP | M1-09 | TODO | | |
-| M10-03 | Implement deltas as episode configuration | IM | M10-01, M10-02 | TODO | | |
+| M10-03 | Implement deltas as episode configuration | IM | M10-01, M10-02 | IN PROGRESS | IM-6 | 2026-11-02: episode configuration in td-sim (Episode::{E1,E2,E3}); E2 setup + logic for flights 1-20 |
 | M10-04 | E2M01: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.1, sim/e2-mission-setup.md 3.2 row 1, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
 | M10-05 | E2M02: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.2, sim/e2-mission-setup.md 3.2 row 2, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
 | M10-06 | E2M03: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO |  | RE/SP part written by RE-9 (M10-01): sim/e2-mission-logic.md 5.3, sim/e2-mission-setup.md 3.2 row 3, sim/e2-mission-ships.md (rev 1); IM and VE still to do |
