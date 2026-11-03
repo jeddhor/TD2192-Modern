@@ -44,12 +44,10 @@ use td_render::flight_palette::FlightDac;
 use td_render::hud::{Hud, HudAssets, HudState, TickerFont};
 use td_render::{Framebuffer, HeadingSprites};
 use td_sim::flight::Session;
+use td_sim::flight::episode::{self, Episode};
 use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
 use td_sim::flight::heading::Heading;
-use td_sim::flight::logic::Message;
 use td_sim::flight::player::Event;
-use td_sim::flight::shots::Muzzles;
-use td_sim::flight::tables::episode1_tile_attributes;
 use td_sim::{Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
 
 /// Typematic delay and repeat period of an AT keyboard at its power-on defaults (500 ms,
@@ -176,29 +174,54 @@ pub struct RunState {
 }
 
 impl FlightArena {
-    /// A flight as the first of a program run (developer arena).
-    pub fn new(dir: &DataDir, resources: &ExeResources, number: u8) -> Result<Self> {
-        Self::start(dir, resources, number, None)
+    /// A flight of `episode` as the first of a program run (developer arena).
+    pub fn new(
+        dir: &DataDir,
+        resources: &ExeResources,
+        episode: Episode,
+        number: u8,
+    ) -> Result<Self> {
+        Self::open(dir, resources, episode, number, None)
     }
 
-    /// Flight `number` of the program run `run` (a fresh run when `None`).
+    /// Flight `number` of the program run `run` (a fresh Episode 1 run when `None`); the
+    /// episode is the run's.
     pub fn start(
         dir: &DataDir,
         resources: &ExeResources,
         number: u8,
         run: Option<Rc<RefCell<RunState>>>,
     ) -> Result<Self> {
-        if !(1..=21).contains(&number) {
-            bail!("flight number must be 1..=21");
+        let ep = run
+            .as_ref()
+            .map_or(Episode::E1, |r| r.borrow().session.episode);
+        Self::open(dir, resources, ep, number, run)
+    }
+
+    fn open(
+        dir: &DataDir,
+        resources: &ExeResources,
+        ep: Episode,
+        number: u8,
+        run: Option<Rc<RefCell<RunState>>>,
+    ) -> Result<Self> {
+        let last = match ep {
+            Episode::E1 => 21,
+            Episode::E2 => 20,
+            Episode::E3 => bail!("Episode 3 flights are not implemented yet (M10-02)"),
+        };
+        if !(1..=last).contains(&number) {
+            bail!("{ep} flight number must be 1..={last}");
         }
+        // The muzzle table is byte-identical in every episode (episode-deltas §11).
         let Some(ResourceValue::Bytes(muzzles)) = resources.get("flight.muzzle_offsets").cloned()
         else {
             bail!("file0001.exe resources are unavailable (muzzle table)");
         };
-        // Flight 21 loads no mission file and flies the ship records it inherits.
-        let mission = match number {
-            21 => None,
-            n => Some(Mission::parse(&dir.read(&format!("m{n}.td"))?)?),
+        // E1 flight 21 loads no mission file and flies the ship records it inherits.
+        let mission = match episode::mission_file(ep, number) {
+            None => None,
+            Some(file) => Some(Mission::parse(&dir.read(&file)?)?),
         };
         let base = SpriteSheet::parse_base(&dir.read("td.shp")?)?;
         let rot = [
@@ -218,9 +241,24 @@ impl FlightArena {
                 effects.insert(id, Arc::new(decode_voc(&dir.read(voc)?)?));
             }
         }
-        let Some(ResourceValue::Bytes(radar)) = resources.get("hud.radar_tile_colours").cloned()
-        else {
-            bail!("file0001.exe resources are unavailable (radar colours)");
+        let world = episode::world(
+            ep,
+            number,
+            TileMap::parse_episode(&dir.read(episode::map_file(ep, number))?)?,
+            muzzles,
+        );
+        let session = run
+            .as_ref()
+            .map_or_else(|| Session::for_episode(ep), |r| r.borrow().session.clone());
+        let flight = Flight::start(number, mission.as_ref(), &world, session);
+        // E2: the map-set-2 colours replace the table for the rest of the run (OB-024).
+        let radar_id = match (ep, flight.radar_set2) {
+            (Episode::E2, false) => "e2.hud.radar_tile_colours",
+            (Episode::E2, true) => "e2.hud.radar_tile_colours_set2",
+            _ => "hud.radar_tile_colours",
+        };
+        let Some(ResourceValue::Bytes(radar)) = resources.get(radar_id).cloned() else {
+            bail!("executable resources are unavailable (radar colours {radar_id})");
         };
         let hud_assets = HudAssets::new(
             dir.read("td.win")?,
@@ -233,20 +271,16 @@ impl FlightArena {
         // Texts the mission logic can post to the ticker, by resource id (the sim carries ids).
         let mut ticker_texts = BTreeMap::new();
         for id in TICKER_RESOURCES {
-            if let Some(texts) = resources.texts(id) {
-                ticker_texts.insert(id, texts.to_vec());
+            // Lists, or single texts (the E2 jurisdiction warning and flight-18 event).
+            let texts = resources
+                .texts(id)
+                .map(<[String]>::to_vec)
+                .or_else(|| resources.text(id).map(|t| vec![t.to_owned()]));
+            if let Some(texts) = texts {
+                ticker_texts.insert(id, texts);
             }
         }
-        let world = World {
-            map: TileMap::parse_episode(&dir.read("td.map")?)?,
-            tile_attr: episode1_tile_attributes(),
-            muzzles: Muzzles(muzzles),
-        };
         let screens = FlightScreenAssets::load(dir, resources)?;
-        let session = run
-            .as_ref()
-            .map_or_else(Session::new, |r| r.borrow().session.clone());
-        let flight = Flight::start(number, mission.as_ref(), &world, session);
         let board = {
             let mut fresh = TargetBoard::default();
             let mut shared = run.as_ref().map(|r| r.borrow_mut());
@@ -257,7 +291,7 @@ impl FlightArena {
         let palette = Palette::parse(&dir.read("td.pal")?)?;
         Ok(Self {
             world,
-            tiles: Tileset::parse(&dir.read("td.blk")?)?,
+            tiles: Tileset::parse(&dir.read(episode::tileset_file(ep, number))?)?,
             dac: FlightDac::start(&palette, flight.palette_mode),
             palette,
             ships,
@@ -469,7 +503,7 @@ impl Screen for FlightArena {
                 let (id, index) = message.resource();
                 if let Some(text) = self.ticker_texts.get(id).and_then(|v| v.get(index)) {
                     let font = match message {
-                        Message::Objective(_) | Message::Jurisdiction(_) => TickerFont::Flight,
+                        m if m.flight_font() => TickerFont::Flight,
                         _ => TickerFont::Mission,
                     };
                     display.hud.post(&self.hud_assets, text, ticker.ink, font);
@@ -511,12 +545,17 @@ struct HudDisplay {
 }
 
 /// Resource ids of the texts the mission logic posts (`td_sim::flight::logic::Message`).
-const TICKER_RESOURCES: [&str; 5] = [
+const TICKER_RESOURCES: [&str; 10] = [
     "e1.objectives",
     "e1.flight_messages.01",
     "e1.flight_messages.02",
     "jurisdiction.warnings",
     "e1.flight_events.01",
+    "e2.objectives",
+    "e2.flight_messages.01",
+    "e2.flight_messages.02",
+    "e2.jurisdiction.warnings",
+    "e2.flight_events",
 ];
 
 /// The tile a shot was drawn at: `Flight::drawn` holds the shots after step 6, whose last part
