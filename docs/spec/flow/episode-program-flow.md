@@ -12,7 +12,7 @@
 
 ## 1. Summary
 
-The episode program starts, initialises its units and the WORX sound driver, restores state handed back by the launcher through `tdstatus.dat` (if any), shows the text-mode configuration screen when needed, asks which dialogue script to use, offers joystick calibration, and then runs the **main menu** until the player quits. The menu has nine items. *Start new game* and *Next mission* call `Main_CampaignLoop`, which plays **exactly one mission block** for the current mission number: a scripted sequence of text cards, scene cards, music changes and dialogue scenes, one flight (with a retry loop), the debriefing, and the post-mission story. Control then returns to the menu, which advances the mission number and the kill total when the mission was completed. After mission 20 the episode ends ("continued in episode 2" card) and the menu resets. Three game-over endings exist (death, and two mission-specific catastrophes).
+The episode program starts, initialises its units and the WORX sound driver, restores state handed back by the launcher through `tdstatus.dat` (if any), shows the text-mode configuration screen when needed, asks which dialogue script to use, offers joystick calibration, and then runs the **main menu** until the player quits. The menu has nine items. *Start new game* and *Next mission* call `Main_CampaignLoop`, which plays **exactly one mission block** for the current mission number: a scripted sequence of text cards, scene cards, music changes and dialogue scenes, one flight (with a retry loop), the debriefing, and the post-mission story. Control then returns to the menu, which advances the mission number and the kill total when the mission was completed. After mission 20 the episode ends with a closing text card (`0000:0E51`) and the menu resets. Three game-over endings exist (death, and two mission-specific catastrophes).
 
 All dialogue scene IDs (103 in `dialogue.dat`) are referenced by the sequencer exactly once each; the music index table, scene catalogue and text-card list below are complete for E1.
 
@@ -81,7 +81,7 @@ Switches (first command-line argument only, exact case variants): `/pc` → musi
 | `051A:471B` | `td1-18.pic` | 3 strings | Story still with text |
 | `051A:4113` | `td1-13/14/16/20.pic` | 3 strings + set number (1..4) | Story-still sequence; the number selects which stills |
 | `051A:4979` | `td1-15.pic` | none | Still with a split-screen/palette effect; uses `051A:1AA3` (timed wait on DOS time) |
-| `051A:5852` | text only (`td-let.cin`) | string, colour, 0, 0 | Text card (titles, "meanwhile", time captions) |
+| `051A:5852` | text only (`td-let.cin`) | string, colour, 0, 0 | Text card (mission titles and short captions) |
 | `051A:2B26` | text only | hint number (1, 2, 6) | Pre-flight hint/tutorial screen; waits for any key or joystick button |
 | `051A:62FD` | text only | none | Assignment printout (orders), used before mission 2 |
 | `051A:6653` | text only | none | Enemy-ace dossier, used before mission 5 |
