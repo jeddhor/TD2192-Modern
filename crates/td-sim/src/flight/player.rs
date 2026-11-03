@@ -7,7 +7,7 @@
 
 use super::World;
 use super::heading::Heading;
-use super::tables::{CLASS_ACCEL, CLASS_MAX_SPEED, CLASS_SHIELDS};
+use super::tables::{CLASS_SHIELDS, ClassTables};
 use crate::hash::{HashState, StateHasher};
 use crate::input::{FlightKey, Joystick, KeyTable};
 
@@ -200,12 +200,12 @@ impl Player {
 
     /// Shields and destruction (§4.1, tick-order step 27). Returns true when the player was
     /// destroyed this tick.
-    pub(crate) fn shields_step(&mut self, over: bool) -> bool {
+    pub(crate) fn shields_step(&mut self, classes: &ClassTables, over: bool) -> bool {
         if self.shields < 1 {
             self.shields = 0;
         }
         let destroyed = self.armour < 1 && !over;
-        if self.shields < CLASS_SHIELDS[usize::from(self.class)] as i8 {
+        if self.shields < classes.shields(self.class) as i8 {
             self.shields += 1;
         }
         destroyed
@@ -296,16 +296,15 @@ impl Player {
     }
 
     /// Thrust (§4.5) then steering (§4.6), tick-order step 30.
-    pub(crate) fn thrust_and_steer(&mut self, k: &Dirs, over: bool) {
+    pub(crate) fn thrust_and_steer(&mut self, classes: &ClassTables, k: &Dirs, over: bool) {
         if !over {
-            self.thrust(k);
+            self.thrust(classes, k);
         }
         self.steer(k, over);
     }
 
-    fn thrust(&mut self, k: &Dirs) {
-        let c = usize::from(self.class);
-        let (max, accel) = (CLASS_MAX_SPEED[c], CLASS_ACCEL[c]);
+    fn thrust(&mut self, classes: &ClassTables, k: &Dirs) {
+        let (max, accel) = (classes.max_speed(self.class), classes.accel(self.class));
         // Real48 Round(accel / 2.0): halves round up for these small positive values.
         let half = accel.div_ceil(2);
         let s = &mut self.speed;

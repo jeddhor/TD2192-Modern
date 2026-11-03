@@ -283,6 +283,7 @@ fn ship(class: u8, tile: (u8, u8), shields: i16, armour: i16) -> Ship {
         heading: 2,
         shields,
         armour,
+        ..Ship::EMPTY
     }
 }
 
@@ -317,7 +318,8 @@ fn weapons_vector_2_shields_absorb() {
     f.shots.0[30] = shot_at(1, 0, f.ships.0[0].world(), 8);
     let seed = f.rng.seed();
     f.tick(&w, &TickControls::default(), &mut vec![]);
-    assert_eq!((f.ships.0[0].shields, f.ships.0[0].armour), (15, 50));
+    // 25 − 10 = 15, then the mission-ship step regenerates one point in the same tick.
+    assert_eq!((f.ships.0[0].shields, f.ships.0[0].armour), (16, 50));
     assert!(!f.shots.0[30].alive());
     assert_ne!(
         f.rng.seed(),

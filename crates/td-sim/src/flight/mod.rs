@@ -7,9 +7,14 @@
 //! counting, explosions, the white flash, the per-tick page toggle, modal interruptions (comm
 //! viewer, pause, flight menu, ship switch), shields and destruction, player movement with map
 //! collision, thrust and steering, player weapons (volleys, missiles, Tab, infra-red toggle),
-//! the missile cooldown, and the end-of-flight test. Not yet specified, so not implemented:
-//! mission logic and mission-ship movement (steps 8–10, M8) and enemy fire (31–32). Cheat
+//! the missile cooldown, the end-of-flight test, mission ships (step 10) and their fire
+//! requests and volleys (`mission-ships.md` rev 2), and per-flight setup (`mission-setup.md`
+//! rev 1). Not yet specified, so not implemented: mission logic (steps 8–9, M8-05). Cheat
 //! chords (34) are not ported (decision D5/D9).
+//!
+//! Session state: the original keeps the RNG, the class tables (patched by some flights,
+//! OB-018) and the ship slots and records across the flights of one program run. [`Session`]
+//! carries them from one [`Flight`] to the next.
 //!
 //! Modal screens run *inside* a tick in the original: the tick stops at that point and
 //! continues when the screen closes. [`Flight::tick`] returns [`TickResult::Modal`] there;
@@ -19,6 +24,7 @@
 pub mod explosions;
 pub mod heading;
 pub mod player;
+pub mod setup;
 pub mod ships;
 pub mod shots;
 pub mod tables;
@@ -32,8 +38,9 @@ use crate::rng::BpRandom;
 use explosions::Explosions;
 use heading::Heading;
 use player::{Dirs, Event, Player, View};
-use ships::Ships;
+use ships::{AiContext, Ships};
 use shots::{Combat, Muzzles, Shots};
+use tables::ClassTables;
 
 /// The static world of a flight: the map, its tile attributes and the muzzle table.
 #[derive(Debug, Clone)]
@@ -111,6 +118,42 @@ pub const START_VIEW: View = View {
     sub_y: 16,
 };
 
+/// What the original keeps across the flights of one program run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Session {
+    /// The program's `Random` generator.
+    pub rng: BpRandom,
+    /// Class tables, with the patches of the flights flown so far.
+    pub classes: ClassTables,
+    /// Ship slots and records (flight 21 loads no mission file and flies these).
+    pub ships: Ships,
+    /// The player tile the AI last saw (DS:9766/9767; 0 at program start). The AI reads it
+    /// at setup, before the first tick writes it.
+    pub ai_player: (u8, u8),
+}
+
+impl Session {
+    /// Program start: the AI unit's initialisation resets the ship records and draws 20
+    /// `Random(2)` before anything else uses the generator (mission-ships §4.1 step 1).
+    pub fn new() -> Self {
+        let mut rng = BpRandom::new();
+        let mut ships = Ships::default();
+        ships.reset_records(&mut rng);
+        Self {
+            rng,
+            classes: ClassTables::default(),
+            ships,
+            ai_player: (0, 0),
+        }
+    }
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The state of one flight.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flight {
@@ -144,6 +187,10 @@ pub struct Flight {
     pub explosions: Explosions,
     /// The program's `Random` generator (its state carries across flights).
     pub rng: BpRandom,
+    /// Class tables (session state, see [`Session`]).
+    pub classes: ClassTables,
+    /// The player tile the AI last saw (session state, see [`Session`]).
+    pub ai_player: (u8, u8),
     /// `g_MissionKills`.
     pub kills: i16,
     /// Full-palette white flash countdown (`g_FlashFrames`).
@@ -181,12 +228,69 @@ impl Flight {
         Self::with_player(number, Player::new(tables::player_class(number), view))
     }
 
-    /// The state after setup for flight `number` with the mission file's ships.
-    pub fn with_mission(number: u8, mission: &Mission) -> Self {
-        Self {
-            ships: Ships::from_mission(mission),
-            ..Self::new(number)
+    /// The state after setup for flight `number` with the mission file's ships, as the first
+    /// flight of a program run.
+    pub fn with_mission(number: u8, mission: &Mission, world: &World) -> Self {
+        Self::start(number, Some(mission), world, Session::new())
+    }
+
+    /// Flight setup (`Sim_FlyMission`, mission-ships §4.1, mission-setup §3): reset the ship
+    /// records (20 `Random(2)`), load the mission file (`None` for flight 21), apply
+    /// `Msn_Setup`, set the start view, and choose every slot's first waypoint.
+    pub fn start(number: u8, mission: Option<&Mission>, world: &World, session: Session) -> Self {
+        let Session {
+            mut rng,
+            mut classes,
+            mut ships,
+            ai_player,
+        } = session;
+        ships.reset_records(&mut rng);
+        if let Some(m) = mission {
+            ships.load_mission(m, &classes);
         }
+        let flags = setup::msn_setup(number, &mut ships, &mut classes);
+        let mut view = START_VIEW;
+        if flags.late_draw {
+            view.tile_y = 100;
+        }
+        if matches!(number, 13 | 14) {
+            (view.tile_x, view.tile_y) = (177, 153);
+        }
+        let mut player = Player::new(tables::player_class(number), view);
+        player.armour = classes.armour(player.class) as i8;
+        player.shields = classes.shields(player.class) as i8;
+        let mut f = Self::with_player(number, player);
+        f.late_draw = flags.late_draw;
+        f.palette_mode = flags.palette_mode;
+        // Default start: draw page 1 (mission-setup §3.1).
+        f.draw_page = 1;
+        let mut ctx = AiContext {
+            world,
+            rng: &mut rng,
+            player: ai_player,
+        };
+        ships.choose_all(&mut ctx);
+        f.rng = rng;
+        f.classes = classes;
+        f.ships = ships;
+        f.ai_player = ai_player;
+        f
+    }
+
+    /// The state to carry into the next flight of the same program run.
+    pub fn session(&self) -> Session {
+        Session {
+            rng: self.rng,
+            classes: self.classes.clone(),
+            ships: self.ships.clone(),
+            ai_player: self.ai_player,
+        }
+    }
+
+    /// The player's tile as the AI sees it (DS:9766/9767: view tile + (5, 3), low bytes).
+    pub fn player_tile(&self) -> (u8, u8) {
+        let v = self.player.view;
+        ((v.tile_x + 5) as u8, (v.tile_y + 3) as u8)
     }
 
     /// A flight with an explicit player (dev arena, tests). Weapons follow the player's class
@@ -221,6 +325,8 @@ impl Flight {
             shots: Shots::default(),
             explosions: Explosions::default(),
             rng: BpRandom::new(),
+            classes: ClassTables::default(),
+            ai_player: (0, 0),
             kills: 0,
             white_flash: 0,
             difficulty: 1,
@@ -307,7 +413,23 @@ impl Flight {
                 self.frame.heading = self.player.heading;
                 self.frame.player_visible = self.end_ticks < 15;
             }
-            // 8–10. Mission logic and mission ships: M8 (ships are drawn where they are).
+            // 8–9. Mission logic (`Msn_UpdateA`/`Msn_UpdateB`, M8-05, RE-6 mission-logic.md):
+            // HOOK. It orders attacks (`Ships::order_attack`) and writes slot classes here,
+            // before the ships move; flight 1 removes slots 9–11 at tick 1.
+            // 10. Mission ships: AI, movement, removal (mission-ships §4.2).
+            self.ai_player = self.player_tile();
+            let player = self.ai_player;
+            self.ships.update(
+                self.number,
+                &self.classes,
+                &mut AiContext {
+                    world,
+                    rng: &mut self.rng,
+                    player,
+                },
+            );
+            // Flight 19 with mission phase > 1 caps the player's shields and moves slot 19
+            // (mission-ships §4.2.4): needs the mission phase (M8-05).
             self.drawn.ships.clone_from(&self.ships);
             // 11. End sequence (provisional: counts the end ticks; its other effects are not
             // specified yet).
@@ -351,7 +473,7 @@ impl Flight {
         }
         if from <= 26 {
             // 26 is audio. 27. Shields and destruction.
-            if self.player.shields_step(self.mission_over) {
+            if self.player.shields_step(&self.classes, self.mission_over) {
                 self.end_mission();
             }
             // 28. Movement, map collision (skipped while drawing late), carry and limits.
@@ -368,11 +490,17 @@ impl Flight {
         }
         // 30. Thrust and steering.
         let dirs = Dirs::read(&self.keys, self.joystick);
-        self.player.thrust_and_steer(&dirs, self.mission_over);
-        // 31–32 enemy fire (M8). 33–34. The missile cooldown counts down *before* the fire
-        // keys are handled (C-0011: 4, 3, 2, 1, 0 in the ticks after a launch, where weapons.md
-        // §2 implies 3, 2, 1, 0), then weapons and infra-red; the cheat chords checked at step 34
-        // are not ported.
+        self.player
+            .thrust_and_steer(&self.classes, &dirs, self.mission_over);
+        // 31. Mission-ship volleys on back page 1; 32. fire requests cleared every tick
+        // (mission-ships §4.4.2).
+        if self.draw_page == 1 {
+            self.shots.ship_volleys(&self.ships, &world.muzzles, events);
+        }
+        self.ships.clear_fire_requests();
+        // 33–34. The missile cooldown counts down *before* the fire keys are handled (C-0011:
+        // 4, 3, 2, 1, 0 in the ticks after a launch, where weapons.md §2 implies 3, 2, 1, 0),
+        // then weapons and infra-red; the cheat chords checked at step 34 are not ported.
         self.missile_cooldown = self.missile_cooldown.saturating_sub(1);
         self.player_specials(world, events);
         // 35. End of flight.
@@ -463,6 +591,15 @@ impl HashState for Flight {
         self.shots.hash_state(h);
         self.explosions.hash_state(h);
         self.rng.hash_state(h);
+        for t in [
+            &self.classes.max_speed,
+            &self.classes.armour,
+            &self.classes.shields,
+            &self.classes.accel,
+        ] {
+            h.bytes(t);
+        }
+        h.bytes(&[self.ai_player.0, self.ai_player.1]);
         self.kills.hash_state(h);
         h.bytes(&[
             self.white_flash,
