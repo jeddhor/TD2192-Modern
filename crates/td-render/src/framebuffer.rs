@@ -158,6 +158,19 @@ impl Framebuffer {
     }
 }
 
+/// A surface that single pixels can be plotted on: the screen, or off-screen video memory
+/// that the original also draws into (the HUD ticker strip, `hud.md` §4.7).
+pub trait Canvas {
+    /// Sets one pixel; pixels the surface does not hold are ignored.
+    fn put(&mut self, x: i32, y: i32, color: u8);
+}
+
+impl Canvas for Framebuffer {
+    fn put(&mut self, x: i32, y: i32, color: u8) {
+        Framebuffer::put(self, x, y, color);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

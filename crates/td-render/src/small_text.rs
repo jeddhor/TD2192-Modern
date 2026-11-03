@@ -18,7 +18,7 @@
 
 use td_formats::font::{Font, FontKind};
 
-use crate::framebuffer::Framebuffer;
+use crate::framebuffer::{Canvas, Framebuffer};
 
 /// Glyph cell edge in pixels. Spec: text.md §3; original `file0001:051A:088F`.
 pub const CELL: i32 = 5;
@@ -75,7 +75,7 @@ fn marks(ch: char) -> &'static [(i32, i32)] {
 
 /// Draws one character with its cell origin at pen (`x`, `y`) (text.md §4.1).
 pub fn draw_glyph(
-    fb: &mut Framebuffer,
+    fb: &mut impl Canvas,
     font: &Font,
     ch: char,
     (x, y): (i32, i32),

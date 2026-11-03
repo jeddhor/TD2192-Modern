@@ -1015,6 +1015,7 @@ dependencies = [
  "sha2",
  "td-assets",
  "td-formats",
+ "td-sim",
  "td-test-support",
  "thiserror",
 ]
