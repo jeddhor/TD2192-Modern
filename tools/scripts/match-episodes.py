@@ -710,7 +710,10 @@ def transfer_symbols(mt, res, rows, task):
         k = fmt(p1.dgroup, off)
         if k in ref and ref[k][0][:4] == '%04X' % p2.dgroup:
             v, n, tot = ref[k]
-            return v, ('refs %d/%d' % (n, tot)), 'CONFIRMED' if n >= 2 and n == tot else 'LIKELY'
+            # unanimous votes from two or more aligned instructions keep the E1 confidence; a
+            # split vote (one E1 offset seen as two E2 offsets) can be a wrong pairing
+            lim = 'CONFIRMED' if n >= 2 and n == tot else 'LIKELY' if n * 10 >= tot * 9 else 'HYPOTHESIS'
+            return v, ('refs %d/%d' % (n, tot)), lim
         if k in mt.dsmap:
             return mt.dsmap[k], 'operand map', 'LIKELY'
         # inside a structure or array: the delta of the nearest referenced offsets on both sides

@@ -1,0 +1,481 @@
+address,kind,name,signature,comment,confidence,source_task
+0000:00D2,func,Flow_MenuFadeOut,,"= E1 file0001:0000:0124, changed (similarity 0.80). E1: palette fade-out before leaving the main menu",HYPOTHESIS,M1-09
+0000:020B,func,UI_MenuHelp,,"= E1 file0001:0000:02AF, identical. E1: td.hlp from the main menu: two 320x200 pages shown in turn; also: shows the td.hlp help pages (menu item 4) (UI_HelpScreens)",LIKELY,M1-09
+0000:0BC5,func,Main_CampaignLoop,,"= E1 file0001:0000:0F06, changed (similarity 0.42). E1: mission sequencer: calls Sim_FlyMission 21 times",HYPOTHESIS,M1-09
+0000:29E5,func,UI_LoadMainMenu,,"= E1 file0001:0000:2E88, changed (similarity 0.91). E1: loads td.men regions into VGA (menu screen + off-screen boxes) and tdmen.pal",LIKELY,M1-09
+0000:2DD9,func,UI_ShowMenuBox,,"= E1 file0001:0000:330E, identical. E1: latched copy of 32 VGA rows from 8980h + n*0B00h to menu rows 84..115",CONFIRMED,M1-09
+0000:2E3F,func,UI_MainMenuLoop,,"= E1 file0001:0000:3381, changed (similarity 0.86). E1: main menu: item highlight, confirmation boxes, tdstatus.dat writes; also: main menu loop: 9 items; calls Main_CampaignLoop; writes tdstatus.d...",LIKELY,M1-09
+0000:3E8A,func,Main_Entry,,"= E1 file0001:0000:4526, changed (similarity 0.80). E1: program entry: calls each unit init (System first), then the main body",LIKELY,M1-09
+0000:3EAD,label,Main_Body,,"= E1 file0001:0000:454E, aligned instruction in changed 0000:4526. E1: main block after the init chain",LIKELY,M1-09
+04A0:0000,func,Gfx_WaitRetraceBit,,"= E1 file0001:051A:0000, identical. E1: polls 3DAh until bit 3 is set (returns at once during a retrace); per-character delay of typed text",CONFIRMED,M1-09
+04A0:0016,func,Gfx_FadeInScene,,"= E1 file0001:051A:0016, identical. E1: DAC entries 1..255 from black to g_Palette in 17 steps (k/16, Real48 Round), one per retrace; sets g_ScreenLit",CONFIRMED,M1-09
+04A0:013F,func,Gfx_FadeOutScene,,"= E1 file0001:051A:013F, identical. E1: reverse of Gfx_FadeInScene (k = 16..0); clears g_ScreenLit",CONFIRMED,M1-09
+04A0:0269,func,Flow_WaitSecondsOrKey,,"= E1 file0001:051A:1AA3, changed (similarity 0.96). E1: waits n seconds (DOS time, 16-bit centiseconds) or a key/button; Esc sets g_SkipRequested",LIKELY,M1-09
+04A0:03DD,func,Gfx_ScrollTextUp,,"= E1 file0001:051A:0269, identical. E1: (xByte,row,widthBytes,count) latched copy moving rows row+1..row+count-1 up by one",CONFIRMED,M1-09
+04A0:044B,func,Txt_MeasureTitle,,"= E1 file0001:051A:02D7, identical. E1: width of a td-let.cin string for centring",CONFIRMED,M1-09
+04A0:059E,func,Txt_DrawTitle,,"= E1 file0001:051A:042A, identical. E1: (x,y,s,colour) td-let.cin text: UpCase, glyph map, only 0F7h pixels drawn",CONFIRMED,M1-09
+04A0:0A03,func,Txt_DrawGlyph,,"= E1 file0001:051A:088F, identical. E1: (x,y,ch,colour,opaque) one td.lt2 glyph, recoloured; punctuation drawn by code",CONFIRMED,M1-09
+04A0:0D13,func,Txt_DrawStringOpaque,,"= E1 file0001:051A:0F04, identical. E1: as Txt_DrawString with the glyph cell background filled",CONFIRMED,M1-09
+04A0:1078,func,Txt_DrawString,,"= E1 file0001:051A:0B9F, identical. E1: (x,y,s,colour) td.lt2 string, transparent, proportional advance",CONFIRMED,M1-09
+04A0:13DD,func,Txt_TypeString,,"= E1 file0001:051A:1269, identical. E1: opaque string typed one character per retrace with a block cursor",CONFIRMED,M1-09
+04A0:178D,func,Dlg_LoadPortrait,,"= E1 file0001:051A:1618, same code, 1 operand(s) differ. E1: (side,face,name,colour) newfaces.td record into one half of rows 0..99, palette 0..111 or 112..223, name below",LIKELY,M1-09
+04A0:1BB5,func,Dlg_ShowLine,,"= E1 file0001:051A:1BF7, same code, 1 operand(s) differ. E1: speaker half at full brightness, other at half; types the line at (2,175); scrolls 7 px",LIKELY,M1-09
+04A0:1D6B,func,Scene_Aboutus,,scene card on aboutus.scr; caption layout in episode-deltas.md 6.2.,LIKELY,M1-09
+04A0:1EBF,func,Scene_Order,,scene card on order.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Scene_StillTd1_15 (file0001:051A:4979).,LIKELY,M1-09
+04A0:2013,func,Scene_Tdlab,"void far(A, B, C: String)",scene card on tdlab.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneTdlab (file0001:051A:380C).,LIKELY,M1-09
+04A0:227C,func,Scene_Marauder,"void far(A, B, C: String)",scene card on marauder.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneMarauder (file0001:051A:3371).,LIKELY,M1-09
+04A0:24BB,func,Scene_Maraud2,"void far(A, B, C: String)",scene card on maraud2.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Scene_CommanderOffice (file0001:051A:4A66).,LIKELY,M1-09
+04A0:27CC,func,Scene_Maraud3,"void far(A, B, C: String)",scene card on maraud3.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Scene_StillTd1_18 (file0001:051A:471B).,LIKELY,M1-09
+04A0:29AE,func,Scene_Vidcom,"void far(A, B, C: String)",scene card on vidcom.scr; caption layout in episode-deltas.md 6.2.,LIKELY,M1-09
+04A0:2C86,func,Scene_Vhang,"void far(A, B, C: String)",scene card on vhang.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneEggbase (file0001:051A:3E8E).,LIKELY,M1-09
+04A0:2EE4,func,Scene_Intro2,"void far(A, B, C: String)",scene card on intro2.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Scene_Pic4 (file0001:051A:4F5A).,LIKELY,M1-09
+04A0:30B1,func,Scene_Shuttle0,"void far(A, B, C: String)",scene card on shuttle0.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneVelsroom (file0001:051A:3A6B).,LIKELY,M1-09
+04A0:333D,func,Scene_Vlab,"void far(A, B, C: String)",scene card on vlab.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneVlab (file0001:051A:2055).,LIKELY,M1-09
+04A0:35A8,func,Scene_Convers,"void far(A, B, C: String)",scene card on convers.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneSbar (file0001:051A:4D66).,LIKELY,M1-09
+04A0:3775,func,Scene_SelPain,"void far(A, B, C: String)",scene card on sel-pain.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Scene_Hangar (file0001:051A:1E5A).,LIKELY,M1-09
+04A0:3944,func,Scene_Melting,"void far(A, B, C: String)",scene card on melting.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneHelihangar (file0001:051A:3CC0).,LIKELY,M1-09
+04A0:3B14,func,Scene_Kolorvci,"void far(A, B, C: String)",scene card on kolorvci.scr; caption layout in episode-deltas.md 6.2.,LIKELY,M1-09
+04A0:3DB2,func,Scene_Command,"void far(A, B, C: String)",scene card on command.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneIntro2 (file0001:051A:22BE).,LIKELY,M1-09
+04A0:3F7E,func,Scene_Mining1,"void far(A, B, C: String)",scene card on mining1.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneVhang (file0001:051A:3109).,LIKELY,M1-09
+04A0:420D,func,Scene_Ionstat,"void far(A, B, C: String)",scene card on ionstat.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Scene_Auditorium (file0001:051A:35B0).,LIKELY,M1-09
+04A0:449C,func,Scene_Mining2,"void far(A, B, C: String)",scene card on mining2.scr; caption layout in episode-deltas.md 6.2. Matcher paired it with E1 Flow_SceneShooting (file0001:051A:248A).,LIKELY,M1-09
+04A0:4663,func,Scene_MissionTitle,,"= E1 file0001:051A:5852, identical. E1: one td-let.cin line centred at y 90 in palette entry 85; 5 s",CONFIRMED,M1-09
+04A0:4778,func,Gfx_LoadJavelin,,"= E1 file0001:051A:5EE9, changed (similarity 0.91). E1: javelin.td into VGA rows 200..399, palette to g_Palette",LIKELY,M1-09
+04A0:4980,func,UI_ScriptChoice,,"= E1 file0001:051A:527F, changed (similarity 0.99). E1: warning screen (td-let.cin title + td.lt2 text); sets g_ScriptChoice; also: asks original or edited script; sets g_ScriptChoice (Flow_ScriptC...",LIKELY,M1-09
+04A0:4C5C,func,Gfx_LoadCity,,"= E1 file0001:051A:5FC7, changed (similarity 0.91). E1: city.td into VGA rows 200..399, palette to g_Palette",LIKELY,M1-09
+04A0:4F47,func,UI_RetryPrompt,Boolean far,"= E1 file0001:051A:6A33, changed (similarity 1.00). E1: after a failed flight; AL<>0 = fly again; also: retry question with taunts; also: retry prompt after a failed flight; true = retry (Flow_Retr...",LIKELY,M1-09
+04A0:5212,func,UI_PlayerDossier,,E1 file0001:051A:74B2 (manual M1-09; the matcher paired it with UI_EnemyDossier): player dossier,LIKELY,M1-09
+04A0:5450,func,Sav_RestoreScreen,,"= E1 file0001:051A:76EA, changed (similarity 0.98). E1: td.stt names, td.sav slots, td.sss bars; choose a slot; also: restore-game screen (menu item 2) (Sav_RestoreGame)",LIKELY,M1-09
+04A0:5F7E,func,UI_Debrief,"void far(Kills, KillsToDate: Integer; Outcome: Byte)","= E1 file0001:051A:6FF2, same code, 2 operand(s) differ. E1: after a successful flight (with low.cmf); also: debriefing text screen with portrait 1 on the right; also: debriefing; rating tier by to...",LIKELY,M1-09
+04A0:6413,func,Sav_SaveScreen,void far(Mission: Byte; Kills: Integer; Pal),"= E1 file0001:051A:7EEA, identical. E1: as Sav_RestoreScreen, then writes td.sav slot and td.stt; also: save-game screen (menu item 1) (Sav_SaveGame)",LIKELY,M1-09
+04A0:73DF,func,Scene_BackgroundStory,,"= E1 file0001:051A:8EAA, changed (similarity 1.00). E1: background story text pages (30 s and 45 s waits); also: story-so-far screen (menu item 5) (Flow_StorySoFar)",LIKELY,M1-09
+04A0:7795,func,Dlg_PlayScene,void far(Id: Byte),"= E1 file0001:051A:92AF, changed (similarity 0.93). E1: (sceneId) plays one dialogue.dat/safedial.dat scene; also: plays dialogue scene Id from dialogue.dat or safedial.dat (Flow_DialogueScene)",LIKELY,M1-09
+04A0:7BC0,func,Unit051A_Init,,"= E1 file0001:051A:96F9, identical. E1: unit init part (8th in chain)",CONFIRMED,M1-09
+0C5D:0000,func,UI_HudTickerBlit,,"= E1 file0001:0E8B:0000, identical. E1: (offset) latched copy of a 56x5 window from off-screen VGA row 736 + offset to HUD (256,13)",LIKELY,M1-09
+0C5D:0052,func,Gfx_WaitRetraceStart,,"= E1 file0001:0E8B:0052, identical. E1: polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace",CONFIRMED,M1-09
+0C5D:01F6,func,Gfx_FadeInFlight,,"= E1 file0001:0E8B:01F6, changed (similarity 0.96). E1: retrace-paced palette fade in from g_FlightPalette (Real48 scaling)",HYPOTHESIS,M1-09
+0C5D:0422,func,Gfx_FadeOutFlight,,"= E1 file0001:0E8B:0426, changed (similarity 0.99). E1: retrace-paced palette fade out (Real48 scaling)",HYPOTHESIS,M1-09
+0C5D:064F,func,Inp_KeyboardIsr,,"= E1 file0001:0E8B:0653, identical. E1: INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-09
+0C5D:06C1,func,Sim_DistanceFlash,"void near(TileY, TileX: Byte)","= E1 file0001:0E8B:06C5, identical. E1: raises g_HitFlash to 20 - round(sqrt(distance)) for an explosion near the player",LIKELY,M1-09
+0C5D:07F3,func,Snd_PlayMusic,void far(N: Byte),"= E1 file0001:0E8B:07ED, changed (similarity 0.97). E1: (N): if g_MusicDevice = 2: stop, free, load song N, play (see spec audio/music-cues); also: (cue 1..14) stops the song and loads/plays a CMF...",LIKELY,M1-09
+0C5D:09A7,func,Sim_ProjectilesAndHits,,"= E1 file0001:0E8B:0984, changed (similarity 0.99). E1: per tick for projectile slots 0..50: bounds; life and map test; hits on ships and player; damage; kills; drawing; one-tile move (sim/weapons.md)",LIKELY,M1-09
+0C5D:408B,func,Txt_FlightDrawGlyphOpaque,,"= E1 file0001:0E8B:40B2, identical. E1: flight-unit copy of Txt_DrawGlyph, opaque",CONFIRMED,M1-09
+0C5D:437F,func,Txt_FlightDrawGlyph,,"= E1 file0001:0E8B:43A6, identical. E1: flight-unit copy of Txt_DrawGlyph, transparent",CONFIRMED,M1-09
+0C5D:45C8,func,Txt_FlightDrawStringOpaque,,"= E1 file0001:0E8B:45EF, identical. E1: flight-unit copy of Txt_DrawStringOpaque",CONFIRMED,M1-09
+0C5D:4920,func,Txt_FlightDrawString,,"= E1 file0001:0E8B:4947, identical. E1: flight-unit copy of Txt_DrawString",CONFIRMED,M1-09
+0C5D:4C78,func,Txt_FlightTypeString,,"= E1 file0001:0E8B:4C9F, identical. E1: flight-unit copy of Txt_TypeString",LIKELY,M1-09
+0C5D:51D7,func,UI_DrawCommPortraitA,,"= E1 file0001:0E8B:51FE, same code, 1 operand(s) differ. E1: td1.ccm portrait i into sprite slot 0, drawn on the transmission panel; restores td.shp slot 0",LIKELY,M1-09
+0C5D:52E4,func,UI_DrawCommPortraitB,,"= E1 file0001:0E8B:530B, same code, 1 operand(s) differ. E1: second transmission portrait (same as UI_DrawCommPortraitA)",LIKELY,M1-09
+0C5D:540E,func,UI_CommScreen,,"= E1 file0001:0E8B:5435, changed (similarity 0.97). E1: F6 transmission: td.cmm panel, portraits, message lines",LIKELY,M1-09
+0C5D:568F,func,Sim_EndSequenceStep,,"= E1 file0001:0E8B:56ED, changed (similarity 1.00). E1: per tick while g_MissionOver: end-sequence explosions and g_EndTicks",LIKELY,M1-09
+0C5D:6149,func,Msn_Setup,,"= E1 file0001:0E8B:60D8, changed (similarity 0.35). E1: per-mission set-up: objective text into VGA row 735, mission-specific ship state; also: per-mission overrides at flight start: player class...",HYPOTHESIS,M1-09
+0C5D:6E02,func,UI_FlightHelp,,"= E1 file0001:0E8B:6EDF, identical. E1: td.hlp pages in flight",LIKELY,M1-09
+0C5D:7337,func,UI_ShipLibrary,,"= E1 file0001:0E8B:7374, changed (similarity 0.87). E1: ship library: td.shp sprites 0..8 and class text; also: ship class chart with sprites and stat lines (UI_ShipRecognitionChart)",LIKELY,M1-09
+0C5D:7916,func,UI_FlightMenu,,"= E1 file0001:0E8B:794C, changed (similarity 0.95). E1: in-flight computer menu from td.men bytes 0..15999 at (80,50); also: Esc menu in flight (td.men); may set g_MissionAborted",LIKELY,M1-09
+0C5D:7FD0,func,UI_HudTickerAndIndicator,,"= E1 file0001:0E8B:7FDF, changed (similarity 0.90). E1: called from UI_DrawInstruments each tick: (1) on an edge alert (DS:1E2E) posts the leave-jurisdiction message to the ticker (other text in mi...",LIKELY,M1-09
+0C5D:8099,func,UI_CommViewer,,"= E1 file0001:0E8B:80D3, changed (similarity 0.58). E1: F6 comm viewer (modal; td.cmm)",HYPOTHESIS,M1-09
+0C5D:81C1,func,UI_DrawGuidanceLine,,"= E1 file0001:0E8B:82DD, changed (similarity 0.97). E1: guidance line to the current target (ArcTan; Sqrt)",HYPOTHESIS,M1-09
+0C5D:8DD7,func,UI_DrawInstruments,,"= E1 file0001:0E8B:8E87, identical. E1: per tick: armour and shield gauges; radar; guidance; jurisdiction check",LIKELY,M1-09
+0C5D:959E,func,Msn_E3TimedEvents,,"new: per-tick timed events of flights 5, 10, 12, 14, 16, 18, 21 (episode-deltas.md 4)",CONFIRMED,M1-09
+0C5D:9A99,func,UI_ShipSwitchScreen,,"= E1 file0001:0E8B:A714, changed (similarity 1.00). E1: F5 ship-switch screen in flight (not in mission 14; tick-order step 29); earlier misnamed Inp_RestoreKeyboard",LIKELY,M1-09
+0C5D:A28E,func,UI_JoystickCalibration,,"= E1 file0001:0E8B:AF1F, identical. E1: td.joy icon at (140,70) and calibration loop; also: joystick calibration screen at start-up (Inp_CalibrateJoystick)",LIKELY,M1-09
+0C5D:A55B,func,Gfx_HitFlashStep,,new near procedure: copy of the E1 inline hit-flash palette block file0001:0E8B:DA6B..DE29 (episode-deltas.md 4),CONFIRMED,M1-09
+0C5D:A9CC,func,Sim_FlyMission,,"= E1 file0001:0E8B:B880, changed (similarity 0.78). E1: one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-09
+0C5D:BB20,label,Sim_TickTop,,"= E1 file0001:0E8B:CC7F, aligned instruction in changed 0E8B:B880. E1: top of the in-flight tick loop (back edge at 0E8B:F842)",LIKELY,M1-09
+0C5D:CC9E,label,Sim_TickLimiter,,"= E1 file0001:0E8B:E05C, aligned instruction in changed 0E8B:B880. E1: busy-waits on DOS time until > 4 hundredths past the previous tick",LIKELY,M1-09
+0C5D:CD59,label,Sim_TickAfterWait,,"= E1 file0001:0E8B:E117, aligned instruction in changed 0E8B:B880. E1: first instruction after the tick wait",LIKELY,M1-09
+0C5D:DA99,label,Sim_FlyMission_Split,,"inside Sim_FlyMission (0C5D:A9CC..EC03); Ghidra splits the body here, not a routine",CONFIRMED,M1-09
+0C5D:EC06,func,Unit0E8B_Init,,"= E1 file0001:0E8B:F9E7, identical. E1: unit init part (7th in chain)",CONFIRMED,M1-09
+1B1E:0000,func,Snd_Int1CHandler,,"= E1 file0001:1E2A:0000, identical. E1: INT 1Ch (BIOS user tick) handler installed by 1E2A:06C6",HYPOTHESIS,M1-09
+1B1E:006A,func,Snd_PlayEffect,,"= E1 file0001:1E2A:006A, same code, 1 operand(s) differ. E1: (Id, SrcX, SrcY, ViewX, ViewY, Device): distance, priority, SB or PC-speaker output (see spec audio/sfx-policy)",LIKELY,M1-09
+1B1E:06C6,func,Snd_InstallTick,,"= E1 file0001:1E2A:06C6, identical. E1: saves INT 1Ch to DS:1E34 and installs 1E2A:0000",LIKELY,M1-09
+1B1E:0810,func,Snd_FreeEffects,,"= E1 file0001:1E2A:0810, identical. E1: (Device): unhooks INT 1Ch and frees the VOC buffers",LIKELY,M1-09
+1BB3:0000,func,Inp_JoystickAvailable,,"= E1 file0001:1EBF:0000, identical. E1: returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead",HYPOTHESIS,M1-09
+1BB3:0026,func,Inp_JoystickRead,,"= E1 file0001:1EBF:0026, identical. E1: port 201h trigger and timing loop for axes and buttons (all joystick port I/O)",LIKELY,M1-09
+1BB3:01ED,func,Inp_WaitKeyOrButton,,"E1 file0001:051A:1A40 moved into the joystick unit, same logic; called by Dlg_PlayScene",CONFIRMED,M1-09
+1BD8:4122,func,Unit1EDE_Init,,"= E1 file0001:1EDE:5247, identical. E1: unit init part (6th in chain)",CONFIRMED,M1-09
+1FEB:0A7F,func,Msn_UpdateA,,"= E1 file0001:2404:1426, changed (similarity 0.23). E1: per tick: mission triggers and objective messages (part A)",HYPOTHESIS,M1-09
+1FEB:19AD,func,Msn_UpdateB,,"= E1 file0001:2404:3521, changed (similarity 0.14). E1: per tick: mission triggers and objective messages (part B)",HYPOTHESIS,M1-09
+2215:0C35,func,Unit2A15_Init,,"= E1 file0001:2A15:220F, identical. E1: unit init part (4th in chain)",CONFIRMED,M1-09
+22DA:0000,func,WORX_CallDriver,,"= E1 file0001:2C37:0000, identical. E1: Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h",LIKELY,M1-09
+22DA:0055,func,WORX_Shutdown,,"= E1 file0001:2C37:0055, identical. E1: removes the INT 08h/63h hooks (stop VOC and music, PIT 18.2 Hz)",LIKELY,M1-09
+22DA:0066,func,WORX_ReadToBuffer,,"= E1 file0001:2C37:0066, identical. E1: (Seg, Ofs, Size): fn 18h, read from the open source",LIKELY,M1-09
+22DA:009F,func,WORX_FileSize,,"= E1 file0001:2C37:009F, identical. E1: (Name): LongInt; fn 17h, open and return size (-1 on failure)",LIKELY,M1-09
+22DA:010A,func,WORX_LoadSfx,,"= E1 file0001:2C37:010A, identical. E1: (Name): Pointer; load a whole file into a new heap block, size to DS:3948 (used for VOCs)",CONFIRMED,M1-09
+22DA:01AB,func,WORX_SetVoiceVolume,,"= E1 file0001:2C37:01AB, identical. E1: (Left, Right): fn 21h, SB Pro mixer reg 04h",CONFIRMED,M1-09
+22DA:01E2,func,WORX_SetFmVolume,,"= E1 file0001:2C37:01E2, identical. E1: (Left, Right): fn 22h, SB Pro mixer reg 26h",CONFIRMED,M1-09
+22DA:0219,func,WORX_DetectAdLib,,"= E1 file0001:2C37:0219, identical. E1: fn 23h: OPL timer detection",LIKELY,M1-09
+22DA:0238,func,WORX_SbShutdown,,"= E1 file0001:2C37:0238, identical. E1: fn 04h",LIKELY,M1-09
+22DA:0254,func,WORX_SbInit,,"= E1 file0001:2C37:0254, identical. E1: fn 01h: returns IRQ or -1 (no SB)",LIKELY,M1-09
+22DA:0273,func,WORX_LoadMusic,,"= E1 file0001:2C37:0273, identical. E1: (Name): Pointer; as WORX_LoadSfx, size to DS:3946 (used for CMFs)",CONFIRMED,M1-09
+22DA:031E,func,WORX_PlayVoc,,"= E1 file0001:2C37:031E, identical. E1: (P: Pointer): fn 06h; stops the current digital sound first",CONFIRMED,M1-09
+22DA:034B,func,WORX_PlayCmf,,"= E1 file0001:2C37:034B, identical. E1: (P: Pointer): fn 1Eh",CONFIRMED,M1-09
+22DA:0378,func,WORX_SetMusicLoop,,"= E1 file0001:2C37:0378, identical. E1: (On): fn 1Dh",CONFIRMED,M1-09
+22DA:039C,func,WORX_Init,,"= E1 file0001:2C37:039C, identical. E1: installs INT 63h/08h then fn 26h",CONFIRMED,M1-09
+22DA:03BD,func,WORX_StopMusic,,"= E1 file0001:2C37:03BD, identical. E1: fn 0Dh",CONFIRMED,M1-09
+22DA:03D3,func,WORX_VocPlaying,,"= E1 file0001:2C37:03D3, identical. E1: fn 08h: digital sound active",CONFIRMED,M1-09
+22DA:03F2,func,WORX_SetTimerStreaming,,"= E1 file0001:2C37:03F2, identical. E1: (On): fn 3Eh; timer refills the VOC DMA buffer",CONFIRMED,M1-09
+22DA:2428,data,k_WorxFnTable,u16[80],"= E1 file0001:2C37:2428, identical unit, same offset. E1: INT 63h function table (handler offsets by AH)",CONFIRMED,M1-09
+22DA:291B,data,g_WorxInstrBank,,"= E1 file0001:2C37:291B, identical unit, same offset. E1: FM instrument bank, 11 bytes per program (default bank preloaded)",CONFIRMED,M1-09
+22DA:2E9B,data,k_WorxGmDrumBits,u8[40],"= E1 file0001:2C37:2E9B, identical unit, same offset. E1: BD drum bit per GM note 35..74 (channel 9, rhythm mode)",CONFIRMED,M1-09
+22DA:2EC3,data,k_WorxRhythmInit,,"= E1 file0001:2C37:2EC3, identical unit, same offset. E1: (value, register) byte pairs written when rhythm mode turns on; FFFFh ends",CONFIRMED,M1-09
+22DA:2F56,data,k_WorxFnum,u16[12],"= E1 file0001:2C37:2F56, identical unit, same offset. E1: F-numbers C# .. C (16Bh .. 2AEh)",CONFIRMED,M1-09
+22DA:2FBF,data,g_WorxChanVolume,u8[16],"= E1 file0001:2C37:2FBF, identical unit, same offset. E1: channel volumes (controller 7); initial 7Fh; not reset per song",CONFIRMED,M1-09
+22DA:31AB,data,k_WorxNoteOffset,u8,"= E1 file0001:2C37:31AB, identical unit, same offset. E1: F4h = -12 added to melodic notes",CONFIRMED,M1-09
+22DA:31DC,data,k_WorxDspCmd,u8[8],"= E1 file0001:2C37:31DC, identical unit, same offset. E1: DSP play command by codec: 14 75 77 17 (with reference) 14 74 76 16",CONFIRMED,M1-09
+22DA:3285,func,WORX_InstallInterrupts,,"= E1 file0001:2C37:3285, identical. E1: hooks INT 63h (driver API, 2C37:34EE) and INT 08h (2C37:4558); PIT divisor 0952h",CONFIRMED,M1-09
+22DA:336E,func,WORX_RemoveInterrupts,,"= E1 file0001:2C37:336E, identical. E1: restores INT 08h and INT 63h",CONFIRMED,M1-09
+22DA:34EE,label,WORX_Int63Handler,,"= E1 file0001:2C37:34EE, identical unit, same offset. E1: WORX driver API (software interrupt 63h)",LIKELY,M1-09
+22DA:3BD9,func,WORX_FmWriteInstrument,,"= E1 file0001:2C37:3BD9, identical. E1: BH = voice, BL = program: 11 register writes",CONFIRMED,M1-09
+22DA:3CAF,func,WORX_OplWrite,,"= E1 file0001:2C37:3CAF, identical. E1: AL = register, AH = value (port 388h/389h with delays)",CONFIRMED,M1-09
+22DA:3E55,func,WORX_MidiDispatch,,"= E1 file0001:2C37:3E55, identical. E1: AL = status, BH/BL = data: notes, controllers, program change",CONFIRMED,M1-09
+22DA:3F63,func,WORX_FmNote,,"= E1 file0001:2C37:3F63, identical. E1: note on/off: drums toggle BD bits, voice allocation",CONFIRMED,M1-09
+22DA:40C1,func,WORX_FmNoteOutput,,"= E1 file0001:2C37:40C1, identical. E1: A0/B0 frequency, key bit, carrier level from channel volume",CONFIRMED,M1-09
+22DA:41E5,func,WORX_FmReset,,"= E1 file0001:2C37:41E5, identical. E1: song-start init: 00h, BDh, instrument 0 to all voices, voice tables",CONFIRMED,M1-09
+22DA:427F,func,WORX_FnStopMusic,,"= E1 file0001:2C37:427F, identical. E1: fn 0Dh handler",CONFIRMED,M1-09
+22DA:4558,func,WORX_TimerIsr,,"= E1 file0001:2C37:4558, identical. E1: INT 08h: music tick if active; chains BIOS every N fast ticks; else EOI",CONFIRMED,M1-09
+22DA:4791,func,WORX_FnPlayCmf,,"= E1 file0001:2C37:4791, identical. E1: fn 1Eh handler; also the loop restart",CONFIRMED,M1-09
+22DA:487E,func,WORX_MusicTick,,"= E1 file0001:2C37:487E, identical. E1: one music tick (called by the timer ISR)",CONFIRMED,M1-09
+22DA:4A72,func,WORX_SetTimerRate,,"= E1 file0001:2C37:4A72, identical. E1: AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick",CONFIRMED,M1-09
+22DA:4CF9,func,WORX_DspStart,,"= E1 file0001:2C37:4CF9, identical. E1: DSP 40h + time constant, DMA ch1 auto-init 4 KB, play command from k_WorxDspCmd",CONFIRMED,M1-09
+22DA:5E47,func,WORX_DspWrite,,"= E1 file0001:2C37:5E47, identical. E1: AL to the DSP write port (waits for ready)",CONFIRMED,M1-09
+22DA:62D5,func,WORX_FnPlayVoc,,"= E1 file0001:2C37:62D5, identical. E1: fn 06h handler: stop current; parse VOC blocks from memory",CONFIRMED,M1-09
+2935:0000,func,AI_ResetShipRecords,void far(void),"= E1 file0001:3292:0000, identical. E1: flight setup (0E8B:B8BA): calls AI_ClearShipRecords",CONFIRMED,M1-09
+2935:0011,func,AI_UpdateShips,void far(Flight: Byte),"= E1 file0001:3292:0011, changed (similarity 0.98). E1: per tick (tick-order step 10): shield regen and removal; per live slot: waypoint arrival -> AI_ChooseWaypoint; turn; thrust toward the waypoi...",LIKELY,M1-09
+2B72:0000,func,AI_ClearShipRecords,void far(void),"= E1 file0001:34E6:0000, identical. E1: clears the AI fields of the 20 ship records and path steps 1..255; record +419h := (Random(2) = 1) per slot 1..20 (detour hand); unit init and flight start",CONFIRMED,M1-09
+2B72:02AD,func,AI_BlockSolid,Boolean near(Slot: Byte; X: Byte; Y: Byte),"= E1 file0001:34E6:02AD, identical. E1: true if any of the map cells (X..X+1, Y..Y+1) has tile attribute != 2; Slot unused",CONFIRMED,M1-09
+2B72:0396,func,AI_TargetPosition,void near(Slot: Byte),"= E1 file0001:34E6:0396, identical. E1: record +420h/+421h := position selected by +41Fh (0 player tile, FFh return point +426h, C8h fixed point +424h, n = waypoint of slot n)",CONFIRMED,M1-09
+2B72:04EC,func,AI_FixedPointReached,void near(Slot: Byte),"= E1 file0001:34E6:04EC, identical. E1: waypoint = (+424h,+425h) -> +423h := 1, +000h := 0; only used by the dead +422h branch",LIKELY,M1-09
+2B72:0564,func,AI_CheckInLine,void near(Slot: Byte),"= E1 file0001:34E6:0564, identical. E1: target within DS:976B (3) tiles of the waypoint and in the same row or column -> +41Ch := +3FCh := 1, else both 0 (Real48 Sqrt)",CONFIRMED,M1-09
+2B72:06A1,func,AI_CheckOutOfRange,void near(Slot: Byte),"= E1 file0001:34E6:06A1, identical. E1: +41Dh := (distance waypoint-target > DS:976B + 8)",CONFIRMED,M1-09
+2B72:0776,func,AI_NearFlag,void near(Slot: Byte),"= E1 file0001:34E6:0776, identical. E1: +414h := (distance < +413h) and +428h = 0; +413h is always 0 so +414h stays 0 (no reader)",CONFIRMED,M1-09
+2B72:0869,func,AI_SetStepDirection,void near(Slot: Byte),"= E1 file0001:34E6:0869, identical. E1: +3F5h := 4/6/8/2 from the last waypoint step (vertical wins); unchanged if the waypoint did not move",CONFIRMED,M1-09
+2B72:09B6,func,AI_RequestFire,void near(Slot: Byte; Dir: Integer),"= E1 file0001:34E6:09B6, identical. E1: g_FireRequest[slot, Dir] := 1 (Dir 2/4/6/8); +416h += +3F6h",CONFIRMED,M1-09
+2B72:0A5D,func,AI_FireDecision,void near(Slot: Byte),"= E1 file0001:34E6:0A5D, identical. E1: Random real r; if 5 x +3F6h > 100r + 1 and target within 11 tiles: request fire along the row/column toward the target (line-of-fire test only scans increasi...",CONFIRMED,M1-09
+2B72:0DCE,func,AI_AttackBudget,void near(Slot: Byte),"= E1 file0001:34E6:0DCE, identical. E1: if 15 x +3F6h < +416h: disengage (+416h := 0, +41Ah := 0, +41Bh := 1, +428h := 1, +41Fh := FFh) else +416h += 1",CONFIRMED,M1-09
+2B72:0E84,func,AI_DetourCount,void near(Slot: Byte),"= E1 file0001:34E6:0E84, identical. E1: +41Ah < 4: +41Ah += 1, else +41Ah := 0 and +41Bh := 1",CONFIRMED,M1-09
+2B72:0EEE,func,AI_TurnRightStep,,"= E1 file0001:34E6:0EEE, identical. E1: wall follower: +3F5h turns clockwise (6->2->4->8->6) and one step in the new direction; sets both done flags",CONFIRMED,M1-09
+2B72:0F9F,func,AI_TurnLeftStep,,"= E1 file0001:34E6:0F9F, identical. E1: wall follower: +3F5h turns counter-clockwise (6->8->4->2->6) and one step in the new direction",CONFIRMED,M1-09
+2B72:1050,func,AI_FollowRightOrient,void near(Slot: Byte),"= E1 file0001:34E6:1050, identical. E1: right-hand follower: re-orient +3F5h before the step (eight cell tests)",CONFIRMED,M1-09
+2B72:12C2,func,AI_FollowLeftOrient,void near(Slot: Byte),"= E1 file0001:34E6:12C2, identical. E1: left-hand follower: re-orient +3F5h before the step",CONFIRMED,M1-09
+2B72:153E,func,AI_FollowRelease,void near(Slot: Byte),"= E1 file0001:34E6:153E, identical. E1: after a follower step: clears the blocked-axis flags +005h/+006h when the side toward the target is open; +418h (unused) := either flag set",CONFIRMED,M1-09
+2B72:17CC,func,AI_FollowRight,,"= E1 file0001:34E6:17CC, identical. E1: one right-hand wall-follower step into var DX/DY (facing south it tests the cell ahead where the others test the right-hand cell)",CONFIRMED,M1-09
+2B72:1DBF,func,AI_FollowLeft,,"= E1 file0001:34E6:1DBF, identical. E1: one left-hand wall-follower step into var DX/DY",CONFIRMED,M1-09
+2B72:23B2,func,AI_Detour,,"= E1 file0001:34E6:23B2, identical. E1: hand := right if (+419h=1 and +428h=0) or (+419h=0 and +428h=1), else left; one follower step; +41Bh := 0; AI_DetourCount",CONFIRMED,M1-09
+2B72:2448,func,AI_AttackStep,void near(Slot: Byte),"= E1 file0001:34E6:2448, identical. E1: attack mode: in-line check, budget, fire decision, then one waypoint step toward the target unless in line (detour when an axis is blocked)",CONFIRMED,M1-09
+2B72:280B,func,AI_ReturnStep,void near(Slot: Byte),"= E1 file0001:34E6:280B, identical. E1: return mode: clears +415h; at the return point back to path following (+428h := 0, +41Fh := 0), else one step toward it",CONFIRMED,M1-09
+2B72:2C0D,func,AI_FixedPointStep,void near(Slot: Byte),"= E1 file0001:34E6:2C0D, identical. E1: mode +422h (never set in file0001): steps toward (+424h,+425h)",LIKELY,M1-09
+2B72:2FAF,func,AI_PathStep,void near(Slot: Byte),"= E1 file0001:34E6:2FAF, identical. E1: path following: waypoint moves one tile (per axis) toward path step cursor+1; cursor advances on arrival and wraps to 1 when the following step has x = 0",CONFIRMED,M1-09
+2B72:3232,func,AI_OrderAttack,void far(Slot: Byte; Target: Byte),"= E1 file0001:34E6:3232, identical. E1: called by mission logic (2404): +41Fh := Target, +415h := 1, +41Bh := 1",CONFIRMED,M1-09
+2B72:3275,func,AI_HoldSchedule,void near(Slot: Byte),"= E1 file0001:34E6:3275, identical. E1: after an in-line hold (+3FCh = 1): counts +412h, then breaks off to the return point (+428h := 1, +41Fh := FFh, +3FCh := 0, +415h := 0)",CONFIRMED,M1-09
+2B72:3449,func,AI_ChooseWaypoint,void far(Slot: Byte),"= E1 file0001:34E6:3449, identical. E1: AI state machine run on waypoint arrival (and for every slot at flight start): target position; hold schedule; path / attack / detour / return steps; step di...",CONFIRMED,M1-09
+2B72:3836,func,Unit34E6_Init,,"= E1 file0001:34E6:3836, same code, 1 operand(s) differ. E1: unit init part (3rd in chain)",LIKELY,M1-09
+2EFA:0000,func,Gfx_HudRadarBlit,,"= E1 file0001:386E:0000, identical. E1: copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M1-09
+2EFA:012B,func,Gfx_HudFacFrame,,"= E1 file0001:386E:012B, identical. E1: (frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M1-09
+2EFA:024A,func,Gfx_DrawSprite32,,"= E1 file0001:386E:024A, identical. E1: draws the 32x32 sprite in slot 0 of the sprite bank at (x,y) of a page",HYPOTHESIS,M1-09
+2EFA:189C,func,Gfx_ClearPage,,"= E1 file0001:386E:189C, identical. E1: (page,widthBytes,x) clears 232 rows of flight page 0 (0B00h) or 1 (5AC0h)",LIKELY,M1-09
+2EFA:1901,func,Gfx_SetDacEntry,,"= E1 file0001:386E:1901, identical. E1: (index,r,g,b) one DAC write via 3C8h/3C9h",CONFIRMED,M1-09
+2EFA:191C,func,Gfx_DrawTile,,"= E1 file0001:386E:191C, identical. E1: (page,tile,row,col) latched copy of tile from AA80h+256*tile to page + row*0B00h + col*8",CONFIRMED,M1-09
+2EFA:1991,func,Gfx_SetLogicalWidth,,"= E1 file0001:386E:1991, identical. E1: CRTC 13h (offset) write",LIKELY,M1-09
+2EFA:19A0,func,Gfx_SetSplitLine,,"= E1 file0001:386E:19A0, identical. E1: waits for a full vertical retrace, then programs line compare (CRTC 18h/07h/09h)",LIKELY,M1-09
+2EFA:19EF,func,Gfx_InitUnchained,,"= E1 file0001:386E:19EF, identical. E1: INT 10h mode 13h, then chain-4 off (SEQ 04h), CRTC 14h/17h: planar 320x200",CONFIRMED,M1-09
+2EFA:1A6C,func,Gfx_FlipPage,,"= E1 file0001:386E:1A6C, identical. E1: waits display-enable low, sets CRTC start address 0Ch/0Dh, then waits for vertical retrace",CONFIRMED,M1-09
+2EFA:1A97,func,Gfx_PutPixel,,"= E1 file0001:386E:1A97, identical. E1: (x,y,colour) plane x&3, address y*88 + x/4 (352-pixel rows)",CONFIRMED,M1-09
+30A8:000D,func,Crt_Init,,"= E1 file0001:3A1C:000D, identical. E1: Crt unit init (2nd in chain): video setup, AssignCrt Input/Output, Delay calibration",CONFIRMED,M1-09
+30A8:003B,func,Crt_InitVideo,,"= E1 file0001:3A1C:003B, identical. E1: reads BIOS video mode (INT 10h AH=0Fh) and sets up text state",LIKELY,M1-09
+30A8:00A3,func,Crt_SetVideoMode,,"= E1 file0001:3A1C:00A3, identical. E1: internal: set text mode via INT 10h AH=00h",HYPOTHESIS,M1-09
+30A8:00F0,func,Crt_GetScreenRows,,"= E1 file0001:3A1C:00F0, identical. E1: internal: INT 10h AX=1130h font info for row count",HYPOTHESIS,M1-09
+30A8:0138,func,Crt_CtrlBreakIsr,,"= E1 file0001:3A1C:0138, identical. E1: INT 1Bh handler: sets the break flag when CheckBreak is on",CONFIRMED,M1-09
+30A8:014E,func,Crt_CheckBreakFlag,,"= E1 file0001:3A1C:014E, identical. E1: internal: acts on a pending Ctrl-Break, flushes keyboard (INT 16h)",LIKELY,M1-09
+30A8:0177,func,Crt_TextMode,,"= E1 file0001:3A1C:0177, identical. E1: TextMode(Mode: Word)",LIKELY,M1-09
+30A8:01CC,func,Crt_ClrScr,,"= E1 file0001:3A1C:01CC, identical. E1: ClrScr: scroll window (INT 10h AX=0600h) and home cursor",LIKELY,M1-09
+30A8:021F,func,Crt_GotoXY,,"= E1 file0001:3A1C:021F, identical. E1: GotoXY(X, Y: Byte), window-relative",LIKELY,M1-09
+30A8:0263,func,Crt_TextColor,,"= E1 file0001:3A1C:0263, identical. E1: TextColor(Color: Byte)",LIKELY,M1-09
+30A8:027D,func,Crt_TextBackground,,"= E1 file0001:3A1C:027D, identical. E1: TextBackground(Color: Byte)",LIKELY,M1-09
+30A8:02A8,func,Crt_Delay,,"= E1 file0001:3A1C:02A8, identical. E1: Delay(MS: Word): busy loop of DelayCnt iterations per ms",CONFIRMED,M1-09
+30A8:02C6,func,Crt_DelayLoop,,"= E1 file0001:3A1C:02C6, identical. E1: internal busy loop shared with the calibration",LIKELY,M1-09
+30A8:02D4,func,Crt_Sound,,"= E1 file0001:3A1C:02D4, identical. E1: Sound(Hz: Word): PIT ch2 divisor 1234DDh/Hz, speaker on",CONFIRMED,M1-09
+30A8:0301,func,Crt_NoSound,,"= E1 file0001:3A1C:0301, identical. E1: NoSound: speaker gate off (port 61h)",CONFIRMED,M1-09
+30A8:0308,func,Crt_KeyPressed,,"= E1 file0001:3A1C:0308, identical. E1: KeyPressed: Boolean (INT 16h AH=01h, or pending scan code)",CONFIRMED,M1-09
+30A8:031A,func,Crt_ReadKey,,"= E1 file0001:3A1C:031A, identical. E1: ReadKey: Char (INT 16h AH=00h; extended keys return #0 then scan code)",CONFIRMED,M1-09
+30A8:033C,func,Crt_AssignCrt,,"= E1 file0001:3A1C:033C, identical. E1: AssignCrt(var F: Text)",LIKELY,M1-09
+30A8:039F,func,Crt_TextDriver,,"= E1 file0001:3A1C:039F, identical. E1: Crt text-file driver (reached via TextRec function pointers)",HYPOTHESIS,M1-09
+30A8:0614,func,Crt_BiosVideo,,"= E1 file0001:3A1C:0614, identical. E1: internal: INT 10h wrapper preserving SI/DI/BP/ES",LIKELY,M1-09
+310A:0000,func,Dos_GetDate,,"= E1 file0001:3A7E:0000, identical. E1: GetDate (INT 21h AH=2Ah); unreferenced",LIKELY,M1-09
+310A:0022,func,Dos_SetDate,,"= E1 file0001:3A7E:0022, identical. E1: SetDate (INT 21h AH=2Bh); unreferenced",LIKELY,M1-09
+310A:0036,func,Dos_GetTime,,"= E1 file0001:3A7E:0036, identical. E1: GetTime(var Hour, Minute, Second, Sec100) (INT 21h AH=2Ch)",CONFIRMED,M1-09
+310A:005B,func,Dos_SetTime,,"= E1 file0001:3A7E:005B, identical. E1: SetTime (INT 21h AH=2Dh); unreferenced",LIKELY,M1-09
+310A:0072,func,Dos_GetIntVec,,"= E1 file0001:3A7E:0072, identical. E1: GetIntVec(IntNo; var Vector) (INT 21h AH=35h)",CONFIRMED,M1-09
+310A:008A,func,Dos_SetIntVec,,"= E1 file0001:3A7E:008A, identical. E1: SetIntVec(IntNo; Vector) (INT 21h AH=25h)",CONFIRMED,M1-09
+3114:0000,func,Unit3A92_StrLCopyLike,,"= E1 file0001:3A92:0000, identical. E1: only routine of a small library unit; copies (dest, src, maxlen); called once from main",HYPOTHESIS,M1-09
+311C:0000,func,BP_SystemInit,,"= E1 file0001:3A9A:0000, identical. E1: System init: DS:=DGROUP, PrefixSeg, heap and overlay pointers, saves and hooks vectors",CONFIRMED,M1-09
+311C:00B1,func,BP_DetectCpu,,"= E1 file0001:3A9A:00B1, identical. E1: internal: FLAGS tests to classify the CPU into Test8086",LIKELY,M1-09
+311C:010C,func,BP_DivZeroIsr,,"= E1 file0001:3A9A:010C, identical. E1: INT 00h handler tail: RunError 200 at the faulting address",LIKELY,M1-09
+311C:010F,func,BP_RunError,,"= E1 file0001:3A9A:010F, identical. E1: runtime error entry: AX = error code, caller address becomes ErrorAddr",LIKELY,M1-09
+311C:0116,func,BP_Halt,,"= E1 file0001:3A9A:0116, identical. E1: Halt(ExitCode in AX): ExitProc chain, restore vectors, error message, INT 21h AH=4Ch",CONFIRMED,M1-09
+311C:01F0,func,BP_PrintCsString,,"= E1 file0001:3A9A:01F0, identical. E1: internal: print zero-terminated CS string (runtime error text)",LIKELY,M1-09
+311C:0218,func,BP_PrintHexWord,,"= E1 file0001:3A9A:0218, identical. E1: internal: print AX as 4 hex digits",LIKELY,M1-09
+311C:0232,func,BP_PrintChar,,"= E1 file0001:3A9A:0232, identical. E1: internal: print AL via INT 21h AH=06h",LIKELY,M1-09
+311C:028A,func,BP_GetMem,,"= E1 file0001:3A9A:028A, identical. E1: GetMem: AX=size, returns pointer DX:AX; RunError 203 on failure",CONFIRMED,M1-09
+311C:029F,func,BP_FreeMem,,"= E1 file0001:3A9A:029F, identical. E1: FreeMem(P; Size)",CONFIRMED,M1-09
+311C:02B9,func,BP_Mark,,"= E1 file0001:3A9A:02B9, identical. E1: Mark(var P): stores HeapPtr",LIKELY,M1-09
+311C:02CB,func,BP_Release,,"= E1 file0001:3A9A:02CB, identical. E1: Release(var P): resets HeapPtr and FreeList",LIKELY,M1-09
+311C:02E7,func,BP_MaxAvail,,"= E1 file0001:3A9A:02E7, identical. E1: MaxAvail: LongInt",LIKELY,M1-09
+311C:0303,func,BP_MemAvail,,"= E1 file0001:3A9A:0303, identical. E1: MemAvail: LongInt",LIKELY,M1-09
+311C:0353,func,BP_HeapAlloc,,"= E1 file0001:3A9A:0353, identical. E1: internal heap allocator (free list then heap top)",HYPOTHESIS,M1-09
+311C:041E,func,BP_HeapFree,,"= E1 file0001:3A9A:041E, identical. E1: internal heap release with validity checks",HYPOTHESIS,M1-09
+311C:04ED,func,BP_IOResult,,"= E1 file0001:3A9A:04ED, identical. E1: IOResult: returns InOutRes and clears it",CONFIRMED,M1-09
+311C:04F4,func,BP_IOCheck,,"= E1 file0001:3A9A:04F4, identical. E1: {$I+} check after I/O: RunError(InOutRes) if non-zero",CONFIRMED,M1-09
+311C:0530,func,BP_StackCheck,,"= E1 file0001:3A9A:0530, identical. E1: {$S+} stack check: AX = frame size; RunError 202 on overflow",CONFIRMED,M1-09
+311C:0549,func,BP_AssignText,,"= E1 file0001:3A9A:0549, identical. E1: Assign(var T: Text; Name)",LIKELY,M1-09
+311C:05C7,func,BP_ResetText,,"= E1 file0001:3A9A:05C7, identical. E1: Reset(var T: Text) (mode fmInput D7B1h)",LIKELY,M1-09
+311C:05CC,func,BP_RewriteText,,"= E1 file0001:3A9A:05CC, identical. E1: Rewrite(var T: Text) (mode fmOutput D7B2h)",LIKELY,M1-09
+311C:05D4,func,BP_OpenText,,"= E1 file0001:3A9A:05D4, identical. E1: internal: common text open through the TextRec OpenFunc",LIKELY,M1-09
+311C:0621,func,BP_CloseText,,"= E1 file0001:3A9A:0621, identical. E1: Close(var T: Text)",HYPOTHESIS,M1-09
+311C:066E,func,BP_TextFileRead,,"= E1 file0001:3A9A:066E, identical. E1: text driver InOutFunc for input files (INT 21h AH=3Fh)",LIKELY,M1-09
+311C:069E,func,BP_TextFileWrite,,"= E1 file0001:3A9A:069E, identical. E1: text driver InOutFunc for output files (INT 21h AH=40h)",LIKELY,M1-09
+311C:06E3,func,BP_TextFileClose,,"= E1 file0001:3A9A:06E3, identical. E1: text driver CloseFunc (INT 21h AH=3Eh)",LIKELY,M1-09
+311C:0800,func,BP_TextReadOp,,"= E1 file0001:3A9A:0800, identical. E1: text read operation (Read/ReadLn family)",HYPOTHESIS,M1-09
+311C:0840,func,BP_TextWriteLn,,"= E1 file0001:3A9A:0840, same code, 1 operand(s) differ. E1: WriteLn end: writes CR LF from DS:0500",LIKELY,M1-09
+311C:0861,func,BP_TextWriteEnd,,"= E1 file0001:3A9A:0861, identical. E1: Write end: flush if needed",HYPOTHESIS,M1-09
+311C:0898,func,BP_TextReadLnEnd,,"= E1 file0001:3A9A:0898, identical. E1: ReadLn end",HYPOTHESIS,M1-09
+311C:0929,func,BP_TextWriteInt,,"= E1 file0001:3A9A:0929, identical. E1: Write(LongInt: width)",HYPOTHESIS,M1-09
+311C:0964,func,BP_TextWriteStr,,"= E1 file0001:3A9A:0964, identical. E1: Write(String: width)",LIKELY,M1-09
+311C:0991,func,BP_AssignFile,,"= E1 file0001:3A9A:0991, identical. E1: Assign(var F: File; Name) (untyped/typed file, mode fmClosed D7B0h)",CONFIRMED,M1-09
+311C:09CC,func,BP_ResetFile,,"= E1 file0001:3A9A:09CC, same code, 1 operand(s) differ. E1: Reset(var F; RecSize): INT 21h AH=3Dh with AL=FileMode",LIKELY,M1-09
+311C:09D5,func,BP_RewriteFile,,"= E1 file0001:3A9A:09D5, identical. E1: Rewrite(var F; RecSize): INT 21h AH=3Ch",CONFIRMED,M1-09
+311C:0A4D,func,BP_CloseFile,,"= E1 file0001:3A9A:0A4D, identical. E1: Close(var F) (INT 21h AH=3Eh; handles <=4 left open)",CONFIRMED,M1-09
+311C:0AB7,func,BP_BlockRead,,"= E1 file0001:3A9A:0AB7, identical. E1: BlockRead(var F; var Buf; Count; var Result) (AH=3Fh, error 100)",CONFIRMED,M1-09
+311C:0ABE,func,BP_BlockWrite,,"= E1 file0001:3A9A:0ABE, identical. E1: BlockWrite(var F; var Buf; Count; var Result) (AH=40h, error 101)",CONFIRMED,M1-09
+311C:0B1F,func,BP_SeekFile,,"= E1 file0001:3A9A:0B1F, identical. E1: Seek(var F; N: LongInt): N*RecSize via INT 21h AX=4200h",CONFIRMED,M1-09
+311C:0B4F,func,BP_ParamStr,,"= E1 file0001:3A9A:0B4F, identical. E1: ParamStr(Index): command-line word, or program path for 0 (needs DOS 3+)",LIKELY,M1-09
+311C:0BA5,func,BP_ParamScan,,"= E1 file0001:3A9A:0BA5, identical. E1: internal: walks the PSP command tail at PSP:80h",LIKELY,M1-09
+311C:0BD7,func,BP_Move,,"= E1 file0001:3A9A:0BD7, identical. E1: Move(var Src, Dst; Count): REP MOVSB forward",CONFIRMED,M1-09
+311C:0BEF,func,BP_LongMul,,"= E1 file0001:3A9A:0BEF, identical. E1: LongInt multiply DX:AX * BX:CX (386 path if Test8086>=2)",CONFIRMED,M1-09
+311C:0C2C,func,BP_LongDivMod,,"= E1 file0001:3A9A:0C2C, identical. E1: LongInt divide/modulo (386 path if Test8086>=2)",LIKELY,M1-09
+311C:0D04,func,BP_StrLoad,,"= E1 file0001:3A9A:0D04, identical. E1: copy a string to a temporary (expression evaluation)",LIKELY,M1-09
+311C:0D1E,func,BP_StrStore,,"= E1 file0001:3A9A:0D1E, identical. E1: string assignment Dst := Src truncated to MaxLen",CONFIRMED,M1-09
+311C:0D42,func,BP_StrCopy,,"= E1 file0001:3A9A:0D42, identical. E1: Copy(S, Index, Count)",LIKELY,M1-09
+311C:0D83,func,BP_StrConcat,,"= E1 file0001:3A9A:0D83, identical. E1: string concatenation into temporary",LIKELY,M1-09
+311C:0DAF,func,BP_StrPos,,"= E1 file0001:3A9A:0DAF, identical. E1: Pos(Substr, S); unreferenced",LIKELY,M1-09
+311C:0DF5,func,BP_StrCompare,,"= E1 file0001:3A9A:0DF5, identical. E1: string comparison, result in flags",CONFIRMED,M1-09
+311C:0E20,func,BP_CharToStr,,"= E1 file0001:3A9A:0E20, identical. E1: Char to one-character string",CONFIRMED,M1-09
+311C:0E4D,func,BP_StrInsert,,"= E1 file0001:3A9A:0E4D, identical. E1: Insert(Source; var S; Index); unreferenced",HYPOTHESIS,M1-09
+311C:0EAC,func,BP_StrDelete,,"= E1 file0001:3A9A:0EAC, identical. E1: Delete(var S; Index, Count); unreferenced",LIKELY,M1-09
+311C:0F1B,func,BP_TextOpenFunc,,"= E1 file0001:3A9A:0F1B, identical. E1: text driver OpenFunc: open/create by mode",HYPOTHESIS,M1-09
+311C:1002,func,BP_RealSubCore,,"= E1 file0001:3A9A:1002, identical. E1: Real48 subtract: negate operand 2 then add (falls into BP_RealAddCore)",HYPOTHESIS,M1-09
+311C:1006,func,BP_RealAddCore,,"= E1 file0001:3A9A:1006, identical. E1: Real48 add DX:BX:AX + DI:SI:CX, carry set on overflow",LIKELY,M1-09
+311C:10C9,func,BP_RealMulCore,,"= E1 file0001:3A9A:10C9, identical. E1: Real48 multiply DX:BX:AX * DI:SI:CX",LIKELY,M1-09
+311C:11CC,func,BP_RealDivCore,,"= E1 file0001:3A9A:11CC, identical. E1: Real48 divide DX:BX:AX / DI:SI:CX",LIKELY,M1-09
+311C:1243,func,BP_RealCmpCore,,"= E1 file0001:3A9A:1243, identical. E1: Real48 compare, result in flags",LIKELY,M1-09
+311C:125A,func,BP_RealCmpMagnitude,,"= E1 file0001:3A9A:125A, identical. E1: internal: same-sign compare: exponent, then high word, middle word, low byte",CONFIRMED,M1-09
+311C:126D,func,BP_RealFromLongCore,,"= E1 file0001:3A9A:126D, identical. E1: LongInt DX:AX to Real48 (exact)",CONFIRMED,M1-09
+311C:12A9,func,BP_RealToLongCore,,"= E1 file0001:3A9A:12A9, identical. E1: Real48 to LongInt, CH=0 truncate / CH=1 round half away from zero; carry on overflow",CONFIRMED,M1-09
+311C:1317,func,BP_RealAdd,,"= E1 file0001:3A9A:1317, identical. E1: Real48 + (RunError 205 on overflow)",CONFIRMED,M1-09
+311C:131D,label,BP_RealSub,,"= E1 file0001:3A9A:131D, identical unit, same offset. E1: Real48 - entry; unreferenced in file0001",LIKELY,M1-09
+311C:1323,label,BP_RealSqr,,"= E1 file0001:3A9A:1323, identical unit, same offset. E1: Sqr(Real) entry (copies operand, multiplies); unreferenced",HYPOTHESIS,M1-09
+311C:1329,func,BP_RealMul,,"= E1 file0001:3A9A:1329, identical. E1: Real48 * (RunError 205 on overflow)",CONFIRMED,M1-09
+311C:132F,func,BP_RealDiv,,"= E1 file0001:3A9A:132F, identical. E1: Real48 / (RunError 200 if divisor zero, 205 on overflow)",CONFIRMED,M1-09
+311C:1339,func,BP_RealCmp,,"= E1 file0001:3A9A:1339, identical. E1: Real48 comparison, flags",CONFIRMED,M1-09
+311C:133D,func,BP_RealFromLong,,"= E1 file0001:3A9A:133D, identical. E1: LongInt to Real48 conversion",CONFIRMED,M1-09
+311C:1341,label,BP_RealTrunc,,"= E1 file0001:3A9A:1341, identical unit, same offset. E1: Trunc(Real): LongInt entry (CH=0); unreferenced in file0001",CONFIRMED,M1-09
+311C:1349,func,BP_RealRound,,"= E1 file0001:3A9A:1349, identical. E1: Round(Real): LongInt (CH=1); RunError 207 on overflow",CONFIRMED,M1-09
+311C:1363,func,BP_RealAddKeep,,"= E1 file0001:3A9A:1363, identical. E1: internal: Real48 add that preserves the second operand (CX/SI/DI)",CONFIRMED,M1-09
+311C:136D,func,BP_RealSubKeep,,"= E1 file0001:3A9A:136D, identical. E1: internal: Real48 subtract that preserves the second operand",CONFIRMED,M1-09
+311C:1377,func,BP_RealMulKeep,,"= E1 file0001:3A9A:1377, identical. E1: internal: Real48 multiply that preserves the second operand",CONFIRMED,M1-09
+311C:1381,func,BP_RealDivKeep,,"= E1 file0001:3A9A:1381, identical. E1: internal: Real48 divide that preserves the second operand (no zero check)",CONFIRMED,M1-09
+311C:138B,func,BP_RealInt,,"= E1 file0001:3A9A:138B, identical. E1: Int(Real): clears fraction bits",LIKELY,M1-09
+311C:13DC,func,BP_RealFrac,,"= E1 file0001:3A9A:13DC, identical. E1: Frac(Real) = X - Int(X)",LIKELY,M1-09
+311C:13F0,func,BP_RealSqrt,,"= E1 file0001:3A9A:13F0, identical. E1: Sqrt(Real): Newton iteration; RunError 207 if negative",LIKELY,M1-09
+311C:144F,func,BP_RealCos,,"= E1 file0001:3A9A:144F, identical. E1: Cos(X) computed as Sin(pi/2 - X)",LIKELY,M1-09
+311C:1462,func,BP_RealSin,,"= E1 file0001:3A9A:1462, identical. E1: Sin(X): reduce by 2*pi, polynomial",LIKELY,M1-09
+311C:14C3,data,k_RealTrigConsts,,"= E1 file0001:3A9A:14C3, identical unit, same offset. E1: Real48 constant/coefficient table used by Sin/ArcTan",HYPOTHESIS,M1-09
+311C:14ED,func,BP_RealLn,,"= E1 file0001:3A9A:14ED, identical. E1: Ln(Real): RunError 207 if x <= 0; not called by game code",LIKELY,M1-09
+311C:1572,data,k_RealLnCoefs,real48[6],"= E1 file0001:3A9A:1572, identical unit, same offset. E1: odd-series coefficients used by Ln",LIKELY,M1-09
+311C:1596,func,BP_RealExp,,"= E1 file0001:3A9A:1596, identical. E1: Exp(Real); not called by game code",LIKELY,M1-09
+311C:1609,data,k_RealExpCoefs,real48[8],"= E1 file0001:3A9A:1609, identical unit, same offset. E1: polynomial coefficients used by Exp",HYPOTHESIS,M1-09
+311C:1639,func,BP_RealArcTan,,"= E1 file0001:3A9A:1639, identical. E1: ArcTan(X): |X|>1 reduced via 1/X, polynomial",LIKELY,M1-09
+311C:171A,data,k_RealAtanTable,real48[9],"= E1 file0001:3A9A:171A, identical unit, same offset. E1: ArcTan reduction rows (upper bound, tangent, angle) x3; see spec core/real48",CONFIRMED,M1-09
+311C:174A,data,k_RealAtanCoefs,real48[5],"= E1 file0001:3A9A:174A, identical unit, same offset. E1: ArcTan odd-polynomial coefficients (-1/11 .. -1/3)",CONFIRMED,M1-09
+311C:1768,func,BP_RealAtanPoly,,"= E1 file0001:3A9A:1768, identical. E1: x * P(x*x) with the 5 ArcTan coefficients (enters BP_RealPolyOdd)",CONFIRMED,M1-09
+311C:176E,func,BP_RealPolyOdd,,"= E1 file0001:3A9A:176E, identical. E1: internal: odd polynomial in X (X * P(X*X)) over a CS coefficient table",HYPOTHESIS,M1-09
+311C:1787,func,BP_RealPolyEval,,"= E1 file0001:3A9A:1787, identical. E1: internal: Horner evaluation over a CS table of Real48 coefficients",HYPOTHESIS,M1-09
+311C:17D6,func,BP_RandomInt,,"= E1 file0001:3A9A:17D6, identical. E1: Random(Range: Word): Word = (new RandSeed * Range) shr 32",CONFIRMED,M1-09
+311C:17F3,func,BP_RandomReal,,"= E1 file0001:3A9A:17F3, identical. E1: Random: Real = new RandSeed / 2^32 as Real48",CONFIRMED,M1-09
+311C:1833,func,BP_RandNext,,"= E1 file0001:3A9A:1833, identical. E1: RandSeed := RandSeed * 08088405h + 1 (mod 2^32); returns it in DX:AX",CONFIRMED,M1-09
+311C:1869,data,k_RandFactorLow,u16,"= E1 file0001:3A9A:1869, identical unit, same offset. E1: low word 8405h of the LCG multiplier, read CS-relative",CONFIRMED,M1-09
+311C:186B,label,BP_Randomize,,"= E1 file0001:3A9A:186B, identical unit, same offset. E1: Randomize: RandSeed := DOS time CX:DX; never called in file0001",CONFIRMED,M1-09
+311C:1878,func,BP_LongToStrCore,,"= E1 file0001:3A9A:1878, identical. E1: internal: LongInt to decimal digits",LIKELY,M1-09
+311C:18B4,func,BP_StrToLongCore,,"= E1 file0001:3A9A:18B4, identical. E1: internal: parse optional sign and digits (Val)",LIKELY,M1-09
+311C:195B,func,BP_StrLong,,"= E1 file0001:3A9A:195B, identical. E1: Str(L: Width, S)",LIKELY,M1-09
+311C:19A6,func,BP_ValLong,,"= E1 file0001:3A9A:19A6, identical. E1: Val(S, var L, var Code); unreferenced",HYPOTHESIS,M1-09
+311C:19D7,func,BP_FilePos,,"= E1 file0001:3A9A:19D7, identical. E1: FilePos(var F) in records (returns DX:AX from 3A9A:1A1E); corrected by RE-3",CONFIRMED,M1-09
+311C:19EE,func,BP_FileSize,,"= E1 file0001:3A9A:19EE, identical. E1: FileSize(var F) in records (returns BX:CX from 3A9A:1A1E); corrected by RE-3",CONFIRMED,M1-09
+311C:1A1E,func,BP_FileQueryPos,,"= E1 file0001:3A9A:1A1E, identical. E1: internal: returns position in DX:AX and size in BX:CX (seeks back to the position)",CONFIRMED,M1-09
+311C:1A63,func,BP_UpCase,,"= E1 file0001:3A9A:1A63, identical. E1: UpCase(Ch): a..z to A..Z only",CONFIRMED,M1-09
+311C:1A76,func,BP_ClearBss,,"= E1 file0001:3A9A:1A76, same code, 1 operand(s) differ. E1: internal: zero DS:0502..9DF1 (uninitialised globals) at start-up",LIKELY,M1-09
+32C5:0264,data,k_ExitScreenText,u8[262],new in E2/E3: crunched text screen shown in text mode at program exit,CONFIRMED,M1-09
+32C5:036A,data,k_TileRadarColour,u8[80],"E1 file0001:3C43:0264, E3 contents (67 of the first 72 bytes differ from E1)",CONFIRMED,M1-09
+32C5:03BA,data,k_TileRadarColour2,u8[80],byte copy of the E2 alternate radar table; unreferenced in E3,LIKELY,M1-09
+32C5:040A,data,k_HeadingRing,u8[18],"= E1 file0001:3C43:02AC, DS offset by refs 1/1. E1: 16 headings clockwise with wrap entries (keypad codes)",LIKELY,M1-09
+32C5:041C,data,k_ClassMaxSpeed,u8[10],"= E1 file0001:3C43:02BE, DS offset by operand map. E1: max speed component per class (biased by 16)",LIKELY,M1-09
+32C5:0426,data,k_ClassArmour,u8[10],"= E1 file0001:3C43:02C8, DS offset by operand map. E1: armour per class (mission ships x2)",LIKELY,M1-09
+32C5:0430,data,k_ClassShields,u8[10],"= E1 file0001:3C43:02D2, DS offset by operand map. E1: shields per class and regeneration cap",LIKELY,M1-09
+32C5:043A,data,k_ClassAccel,u8[10],"= E1 file0001:3C43:02DC, DS offset by operand map. E1: thrust step per tick per class",LIKELY,M1-09
+32C5:0612,data,g_OvrHeapSize,u16,"= E1 file0001:3C43:04B4, DS offset by refs 1/1. E1:",LIKELY,M1-09
+32C5:0624,data,g_HeapOrg,farptr,"= E1 file0001:3C43:04C6, DS offset by refs 1/1. E1: heap start (segment written by System init)",LIKELY,M1-09
+32C5:0628,data,g_HeapPtr,farptr,"= E1 file0001:3C43:04CA, DS offset by refs 7/7. E1: heap top",CONFIRMED,M1-09
+32C5:062C,data,g_HeapEnd,farptr,"= E1 file0001:3C43:04CE, DS offset by refs 2/2. E1: heap end (segment from PSP:2)",CONFIRMED,M1-09
+32C5:0630,data,g_FreeList,farptr,"= E1 file0001:3C43:04D2, DS offset by refs 5/5. E1: free-block list",CONFIRMED,M1-09
+32C5:0638,data,g_HeapError,farptr,"= E1 file0001:3C43:04DA, DS offset by refs 3/3. E1: heap error function",CONFIRMED,M1-09
+32C5:063C,data,g_ExitProc,farptr,"= E1 file0001:3C43:04DE, DS offset by refs 2/2. E1: exit procedure chain",LIKELY,M1-09
+32C5:0640,data,g_ExitCode,i16,"= E1 file0001:3C43:04E2, DS offset by refs 1/1. E1: set by Halt",LIKELY,M1-09
+32C5:0642,data,g_ErrorAddr,farptr,"= E1 file0001:3C43:04E4, DS offset by refs 1/1. E1: runtime error address",LIKELY,M1-09
+32C5:0646,data,g_PrefixSeg,u16,"= E1 file0001:3C43:04E8, DS offset by refs 5/5. E1: PSP segment, stored by System init",CONFIRMED,M1-09
+32C5:0648,data,g_StackLimit,u16,"= E1 file0001:3C43:04EA, DS offset by refs 1/1. E1: lowest SP allowed by the stack check",LIKELY,M1-09
+32C5:064A,data,g_InOutRes,i16,"= E1 file0001:3C43:04EC, DS offset by refs 25/25. E1: I/O error code (0 = OK)",CONFIRMED,M1-09
+32C5:064C,data,g_RandSeed,u32,"= E1 file0001:3C43:04EE, DS offset by refs 2/2. E1: RNG state; initial value 0; only BP_RandNext reads or writes it",CONFIRMED,M1-09
+32C5:0650,data,g_SelectorInc,u16,"= E1 file0001:3C43:04F2, DS offset by between 04F0 and 04F4. E1: initial 1000h",HYPOTHESIS,M1-09
+32C5:0652,data,g_Seg0040,u16,"= E1 file0001:3C43:04F4, DS offset by refs 3/3. E1: BIOS data segment 0040h",CONFIRMED,M1-09
+32C5:0654,data,g_SegA000,u16,"= E1 file0001:3C43:04F6, DS offset by between 04F4 and 04FC. E1: VGA segment A000h",HYPOTHESIS,M1-09
+32C5:0656,data,g_SegB000,u16,"= E1 file0001:3C43:04F8, DS offset by between 04F4 and 04FC. E1:",HYPOTHESIS,M1-09
+32C5:0658,data,g_SegB800,u16,"= E1 file0001:3C43:04FA, DS offset by between 04F4 and 04FC. E1:",HYPOTHESIS,M1-09
+32C5:065A,data,g_Test8086,u8,"= E1 file0001:3C43:04FC, DS offset by refs 3/3. E1: CPU class (2 = 386+, enables 32-bit LongInt paths)",CONFIRMED,M1-09
+32C5:065C,data,g_FileMode,u8,"= E1 file0001:3C43:04FE, DS offset by refs 1/1. E1: open mode for Reset (initial 2)",LIKELY,M1-09
+32C5:0662,data,g_SbIrq,i16,"= E1 file0001:3C43:0502, DS offset by refs 4/5. E1: WORX_SbInit result; -1 = no Sound Blaster; also: WORX card detection result (FFFFh none) (g_SoundCard)",HYPOTHESIS,M1-09
+32C5:066F,data,g_GameOver,u8,"= E1 file0001:3C43:060F, DS offset by refs 5/5. E1: set by every ending of a mission block",LIKELY,M1-09
+32C5:0670,data,g_MissionAdvance,u8,"= E1 file0001:3C43:0610, DS offset by refs 7/7. E1: 1 = mission block completed (menu advances)",LIKELY,M1-09
+32C5:07B2,data,g_ResumeStatus,u8,"= E1 file0001:3C43:0752, DS offset by refs 2/4. E1: tdstatus.dat status byte (1 ordering; 2 about)",HYPOTHESIS,M1-09
+32C5:07B4,data,g_MenuCursor,u8,"= E1 file0001:3C43:0754, DS offset by refs 50/50. E1: main menu cursor 0..8",CONFIRMED,M1-09
+32C5:07B7,data,g_KeyChar,u8,"= E1 file0001:3C43:0758, DS offset by refs 42/42. E1: last ReadKey character (menus)",CONFIRMED,M1-09
+32C5:07B8,data,g_KeyScan,u8,"= E1 file0001:3C43:0759, DS offset by refs 13/13. E1: last extended scan code (menus)",CONFIRMED,M1-09
+32C5:07BA,data,g_File,u8[128],"= E1 file0001:3C43:075A, DS offset by operand map. E1: FileRec shared by the main program",LIKELY,M1-09
+32C5:0840,data,g_MenuPalette,u8[768],"= E1 file0001:3C43:07E0, DS offset by refs 10/10. E1: u8[768] menu/help palette",CONFIRMED,M1-09
+32C5:0C48,data,g_ScriptChoice,u8,"= E1 file0001:3C43:0D28, DS offset by refs 7/7. E1: 1 = dialogue.dat, 2 = safedial.dat; also: 1 dialogue.dat; 2 safedial.dat",CONFIRMED,M1-09
+32C5:0C49,data,g_MissionNumber,u8,"= E1 file0001:3C43:0D29, DS offset by refs 26/32. E1: 0 = no game; 1..20 next mission",HYPOTHESIS,M1-09
+32C5:0C4A,data,g_KillsToDate,i16,"= E1 file0001:3C43:0D2A, DS offset by refs 16/16. E1: kills before the current mission",CONFIRMED,M1-09
+32C5:0C4E,data,g_ScreenLit,,"= E1 file0001:3C43:102E, DS offset by refs 4/4. E1: 1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M1-09
+32C5:0C52,data,g_FontTitle,farptr,"= E1 file0001:3C43:1032, DS offset by refs 9/9. E1: farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M1-09
+32C5:0EDE,data,g_Palette,u8[768],"= E1 file0001:3C43:0D2E, DS offset by refs 3/3. E1: u8[768] scene/dialogue palette used by the fades",CONFIRMED,M1-09
+32C5:11E4,data,g_HitFlash,u16,"= E1 file0001:3C43:12C4, DS offset by refs 2/2. E1: red hit-flash intensity",LIKELY,M1-09
+32C5:11E6,data,g_NoWorx,u8,"= E1 file0001:3C43:13DC, DS offset by refs 12/12. E1: 1 when the first parameter is /nosound or /pc: WORX never installed; also: /nosound or /pc: WORX never called (g_NoSoundDriver)",CONFIRMED,M1-09
+32C5:11E7,data,g_MusicDevice,u8,"= E1 file0001:3C43:12C6, DS offset by refs 15/15. E1: 2 = FM music; other values = no music; also: td.cfg byte 0 (2 = music on); also: 1 off; 2 on; 0 = show config screen (g_CfgMusic)",CONFIRMED,M1-09
+32C5:11E8,data,g_SfxDevice,u8,"= E1 file0001:3C43:12C7, DS offset by refs 28/28. E1: 1 none, 2 Sound Blaster digital, 3 PC speaker; also: td.cfg byte 1 (g_CfgSfx)",CONFIRMED,M1-09
+32C5:11E9,data,g_CfgController,u8,"= E1 file0001:3C43:12C8, DS offset by refs 16/17. E1: td.cfg byte 2 (2 = joystick); also: 1 keyboard; 2 joystick",LIKELY,M1-09
+32C5:11EA,data,g_MissionKills,i16,"= E1 file0001:3C43:12CA, DS offset by refs 15/15. E1: kills in the current flight",CONFIRMED,M1-09
+32C5:11EC,data,g_MissionLost,u8,"= E1 file0001:3C43:12CC, DS offset by refs 1/1. E1: mission failed by objective",LIKELY,M1-09
+32C5:11ED,data,g_PlayerDied,u8,"= E1 file0001:3C43:12CD, DS offset by refs 16/17. E1: flight ended by the player's death",LIKELY,M1-09
+32C5:11EE,data,g_MissionAborted,u8,"= E1 file0001:3C43:12CE, DS offset by refs 14/15. E1: player quit the flight from the Esc menu",LIKELY,M1-09
+32C5:11EF,data,g_MissionOutcome,u8,"= E1 file0001:3C43:12CF, DS offset by refs 9/9. E1: mission-specific success flag (alternative dialogue; debrief)",LIKELY,M1-09
+32C5:11F0,data,g_SongHandle,u16,"= E1 file0001:3C43:12D0, DS offset by refs 1/1. E1: WORX handle of the playing song",LIKELY,M1-09
+32C5:11F2,data,g_MusicBuffer,farptr,"= E1 file0001:3C43:12D2, DS offset by refs 34/35. E1: heap block of the current song; also: loaded CMF data (g_SongBuffer)",LIKELY,M1-09
+32C5:12FE,data,g_MapSet,u8,set to 1 at every flight start; td4.map is chosen by g_FlightNumber > 6 instead (U-006),CONFIRMED,M1-09
+32C5:1300,data,g_FlightPalette,u8[768],"= E1 file0001:3C43:13E6, DS offset by refs 8/8. E1: u8[768] flight palette (td.pal); also: td.pal copy for fades and flashes",CONFIRMED,M1-09
+32C5:1610,data,g_PlayerSprite,u8,"= E1 file0001:3C43:16F6, DS offset by refs 19/19. E1: sprite set used to draw the player",LIKELY,M1-09
+32C5:1612,data,g_MissionFileName,string[10],"= E1 file0001:3C43:16F8, DS offset by operand map. E1: m<n>.td",LIKELY,M1-09
+32C5:161D,data,g_PlayerDrawLate,u8,"= E1 file0001:3C43:1703, DS offset by refs 10/11. E1: draw the player after the mission ships",LIKELY,M1-09
+32C5:161E,data,g_PaletteMode,u8,"= E1 file0001:3C43:1704, DS offset by refs 25/25. E1: 0 normal; 1 infra-red; 2 red-only",LIKELY,M1-09
+32C5:1626,data,g_CommIndicatorPhase,u8,"= E1 file0001:3C43:1705, DS offset by refs 10/10. E1: F6 indicator pulse phase 1..7 while a comm is incoming (0 = off)",LIKELY,M1-09
+32C5:1627,data,g_CommRequest,u8,"= E1 file0001:3C43:1706, DS offset by refs 2/3. E1: F6 pressed (comm viewer pending)",HYPOTHESIS,M1-09
+32C5:1628,data,g_TickPrevTime,u16[4],"= E1 file0001:3C43:1708, DS offset by refs 3/3. E1: hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-09
+32C5:1630,data,g_TickNowTime,u16[4],"= E1 file0001:3C43:1710, DS offset by refs 3/3. E1: current DOS time sample in the tick limiter",LIKELY,M1-09
+32C5:1638,data,g_MissionTicks,u32,"= E1 file0001:3C43:1718, DS offset by refs 4/4. E1: per-mission counter compared with 25, 200 and 15000",HYPOTHESIS,M1-09
+32C5:1748,data,g_FlashFrames,u8,"= E1 file0001:3C43:1828, DS offset by refs 9/9. E1: full-palette flash countdown",LIKELY,M1-09
+32C5:1756,data,g_BurstFrame,u8,"= E1 file0001:3C43:1836, DS offset by refs 18/18. E1: afterburner burst frame (classes 2 and 5; Ins or keypad +)",LIKELY,M1-09
+32C5:1757,data,g_BurstHeading,u8,"= E1 file0001:3C43:1837, DS offset by refs 2/2. E1: heading at the start of the afterburner burst",LIKELY,M1-09
+32C5:17DE,data,g_WeaponIcons,farptr,"= E1 file0001:3C43:18BE, DS offset by refs 2/3. E1: farptr to td.wea (6 x 36x18)",HYPOTHESIS,M1-09
+32C5:17E6,data,g_OldInt09,farptr,"= E1 file0001:3C43:18C2, DS offset by refs 2/2. E1: saved keyboard vector",CONFIRMED,M1-09
+32C5:1870,data,g_FlightFile,u8[128],"= E1 file0001:3C43:194C, DS offset by operand map. E1: FileRec for flight loads",LIKELY,M1-09
+32C5:1976,data,g_I,u16,"= E1 file0001:3C43:1A52, DS offset by refs 1182/1183. E1: shared global loop counter",LIKELY,M1-09
+32C5:1978,data,g_J,u16,"= E1 file0001:3C43:1A54, DS offset by refs 308/309. E1: shared global loop counter",LIKELY,M1-09
+32C5:197A,data,g_PlayerHeading,u8,"= E1 file0001:3C43:1A56, DS offset by refs 56/56. E1: player heading (keypad code)",CONFIRMED,M1-09
+32C5:197B,data,g_PlayerClass,u8,"= E1 file0001:3C43:1A57, DS offset by refs 37/42. E1: player ship class",HYPOTHESIS,M1-09
+32C5:197E,data,g_PlayerTurnDir,u8,"= E1 file0001:3C43:1A5A, DS offset by refs 2/2. E1: 1 counter-clockwise; 2 clockwise",CONFIRMED,M1-09
+32C5:1980,data,g_KeyDown,,"= E1 file0001:3C43:1A5C, DS offset by refs 1/1. E1: key-state bytes indexed by scan code (+100h for E0-prefixed keys)",LIKELY,M1-09
+32C5:1BD7,data,g_AnyKeyLatch,u8,"= E1 file0001:3C43:1CB3, DS offset by refs 3/3. E1: pause: any key pressed",LIKELY,M1-09
+32C5:1BDA,data,g_KeyExtOffset,u16,"= E1 file0001:3C43:1CB6, DS offset by refs 5/5. E1: 100h after an E0 prefix byte, else 0",LIKELY,M1-09
+32C5:1BDC,data,g_Weapon,u8,"= E1 file0001:3C43:1CB8, DS offset by refs 8/8. E1: selected player weapon: 1..3 class volley; 4/5 missile kinds; 6 homing",LIKELY,M1-09
+32C5:1BDD,data,g_Missiles,u8,"= E1 file0001:3C43:1CB9, DS offset by refs 22/22. E1: missiles left (HUD bar); set per class at flight start",LIKELY,M1-09
+32C5:1BDE,data,g_MissileCooldown,u8,"= E1 file0001:3C43:1CBA, DS offset by refs 3/3. E1: 4 after a missile launch; -1 per tick",LIKELY,M1-09
+32C5:1BDF,data,g_PlayerTargetHeading,u8,"= E1 file0001:3C43:1CBB, DS offset by refs 2/2. E1: heading requested by the steering keys",CONFIRMED,M1-09
+32C5:1D52,data,g_EdgeHit,u16,"= E1 file0001:3C43:1E2E, DS offset by refs 8/8. E1: player touched the map limit",LIKELY,M1-09
+32C5:1D58,data,g_OldInt1C,farptr,"= E1 file0001:3C43:1E34, DS offset by refs 1/1. E1: saved BIOS user-tick vector",LIKELY,M1-09
+32C5:1D64,data,g_SpeakerQueue,u16[100],"= E1 file0001:3C43:1E40, DS offset by refs 13/13. E1: PC-speaker effect frequencies (Hz) per BIOS tick; 0 ends",CONFIRMED,M1-09
+32C5:1E2E,data,g_SfxPriority,u8,E1 file0001:3C43:1F0A; priority of the effect playing (0 = idle),CONFIRMED,M1-09
+32C5:1E72,data,g_SkipRequested,u8,"= E1 file0001:3C43:1F4E, DS offset by refs 115/121. E1: set when Esc ends a wait; scenes and dialogue check it; also: Esc pressed during a story screen (g_SkipStory)",LIKELY,M1-09
+32C5:1E7A,data,g_JoyCal,u16[4],"= E1 file0001:3C43:1F56, DS offset by refs 3/3. E1: joystick calibration (kept in tdstatus.dat)",LIKELY,M1-09
+32C5:1E8B,data,g_JoyX,i8,"= E1 file0001:3C43:1F67, DS offset by refs 10/10. E1: joystick X: 1 left; -1 right",LIKELY,M1-09
+32C5:1E8C,data,g_JoyY,i8,"= E1 file0001:3C43:1F68, DS offset by refs 28/28. E1: joystick Y: 1 up; -1 down",LIKELY,M1-09
+32C5:1E8D,data,g_JoyButton2,u8,"= E1 file0001:3C43:1F69, DS offset by refs 12/12. E1: second joystick button",LIKELY,M1-09
+32C5:1E8E,data,g_JoyButton1,u8,"= E1 file0001:3C43:1F6A, DS offset by refs 13/13. E1: first joystick button (fire)",LIKELY,M1-09
+32C5:31C0,data,g_CommIncoming,u8,"= E1 file0001:3C43:329C, DS offset by refs 11/15. E1: an incoming transmission is waiting (set by mission logic; cleared by the comm viewer)",HYPOTHESIS,M1-09
+32C5:31C2,data,g_MissionSucceeded,u8,"= E1 file0001:3C43:329E, DS offset by refs 11/12. E1: ends the flight normally",LIKELY,M1-09
+32C5:31DB,data,g_MissionOver,u8,"= E1 file0001:3C43:32B7, DS offset by refs 9/9. E1: flight is ending",LIKELY,M1-09
+32C5:31DC,data,g_EndTicks,u8,"= E1 file0001:3C43:32B8, DS offset by refs 18/18. E1: ticks since g_MissionOver (player hidden from 15; loop ends at 35)",LIKELY,M1-09
+32C5:31DD,data,g_FlightNumber,u8,"= E1 file0001:3C43:32B9, DS offset by refs 35/38. E1: Sim_FlyMission argument 1..21",LIKELY,M1-09
+32C5:31DE,data,g_MissionPhase,u8,"= E1 file0001:3C43:32BA, DS offset by refs 37/51. E1: mission-script state",HYPOTHESIS,M1-09
+32C5:31E0,data,g_TickerPos,u16,"= E1 file0001:3C43:32BC, DS offset by refs 30/35. E1: HUD ticker scroll position 1..78 (0 = idle); edge alerts are only raised while it is 0",HYPOTHESIS,M1-09
+32C5:386A,data,g_MusicSize,u16,"= E1 file0001:3C43:3946, DS offset by refs 8/9. E1: size of the loaded song (WORX_LoadMusic)",HYPOTHESIS,M1-09
+32C5:386C,data,g_SfxLoadSize,u16,"= E1 file0001:3C43:3948, DS offset by refs 2/2. E1: size of the last VOC loaded (WORX_LoadSfx)",CONFIRMED,M1-09
+32C5:3874,data,g_WorxParamAL,u8,"= E1 file0001:3C43:3950, DS offset by refs 1/1. E1: WORX_CallDriver inputs: AL (3950), BX (3952), DX (3954), DI (3956)",LIKELY,M1-09
+32C5:387C,data,g_SlotMarker,u8[20],"= E1 file0001:3C43:3958, DS offset by refs 5/8. E1: per-slot target bracket: 32h (colours 7A/F9/5C) or 39h (82/98/66) draws corner marks around the ship; 0 none (set in Msn_Setup)",HYPOTHESIS,M1-09
+32C5:3892,data,g_ProjOwner,farptr,"= E1 file0001:3C43:396E, DS offset by refs 8/8. E1: projectile array: shooter slot",LIKELY,M1-09
+32C5:3896,data,g_ProjFlag,farptr,"= E1 file0001:3C43:3972, DS offset by refs 16/16. E1: projectile array: 1 = enemy shot",HYPOTHESIS,M1-09
+32C5:389A,data,g_ProjSubX,farptr,"= E1 file0001:3C43:3976, DS offset by refs 93/93. E1: projectile array: i16 pixel offset X",LIKELY,M1-09
+32C5:389E,data,g_ProjSubY,farptr,"= E1 file0001:3C43:397A, DS offset by refs 92/92. E1: projectile array: i16 pixel offset Y",LIKELY,M1-09
+32C5:38A2,data,g_ProjHeading,farptr,"= E1 file0001:3C43:397E, DS offset by refs 4/4. E1: projectile array: heading",LIKELY,M1-09
+32C5:38A6,data,g_ProjKind,farptr,"= E1 file0001:3C43:3982, DS offset by refs 36/36. E1: projectile array: shot kind",HYPOTHESIS,M1-09
+32C5:38AA,data,g_ProjTileX,farptr,"= E1 file0001:3C43:3986, DS offset by refs 143/143. E1: projectile array: tile X (FFh = free)",LIKELY,M1-09
+32C5:38AE,data,g_ProjTileY,farptr,"= E1 file0001:3C43:398A, DS offset by refs 119/119. E1: projectile array: tile Y",LIKELY,M1-09
+32C5:38B2,data,g_PlayerArmour,i8,"= E1 file0001:3C43:398E, DS offset by refs 20/20. E1: player armour (< 1 destroyed)",CONFIRMED,M1-09
+32C5:38B3,data,g_PlayerShields,i8,"= E1 file0001:3C43:398F, DS offset by refs 27/27. E1: player shields (+1 per tick to the class cap)",CONFIRMED,M1-09
+32C5:38B9,data,g_PlayerSpeed,u8[4],"= E1 file0001:3C43:3995, DS offset by refs 19/19. E1: speed components up; down; left; right (biased by 16)",CONFIRMED,M1-09
+32C5:38BE,data,g_ExplFrame,u8[30],"= E1 file0001:3C43:399A, DS offset by refs 23/23. E1: explosion frame (8 = idle)",LIKELY,M1-09
+32C5:38DC,data,g_ExplTileX,u8[30],"= E1 file0001:3C43:39B8, DS offset by refs 7/7. E1: explosion tile X",LIKELY,M1-09
+32C5:38FA,data,g_ExplTileY,u8[30],"= E1 file0001:3C43:39D6, DS offset by refs 7/7. E1: explosion tile Y",LIKELY,M1-09
+32C5:3918,data,g_ExplSubX,u8[30],"= E1 file0001:3C43:39F4, DS offset by refs 7/7. E1: explosion pixel offset X",LIKELY,M1-09
+32C5:3936,data,g_ExplSubY,u8[30],"= E1 file0001:3C43:3A12, DS offset by refs 7/7. E1: explosion pixel offset Y",LIKELY,M1-09
+32C5:3954,data,g_DrawPage,u8,"= E1 file0001:3C43:3A30, DS offset by refs 256/257. E1: back page 0/1",LIKELY,M1-09
+32C5:3956,data,g_ShipTileAttr,farptr,"= E1 file0001:3C43:3A32, DS offset by refs 9/9. E1: NEVER ASSIGNED (nil): AI_UpdateShips reads byte 0000:tile (the interrupt vector table) as a tile attribute; no byte = 2 in the oracle, so the adj...",CONFIRMED,M1-09
+32C5:395A,data,g_ViewTileX,i16,"= E1 file0001:3C43:3A36, DS offset by refs 257/260. E1: view origin tile X (6..183)",LIKELY,M1-09
+32C5:395C,data,g_ViewTileY,i16,"= E1 file0001:3C43:3A38, DS offset by refs 250/258. E1: view origin tile Y (7..190)",LIKELY,M1-09
+32C5:395E,data,g_ViewSubX,i16,"= E1 file0001:3C43:3A3A, DS offset by refs 100/100. E1: view pixel offset in tile (10h..30h)",CONFIRMED,M1-09
+32C5:3960,data,g_ViewSubY,i16,"= E1 file0001:3C43:3A3C, DS offset by refs 96/96. E1: view pixel offset in tile (10h..30h)",CONFIRMED,M1-09
+32C5:3962,data,g_SlotUnused3A3E,u8[20],"= E1 file0001:3C43:3A3E, DS offset by refs 1/1. E1: set to 1 for slots 1..20 at flight setup; no reader found",LIKELY,M1-09
+32C5:399E,data,g_SlotClass,u8[20],"= E1 file0001:3C43:3A7A, DS offset by refs 13/16. E1: slot class code (file bytes 40..59; FFh empty)",HYPOTHESIS,M1-09
+32C5:39C6,data,g_SlotHeading,u8[20],"= E1 file0001:3C43:3AA2, DS offset by refs 1/1. E1: slot heading (keypad code); 6 at setup",LIKELY,M1-09
+32C5:39DA,data,g_SlotTargetHeading,u8[20],"= E1 file0001:3C43:3AB6, DS offset by refs 1/1. E1: heading the ship turns toward (one ring step per tick)",LIKELY,M1-09
+32C5:39EE,data,g_SlotSubX,i16[20],"= E1 file0001:3C43:3ACA, DS offset by refs 5/5. E1: slot pixel offset X (16 at setup)",CONFIRMED,M1-09
+32C5:3A16,data,g_SlotSubY,i16[20],"= E1 file0001:3C43:3AF2, DS offset by refs 5/5. E1: slot pixel offset Y (16 at setup)",CONFIRMED,M1-09
+32C5:3A3E,data,g_SlotTurnDir,u8[20],"= E1 file0001:3C43:3B1A, DS offset by between 3AF4 and 3B1B. E1: turn direction 1 = counter-clockwise, 2 = clockwise",HYPOTHESIS,M1-09
+32C5:3A52,data,g_SlotTileX,u8[20],"= E1 file0001:3C43:3B2E, DS offset by refs 26/26. E1: slot tile X",CONFIRMED,M1-09
+32C5:3A66,data,g_SlotTileY,u8[20],"= E1 file0001:3C43:3B42, DS offset by refs 26/26. E1: slot tile Y",CONFIRMED,M1-09
+32C5:3A8E,data,g_SlotSpeed,u8[20][4],"= E1 file0001:3C43:3B6A, DS offset by refs 1/1. E1: speed components up/down/left/right per slot (biased by 16; 0 at setup; capped at 42)",LIKELY,M1-09
+32C5:3ADE,data,g_SlotGoalX,u8[20],"= E1 file0001:3C43:3BBA, DS offset by between 3B71 and 3BBB. E1: copy of the waypoint X used by the thrust step",HYPOTHESIS,M1-09
+32C5:3AF2,data,g_SlotGoalY,u8[20],"= E1 file0001:3C43:3BCE, DS offset by between 3BBB and 3BCF. E1: copy of the waypoint Y used by the thrust step",HYPOTHESIS,M1-09
+32C5:3B06,data,g_TickFlags,u8[9],"= E1 file0001:3C43:3BE2, DS offset by refs 2/2. E1: per-ship thrust flags (3BE3 up, 3BE5 right, 3BE7 left, 3BE9 down); cleared after each live slot and at tick start",CONFIRMED,M1-09
+32C5:3B10,data,g_PathX,farptr,"= E1 file0001:3C43:3BEC, DS offset by refs 5/6. E1: farptr to X paths, 20 x 501 bytes; also: X paths: 20 x 501 bytes",HYPOTHESIS,M1-09
+32C5:3B14,data,g_PathY,farptr,"= E1 file0001:3C43:3BF0, DS offset by refs 5/6. E1: farptr to Y paths, 20 x 501 bytes; also: Y paths: 20 x 501 bytes",HYPOTHESIS,M1-09
+32C5:3B1A,data,g_FireRequest,u8[180],"= E1 file0001:3C43:3BF6, DS offset by refs 1/1. E1: fire requests [slot 1..20; entry 1..9]; entries 2/4/6/8 set by AI_RequestFire; consumed every second tick",LIKELY,M1-09
+32C5:3BCE,data,g_TileAttr,farptr,"= E1 file0001:3C43:3CAA, DS offset by refs 31/31. E1: tile attribute table: 1 solid; 2 open",CONFIRMED,M1-09
+32C5:4352,data,g_Map,farptr,"= E1 file0001:3C43:442E, DS offset by refs 51/51. E1: farptr to the 201x201 map, column-major (x*201+y); also: 201 x 201 map; column-major",CONFIRMED,M1-09
+32C5:4356,data,g_Ships,,"= E1 file0001:3C43:4432, DS offset by refs 1/1. E1: 20 ship records of 1065 bytes (structures.md 3)",LIKELY,M1-09
+32C5:968A,data,g_AiPlayerTile,u8[2],"= E1 file0001:3C43:9766, DS offset by refs 3/3. E1: player tile (view X + 5, view Y + 3) stored by AI_UpdateShips for target selector 0",CONFIRMED,M1-09
+32C5:968E,data,g_Unused976A,u8,"= E1 file0001:3C43:976A, DS offset by refs 1/1. E1: set to 1 by the 34E6 unit init; no reader found",LIKELY,M1-09
+32C5:968F,data,g_AiRange,u8,"= E1 file0001:3C43:976B, DS offset by refs 3/3. E1: 3 (unit init): in-line range; out-of-range threshold is +8",CONFIRMED,M1-09
+32C5:9690,data,g_AiDetourDX,i16,"= E1 file0001:3C43:976C, DS offset by refs 3/3. E1: detour step X returned by AI_Detour to AI_ChooseWaypoint",CONFIRMED,M1-09
+32C5:9692,data,g_AiDetourDY,i16,"= E1 file0001:3C43:976E, DS offset by refs 3/3. E1: detour step Y",CONFIRMED,M1-09
+32C5:9694,data,g_Font5,farptr,"= E1 file0001:3C43:9770, DS offset by refs 142/142. E1: farptr to td.lt2 glyphs (975-byte block)",CONFIRMED,M1-09
+32C5:9698,data,g_RotSc3,farptr,"= E1 file0001:3C43:9774, DS offset by refs 5/6. E1: farptr to td.sc3 cells 0..8",HYPOTHESIS,M1-09
+32C5:969C,data,g_RotSc2,farptr,"= E1 file0001:3C43:9778, DS offset by refs 5/6. E1: farptr to td.sc2 cells 0..8",HYPOTHESIS,M1-09
+32C5:96A0,data,g_RotShr,farptr,"= E1 file0001:3C43:977C, DS offset by refs 4/6. E1: farptr to td.shr cells 0..19",HYPOTHESIS,M1-09
+32C5:9AA6,data,g_SpriteBank,farptr,"= E1 file0001:3C43:9B82, DS offset by refs 31/33. E1: farptr to 27 x 32x32 sprites (td.shp + td.exp)",LIKELY,M1-09
+32C5:9AAA,data,g_FacFrames,farptr,"= E1 file0001:3C43:9B86, DS offset by refs 5/5. E1: farptr to td.fac (5 x 28x28)",CONFIRMED,M1-09
+32C5:9AAE,data,g_CrtCheckBreak,u8,"= E1 file0001:3C43:9B8A, DS offset by refs 3/3. E1: Crt.CheckBreak",LIKELY,M1-09
+32C5:9AB2,data,g_CrtLastMode,u16,"= E1 file0001:3C43:9B8E, DS offset by refs 1/1. E1: Crt.LastMode",HYPOTHESIS,M1-09
+32C5:9AB4,data,g_CrtTextAttr,u8,"= E1 file0001:3C43:9B90, DS offset by refs 9/9. E1: Crt.TextAttr",CONFIRMED,M1-09
+32C5:9AB6,data,g_CrtWindMin,u16,"= E1 file0001:3C43:9B92, DS offset by refs 8/8. E1: Crt.WindMin",CONFIRMED,M1-09
+32C5:9AB8,data,g_CrtWindMax,u16,"= E1 file0001:3C43:9B94, DS offset by refs 5/5. E1: Crt.WindMax",CONFIRMED,M1-09
+32C5:9ABA,data,g_CrtDelayCnt,u16,"= E1 file0001:3C43:9B96, DS offset by refs 2/2. E1: Delay loop iterations per millisecond (calibrated at init)",LIKELY,M1-09
+32C5:9ABF,data,g_CrtPendingScan,u8,"= E1 file0001:3C43:9B9B, DS offset by refs 6/6. E1: scan code held back by ReadKey for an extended key",CONFIRMED,M1-09
+32C5:9AC0,data,g_CrtBreakFlag,u8,"= E1 file0001:3C43:9B9C, DS offset by refs 4/4. E1: set by the Ctrl-Break handler",CONFIRMED,M1-09
