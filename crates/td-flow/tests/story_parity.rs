@@ -139,7 +139,7 @@ fn main_menu_matches_the_original() {
     let _data = require_data!();
     let oracle = require_oracle!();
     let (dir, res) = load().unwrap();
-    let ep = td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher)).unwrap();
+    let ep = td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
     let mut fb = td_render::Framebuffer::new();
     td_flow::Screen::draw(&ep, &mut fb);
     let (dac, frame) = oracle_frame(&oracle, "f00000997_320x200_main-menu.vga");
@@ -160,7 +160,7 @@ fn play_block(
     let settings = Settings::default();
     let mut audio = Vec::new();
     let mut all = Vec::new();
-    let mut prog = Program::new(&dir, &res, Box::new(PlaceholderLauncher)).unwrap();
+    let mut prog = Program::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
     let mut c = Campaign::new(mission, 0);
     for frame in 0..400_000u32 {
         let mut ctx = FlowContext {

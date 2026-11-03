@@ -670,16 +670,33 @@ pub trait FlightScreen: Screen {
 }
 
 /// Starts flights for the campaign (`Sim_FlyMission(n)`, n = 1..=21).
+///
+/// A launcher lives for one program run and owns what the original keeps across its flights,
+/// above all the program's `Random` generator: the flights and the front end draw from one
+/// stream (bp7-runtime-semantics; the retry prompt's `Random(10)`, screens.md U-124).
 pub trait FlightLauncher: fmt::Debug {
     fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen>;
+
+    /// `Random(n)` from the program's generator (the stream the flights use).
+    fn random(&mut self, n: u16) -> u16;
 }
 
 /// Stand-in flight: a notice; any key = success, D = died, A = aborted, L = lost,
 /// O = outcome 0.
 #[derive(Debug, Default)]
-pub struct PlaceholderLauncher;
+pub struct PlaceholderLauncher {
+    /// The program's generator, started as a real launcher starts it (program start
+    /// included) on first use.
+    rng: Option<td_sim::BpRandom>,
+}
 
 impl FlightLauncher for PlaceholderLauncher {
+    fn random(&mut self, n: u16) -> u16 {
+        self.rng
+            .get_or_insert_with(|| td_sim::flight::Session::new().rng)
+            .random(n)
+    }
+
     fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
         let font = ctx.data.read("td.lt2").ok().and_then(|b| {
             td_formats::font::Font::parse(&b, td_formats::font::FontKind::Small).ok()

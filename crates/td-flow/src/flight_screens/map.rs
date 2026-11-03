@@ -42,10 +42,13 @@ pub const CROSS: [(i32, i32); 8] = [
     (0, 2),
 ];
 
+/// A fixed point: (entry, map x, map y).
+type Fixed = (usize, u8, u8);
+
 /// The per-flight entry lines and fixed points of §3.4, in the spec's notation: entries (a
-/// list of `a` or `a..b`), then the five `e1.target_info` indices; fixed points as (entry, x,
-/// y). Flights 14 and 21 write nothing.
-const TARGETS: [(&str, &[(usize, u8, u8)]); 21] = [
+/// list of `a` or `a..b`), then the five `e1.target_info` indices. Flights 14 and 21 write
+/// nothing.
+const TARGETS: [(&str, &[Fixed]); 21] = [
     (
         "0: 2 3 4 1 1; 1..2: 5 6 7 8 9; 3..4: 5 6 7 10 9; 5..7, 9..10: 5 6 7 11 12; \
          8: 13 6 7 14 15; 11: 13 6 7 16 1; 12..20: 17 18 7 1 1; 21: 0 1 1 1 1",

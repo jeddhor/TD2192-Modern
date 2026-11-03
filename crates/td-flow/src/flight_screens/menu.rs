@@ -251,6 +251,11 @@ impl ComputerMenu {
         menu
     }
 
+    /// True while the ship library or a help page waits for a key.
+    pub fn waiting_for_key(&self) -> bool {
+        matches!(self.ops.front(), Some(Op::WaitAnyKey))
+    }
+
     /// The item under the cursor (0 return, 1 ship library, 2 help, 3 quit).
     pub fn cursor(&self) -> u8 {
         self.cursor

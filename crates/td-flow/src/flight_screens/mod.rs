@@ -186,7 +186,7 @@ impl FlightScreenAssets {
     }
 
     /// One string of a resource list, or "" (a missing index draws nothing).
-    fn text<'a>(list: &'a [String], i: usize) -> &'a str {
+    fn text(list: &[String], i: usize) -> &str {
         list.get(i).map_or("", String::as_str)
     }
 }
