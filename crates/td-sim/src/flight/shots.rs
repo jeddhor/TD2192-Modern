@@ -72,12 +72,13 @@ pub struct Muzzles(pub Vec<u8>);
 
 impl Muzzles {
     /// Offset (dx, dy) of muzzle `m` (1..=17) for `heading`. Two-digit headings index far
-    /// outside the table in the original (U-040); here they give (0, 0) (port policy; such a
-    /// shot is deleted on its first move anyway).
+    /// outside the 342-byte table in the original (OB-017): they read whatever the vector holds
+    /// there (an oracle test may pass the original's DGROUP from DS:035C on), and (0, 0) past
+    /// its end (port policy, U-160; such a shot lives for one hit test).
     pub fn get(&self, heading: u8, m: usize) -> (i16, i16) {
         let i = 34 * usize::from(heading) + 2 * m;
-        match (heading <= 9, self.0.get(i), self.0.get(i + 1)) {
-            (true, Some(&dx), Some(&dy)) => (i16::from(dx as i8), i16::from(dy as i8)),
+        match (self.0.get(i), self.0.get(i + 1)) {
+            (Some(&dx), Some(&dy)) => (i16::from(dx as i8), i16::from(dy as i8)),
             _ => (0, 0),
         }
     }
@@ -129,7 +130,7 @@ fn absorb(shields: &mut i16, armour: &mut i16, d: i16) {
 }
 
 impl Shots {
-    fn highest_free(&self, range: std::ops::RangeInclusive<usize>) -> Option<usize> {
+    pub(crate) fn highest_free(&self, range: std::ops::RangeInclusive<usize>) -> Option<usize> {
         range.rev().find(|&i| !self.0[i].alive())
     }
 
