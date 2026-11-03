@@ -42,15 +42,23 @@ address,kind,name,signature,comment,confidence,source_task
 051A:8EAA,func,Scene_BackgroundStory,,background story text pages (30 s and 45 s waits),LIKELY,M5-03
 051A:92AF,func,Dlg_PlayScene,,(sceneId) plays one dialogue.dat/safedial.dat scene,CONFIRMED,M5-04
 051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
+0E8B:0000,func,UI_HudTickerBlit,,"(offset) latched copy of a 56x5 window from off-screen VGA row 736 + offset to HUD (256,13)",LIKELY,M2-09
 0E8B:0052,func,Gfx_WaitRetraceStart,,polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace,CONFIRMED,M1-03
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
 0E8B:07ED,func,Snd_PlayMusic,,(cue 1..14) stops the song and loads/plays a CMF if td.cfg music = 2,CONFIRMED,M1-05
+0E8B:40B2,func,Txt_FlightDrawGlyphOpaque,,"flight-unit copy of Txt_DrawGlyph, opaque",CONFIRMED,M2-08
+0E8B:43A6,func,Txt_FlightDrawGlyph,,"flight-unit copy of Txt_DrawGlyph, transparent",CONFIRMED,M2-08
+0E8B:45EF,func,Txt_FlightDrawStringOpaque,,flight-unit copy of Txt_DrawStringOpaque,CONFIRMED,M2-08
+0E8B:4947,func,Txt_FlightDrawString,,flight-unit copy of Txt_DrawString,CONFIRMED,M2-08
+0E8B:4C9F,func,Txt_FlightTypeString,,flight-unit copy of Txt_TypeString,LIKELY,M2-08
 0E8B:51FE,func,UI_DrawCommPortraitA,,"td1.ccm portrait i into sprite slot 0, drawn on the transmission panel; restores td.shp slot 0",LIKELY,M1-05
 0E8B:530B,func,UI_DrawCommPortraitB,,second transmission portrait (same as UI_DrawCommPortraitA),LIKELY,M1-05
 0E8B:5435,func,UI_CommScreen,,"F6 transmission: td.cmm panel, portraits, message lines",LIKELY,M1-05
+0E8B:60D8,func,Msn_Setup,,"per-mission set-up: objective text into VGA row 735, mission-specific ship state",LIKELY,M2-09
 0E8B:6EDF,func,UI_FlightHelp,,td.hlp pages in flight,LIKELY,M1-05
 0E8B:7374,func,UI_ShipLibrary,,ship library: td.shp sprites 0..8 and class text,LIKELY,M1-05
 0E8B:794C,func,UI_FlightMenu,,"in-flight computer menu from td.men bytes 0..15999 at (80,50)",LIKELY,M2-09
+0E8B:7FDF,func,UI_HudTickerAndIndicator,,advances the objective ticker (page-0 ticks) and the F6 indicator animation,LIKELY,M2-09
 0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
 0E8B:AF1F,func,UI_JoystickCalibration,,"td.joy icon at (140,70) and calibration loop",LIKELY,M1-05
 0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
@@ -71,6 +79,8 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:4558,func,WORX_TimerIsr,,INT 08h: music tick if active; chains BIOS every N fast ticks; else EOI,CONFIRMED,M1-06
 2C37:4A72,func,WORX_SetTimerRate,,AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick,CONFIRMED,M1-06
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
+386E:0000,func,Gfx_HudRadarBlit,,"copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M2-09
+386E:012B,func,Gfx_HudFacFrame,,"(frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M2-09
 386E:024A,func,Gfx_DrawSprite32,,"draws the 32x32 sprite in slot 0 of the sprite bank at (x,y) of a page",HYPOTHESIS,M1-05
 386E:189C,func,Gfx_ClearPage,,"(page,widthBytes,x) clears 232 rows of flight page 0 (0B00h) or 1 (5AC0h)",LIKELY,M2-09
 386E:1901,func,Gfx_SetDacEntry,,"(index,r,g,b) one DAC write via 3C8h/3C9h",CONFIRMED,M2-08
