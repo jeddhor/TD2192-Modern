@@ -106,6 +106,110 @@ pub fn draw_player_ship(fb: &mut Framebuffer, frame: &[u8], size: usize) {
     );
 }
 
+/// Pixel offsets of one bracket colour, with that colour for markers 32h and 39h.
+pub type BracketPixels = (&'static [(i32, i32)], u8, u8);
+
+/// Target brackets around a marked mission ship (`mission-ships.md` rev 2 §4.7): pixel offsets
+/// from the 32 × 32 frame's top-left corner, with their colours for markers 32h and 39h.
+pub const BRACKETS: [BracketPixels; 3] = [
+    (&[(1, 1), (1, 30), (30, 1), (30, 30)], 0x5C, 0x66),
+    (
+        &[
+            (2, 1),
+            (1, 2),
+            (1, 29),
+            (2, 30),
+            (29, 1),
+            (30, 2),
+            (30, 29),
+            (29, 30),
+        ],
+        0x7A,
+        0x82,
+    ),
+    (
+        &[
+            (3, 1),
+            (1, 3),
+            (1, 28),
+            (3, 30),
+            (28, 1),
+            (30, 3),
+            (30, 28),
+            (28, 30),
+        ],
+        0xF9,
+        0x98,
+    ),
+];
+
+/// One mission ship as the drawing step sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShipMark {
+    pub tile_x: u8,
+    pub tile_y: u8,
+    pub sub_x: i16,
+    pub sub_y: i16,
+    /// 0, 32h (target bracket) or 39h (friend bracket).
+    pub marker: u8,
+}
+
+/// Screen position of a mission ship's 32 × 32 frame (top-left corner) drawn into back page
+/// `page`, or `None` when the original's window test leaves it out (`mission-ships.md` rev 2
+/// §4.7).
+///
+/// The spec's y, `(tileY − viewY) × 32 + offsetY + 232 × page`, is a VGA row, not a row of
+/// the page: page 0 starts at VGA row 32 (`hud.md` §2), so the corner sits 32 page rows above
+/// `(tileY − viewY) × 32 + offsetY`, and the test `y > 32` keeps page-0 sprites out of the HUD
+/// rows (a ship at the top edge is drawn on page-1 ticks only). Black-box (U-127,
+/// `tests/hud_parity.rs`): this reading puts every bracket pixel of C-0009 where the capture
+/// has it.
+pub fn mission_ship_pos(view: ViewPos, page: i32, s: &ShipMark) -> Option<(i32, i32)> {
+    let (tx, ty) = (i32::from(s.tile_x), i32::from(s.tile_y));
+    let (sx, sy) = (i32::from(s.sub_x), i32::from(s.sub_y));
+    let (x, row) = ((tx - view.tile_x) * 32 + sx, (ty - view.tile_y) * 32 + sy);
+    let inside = view.tile_x - 1 < tx
+        && tx < view.tile_x + 10
+        && (view.tile_y..=view.tile_y + 5).contains(&ty)
+        && (tx < view.tile_x + 9 || sx < view.sub_x)
+        && row + 232 * page > 32;
+    let (ox, oy) = view.page_origin();
+    inside.then_some((x - ox, row - 32 - oy))
+}
+
+/// Draws a mission ship at `pos` (from [`mission_ship_pos`]): its heading frame (colour 0
+/// transparent; `size` 32, or 40 with the 32 × 32 base frame at (4, 4)), then the target
+/// brackets of its marker.
+pub fn draw_mission_ship(
+    fb: &mut Framebuffer,
+    frame: Option<(&[u8], usize)>,
+    (x, y): (i32, i32),
+    marker: u8,
+) {
+    if let Some((frame, size)) = frame {
+        let inset = (size as i32 - 32) / 2;
+        fb.blit(
+            Image::new(frame, size, size),
+            x - inset,
+            y - inset,
+            PLAYFIELD,
+            Some(0),
+        );
+    }
+    for (pixels, target, friend) in BRACKETS {
+        let c = match marker {
+            0x32 => target,
+            0x39 => friend,
+            _ => return,
+        };
+        for &(dx, dy) in pixels {
+            if (PLAYFIELD.y..PLAYFIELD.h).contains(&(y + dy)) {
+                fb.put(x + dx, y + dy, c);
+            }
+        }
+    }
+}
+
 /// Copies the 320 × 32 HUD bar (`td.win`) to rows 160..192.
 ///
 /// # Panics

@@ -9,6 +9,7 @@ pub mod fade;
 pub mod flight;
 pub mod framebuffer;
 pub mod headings;
+pub mod hud;
 pub mod small_text;
 pub mod text;
 pub mod tilemap;

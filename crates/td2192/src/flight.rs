@@ -1,8 +1,8 @@
 //! Developer flight arena (M6-08): fly a mission's map with the original flight model.
 //!
-//! Runs `td_sim::Flight` at the flight tick rate and draws the playfield and HUD bar with
-//! `td_render::flight`. The mission's ships sit at their path starts (movement and AI are M8);
-//! weapons work. The radar and HUD gauges are not in yet. Keys as in the original: keypad
+//! Runs `td_sim::Flight` at the flight tick rate and draws the playfield with
+//! `td_render::flight` and the instruments with `td_render::hud` (M6-07). The ticker window and
+//! the F6 indicator wait for the mission-logic state (M8-05) and stay blank. Keys as in the original: keypad
 //! 8/2/4/6 or the arrow keys thrust, Space fires, Tab switches to missiles, keypad + or keypad
 //! 0 fire the afterburner (classes 2 and 5), P pauses (any key resumes), Esc aborts the flight
 //! (the in-flight computer menu is not built yet). Debug builds only: F9 completes the mission
@@ -10,9 +10,12 @@
 //!
 //! [`FlightLauncher`] hands these flights to the Episode 1 campaign (`td_flow::Episode1`).
 //!
-//! Presentation details still unspecified (T2 placeholders): where ship, shot and explosion
-//! sprites sit relative to their world position, what shots look like, and the flame sprite.
+//! Mission ships and their target brackets follow `mission-ships.md` §4.7. Presentation details
+//! still unspecified (T2 placeholders): where explosion sprites sit relative to their world
+//! position, what shots look like (weapons.md §4.3 names only the colours), and the flame
+//! sprite.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -29,7 +32,8 @@ use td_formats::palette::Palette;
 use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::Tileset;
 use td_input::{Key, TickInput};
-use td_render::flight::{self, HUD_H, HUD_W, ViewPos};
+use td_render::flight::{self, ViewPos};
+use td_render::hud::{Hud, HudAssets, HudState, INK_MESSAGE, INK_TRANSMISSION, TickerFont};
 use td_render::{Framebuffer, HeadingSprites, Image};
 use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
 use td_sim::flight::heading::Heading;
@@ -130,7 +134,9 @@ pub struct FlightArena {
     bank: SpriteSheet,
     /// Effect samples by effect id.
     effects: BTreeMap<u8, Arc<Pcm8>>,
-    hud: Vec<u8>,
+    hud_assets: HudAssets,
+    /// The instruments, stepped by `draw` once per simulation tick.
+    hud: RefCell<HudDisplay>,
     flight: Flight,
     modal: Option<Modal>,
     binds: Vec<(Key, FlightKey)>,
@@ -166,9 +172,20 @@ impl FlightArena {
                 effects.insert(id, Arc::new(decode_voc(&dir.read(voc)?)?));
             }
         }
-        let hud = dir.read("td.win")?;
-        if hud.len() != HUD_W * HUD_H {
-            bail!("td.win has an unexpected size");
+        let Some(ResourceValue::Bytes(radar)) = resources.get("hud.radar_tile_colours").cloned()
+        else {
+            bail!("file0001.exe resources are unavailable (radar colours)");
+        };
+        let hud_assets = HudAssets::new(
+            dir.read("td.win")?,
+            dir.read("td.wea")?,
+            dir.read("td.fac")?,
+            &dir.read("td.lt2")?,
+            radar,
+        )?;
+        let mut hud = Hud::new(&hud_assets);
+        if let Some((text, ink)) = objective(resources, number) {
+            hud.post(&hud_assets, text, ink, TickerFont::Flight);
         }
         let world = World {
             map: TileMap::parse_episode(&dir.read("td.map")?)?,
@@ -183,7 +200,8 @@ impl FlightArena {
             ships,
             bank,
             effects,
-            hud,
+            hud_assets,
+            hud: RefCell::new(HudDisplay { hud, tick: None }),
             flight,
             modal: None,
             binds: bindings(),
@@ -293,25 +311,8 @@ impl Screen for FlightArena {
         if !late {
             draw_player(fb);
         }
-        // 10. Mission ships (placeholder placement: frame centred on the ship's position).
-        for s in drawn.ships.0.iter().filter(|s| s.alive()) {
-            let heading = Heading::from_code(s.heading).unwrap_or(Heading::N);
-            if let Some(frame) = self
-                .ships
-                .frame(usize::from(s.class), heading.sprite_index())
-            {
-                let (x, y) = to_screen(s.world());
-                let cell = td_render::headings::CELL;
-                let half = cell as i32 / 2;
-                fb.blit(
-                    Image::new(frame, cell, cell),
-                    x - half,
-                    y - half,
-                    flight::PLAYFIELD,
-                    Some(0),
-                );
-            }
-        }
+        // 10. Mission ships.
+        self.draw_mission_ships(fb, view);
         // 12. Overpasses.
         if !late {
             flight::redraw_overpasses(fb, map, &self.tiles, view);
@@ -337,7 +338,81 @@ impl Screen for FlightArena {
         if late {
             draw_player(fb);
         }
-        flight::draw_hud_bar(fb, &self.hud);
+        // 19. Instruments: the guidance dots go into the playfield, the rest below it.
+        let mut display = self.hud.borrow_mut();
+        if display.tick != Some(self.flight.ticks) {
+            let state = HudState::from_flight(&self.flight);
+            display.hud.step(&self.hud_assets, &self.world.map, &state);
+            display.tick = Some(self.flight.ticks);
+        }
+        display.hud.draw(fb);
+    }
+}
+
+/// The instruments and the tick they were last stepped for (`draw` may run more or less often
+/// than the simulation ticks).
+#[derive(Debug)]
+struct HudDisplay {
+    hud: Hud,
+    tick: Option<u32>,
+}
+
+/// The objective a flight draws into the ticker strip at start, and its ink
+/// (`mission-logic.md` §3.3; flight 20 draws none).
+fn objective(resources: &ExeResources, flight: u8) -> Option<(&str, u8)> {
+    let index = match flight {
+        1..=7 => flight - 1,
+        8 => 3,
+        9..=19 => flight - 2,
+        21 => 18,
+        _ => return None,
+    };
+    let ink = if flight <= 11 {
+        INK_MESSAGE
+    } else {
+        INK_TRANSMISSION
+    };
+    let text = resources.texts("e1.objectives")?.get(usize::from(index))?;
+    Some((text.as_str(), ink))
+}
+
+impl FlightArena {
+    /// The back page the last tick drew into: the tick toggles it at step 24, unless it is
+    /// suspended by a modal screen before that step.
+    fn drawn_page(&self) -> i32 {
+        let page = i32::from(self.flight.draw_page);
+        match self.modal {
+            Some(Modal::CommViewer | Modal::Pause) => page,
+            _ => page ^ 1,
+        }
+    }
+
+    /// Mission ships and their target brackets (`mission-ships.md` rev 2 §4.7, T2, with the
+    /// row reading of U-127): sprite = class code at the slot's heading.
+    ///
+    /// A ship removed at the map edge is drawn once more by the original (with sprite FFh),
+    /// but only inside the drawing window, which never reaches the edge rows and columns (the
+    /// view stays within tiles 6..183 × 7..190), so it is never visible and is not drawn here.
+    fn draw_mission_ships(&self, fb: &mut Framebuffer, view: ViewPos) {
+        let page = self.drawn_page();
+        for s in self.flight.drawn.ships.0.iter().filter(|s| s.alive()) {
+            let mark = flight::ShipMark {
+                tile_x: s.tile_x,
+                tile_y: s.tile_y,
+                sub_x: s.sub_x,
+                sub_y: s.sub_y,
+                marker: s.marker,
+            };
+            let Some(pos) = flight::mission_ship_pos(view, page, &mark) else {
+                continue;
+            };
+            let heading = Heading::from_code(s.heading).unwrap_or(Heading::N);
+            let frame = self
+                .ships
+                .frame(usize::from(s.class), heading.sprite_index())
+                .map(|f| (f, td_render::headings::CELL));
+            flight::draw_mission_ship(fb, frame, pos, s.marker);
+        }
     }
 }
 
