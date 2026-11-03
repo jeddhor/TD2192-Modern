@@ -13,7 +13,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|
 | **Current milestone** | M1–M8 in parallel. Done or in review: M0 core, M2 parsers, M3 audio (CMF write-exact vs oracle), M5 text + dialogue player (pixel-exact), M6 flight core (confirmed vectors, pixel-exact playfield), M7 weapons (static spec). Active: RE-5 (mission ships/AI, M8-01/03), RE-6 (mission logic, HUD; M8-02, M6-07) |
 | **Last updated** | 2026-11-02 |
-| **Ghidra lock** | **held by RE-10** (2026-11-02, M10-02): finishing td2 `Msn_UpdateB` (2236:240A..31DD) with `DisassembleAt`, then applying td2.csv (530 rows); released after that |
+| **Ghidra lock** | free (RE-10 2026-11-02: canonical td2 `Msn_UpdateB` now complete (2236:240A..31DD, 3540 bytes) via the `DisassembleAt` runs in tools/ghidra/README.md + `SetupBp7Program`; td2.csv (530 rows) applied, 0 skipped. file0001 (550) and td3 (493) as applied by RE-9. RE-10 works on the copy `re-work\ghidra-re10`; its td3.csv additions are for the next holder to apply) |
 | **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) · [2026-11-02-M6-01](handoffs/2026-11-02-M6-01.md) (flight-core specs: flight model drafted) |
 
 ### Blocking user decisions (MDG §14)
