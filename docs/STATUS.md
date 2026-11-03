@@ -62,7 +62,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | TODO | | Needed before M6 code that mirrors file0001:0E8B:B880 / 0E8B:82DD |
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | TODO | | |
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
-| M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | IN PROGRESS | RE-2 | Flow from Main_CampaignLoop 0000:0F06; private Ghidra copy re-work/ghidra-re2 |
+| M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | REVIEW | RE-2 | docs/spec/flow/episode-program-flow.md rev 1 (start-up, menu, all 20 E1 mission blocks + flight 21, endings, debrief tiers, tdstatus.dat). Static; mission-1 path matches C-0002 |
 | M1-05 | Asset load-site table | RE | M1-01 | TODO | | |
 | M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
 | M1-07 | Global data map + symbols | RE | M1-01 | IN PROGRESS | RE-2 | Globals DS:1700..1E30, key table DS:1A5C |
