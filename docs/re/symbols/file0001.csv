@@ -144,8 +144,35 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:4CF9,func,WORX_DspStart,,"DSP 40h + time constant, DMA ch1 auto-init 4 KB, play command from k_WorxDspCmd",CONFIRMED,M3-05
 2C37:5E47,func,WORX_DspWrite,,AL to the DSP write port (waits for ready),CONFIRMED,M3-05
 2C37:62D5,func,WORX_FnPlayVoc,,fn 06h handler: stop current; parse VOC blocks from memory,CONFIRMED,M3-05
-3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick: move and draw the 20 mission ships,HYPOTHESIS,U-033
-34E6:3449,func,AI_ChooseWaypoint,"void far(Slot: Byte)",chooses the next waypoint of a mission ship (path step or behaviour-specific target); called for every slot at flight start and when a ship reaches its waypoint,LIKELY,U-039
+3292:0000,func,AI_ResetShipRecords,void far(void),flight setup (0E8B:B8BA): calls AI_ClearShipRecords,CONFIRMED,M8-01
+3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick (tick-order step 10): shield regen and removal; per live slot: waypoint arrival -> AI_ChooseWaypoint; turn; thrust toward the waypoint; cap 42; drift/drag/carry; map-edge removal; flight 7 pins; draw (sprite = class),CONFIRMED,M8-03
+34E6:0000,func,AI_ClearShipRecords,void far(void),clears the AI fields of the 20 ship records and path steps 1..255; record +419h := (Random(2) = 1) per slot 1..20 (detour hand); unit init and flight start,CONFIRMED,M8-03
+34E6:02AD,func,AI_BlockSolid,Boolean near(Slot: Byte; X: Byte; Y: Byte),"true if any of the map cells (X..X+1, Y..Y+1) has tile attribute != 2; Slot unused",CONFIRMED,M8-03
+34E6:0396,func,AI_TargetPosition,void near(Slot: Byte),"record +420h/+421h := position selected by +41Fh (0 player tile, FFh return point +426h, C8h fixed point +424h, n = waypoint of slot n)",CONFIRMED,M8-03
+34E6:04EC,func,AI_FixedPointReached,void near(Slot: Byte),"waypoint = (+424h,+425h) -> +423h := 1, +000h := 0; only used by the dead +422h branch",LIKELY,M8-03
+34E6:0564,func,AI_CheckInLine,void near(Slot: Byte),"target within DS:976B (3) tiles of the waypoint and in the same row or column -> +41Ch := +3FCh := 1, else both 0 (Real48 Sqrt)",CONFIRMED,M8-03
+34E6:06A1,func,AI_CheckOutOfRange,void near(Slot: Byte),+41Dh := (distance waypoint-target > DS:976B + 8),CONFIRMED,M8-03
+34E6:0776,func,AI_NearFlag,void near(Slot: Byte),+414h := (distance < +413h) and +428h = 0; +413h is always 0 so +414h stays 0 (no reader),CONFIRMED,M8-03
+34E6:0869,func,AI_SetStepDirection,void near(Slot: Byte),+3F5h := 4/6/8/2 from the last waypoint step (vertical wins); unchanged if the waypoint did not move,CONFIRMED,M8-03
+34E6:09B6,func,AI_RequestFire,void near(Slot: Byte; Dir: Integer),"g_FireRequest[slot, Dir] := 1 (Dir 2/4/6/8); +416h += +3F6h",CONFIRMED,M8-03
+34E6:0A5D,func,AI_FireDecision,void near(Slot: Byte),Random real r; if 5 x +3F6h > 100r + 1 and target within 11 tiles: request fire along the row/column toward the target (line-of-fire test only scans increasing coordinates),CONFIRMED,M8-03
+34E6:0DCE,func,AI_AttackBudget,void near(Slot: Byte),"if 15 x +3F6h < +416h: disengage (+416h := 0, +41Ah := 0, +41Bh := 1, +428h := 1, +41Fh := FFh) else +416h += 1",CONFIRMED,M8-03
+34E6:0E84,func,AI_DetourCount,void near(Slot: Byte),"+41Ah < 4: +41Ah += 1, else +41Ah := 0 and +41Bh := 1",CONFIRMED,M8-03
+34E6:0EEE,func,AI_TurnRightStep,,wall follower: +3F5h turns clockwise (6->2->4->8->6) and one step in the new direction; sets both done flags,CONFIRMED,M8-03
+34E6:0F9F,func,AI_TurnLeftStep,,wall follower: +3F5h turns counter-clockwise (6->8->4->2->6) and one step in the new direction,CONFIRMED,M8-03
+34E6:1050,func,AI_FollowRightOrient,void near(Slot: Byte),right-hand follower: re-orient +3F5h before the step (eight cell tests),CONFIRMED,M8-03
+34E6:12C2,func,AI_FollowLeftOrient,void near(Slot: Byte),left-hand follower: re-orient +3F5h before the step,CONFIRMED,M8-03
+34E6:153E,func,AI_FollowRelease,void near(Slot: Byte),after a follower step: clears the blocked-axis flags +005h/+006h when the side toward the target is open; +418h (unused) := either flag set,CONFIRMED,M8-03
+34E6:17CC,func,AI_FollowRight,,one right-hand wall-follower step into var DX/DY (facing south it tests the cell ahead where the others test the right-hand cell),CONFIRMED,M8-03
+34E6:1DBF,func,AI_FollowLeft,,one left-hand wall-follower step into var DX/DY,CONFIRMED,M8-03
+34E6:23B2,func,AI_Detour,,"hand := right if (+419h=1 and +428h=0) or (+419h=0 and +428h=1), else left; one follower step; +41Bh := 0; AI_DetourCount",CONFIRMED,M8-03
+34E6:2448,func,AI_AttackStep,void near(Slot: Byte),"attack mode: in-line check, budget, fire decision, then one waypoint step toward the target unless in line (detour when an axis is blocked)",CONFIRMED,M8-03
+34E6:280B,func,AI_ReturnStep,void near(Slot: Byte),"return mode: clears +415h; at the return point back to path following (+428h := 0, +41Fh := 0), else one step toward it",CONFIRMED,M8-03
+34E6:2C0D,func,AI_FixedPointStep,void near(Slot: Byte),"mode +422h (never set in file0001): steps toward (+424h,+425h)",LIKELY,M8-03
+34E6:2FAF,func,AI_PathStep,void near(Slot: Byte),path following: waypoint moves one tile (per axis) toward path step cursor+1; cursor advances on arrival and wraps to 1 when the following step has x = 0,CONFIRMED,M8-03
+34E6:3232,func,AI_OrderAttack,void far(Slot: Byte; Target: Byte),"called by mission logic (2404): +41Fh := Target, +415h := 1, +41Bh := 1",CONFIRMED,M8-03
+34E6:3275,func,AI_HoldSchedule,void near(Slot: Byte),"after an in-line hold (+3FCh = 1): counts +412h, then breaks off to the return point (+428h := 1, +41Fh := FFh, +3FCh := 0, +415h := 0)",CONFIRMED,M8-03
+34E6:3449,func,AI_ChooseWaypoint,void far(Slot: Byte),AI state machine run on waypoint arrival (and for every slot at flight start): target position; hold schedule; path / attack / detour / return steps; step direction,CONFIRMED,M8-03
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
 386E:0000,func,Gfx_HudRadarBlit,,"copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M2-09
 386E:012B,func,Gfx_HudFacFrame,,"(frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M2-09
@@ -354,6 +381,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:13DC,data,g_NoWorx,u8,1 when the first parameter is /nosound or /pc: WORX never installed; also: /nosound or /pc: WORX never called (g_NoSoundDriver),CONFIRMED,M1-02
 3C43:13DE,data,g_Difficulty,u8,damage multiplier for hits on the player (1 at flight start; cheat chords change it),LIKELY,U-041
 3C43:13E6,data,g_FlightPalette,u8[768],u8[768] flight palette (td.pal); also: td.pal copy for fades and flashes,CONFIRMED,M1-05
+3C43:16EE,data,g_F19PinSlot19,"u8,_,u8,_,i16,i16","flight 19 (phase > 1): slot 19 tile X (16EE), tile Y (16F0), offset X (16F2), offset Y (16F4) are copied from here every tick",LIKELY,M8-01
 3C43:16F6,data,g_PlayerSprite,u8,sprite set used to draw the player,LIKELY,M1-07
 3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
 3C43:1703,data,g_PlayerDrawLate,u8,draw the player after the mission ships,LIKELY,M1-07
@@ -401,6 +429,8 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:3946,data,g_MusicSize,u16,size of the loaded song (WORX_LoadMusic),CONFIRMED,M1-02
 3C43:3948,data,g_SfxLoadSize,u16,size of the last VOC loaded (WORX_LoadSfx),CONFIRMED,M1-02
 3C43:3950,data,g_WorxParamAL,u8,"WORX_CallDriver inputs: AL (3950), BX (3952), DX (3954), DI (3956)",CONFIRMED,M1-02
+3C43:3958,data,g_SlotMarker,u8[20],per-slot target bracket: 32h (colours 7A/F9/5C) or 39h (82/98/66) draws corner marks around the ship; 0 none (set in Msn_Setup),CONFIRMED,M8-01
+3C43:396C,data,g_Unused396C,u8,"set to 3Dh (61) by Msn_Setup and 2404, 32h for flight 19; no reader found",LIKELY,M8-01
 3C43:396E,data,g_ProjOwner,farptr,projectile array: shooter slot,LIKELY,M1-08
 3C43:3972,data,g_ProjFlag,farptr,projectile array: 1 = enemy shot,HYPOTHESIS,M1-08
 3C43:3976,data,g_ProjSubX,farptr,projectile array: i16 pixel offset X,LIKELY,M1-08
@@ -418,25 +448,38 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:39F4,data,g_ExplSubX,u8[30],explosion pixel offset X,LIKELY,M1-08
 3C43:3A12,data,g_ExplSubY,u8[30],explosion pixel offset Y,LIKELY,M1-08
 3C43:3A30,data,g_DrawPage,u8,back page 0/1,CONFIRMED,M1-07
+3C43:3A32,data,g_ShipTileAttr,farptr,"NEVER ASSIGNED (nil): AI_UpdateShips reads byte 0000:tile (the interrupt vector table) as a tile attribute; no byte = 2 in the oracle, so the adjustment never fires (OB-013)",CONFIRMED,M8-03
 3C43:3A36,data,g_ViewTileX,i16,view origin tile X (6..183),CONFIRMED,M1-07
 3C43:3A38,data,g_ViewTileY,i16,view origin tile Y (7..190),CONFIRMED,M1-07
 3C43:3A3A,data,g_ViewSubX,i16,view pixel offset in tile (10h..30h),CONFIRMED,M1-07
 3C43:3A3C,data,g_ViewSubY,i16,view pixel offset in tile (10h..30h),CONFIRMED,M1-07
-3C43:3A52,data,g_SlotHdrA,u8[20],mission file bytes 0..19 (slot 1..20),CONFIRMED,M1-08
-3C43:3A66,data,g_SlotHdrD,u8[20],mission file bytes 60..79,CONFIRMED,M1-08
+3C43:3A3E,data,g_SlotUnused3A3E,u8[20],set to 1 for slots 1..20 at flight setup; no reader found,LIKELY,M8-01
+3C43:3A52,data,g_SlotHdrA,u8[20],mission file bytes 0..19 (slot 1..20); never read after the BlockRead (U-038),CONFIRMED,M1-08; M8-01
+3C43:3A66,data,g_SlotHdrD,u8[20],mission file bytes 60..79; never read after the BlockRead (U-038),CONFIRMED,M1-08; M8-01
 3C43:3A7A,data,g_SlotClass,u8[20],slot class code (file bytes 40..59; FFh empty),CONFIRMED,M1-08
-3C43:3A8E,data,g_SlotHdrB,u8[20],mission file bytes 20..39,CONFIRMED,M1-08
-3C43:3AA2,data,g_SlotHeading,u8[20],slot heading (keypad code),LIKELY,M1-08
-3C43:3ACA,data,g_SlotSubX,i16[20],slot pixel offset X,LIKELY,M1-08
-3C43:3AF2,data,g_SlotSubY,i16[20],slot pixel offset Y,LIKELY,M1-08
+3C43:3A8E,data,g_SlotHdrB,u8[20],mission file bytes 20..39; never read after the BlockRead (U-038),CONFIRMED,M1-08; M8-01
+3C43:3AA2,data,g_SlotHeading,u8[20],slot heading (keypad code); 6 at setup,CONFIRMED,M1-08; M8-01
+3C43:3AB6,data,g_SlotTargetHeading,u8[20],heading the ship turns toward (one ring step per tick),CONFIRMED,M8-03
+3C43:3ACA,data,g_SlotSubX,i16[20],slot pixel offset X (16 at setup),CONFIRMED,M1-08; M8-01
+3C43:3AF2,data,g_SlotSubY,i16[20],slot pixel offset Y (16 at setup),CONFIRMED,M1-08; M8-01
+3C43:3B1A,data,g_SlotTurnDir,u8[20],"turn direction 1 = counter-clockwise, 2 = clockwise",CONFIRMED,M8-03
 3C43:3B2E,data,g_SlotTileX,u8[20],slot tile X,CONFIRMED,M1-08
 3C43:3B42,data,g_SlotTileY,u8[20],slot tile Y,CONFIRMED,M1-08
+3C43:3B6A,data,g_SlotSpeed,u8[20][4],speed components up/down/left/right per slot (biased by 16; 0 at setup; capped at 42),CONFIRMED,M8-03
+3C43:3BBA,data,g_SlotGoalX,u8[20],copy of the waypoint X used by the thrust step,CONFIRMED,M8-03
+3C43:3BCE,data,g_SlotGoalY,u8[20],copy of the waypoint Y used by the thrust step,CONFIRMED,M8-03
+3C43:3BE2,data,g_TickFlags,u8[9],"per-ship thrust flags (3BE3 up, 3BE5 right, 3BE7 left, 3BE9 down); cleared after each live slot and at tick start",CONFIRMED,M8-03
 3C43:3BEC,data,g_PathX,farptr,"farptr to X paths, 20 x 501 bytes; also: X paths: 20 x 501 bytes",CONFIRMED,M1-05
 3C43:3BF0,data,g_PathY,farptr,"farptr to Y paths, 20 x 501 bytes; also: Y paths: 20 x 501 bytes",CONFIRMED,M1-05
-3C43:3BF6,data,g_FireRequest,u8[180],fire requests [slot 1..20; entry 1..9],LIKELY,M1-08
+3C43:3BF6,data,g_FireRequest,u8[180],fire requests [slot 1..20; entry 1..9]; entries 2/4/6/8 set by AI_RequestFire; consumed every second tick,CONFIRMED,M1-08; M8-01
 3C43:3CAA,data,g_TileAttr,farptr,tile attribute table: 1 solid; 2 open,CONFIRMED,M1-08
 3C43:442E,data,g_Map,farptr,"farptr to the 201x201 map, column-major (x*201+y); also: 201 x 201 map; column-major",CONFIRMED,M1-05
 3C43:4432,data,g_Ships,,20 ship records of 1065 bytes (structures.md 3),LIKELY,M1-08
+3C43:9766,data,g_AiPlayerTile,u8[2],"player tile (view X + 5, view Y + 3) stored by AI_UpdateShips for target selector 0",CONFIRMED,M8-03
+3C43:976A,data,g_Unused976A,u8,set to 1 by the 34E6 unit init; no reader found,LIKELY,M8-03
+3C43:976B,data,g_AiRange,u8,3 (unit init): in-line range; out-of-range threshold is +8,CONFIRMED,M8-03
+3C43:976C,data,g_AiDetourDX,i16,detour step X returned by AI_Detour to AI_ChooseWaypoint,CONFIRMED,M8-03
+3C43:976E,data,g_AiDetourDY,i16,detour step Y,CONFIRMED,M8-03
 3C43:9770,data,g_Font5,farptr,farptr to td.lt2 glyphs (975-byte block),CONFIRMED,M2-08
 3C43:9774,data,g_RotSc3,farptr,farptr to td.sc3 cells 0..8,CONFIRMED,M1-05
 3C43:9778,data,g_RotSc2,farptr,farptr to td.sc2 cells 0..8,CONFIRMED,M1-05

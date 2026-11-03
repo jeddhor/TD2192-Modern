@@ -113,7 +113,8 @@ each tick (0E8B:CC7F):
   28. player drift and drag, map collision, tile carry and map limits (flight-model.md 4.2-4.4)
   29. flush the BIOS keyboard buffer; F6 -> comm request; F5 -> ship-switch screen (not in mission 14)
   30. thrust and steering from the arrow keys or joystick (flight-model.md 4.5-4.6)
-  31. every second tick (back page currently 1): for each slot 1..20 and each request entry 2..8
+  31. (details: mission-ships.md section 4.4.2; the shot heading is the ship's heading, not the request entry)
+      every second tick (back page currently 1): for each slot 1..20 and each request entry 2..8
       that is set (g_FireRequest, DS:3BEC + 9*slot + entry), and for each muzzle m = 1..17 whose
       entry in the class's shot table (DS:02E5 + 17*class + m) is non-zero: take the highest-numbered
       free projectile slot (0..40), spawn a shot at the ship's tile and sub-pixel position plus the
