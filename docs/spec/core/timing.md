@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `core/timing` |
-| **Revision** | 1 (draft, static analysis only) |
+| **Revision** | 2 (draft, static analysis only) |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for simulation steps per game tick (one fixed step per tick); T2 for the wall-clock tick rate and frame pacing |
 | **Confidence** | LIKELY (static). Needs the dynamic measurements in §8 before it can be CONFIRMED |
@@ -32,7 +32,7 @@ In flight, Episode 1 runs one simulation-and-render iteration per **game tick** 
 |---|---|---|---|
 | Tick limiter threshold | `T_now > T_prev + 4` (unsigned 16-bit) | 1/100 s | `file0001:0E8B:E099` (`add ax,4`) / `0E8B:E0C2` |
 | WORX install divisor | 0952h = 2386 → 500.08 Hz; N = 27 → BIOS ≈ 18.52 Hz | | `file0001:2C37:330B` |
-| WORX song divisor | 1234DCh div *clock* (*clock* = a CMF header field, ticks per second) → for 96: d = 12428, 96.01 Hz; N = 5 → BIOS ≈ 19.20 Hz | | `file0001:2C37:47F2..47FA` |
+| WORX song divisor | 1234DCh div *clock*, *clock* = CMF header word 0x0C (ticks per second; 96 in every shipped song) → d = 12428, 96.01 Hz; N = 5 → BIOS ≈ 19.20 Hz | | `file0001:2C37:47EF..47FA` ([cmf §4.1](../audio/cmf.md#41-clock)) |
 | WORX shutdown divisor | FFFFh (≈ 18.21 Hz, N = 1) | | `file0001:2C37:4270` |
 | VGA mode 13h refresh | 70.086 Hz | Hz | VGA timing (not from the binary) |
 | DOS time step per BIOS tick | 5 or 6 hundredths (5.49 on average) | 1/100 s | DOS converts the tick count to time |
@@ -96,7 +96,17 @@ So the effective BIOS tick (and with it DOS time and the game tick) runs at `1,1
 | Song with clock = 96 ticks/s | 12428 | 96.01 Hz | 5 | 19.202 Hz | 52.08 ms |
 | Song tempo changes (`2C37:48BB`) | varies | | `65535 div d` | varies | |
 
-The game's tick rate therefore depends on the **sound state**: the Classic port must choose one canonical rate (see §5). Which CMF header field supplies the clock is U-007. The FORMATS survey found that offset 0Ch is 96 in every shipped CMF; if WORX reads that field, every song gives the 19.20 Hz row.
+The game's tick rate therefore depends on the **sound state**: the Classic port must choose one canonical rate (see §5). The clock is CMF header word 0x0C (U-007, resolved): every shipped song gives the 19.20 Hz row.
+
+Which row applies in flight (static, `file0001:0000:4585..47FF`, `0E8B:B898..C92B`; U-032):
+
+| Configuration | WORX timer installed? | Music in flight | Game tick |
+|---|---|---|---|
+| `/nosound` or `/pc` as the first parameter | **no** (a flag at DS:13DC skips all WORX set-up) | none | 18.2065 Hz |
+| FM music enabled (`/sb`, `/a`, or `td.cfg`/`/config` with music device 2) | yes | always: `td01`/`td03`/`td02` for mission number mod 3 = 1/2/0 ([music-cues](../audio/music-cues.md)) | ≈ 19.20 Hz |
+| WORX installed, music device ≠ 2 (from `td.cfg`) | yes | none | ≈ 18.52 Hz |
+
+The in-flight song is started after the mission set-up and runs for the whole mission, so the 96 Hz divisor holds throughout the flight loop. A song is never stopped during flight.
 
 ### 4.3 Frame presentation
 
@@ -146,7 +156,7 @@ Runtime address = (PSP + 10h + seg):off, where PSP is the program's PSP segment 
 - [ ] M5: watch `DS:1718` (`g_MissionTicks`): does it increase by 1 per tick? What happens at 200 and 15000?
 - [ ] M6: count `Gfx_FlipPage` (`386E:1A6C`) calls per tick (expect 1 in steady flight).
 - [ ] M7 (U-024): does `Inp_KeyboardIsr` (`0E8B:0653`) ever chain to the BIOS handler (DS:18C2)?
-- [ ] Q (U-007): which CMF header field WORX turns into the divisor at `2C37:47EF` (the word at ES:DI after `add di,2`).
+- [x] Q (U-007): resolved. The word read at `2C37:47EF` is CMF header offset 0x0C (ticks per second).
 
 ## 9. Provenance
 
@@ -165,3 +175,4 @@ Runtime address = (PSP + 10h + seg):off, where PSP is the program's PSP segment 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-1 (Archaeologist + Spec author) | Initial static draft |
+| 2 | 2026-11-02 | RE-4 (Archaeologist) | U-007 resolved (header 0x0C); which tick rate applies in which sound configuration (U-032, static) |
