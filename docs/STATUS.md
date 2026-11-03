@@ -142,7 +142,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M6-04 | Map collision | IM | M6-02 | REVIEW | main-session | Player map collision + bounce, tile carry, map limits/edge alert (flight-model 4.3-4.4); E1 tile attributes; data test: E1M1 start bounces in place (RE-2 C-0007 observation) |
 | M6-05 | Camera, viewport, heading sprites | IM | M6-02, M4-06 | REVIEW | main-session | td_render::flight: 11x6 tile window with camera-viewport start-address formula (4-px horizontal steps), opaque overpass redraw (42h/44h/45h/46h + x 7Ah..7Fh at y 47h), ship at screen (144,68), HUD bar; L5 test pixel-exact vs C-0002 f3500/f3543 playfield; U-046 resolved (dynamic-observations 13) |
 | M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | TODO | | |
-| M6-07 | HUD frame + instruments | IM | M6-05 | TODO | | |
+| M6-07 | HUD frame + instruments | IM | M6-05 | TODO |  | RE part DONE 2026-11-02 (RE-6): spec/render/hud.md rev 2 (bars, missile column, compass lamps, guidance line, radar, ticker, F6 indicator; 0 px vs C-0002 f3543), resource hud.radar_tile_colours. IM part open |
 | M6-08 | Dev arena | IM | M6-03 | IN PROGRESS | main-session | td2192 --dev-flight N: E1 map, original key bytes (keypad/arrows, keypad +/0 burst, P pause, Esc quits), deterministic AT typematic; no ships/weapons/radar/gauges yet |
 | M6-09 | Flight parity + feel sign-off | VE | M6-03..M6-07 | IN PROGRESS | main-session | L5 td-sim/tests/oracle_flight.rs: td-sim driven by the original's recorded key bytes matches the original's view, speeds, target, turn and heading on every tick of C-0007 + C-0008 (E1M1; class 4 and 0). L5 render: playfield pixel-exact vs C-0002. Feel sign-off (human) pending |
 
@@ -164,7 +164,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M8-01 | Mission file semantics spec | RE/SP | M2-11 | DONE | RE-5 | 2026-11-02 RE-5: sim/mission-ships.md rev 2 (setup, movement, removal) + sim/mission-setup.md rev 1 (flights 1..21); CONFIRMED by C-0009 (3342/3343 slot-ticks); U-038/U-039 resolved; open U-160..U-162 |
-| M8-02 | Mission logic architecture + primitives spec | RE/SP | M1-04 | TODO | | |
+| M8-02 | Mission logic architecture + primitives spec | RE/SP | M1-04 | REVIEW | RE-6 | 2026-11-02 RE-6: spec/sim/mission-logic.md rev 1 (architecture, primitives, comm viewer, respawns, outcome tests, all flights 1-21; flights 1-3 complete, flight 1 confirmed by C-0010). Open: U-180..U-184; AI_SetTarget behaviour is RE-5's (U-045). Ready for M8-05/M8-10 IM |
 | M8-03 | AI behaviours spec | RE/SP | M1-08 | DONE | RE-5 | 2026-11-02 RE-5: sim/mission-ships.md rev 2 sections 4.3-4.4 (path/attack/detour/return, fire decision, shot spawn); CONFIRMED by C-0009; U-040/U-042/U-045/U-047 resolved; OB-013..OB-018; mission-logic attack orders (2404) left to RE-6 |
 | M8-04 | Path playback + AI | IM | M8-01, M8-03, M7-06 | TODO | | |
 | M8-05 | Mission runtime + MissionScript API | IM | M8-02 | TODO | | |

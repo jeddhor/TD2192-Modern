@@ -235,3 +235,11 @@ C-0002 frames f3500 and f3543 (E1 mission 1 at rest; RAM: view (102, 104, 32, 16
 - **Overpasses:** the map cells of window columns 3..6, rows 1..4 with tiles 42h, 44h, 45h, 46h ((106, 106), (107, 105), (107, 106), (108, 106) here) are redrawn **opaquely** after the ship (tick-order step 12): the ship's upper 28 rows are hidden under them in these frames, and a row of colour 0 in the tile shows as 0.
 - **Result:** 0 differing pixels apart from 15 pixels of a small moving object around (171, 64), drawn after the overpass redraw (an explosion or other step-13+ element; M8).
 
+## 14. Flight 1 objective sequence and HUD check (RE-6, C-0010 and C-0002, 2026-11-02)
+
+C-0010 (scenario `msn-e1f1.txt`, preset P1, run in a private copy of the rig whose only difference is the mount path) flies E1 flight 1 without steering for 26,600 frames (ticks 2..7119) while the T+I+M chord is held for 12 frames every 70 frames, with DGROUP DS:1700..3CAF dumped every 35 frames.
+
+- **Phases:** 1 → 2 between ticks 740 and 788 (slot 2 at its exit (51, 197); slot 1 destroyed at (103, 110) by enemy fire), 2 → 3 between 1536 and 1603 (slots 3, 4 at their exits), 3 → 4 between 2419 and 2716, 4 → 5 at the first tick with the ticker idle after slots 9 and 10 left (tick 4164 → 4174). Slot 11 then stays engaged with the parked ship and the phase stays 5. Hidden waves never become live early. Matches [mission-logic](../spec/sim/mission-logic.md) §5.1 (test vectors 5–10).
+- **Respawn distance:** slots 19 and 20 died next to the parked ship and were not respawned.
+- **HUD:** the shield and armour bars predicted from the RAM dump of the same frame match the framebuffer exactly in 750 of 760 frames and the missile column in 759; the others are one-tick staleness (a value changed after the HUD was drawn in that tick). The missile lamp's DAC entry matched in all 760 frames. The dumped radar buffer equals the radar pixels in 62 of 76 checks; the other 14 differ by 1–5 pixels (ships that moved after the copy). C-0002 frame 3543 matches with 0 differing pixels for bars, missile column and the radar rebuilt from `td.map`, and gives the compass-lamp and guidance-dot vectors of [hud](../spec/render/hud.md) §6.
+
