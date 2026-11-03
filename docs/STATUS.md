@@ -104,7 +104,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | TODO | | |
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | IN PROGRESS | main-session | Mixer + Classic/Polyphonic SFX policies done; Classic rule provisional (U-021), balance untuned |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
-| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | TODO | | |
+| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | IN PROGRESS | main-session | docs/parity/M3-audio.md: tempo, pitch table, 0xBD PASS vs DRO C-0001; voice allocation + velocity FAIL pending M3-05 |
 
 ## M4: Platform shell
 

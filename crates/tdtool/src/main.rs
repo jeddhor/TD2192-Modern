@@ -72,6 +72,17 @@ enum Command {
         #[arg(long)]
         data: Option<PathBuf>,
     },
+    /// Print the OPL register writes our CMF player makes (ms, reg, value) for oracle comparison.
+    CmfTrace {
+        /// Song file name, e.g. intro.cmf.
+        song: String,
+        /// Seconds of playback to trace.
+        #[arg(long, default_value_t = 30.0)]
+        seconds: f64,
+        /// Original game directory (defaults to $TD2192_DATA).
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
     /// Regenerate crates/td-assets/src/manifest_data.rs from docs/re/FILE_INVENTORY.md.
     GenManifest {
         /// Inventory markdown to read.
@@ -97,6 +108,29 @@ fn main() -> Result<()> {
             let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
                 .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
             missions::run(&root, &out, episode, &map, &blk)
+        }
+        Command::CmfTrace {
+            song,
+            seconds,
+            data,
+        } => {
+            let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
+                .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            let dir = td_assets::DataDir::open(&root)?;
+            let cmf = std::sync::Arc::new(td_formats::cmf::Cmf::parse(&dir.read(&song)?)?);
+            let mut player = td_audio::CmfPlayer::new_traced(cmf, false);
+            let rate = player.sample_rate();
+            let mut buf = vec![0i32; (seconds * f64::from(rate)) as usize];
+            player.render(&mut buf);
+            for w in player.take_trace() {
+                println!(
+                    "{:.3}	{:#04x}	{:#04x}",
+                    w.sample as f64 * 1000.0 / f64::from(rate),
+                    w.reg,
+                    w.value
+                );
+            }
+            Ok(())
         }
         Command::ExeRes { data, show } => {
             let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)

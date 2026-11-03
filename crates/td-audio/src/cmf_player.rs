@@ -83,11 +83,41 @@ pub struct CmfPlayer {
     voice_note: [Option<u8>; 9],
     /// Last Bx value written per voice (to key off without changing the frequency).
     voice_bx: [u8; 9],
+    /// OPL voice assigned to each MIDI channel on its first note (dynamic allocation).
+    chan_voice: [Option<u8>; 16],
+    /// Program currently loaded into each voice's operators.
+    voice_program: [Option<u8>; 9],
+    /// Native samples rendered so far (the time base of the trace).
+    samples: u64,
+    /// Register writes, when tracing (for comparison with oracle OPL captures).
+    trace: Option<Vec<OplWrite>>,
+}
+
+/// One OPL register write, stamped with the native-sample time at which it happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OplWrite {
+    pub sample: u64,
+    pub reg: u8,
+    pub value: u8,
 }
 
 impl CmfPlayer {
     /// Starts `song` from the beginning.
     pub fn new(song: Arc<Cmf>, looping: bool) -> Self {
+        Self::build(song, looping, false)
+    }
+
+    /// Like [`Self::new`], but records every register write (see [`Self::take_trace`]).
+    pub fn new_traced(song: Arc<Cmf>, looping: bool) -> Self {
+        Self::build(song, looping, true)
+    }
+
+    /// Returns and clears the recorded register writes.
+    pub fn take_trace(&mut self) -> Vec<OplWrite> {
+        self.trace.as_mut().map(std::mem::take).unwrap_or_default()
+    }
+
+    fn build(song: Arc<Cmf>, looping: bool, traced: bool) -> Self {
         let mut p = Self {
             song,
             opl: Opl2::new(),
@@ -102,6 +132,10 @@ impl CmfPlayer {
             program: [0; 16],
             voice_note: [None; 9],
             voice_bx: [0; 9],
+            chan_voice: [None; 16],
+            voice_program: [None; 9],
+            samples: 0,
+            trace: traced.then(Vec::new),
         };
         p.reset_chip();
         p.advance_tick(); // events at tick 0 take effect before the first sample
@@ -129,6 +163,7 @@ impl CmfPlayer {
             let n = until_tick.min(out.len() - done);
             self.opl.generate(&mut out[done..done + n]);
             done += n;
+            self.samples += n as u64;
             self.tick_accum += n as u64 * tps;
             while self.tick_accum >= rate {
                 self.tick_accum -= rate;
@@ -137,10 +172,21 @@ impl CmfPlayer {
         }
     }
 
+    fn write(&mut self, reg: u8, value: u8) {
+        if let Some(t) = self.trace.as_mut() {
+            t.push(OplWrite {
+                sample: self.samples,
+                reg,
+                value,
+            });
+        }
+        self.opl.write_reg(reg, value);
+    }
+
     fn reset_chip(&mut self) {
         self.opl.reset();
-        self.opl.write_reg(0x01, 0x20);
-        self.opl.write_reg(0xBD, 0x00);
+        self.write(0x01, 0x20);
+        self.write(0xBD, BD_DEPTH);
         self.rhythm = false;
         self.bd_bits = 0;
         self.voice_note = [None; 9];
@@ -179,7 +225,9 @@ impl CmfPlayer {
             EventKind::NoteOff { channel, note } => self.note_off(channel, note),
             EventKind::Program { channel, program } => {
                 self.program[channel as usize] = program;
-                self.apply_program(channel);
+                if let Some(Target::Drum(..)) = self.target(channel) {
+                    self.apply_program(channel);
+                }
             }
             EventKind::Controller {
                 channel,
@@ -194,6 +242,7 @@ impl CmfPlayer {
                     self.rhythm = value != 0;
                     let bits = if self.rhythm { 0x20 } else { 0 };
                     self.write_bd((self.bd_bits & 0xC0) | bits);
+                    self.chan_voice = [None; 16];
                 }
                 0x68 => self.transpose[channel as usize] = i32::from(value),
                 0x69 => self.transpose[channel as usize] = -i32::from(value),
@@ -205,7 +254,7 @@ impl CmfPlayer {
 
     fn write_bd(&mut self, value: u8) {
         self.bd_bits = value;
-        self.opl.write_reg(0xBD, value);
+        self.write(0xBD, value);
     }
 
     fn instrument(&self, channel: u8) -> Instrument {
@@ -214,21 +263,24 @@ impl CmfPlayer {
     }
 
     fn write_operator(&mut self, slot: u8, op: OperatorRegs) {
-        self.opl.write_reg(0x20 + slot, op.char_20);
-        self.opl.write_reg(0x40 + slot, op.level_40);
-        self.opl.write_reg(0x60 + slot, op.attack_decay_60);
-        self.opl.write_reg(0x80 + slot, op.sustain_release_80);
-        self.opl.write_reg(0xE0 + slot, op.wave_e0);
+        self.write(0x20 + slot, op.char_20);
+        self.write(0x40 + slot, op.level_40);
+        self.write(0x60 + slot, op.attack_decay_60);
+        self.write(0x80 + slot, op.sustain_release_80);
+        self.write(0xE0 + slot, op.wave_e0);
     }
 
     fn apply_program(&mut self, channel: u8) {
         let inst = self.instrument(channel);
+        if let Some(Target::Voice(v)) = self.target(channel) {
+            self.voice_program[v as usize] = Some(self.program[channel as usize]);
+        }
         match self.target(channel) {
             Some(Target::Voice(v)) | Some(Target::Drum(Drum::Bass, v)) => {
                 let (m, c) = VOICE_OPS[v as usize];
                 self.write_operator(m, inst.modulator);
                 self.write_operator(c, inst.carrier);
-                self.opl.write_reg(0xC0 + v, inst.feedback_connection);
+                self.write(0xC0 + v, inst.feedback_connection);
             }
             Some(Target::Drum(drum, _)) => {
                 let (slot, regs) = match drum {
@@ -244,15 +296,27 @@ impl CmfPlayer {
         }
     }
 
+    /// Where a channel plays, without allocating (None for an unassigned melodic channel).
     fn target(&self, channel: u8) -> Option<Target> {
-        if self.rhythm {
-            if let Some(d) = Drum::from_channel(channel) {
-                return Some(Target::Drum(d, d.pitch_voice()));
-            }
-            (channel < 6).then_some(Target::Voice(channel))
-        } else {
-            (channel < 9).then_some(Target::Voice(channel))
+        if self.rhythm
+            && let Some(d) = Drum::from_channel(channel)
+        {
+            return Some(Target::Drum(d, d.pitch_voice()));
         }
+        self.chan_voice[channel as usize].map(Target::Voice)
+    }
+
+    /// Like [`Self::target`], assigning the lowest free voice to a melodic channel on its
+    /// first note. Observed in oracle capture C-0001 for first notes; the original is not sticky
+    /// per channel later (docs/parity/M3-audio.md row 4), exact rule pending M3-05.
+    fn target_alloc(&mut self, channel: u8) -> Option<Target> {
+        if let Some(t) = self.target(channel) {
+            return Some(t);
+        }
+        let voices = if self.rhythm { 6 } else { 9 };
+        let free = (0..voices).find(|v| !self.chan_voice.contains(&Some(*v)))?;
+        self.chan_voice[channel as usize] = Some(free);
+        Some(Target::Voice(free))
     }
 
     fn freq_regs(&self, channel: u8, note: u8) -> (u8, u8) {
@@ -261,22 +325,25 @@ impl CmfPlayer {
     }
 
     fn note_on(&mut self, channel: u8, note: u8) {
-        match self.target(channel) {
+        match self.target_alloc(channel) {
             Some(Target::Voice(v)) => {
-                let (a, b) = self.freq_regs(channel, note);
                 let vi = v as usize;
-                if self.voice_note[vi].is_some() {
-                    self.opl.write_reg(0xB0 + v, self.voice_bx[vi] & !0x20);
+                if self.voice_program[vi] != Some(self.program[channel as usize]) {
+                    self.apply_program(channel);
                 }
-                self.opl.write_reg(0xA0 + v, a);
+                let (a, b) = self.freq_regs(channel, note);
+                if self.voice_note[vi].is_some() {
+                    self.write(0xB0 + v, self.voice_bx[vi] & !0x20);
+                }
+                self.write(0xA0 + v, a);
                 self.voice_bx[vi] = 0x20 | b;
-                self.opl.write_reg(0xB0 + v, self.voice_bx[vi]);
+                self.write(0xB0 + v, self.voice_bx[vi]);
                 self.voice_note[vi] = Some(note);
             }
             Some(Target::Drum(drum, pv)) => {
                 let (a, b) = self.freq_regs(channel, note);
-                self.opl.write_reg(0xA0 + pv, a);
-                self.opl.write_reg(0xB0 + pv, b);
+                self.write(0xA0 + pv, a);
+                self.write(0xB0 + pv, b);
                 let bits = self.bd_bits & !drum.bit();
                 self.write_bd(bits);
                 self.write_bd(bits | drum.bit());
@@ -290,7 +357,7 @@ impl CmfPlayer {
             Some(Target::Voice(v)) => {
                 let vi = v as usize;
                 if self.voice_note[vi] == Some(note) {
-                    self.opl.write_reg(0xB0 + v, self.voice_bx[vi] & !0x20);
+                    self.write(0xB0 + v, self.voice_bx[vi] & !0x20);
                     self.voice_note[vi] = None;
                 }
             }
@@ -304,8 +371,7 @@ impl CmfPlayer {
 
     fn all_notes_off(&mut self) {
         for v in 0..9u8 {
-            self.opl
-                .write_reg(0xB0 + v, self.voice_bx[v as usize] & !0x20);
+            self.write(0xB0 + v, self.voice_bx[v as usize] & !0x20);
         }
         let bits = self.bd_bits & 0xE0;
         self.write_bd(bits);
@@ -318,20 +384,26 @@ enum Target {
     Drum(Drum, u8),
 }
 
-/// OPL2 native rate for the standard clock, used for frequency numbers.
-const OPL_RATE: f64 = 49_716.0;
+/// AM and vibrato depth bits the original driver keeps set in register 0xBD.
+const BD_DEPTH: u8 = 0xC0;
 
-/// F-number and block for a MIDI note with a fine transpose in 1/128 semitone.
+/// The classic AdLib F-number table, C-sharp to C (observed in the oracle OPL capture).
+const FNUM_TABLE: [u16; 12] = [
+    0x16B, 0x181, 0x198, 0x1B0, 0x1CA, 0x1E5, 0x202, 0x220, 0x241, 0x263, 0x287, 0x2AE,
+];
+
+/// F-number and block for a MIDI note: `fnum = TABLE[(note - 1) % 12]`,
+/// `block = (note - 1) / 12 - 1`. A fine transpose (1/128 semitone) scales the F-number;
+/// ASSUMPTION(U-034 family): how the original applies controllers 0x68/0x69 is unconfirmed.
 pub fn note_to_fnum(note: u8, transpose_128ths: i32) -> (u16, u8) {
-    let semis = f64::from(note) - 69.0 + f64::from(transpose_128ths) / 128.0;
-    let freq = 440.0 * 2f64.powf(semis / 12.0);
-    for block in 0..8u8 {
-        let fnum = (freq * f64::from(1u32 << (20 - block)) / OPL_RATE).round();
-        if fnum <= 1023.0 {
-            return (fnum.max(0.0) as u16, block);
-        }
+    let n = i32::from(note.max(1)) - 1;
+    let base = FNUM_TABLE[(n % 12) as usize];
+    let block = (n / 12 - 1).clamp(0, 7) as u8;
+    if transpose_128ths == 0 {
+        return (base, block);
     }
-    (1023, 7)
+    let scaled = f64::from(base) * 2f64.powf(f64::from(transpose_128ths) / 1536.0);
+    (scaled.round().clamp(0.0, 1023.0) as u16, block)
 }
 
 #[cfg(test)]
@@ -340,11 +412,13 @@ mod tests {
 
     #[test]
     fn note_frequencies_match_spec_vectors() {
-        assert_eq!(note_to_fnum(69, 0), (580, 4));
-        let (f, b) = note_to_fnum(60, 0);
-        assert_eq!(b, 3);
-        assert!((689..=691).contains(&f));
+        // Values seen in the oracle OPL capture of intro1.cmf (C-0001).
+        assert_eq!(note_to_fnum(65, 0), (458, 4));
+        assert_eq!(note_to_fnum(68, 0), (544, 4));
+        assert_eq!(note_to_fnum(72, 0), (686, 4));
+        assert_eq!(note_to_fnum(37, 0), (363, 2));
+        assert_eq!(note_to_fnum(77, 0), (458, 5));
         let (f_down, _) = note_to_fnum(69, -64); // half a semitone down
-        assert!(f_down < 580);
+        assert!(f_down < 0x241);
     }
 }
