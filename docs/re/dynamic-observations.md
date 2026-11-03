@@ -212,6 +212,8 @@ Thirteen keys (Up, Down, Left, Right, Left Ctrl, Left Alt, Space, Insert, keypad
 
 ## 12. Dialogue screen and small-font text (main session, black-box, 2026-11-02)
 
+> **Superseded in part (2026-11-02):** [text.md](../spec/render/text.md) and [dialogue-player.md](../spec/narrative/dialogue-player.md) (RE-3, static, confirmed pixel-exact) replace the readings below where they differ: speaker colour entries are handed out in the order of `01` lines (250, 251, ...), not "249 + slot"; names are placed at `side·160 + 79 − (len div 2)·5`, pen y 89; glyph advances come from a table rather than trimmed widths. The observations are kept as recorded.
+
 From the C-0002 frames `dialogue-1/2/3` (f2283, f2433, f2573) and `script-choice`/`hint`, by exact pixel matching against decoded assets (no disassembly):
 
 - **Layout:** black background (no `.scr` backdrop) with two 160×100 portraits at the top, left and right. The dispatcher's monitor frame is part of his portrait. The speaker names are drawn below the portraits, a prompt line at y = 192, and dialogue text above it.
