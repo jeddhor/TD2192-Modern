@@ -79,9 +79,11 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:794C,func,UI_FlightMenu,,"in-flight computer menu from td.men bytes 0..15999 at (80,50); also: Esc menu in flight (td.men); may set g_MissionAborted",LIKELY,M2-09
 0E8B:7FDF,func,UI_HudTickerAndIndicator,,"called from UI_DrawInstruments each tick: (1) on an edge alert (DS:1E2E) posts the leave-jurisdiction message to the ticker (other text in missions 13/14) and starts it (DS:32BC := 1); (2) on page-0 ticks scrolls the ticker via UI_HudTickerBlit until DS:32BC passes 78; (3) while a comm is incoming (DS:329C) plays its sound once and pulses the F6 indicator (DS:1705 phase 1..7)",CONFIRMED,M2-09
 0E8B:80D3,func,UI_CommViewer,,F6 comm viewer (modal; td.cmm),LIKELY,U-033
-0E8B:82DD,func,UI_DrawGuidanceLine,,guidance line to the current target (ArcTan; Sqrt),HYPOTHESIS,U-033
-0E8B:8E87,func,UI_DrawInstruments,,per tick: armour and shield gauges; radar; guidance; jurisdiction check,LIKELY,U-033
-0E8B:9860,func,UI_UpdateStatusPanel,,per tick: messages; ship info panel; ship switching; mission events,HYPOTHESIS,U-033
+0E8B:8242,func,Pal_SetEntry,"void near(Index, R, G, B: Byte)",sets one entry of g_FlightPalette and of the DAC,CONFIRMED,M6-07
+0E8B:829A,func,Pal_StoreEntry,"void near(Index, R, G, B: Byte)",sets one entry of g_FlightPalette only (applied by the next fade),CONFIRMED,M6-07
+0E8B:82DD,func,UI_DrawGuidanceLine,,"compass lamps (8 palette entries: red = live marked ships per octant, blue = home) and six guidance dots toward the lowest live marked slot or home (Real48 ArcTan/Cos/Sin); holds the flight-7 phase-100 rule; render/hud.md 4.3",CONFIRMED,M6-07
+0E8B:8E87,func,UI_DrawInstruments,,per tick: guidance and lamps; low-armour pulse; armour and shield bars; missile lamp and column; radar; ticker and F6 indicator; render/hud.md 4.2,CONFIRMED,M6-07
+0E8B:9860,func,Msn_UpdateEvents,,per tick (step 18): respawns of dead ships far from the player; scripted events of flights 13 17 18 19 20; flight-17 cut-scene; earlier misnamed UI_UpdateStatusPanel (draws no HUD); mission-logic.md 4.7,LIKELY,M8-02
 0E8B:A714,func,UI_ShipSwitchScreen,,F5 ship-switch screen in flight (not in mission 14; tick-order step 29); earlier misnamed Inp_RestoreKeyboard,LIKELY,M6-01
 0E8B:AF1F,func,UI_JoystickCalibration,,"td.joy icon at (140,70) and calibration loop; also: joystick calibration screen at start-up (Inp_CalibrateJoystick)",LIKELY,M1-05
 0E8B:B1EC,func,Sim_PlayerSpecials,,per tick: M ticker replay; Alt infra-red (palette modes 1/2); Space volley (every second tick) or missile launch (sim/weapons.md),LIKELY,U-043
@@ -97,8 +99,14 @@ address,kind,name,signature,comment,confidence,source_task
 1EBF:0000,func,Inp_JoystickAvailable,,returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead,HYPOTHESIS,M1-03
 1EBF:0026,func,Inp_JoystickRead,,port 201h trigger and timing loop for axes and buttons (all joystick port I/O),LIKELY,M1-03
 1EDE:5247,func,Unit1EDE_Init,,unit init part (6th in chain),CONFIRMED,M1-01
-2404:1426,func,Msn_UpdateA,,per tick: mission triggers and objective messages (part A),HYPOTHESIS,U-033
-2404:3521,func,Msn_UpdateB,,per tick: mission triggers and objective messages (part B),HYPOTHESIS,U-033
+2404:0000,func,Msn_DrawTickerGlyph,"void near(X, Y: Integer; Ch: Char; Colour: Byte)",opaque small-font glyph for mission messages (copy of the text.md glyph routine; 6 drawn from g),LIKELY,M8-02
+2404:030A,func,Msn_PostTicker,"void near(X, Y: Integer; S: String; Colour: Byte)","draws a mission message into the ticker strip (always 0, 735); callers then set g_TickerPos := 1",CONFIRMED,M8-02
+2404:05DC,func,Msn_ExitAt,"void near(Slot, X, Y: Byte)","class(Slot) := FFh when the ship stands on tile (X, Y)",CONFIRMED,M8-02
+2404:0616,func,Msn_PlayerTouches,Boolean near(Slot: Byte),live ship within 32 px of the player on both axes (pixel test; flight 7 mines),CONFIRMED,M8-02
+2404:06EE,func,Msn_NearLive,"Boolean near(A, B, Range: Byte)","tiles of A and B (0 = view tile) closer than Range on both axes, both live",CONFIRMED,M8-02
+2404:07DB,func,Msn_Near,"Boolean near(A, B, Range: Byte)",as Msn_NearLive without the liveness tests,CONFIRMED,M8-02
+2404:1426,func,Msn_UpdateA,,"per tick (step 8): mission rules of flights 1..9 (base test, exits, engagement, phase script); mission-logic.md 5",LIKELY,M8-02
+2404:3521,func,Msn_UpdateB,,per tick (step 9): mission rules of flights 10..20; mission-logic.md 5,LIKELY,M8-02
 2404:60FD,func,Unit2404_Init,,unit init part (5th in chain),CONFIRMED,M1-01
 2A15:220F,func,Unit2A15_Init,,unit init part (4th in chain),CONFIRMED,M1-01
 2C37:0000,func,WORX_CallDriver,,Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h,LIKELY,M1-03
@@ -145,12 +153,14 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:5E47,func,WORX_DspWrite,,AL to the DSP write port (waits for ready),CONFIRMED,M3-05
 2C37:62D5,func,WORX_FnPlayVoc,,fn 06h handler: stop current; parse VOC blocks from memory,CONFIRMED,M3-05
 3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick: move and draw the 20 mission ships,HYPOTHESIS,U-033
+34E6:3232,func,AI_SetTarget,"void far(Slot, Target: Byte)","ship record of Slot: +41Fh := Target (0 = player), +415h := 1, +41Bh := 1; used by every mission engagement rule",CONFIRMED,M8-02
 34E6:3449,func,AI_ChooseWaypoint,"void far(Slot: Byte)",chooses the next waypoint of a mission ship (path step or behaviour-specific target); called for every slot at flight start and when a ship reaches its waypoint,LIKELY,U-039
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
 386E:0000,func,Gfx_HudRadarBlit,,"copies the 20x20 radar from the scratch buffer to HUD (148,6)",LIKELY,M2-09
 386E:012B,func,Gfx_HudFacFrame,,"(frame) td.fac 28x28 frame to HUD (220,2)",LIKELY,M2-09
 386E:024A,func,Gfx_DrawSprite32,,"draws the 32x32 sprite in slot 0 of the sprite bank at (x,y) of a page",HYPOTHESIS,M1-05
 386E:189C,func,Gfx_ClearPage,,"(page,widthBytes,x) clears 232 rows of flight page 0 (0B00h) or 1 (5AC0h)",LIKELY,M2-09
+386E:18D8,func,Gfx_Fill4x2,"void far(XByte, Y, Colour: Byte)","4x2 pixel block at VGA byte XByte of rows Y and Y+1, all planes (HUD missile column)",CONFIRMED,M6-07
 386E:1901,func,Gfx_SetDacEntry,,"(index,r,g,b) one DAC write via 3C8h/3C9h",CONFIRMED,M2-08
 386E:191C,func,Gfx_DrawTile,,"(page,tile,row,col) latched copy of tile from AA80h+256*tile to page + row*0B00h + col*8",CONFIRMED,M1-05
 386E:1991,func,Gfx_SetLogicalWidth,,CRTC 13h (offset) write,LIKELY,M1-03
@@ -293,7 +303,7 @@ address,kind,name,signature,comment,confidence,source_task
 3A9A:1A63,func,BP_UpCase,,UpCase(Ch): a..z to A..Z only,CONFIRMED,M1-01
 3A9A:1A76,func,BP_ClearBss,,internal: zero DS:0502..9DF1 (uninitialised globals) at start-up,LIKELY,M1-01
 3C43:0000,data,k_ConfigScreenText,u8[611],text-mode configuration screen and help text (typed constant),LIKELY,M1-07
-3C43:0264,data,k_TileRadarColour,,radar colour per tile index (map overview and radar),LIKELY,M2-09
+3C43:0264,data,k_TileRadarColour,u8[71],radar colour per map tile 0..70 (resource hud.radar_tile_colours); includes the bytes once listed as k_Class0295/k_Class02A2,CONFIRMED,M6-07
 3C43:02AC,data,k_HeadingRing,u8[18],16 headings clockwise with wrap entries (keypad codes),CONFIRMED,M1-07
 3C43:02BE,data,k_ClassMaxSpeed,u8[10],max speed component per class (biased by 16),CONFIRMED,M1-07
 3C43:02C8,data,k_ClassArmour,u8[10],armour per class (mission ships x2),LIKELY,M1-07
@@ -392,15 +402,24 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1F69,data,g_JoyButton2,u8,second joystick button,LIKELY,M1-07
 3C43:1F6A,data,g_JoyButton1,u8,first joystick button (fire),LIKELY,M1-07
 3C43:329C,data,g_CommIncoming,u8,an incoming transmission is waiting (set by mission logic; cleared by the comm viewer),LIKELY,M6-01
+3C43:329D,data,g_MsnEventCount,u8,flight 17 base hits then destruction counter; flight 20 lander hits,LIKELY,M8-02
 3C43:329E,data,g_MissionSucceeded,u8,ends the flight normally,LIKELY,M1-07
+3C43:32A0,data,g_BaseHit,u8[20],flight 17: slot already counted at the base (element s at DS:329F+s),LIKELY,M8-02
+3C43:32B1,data,g_IonBomb,u8,"flight 18: bomb timer expired, mission lost",LIKELY,M8-02
+3C43:32B4,data,g_IonTimer,u16,flight 18: ticks since the ion truck was found,LIKELY,M8-02
+3C43:32B6,data,g_CutsceneRequest,u8,flight 17: play the td1-17.pic cut-scene in Msn_UpdateEvents,LIKELY,M8-02
 3C43:32B7,data,g_MissionOver,u8,flight is ending,LIKELY,M1-07
 3C43:32B8,data,g_EndTicks,u8,ticks since g_MissionOver (player hidden from 15; loop ends at 35),LIKELY,M1-07
 3C43:32B9,data,g_FlightNumber,u8,Sim_FlyMission argument 1..21,CONFIRMED,M1-07
-3C43:32BA,data,g_MissionPhase,u8,mission-script state,LIKELY,M1-07
+3C43:32BA,data,g_MissionPhase,u8,"mission-script phase: 1 at start, 100 = objectives done",CONFIRMED,M8-02
 3C43:32BC,data,g_TickerPos,u16,"HUD ticker scroll position 1..78 (0 = idle); edge alerts are only raised while it is 0",LIKELY,M6-01
+3C43:32BE,data,g_MsnI,u16,loop counter of the mission rules,CONFIRMED,M8-02
+3C43:32C0,data,g_MsnJ,u16,loop counter of the mission rules,CONFIRMED,M8-02
+3C43:32C2,data,g_MsnK,u16,loop counter of the mission rules (explosion slot search),CONFIRMED,M8-02
 3C43:3946,data,g_MusicSize,u16,size of the loaded song (WORX_LoadMusic),CONFIRMED,M1-02
 3C43:3948,data,g_SfxLoadSize,u16,size of the last VOC loaded (WORX_LoadSfx),CONFIRMED,M1-02
 3C43:3950,data,g_WorxParamAL,u8,"WORX_CallDriver inputs: AL (3950), BX (3952), DX (3954), DI (3956)",CONFIRMED,M1-02
+3C43:3958,data,g_SlotMarker,u8[21],"guidance marker per slot (0 none, 32h target, 39h friend, 3Dh home); element 21 (DS:396C) = home point",CONFIRMED,M8-02
 3C43:396E,data,g_ProjOwner,farptr,projectile array: shooter slot,LIKELY,M1-08
 3C43:3972,data,g_ProjFlag,farptr,projectile array: 1 = enemy shot,HYPOTHESIS,M1-08
 3C43:3976,data,g_ProjSubX,farptr,projectile array: i16 pixel offset X,LIKELY,M1-08
@@ -441,6 +460,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:9774,data,g_RotSc3,farptr,farptr to td.sc3 cells 0..8,CONFIRMED,M1-05
 3C43:9778,data,g_RotSc2,farptr,farptr to td.sc2 cells 0..8,CONFIRMED,M1-05
 3C43:977C,data,g_RotShr,farptr,farptr to td.shr cells 0..19,CONFIRMED,M1-05
+3C43:9780,data,g_RadarBuf,u8[784],"28x28 radar scratch buffer; cells (3..22, 4..23) are copied to the HUD",CONFIRMED,M6-07
 3C43:9B82,data,g_SpriteBank,farptr,farptr to 27 x 32x32 sprites (td.shp + td.exp),CONFIRMED,M1-05
 3C43:9B86,data,g_FacFrames,farptr,farptr to td.fac (5 x 28x28),CONFIRMED,M1-05
 3C43:9B8A,data,g_CrtCheckBreak,u8,Crt.CheckBreak,LIKELY,M1-01
