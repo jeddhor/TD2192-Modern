@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `narrative/dialogue-player` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for layout, palette and text; T1 for event order; T2 for fade and typing speed (CPU-bound in the original) |
 | **Confidence** | CONFIRMED for E1 (static analysis of `file0001:051A:92AF` and helpers; three C-0002 frames checked). E2/E3: LIKELY (same routine, differences listed in §4.9) |
@@ -71,7 +71,7 @@ The codes stand in for face numbers that are awkward bytes in a text line (9 = T
 | Palette entries per face | 112 (0..111 left, 112..223 right) | `051A:1618` |
 | Pixel values kept per face | 0..111 (larger values become 0) | `051A:1618` |
 | Dim factor | each 6-bit component shifted right by 1 | `051A:1BF7` |
-| First text entry | 250 (FAh); next entries 251, 252, 253, then 240..253 cyclically (E1; E2/E3 also use 254) | `051A:92AF` |
+| First text entry | 250 (FAh); next entries 251, 252, 253, then 240..253 cyclically (E1). E2/E3: first entry 240 (F0h), then 241..254, wrapping to 240 ([episode-deltas §9.3](../../re/episode-deltas.md#93-other-changes-in-the-unit)) | `051A:92AF`, `td2:04EC:96A4`, `td3:04A0:7795` |
 | Line pitch | 7 px (7 single-row scrolls per line) | `051A:1BF7` |
 | Typed line pen | (2, 175) | `051A:1BF7` |
 | Fade | 17 steps, value × *k* / 16, *k* = 0..16 (Real48, `Round`) | `051A:0016`, `051A:013F` |
@@ -200,3 +200,4 @@ Skip to the next line, then wait until a key is pressed or a joystick button is 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-3 | Initial, from static analysis of all three episodes and C-0002 |
+| 2 | 2026-11-02 | RE-7 (M1-09) | E2/E3 text-entry allocator starts at 240 and cycles 240..254; face remaps confirmed |

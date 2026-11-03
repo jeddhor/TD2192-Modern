@@ -140,7 +140,7 @@ Songs in the order they are requested, with the scene that follows each request.
 
 - [ ] Q1 (U-080): which condition selects each of the three game-over paths (`0000:2DA6`, `2DE3`, `2E26`)? Mission failure without retry is the likely one for the first.
 - [ ] Q2 (U-081): what flight 21 is (a scripted or bonus mission between the story parts before mission 20) and how its outcome is handled.
-- [ ] Q3 (M1-09): E2 and E3 cue tables (same routine in `td2`/`td3`, different song files).
+- [x] Q3 (M1-09): E2 and E3 cue tables (same routine in `td2`/`td3`, different song files). **Resolved (RE-7):** same behaviour; `td03` is index 45 in E2 and 44 in E3, `intro.cmf` is 69 (and 45 in E3); the flight song gains a fallback request; per-mission cues in [episode-deltas §7, §8.2](../../re/episode-deltas.md#7-audio).
 
 ## 9. Provenance
 

@@ -97,7 +97,7 @@ Function counts are low for the code size because much of the game code is writt
 ## 2. Toolchain fingerprints
 
 - "Portions Copyright (c) 1983,92 Borland" plus the "Runtime error ... at ..." text: **Borland Pascal 7.0** System unit (all five game exes).
-- "WORX TOOLKIT VERSION 2.1 COPYRIGHT 1993 BY MYSTIC SOFTWARE": the sound library (td1, file0000, file0001; check td2/td3).
+- "WORX TOOLKIT VERSION 2.1 COPYRIGHT 1993 BY MYSTIC SOFTWARE": the sound library (td1, file0000, file0001; td2/td3 link a byte-identical WORX unit, [episode-deltas §3.1](episode-deltas.md#31-identical-units)).
 - A `WAVEfmt ` string in `td1.exe` (file offset 0x6AE1): WORX can apparently handle WAV headers as well.
 - A lookup table of ascending ASCII-range bytes next to the WORX banner (`" %')+,-../0011..."`): WORX-internal curve.
 - **Prologue encodings** (`file0001`): Pascal-compiled procedures use `55 89 E5` (`push bp; mov bp,sp` with the 89 encoding; 159 sites) or, in `{$G+}` units, `C8 nn nn 00` (`enter`; 54 sites, mostly in `0E8B` and `386E`). The MASM/TASM-style `55 8B EC` appears only in hand-written assembler (24 in System, 7 in `3A7E`, 1 in Crt). The game was therefore compiled at least partly with `{$G+}` (286 instructions).
@@ -188,7 +188,7 @@ Questions: does it chain to `td2.exe`/`td3.exe` (U-005)? What does `tdstatus.dat
 | 0x7030 | `td.men`, `tdmen.pal` |
 | 0x84D9 | `dialogu2.dat` |
 | 0xA7A1 | `newfaces.td2` |
-| 0xAD79–0xF154 | Scene list (each preceded by `td.lt2`): `hangar`, `hangar2`, `tdlab`, `marauder`, `briefing`, `helihangar`, `intro2`, `shooting`, `dieseche`, `soffice`, `sewer`, `shuttle`, `bunker`, `elevator`, `greenblo`, `vidcom`, `bb`, `v-port`, `i-port`, `hydedead`, `aboutus`, `order`, `tdoffic2`, `sbar`, `velsroom`, `td-let.cin`, `hyde` |
+| 0xAD79–0xF154 | Scene list (each preceded by `td.lt2`): `hangar`, `hangar2`, `tdlab`, `marauder`, `briefing`, `helihangar`, `intro2`, `shooting`, `dieseche`, `soffice`, `sewer`, `shuttle`, `bunker`, `elevator`, `greenblo`, `vidcom`, `bb`, `v-port`, `i-port`, `hydedead`, `aboutus`, `order`, `tdoffic2`, `sbar`, `velsroom`, `td-let.cin`, `hyde` (and `velvswlf`, [episode-deltas §9.2](episode-deltas.md#92-scene-cards)) |
 
 ## 7. Episode 3 `td3.exe`
 
@@ -206,6 +206,8 @@ Questions: does it chain to `td2.exe`/`td3.exe` (U-005)? What does `tdstatus.dat
 | 0xF281 | Background story (dated 2193) |
 
 ## 8. Cross-episode notes
+
+The full comparison of E2/E3 with E1 (shared units, changed routines, data tables, campaign structure) is [episode-deltas.md](episode-deltas.md) (M1-09).
 
 - E2 and E3 reference `td.men`/`tdmen.pal` and `td.hlp` near the start of their string areas, and E1 references `tdmen.pal`. Menu structure may differ between E1 and E2/E3 (U-005).
 - E2 and E3 include `aboutus.scr`/`order.scr` in their scene lists: the in-game "about"/"order" screens are probably shown from the menu.

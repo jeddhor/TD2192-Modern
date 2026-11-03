@@ -56,7 +56,7 @@ Routines called once per tick, in call order (all `file0001:`):
 | 25 | `2C37:03D3` | WORX "sound busy" poll | SFX = Sound Blaster |
 | 26 | inline `0E8B:E540..E5A0` | armour/shield checks, shield regeneration | always |
 | 27 | inline `0E8B:E5A0..EA2B` | `Sim_PlayerMove` (drag, scroll, map collision, tile carry, map edges) | always |
-| 28 | `0E8B:A714` | ship-switch screen (F5) | F5 held, mission ≠ 14 |
+| 28 | `0E8B:A714` | `UI_TacticalMap` (F5 map screen; changes no state, [flow/flight-screens](../flow/flight-screens.md) §4.3) | F5 held, mission ≠ 14 |
 | 29 | inline `0E8B:EA2B..F3xx` | `Sim_PlayerThrust` and steering | always |
 | 30 | inline `0E8B:F3xx..F6A0` + `1E2A:006A` | `AI_FireRequests` (spawn mission-ship shots) | back page ≠ 0 |
 | 31 | `0E8B:B1EC` | `Sim_PlayerSpecials` (Space fire, Alt infra-red, M ticker; [weapons §4.1](weapons.md)) | always |
@@ -111,7 +111,7 @@ each tick (0E8B:CC7F):
   27. shields < 1 -> 0; armour < 1 and not over -> mission over (player destroyed)
       shields < class maximum -> shields += 1
   28. player drift and drag, map collision, tile carry and map limits (flight-model.md 4.2-4.4)
-  29. flush the BIOS keyboard buffer; F6 -> comm request; F5 -> ship-switch screen (not in mission 14)
+  29. flush the BIOS keyboard buffer; F6 -> comm request; F5 -> tactical map screen (not in mission 14; flow/flight-screens.md 4.3)
   30. thrust and steering from the arrow keys or joystick (flight-model.md 4.5-4.6)
   31. (details: mission-ships.md section 4.4.2; the shot heading is the ship's heading, not the request entry)
       every second tick (back page currently 1): for each slot 1..20 and each request entry 2..8

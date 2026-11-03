@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/episode-program-flow` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 for the order of screens, scenes, dialogue, music and flights (the player sees it); T1 for the state that flows between missions (mission number, kills, outcome flags); T3 for the text-mode configuration screen and the `tdstatus.dat` hand-off (replaced by the port's own shell) |
 | **Confidence** | LIKELY overall (static analysis of the complete sequencer and menu). The mission-1 path is CONFIRMED by capture C-0002 (config → script choice → menu → title card → hangar card → dialogue → hint → flight → retry) |
@@ -80,13 +80,13 @@ Switches (first command-line argument only, exact case variants): `/pc` → musi
 | `051A:596F` | `voffice.scr` | 3 strings | |
 | `051A:471B` | `td1-18.pic` | 3 strings | Story still with text |
 | `051A:4113` | `td1-13/14/16/20.pic` | 3 strings + set number (1..4) | Story-still sequence; the number selects which stills |
-| `051A:4979` | `td1-15.pic` | none | Still with a split-screen/palette effect; uses `051A:1AA3` (timed wait on DOS time) |
+| `051A:4979` | `td1-15.pic` | none | Plain still at (32, 30), 10 s ([screens](screens.md) §3.9; there is no split-screen or palette effect, U-122) |
 | `051A:5852` | text only (`td-let.cin`) | string, colour, 0, 0 | Text card (mission titles and short captions) |
 | `051A:2B26` | text only | hint number (1, 2, 6) | Pre-flight hint/tutorial screen; waits for any key or joystick button |
 | `051A:62FD` | text only | none | Assignment printout (orders), used before mission 2 |
 | `051A:6653` | text only | none | Enemy-ace dossier, used before mission 5 |
 | `051A:74B2` | text only | total kills | Pilot dossier, end-game version (status dead) |
-| `051A:6A33` | `td.lt2` text | none | Retry prompt; returns true to retry |
+| `051A:6A33` | `td.lt2` text | none | Retry prompt; returns true to retry (any key but Esc). Calls `Random(10)` once ([screens](screens.md) §3.7, U-124) |
 | `051A:6FF2` | text only | kills, kills to date, outcome flag | Debriefing (§4.5) |
 
 ### 3.4 State handed over by flight (`Sim_FlyMission`, `0E8B:B880`)
@@ -163,7 +163,7 @@ select the block for g_MissionNumber (tests 1..20 in turn):
 return (if g_MissionAborted then g_MissionAdvance := 0)
 ```
 
-Esc during the pre-flight story skips to the flight; Esc during the post-flight story ends the block (the mission still counts as completed).
+Esc during the pre-flight story skips to the flight; Esc during the post-flight story ends the block (the mission still counts as completed). Not every step is followed by a skip test: the exact list, and why Esc in dialogue 1 still shows hint 1, is in [screens](screens.md) §3.12 (U-125). Layouts of every screen named here: [screens](screens.md); in-flight screens: [flight-screens](flight-screens.md).
 
 ### 4.4 Per-mission sequence
 
@@ -287,7 +287,7 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 
 ## 8. Open questions
 
-- [ ] Q1: exact behaviour of `051A:1A40` and `051A:1AA3` (timed key wait): which keys set the skip flag and how long each card stays without input (U-033 follow-up).
+- [x] Q1: answered in [screens](screens.md) §2.2 (U-123).
 - [ ] Q2 (U-038): the WORX calls `2C37:0378(0/1)` around the endings (pause/resume sound effects?).
 - [ ] Q3 (M1-10): which extra program the launcher runs for status 1 and 2, and whether it passes switches back.
 - [ ] Q4 (U-044): what flight 21 shows.
@@ -311,3 +311,4 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial: start-up, menu, complete E1 mission sequence, endings, debrief tiers, tdstatus.dat |
+| 2 | 2026-11-02 | RE-8 | `td1-15.pic` is a plain still (U-122); retry prompt calls `Random` (U-124); skip tests per step in [screens](screens.md) §3.12 (U-125); Q1 answered (U-123) |

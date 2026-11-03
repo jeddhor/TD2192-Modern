@@ -464,7 +464,7 @@ id = "flight.prompts"
 kind = "pstring_seq"
 offset = 0x1EB77
 count = 2
-note = "infra-red and pause prompts"
+note = "[0] infra-red notice (ink 37), [1] pause line (flow/flight-screens.md 4.4, 4.5.2)"
 
 [[resource]]
 id = "e1.target_info"
@@ -509,24 +509,11 @@ count = 23
 note = "F6 transmission 3 (lines)"
 
 [[resource]]
-id = "e1.comms.04.01"
+id = "e1.comms.04"
 kind = "pstring_seq"
 offset = 0x2F8EE
-count = 3
-note = "F6 transmission 4 (lines)"
-
-[[resource]]
-id = "e1.comms.misc"
-kind = "pstring"
-offset = 0x2F940
-note = "transmission strings without a direct reference"
-
-[[resource]]
-id = "e1.comms.04.02"
-kind = "pstring_seq"
-offset = 0x2F96B
-count = 14
-note = "F6 transmission 4 (lines)"
+count = 19
+note = "F6 transmission 4 (headers and lines; RE-8 merged the former 04.01, misc and 04.02, whose misc entry pointed one byte into a 1-character string)"
 
 [[resource]]
 id = "e1.comms.05"
