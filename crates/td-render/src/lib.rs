@@ -7,6 +7,7 @@
 pub mod dialogue;
 pub mod fade;
 pub mod flight;
+pub mod flight_palette;
 pub mod framebuffer;
 pub mod headings;
 pub mod small_text;
