@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `core/bp7-runtime-semantics` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for `Random` and Real48 arithmetic (gameplay state depends on them); T3 for everything the port replaces (file I/O, Crt text, Halt) |
-| **Confidence** | RNG: CONFIRMED (static, two independent derivations). Real48 usage: CONFIRMED. Real48 operation details: PARTIAL |
+| **Confidence** | RNG: CONFIRMED (static, two independent derivations). Real48 usage and operation details: CONFIRMED (bit-exact algorithms in [real48.md](real48.md)) |
 | **Tasks** | M1-01 (follow-ups: M1-01.b Real48 bit-exact, VE RandSeed watch) |
-| **Unknowns** | U-022 (resolved), U-023 (resolved), U-029, U-030, U-031 |
+| **Unknowns** | U-022 (resolved), U-023 (resolved), U-029 (resolved), U-030, U-031 |
 
 ## 1. Summary
 
@@ -18,7 +18,7 @@ All three episode programs are Borland Pascal 7 executables. They carry the BP7 
 2. **Real48 software floating point.** Game code calls the System Real48 routines from about 470 call sites (add, multiply, divide, compare, LongInt→Real, Round, Sqrt, Sin, Cos, ArcTan). This confirms risk R11: `td-sim` needs a bit-exact Real48 type.
 3. **Integer semantics.** The game was compiled with `{$R-,Q-}` (no range or overflow checks), so integer arithmetic wraps silently. LongInt multiply/divide go through System helpers with the usual two's-complement results.
 
-This spec gives the exact `Random` algorithm with test vectors, the Real48 format and the inventory of Real48 entry points that game code uses, and the unit/segment map of `file0001.exe`. The bit-exact Real48 add/multiply/divide/transcendental algorithms still need to be specified (§8, U-029).
+This spec gives the exact `Random` algorithm with test vectors, the Real48 format and the inventory of Real48 entry points that game code uses, and the unit/segment map of `file0001.exe`. The bit-exact Real48 algorithms (add, multiply, divide, compare, conversions, `Sqrt`, `Sin`, `Cos`, `ArcTan`) are in [real48.md](real48.md).
 
 ## 2. Definitions and units
 
@@ -142,16 +142,16 @@ Game code (not just the runtime) calls these System entry points. The register c
 
 | Entry | Operation | Game call sites | Error behaviour | Semantics known |
 |---|---|---:|---|---|
-| `3A9A:1317` | `X + Y` | 3 | RunError 205 on overflow | Algorithm not yet specified |
-| `3A9A:1329` | `X * Y` | 6 | 205 on overflow | Not yet specified |
-| `3A9A:132F` | `X / Y` | 128 | 200 if Y = 0; 205 on overflow | Not yet specified |
+| `3A9A:1317` | `X + Y` | 3 | RunError 205 on overflow | [real48 §4.1](real48.md#41-core-add-and-subtract-3a9a1006-subtract-3a9a1002): 48-bit field, truncating alignment |
+| `3A9A:1329` | `X * Y` | 6 | 205 on overflow | [real48 §4.2](real48.md#42-core-multiply-3a9a10c9): correctly rounded, ties away |
+| `3A9A:132F` | `X / Y` | 128 | 200 if Y = 0; 205 on overflow | [real48 §4.3](real48.md#43-core-divide-3a9a11cc-far-entry-3a9a132f): correctly rounded, ties away |
 | `3A9A:1339` | compare `X ? Y` | 20 | — | If the sign bits differ, the negative one is smaller. Otherwise exponent, then mantissa, inverted for negatives. Equal when both exponents are 0 |
 | `3A9A:133D` | LongInt → Real | 160 | — | **Exact** (normalise the magnitude, set the sign) |
 | `3A9A:1349` | `Round(X)` → LongInt | 141 | 207 if out of LongInt range | Round **half away from zero**. Only the first discarded bit decides; \|X\| ≥ 2³¹ (except −2³¹) is an error |
-| `3A9A:13F0` | `Sqrt(X)` | 5 | 207 if X < 0 | Newton iteration from a halved-exponent guess. Exact rounding not yet specified |
-| `3A9A:1462` | `Sin(X)` | 1 | — | Reduction by 2π, then polynomial. Not yet specified |
+| `3A9A:13F0` | `Sqrt(X)` | 5 | 207 if X < 0 | Newton iteration from a halved-exponent guess ([real48 §4.9](real48.md#49-sqrt-3a9a13f0)) |
+| `3A9A:1462` | `Sin(X)` | 1 | — | Reduction by 2π, fold to [0, π/2], degree-15 odd polynomial ([real48 §4.10](real48.md#410-sin-3a9a1462-and-cos-3a9a144f)) |
 | `3A9A:144F` | `Cos(X)` | 1 | — | Computed as `Sin(π/2 − X)` |
-| `3A9A:1639` | `ArcTan(X)` | 4 | — | \|X\| > 1 reduced via 1/X, then polynomial. Not yet specified |
+| `3A9A:1639` | `ArcTan(X)` | 4 | — | \|X\| ≥ 1 reduced via 1/X, tangent table, degree-11 odd polynomial ([real48 §4.11](real48.md#411-arctan-3a9a1639)) |
 
 Entries present but not referenced by game code: `X − Y` (`3A9A:131D`), `Sqr` (`3A9A:1323`), `Trunc` (`3A9A:1341`, the same core as `Round` without the rounding bit), `Int`/`Frac` (used only inside `Sin`). Unit `0E8B` makes most of the calls: `0E8B:B880` alone has 55 divide, 55 LongInt→Real and 55 `Round` calls (the pattern `Round(Real(a) / b)`), and `0E8B:82DD` uses `Sin`, `Cos`, `ArcTan`, `Sqrt`, multiply and compare (probably heading or aiming maths). Units `0000`, `051A`, `1E2A`, `2404`, `3292` and `34E6` also convert to and from Real48, and most of them divide. Because results feed game state, **Classic gameplay must use a bit-exact Real48 implementation, not `f32`/`f64`** (AGENTS.md rule 6; MDG R11).
 
@@ -211,7 +211,7 @@ None directly. The `Random` calls in the sound-effect unit (`1E2A`) mean that SF
 
 - [ ] Q1 (VE): confirm dynamically that RandSeed (DS:04EE in DGROUP) is 0 at the start of `file0001` and follows test vector 1 call by call. Record the number of `Random` calls between program start and the first in-flight tick of mission 1, so replays can be aligned.
 - [ ] Q2 (U-030): are the `Random` calls in `1E2A` (sound effects) made even when sound is disabled (`/nosound`, no card)? If they depend on the sound configuration, the RNG stream, and so gameplay, differs between sound settings.
-- [ ] Q3 (U-029, P1): bit-exact Real48 add, multiply and divide (rounding of the 40-bit mantissa, normalisation, underflow-to-zero) and the exact Sqrt/Sin/Cos/ArcTan algorithms and coefficient tables (`3A9A:14C3`, `3A9A:174A`). Needed before any `td-sim` code that mirrors `0E8B:B880` or `0E8B:82DD`. The best method is to run the original routines on many inputs in an emulator harness (for example the DOSBox oracle, or a small 8086 interpreter over the System segment bytes in `re-work`) and specify from the observed bit patterns plus the code.
+- [x] Q3 (U-029, P1), resolved 2026-11-02 in [real48.md](real48.md): bit-exact Real48 add, multiply and divide (rounding of the 40-bit mantissa, normalisation, underflow-to-zero) and the exact Sqrt/Sin/Cos/ArcTan algorithms and coefficient tables (`3A9A:14C3`, `3A9A:174A`). Needed before any `td-sim` code that mirrors `0E8B:B880` or `0E8B:82DD`. The best method is to run the original routines on many inputs in an emulator harness (for example the DOSBox oracle, or a small 8086 interpreter over the System segment bytes in `re-work`) and specify from the observed bit patterns plus the code.
 - [ ] Q4 (U-031): roles of units `2404`, `3292`, `34E6` and the small unit `3A92` (M1-04/M1-07).
 
 ## 9. Provenance
@@ -237,3 +237,4 @@ All addresses are `file0001:` image-relative. Ghidra address = (1000h + seg):off
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-1 (Archaeologist + Spec author) | Initial: RNG exact, Real48 inventory, unit map, System constants |
+| 2 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | Real48 algorithms moved to the new [real48.md](real48.md) spec; §4.2 links to it; Q3 resolved |
