@@ -344,12 +344,12 @@ impl Screen for FlightArena {
 impl FlightScreen for FlightArena {
     fn result(&self) -> FlightResult {
         let f = &self.flight;
+        // Teardown (mission-logic.md rev 1 §4.8).
         FlightResult {
-            died: f.end_ticks == 35,
+            died: f.died(),
             aborted: f.aborted,
             lost: f.lost,
-            // The mission-specific outcome tests (teardown) come with mission logic (M8-05).
-            outcome: true,
+            outcome: f.outcome(),
             kills: f.kills,
         }
     }
