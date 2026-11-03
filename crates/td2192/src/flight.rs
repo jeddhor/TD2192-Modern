@@ -4,25 +4,34 @@
 //! `td_render::flight` and the instruments with `td_render::hud` (M6-07). The ticker window and
 //! the F6 indicator wait for the mission-logic state (M8-05) and stay blank. Keys as in the original: keypad
 //! 8/2/4/6 or the arrow keys thrust, Space fires, Tab switches to missiles, keypad + or keypad
-//! 0 fire the afterburner (classes 2 and 5), P pauses (any key resumes), Esc aborts the flight
-//! (the in-flight computer menu is not built yet). Debug builds only: F9 completes the mission
-//! (mission logic, M8-05, is not in yet; this lets the campaign be played through).
+//! 0 fire the afterburner (classes 2 and 5), P pauses (any key resumes), Esc opens the computer
+//! menu, F6 reads a transmission, F5 shows the tactical map, Alt toggles infra-red (the modal
+//! screens and palettes are `td_flow::flight_screens` and `td_render::flight_palette`,
+//! flight-screens.md rev 1). Debug builds only: F9 completes the mission.
 //!
-//! [`FlightLauncher`] hands these flights to the Episode 1 campaign (`td_flow::Episode1`).
+//! [`ArenaLauncher`] hands these flights to the Episode 1 campaign (`td_flow::Episode1`) and
+//! keeps what the original carries from one flight of a program run to the next: the
+//! `td_sim` [`Session`] (RNG, class tables, ship records, mission state) and the F5 target
+//! entries.
 //!
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
 //! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_audio::{AudioCommand, Pcm8, decode_voc};
+use td_flow::flight_screens::{
+    CommScreen, ComputerMenu, FlightModal, FlightScreenAssets, ModalStep, Pause, ShipDot,
+    TacticalMap, TargetBoard, draw_ir_notice, shows_ir_notice,
+};
 use td_flow::{
-    FLIGHT_TICK_HZ, FlightResult, FlightScreen, FlowContext, PlaceholderLauncher, Screen,
-    Transition,
+    FLIGHT_TICK_HZ, FlightResult, FlightScreen, FlowContext, PlaceholderLauncher, RETRACE_HZ,
+    Screen, Transition,
 };
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
@@ -31,8 +40,10 @@ use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::Tileset;
 use td_input::{Key, TickInput};
 use td_render::flight::{self, ShotLook, ViewPos};
+use td_render::flight_palette::FlightDac;
 use td_render::hud::{Hud, HudAssets, HudState, TickerFont};
 use td_render::{Framebuffer, HeadingSprites};
+use td_sim::flight::Session;
 use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
 use td_sim::flight::heading::Heading;
 use td_sim::flight::logic::Message;
@@ -139,14 +150,44 @@ pub struct FlightArena {
     /// Ticker texts by resource id.
     ticker_texts: BTreeMap<&'static str, Vec<String>>,
     flight: Flight,
+    /// The modal the current tick is suspended at.
     modal: Option<Modal>,
+    /// Its screen (flight-screens.md rev 1).
+    screen: Option<FlightModal>,
+    screens: FlightScreenAssets,
+    /// The DAC: infra-red modes and the hit and white flashes (flight-screens §4.5).
+    dac: FlightDac,
+    /// The F5 entries of this program run (flight-screens §3.4).
+    board: TargetBoard,
+    /// The program run this flight belongs to, when the campaign launched it.
+    run: Option<Rc<RefCell<RunState>>>,
     binds: Vec<(Key, FlightKey)>,
     typematic: Typematic,
     events: Vec<Event>,
 }
 
+/// What one program run keeps across its flights.
+#[derive(Debug, Default)]
+pub struct RunState {
+    /// RNG, class tables, ship records and mission state (`td_sim::flight::Session`).
+    pub session: Session,
+    /// The F5 target entries (`Msn_LoadTargetInfo` rewrites only part of them per flight).
+    pub board: TargetBoard,
+}
+
 impl FlightArena {
+    /// A flight as the first of a program run (developer arena).
     pub fn new(dir: &DataDir, resources: &ExeResources, number: u8) -> Result<Self> {
+        Self::start(dir, resources, number, None)
+    }
+
+    /// Flight `number` of the program run `run` (a fresh run when `None`).
+    pub fn start(
+        dir: &DataDir,
+        resources: &ExeResources,
+        number: u8,
+        run: Option<Rc<RefCell<RunState>>>,
+    ) -> Result<Self> {
         if !(1..=21).contains(&number) {
             bail!("flight number must be 1..=21");
         }
@@ -154,7 +195,11 @@ impl FlightArena {
         else {
             bail!("file0001.exe resources are unavailable (muzzle table)");
         };
-        let mission = Mission::parse(&dir.read(&format!("m{number}.td"))?)?;
+        // Flight 21 loads no mission file and flies the ship records it inherits.
+        let mission = match number {
+            21 => None,
+            n => Some(Mission::parse(&dir.read(&format!("m{n}.td"))?)?),
+        };
         let base = SpriteSheet::parse_base(&dir.read("td.shp")?)?;
         let rot = [
             SpriteSheet::parse_rotation_set(&dir.read("td.sc3")?)?,
@@ -197,11 +242,24 @@ impl FlightArena {
             tile_attr: episode1_tile_attributes(),
             muzzles: Muzzles(muzzles),
         };
-        let flight = Flight::with_mission(number, &mission, &world);
+        let screens = FlightScreenAssets::load(dir, resources)?;
+        let session = run
+            .as_ref()
+            .map_or_else(Session::new, |r| r.borrow().session.clone());
+        let flight = Flight::start(number, mission.as_ref(), &world, session);
+        let board = {
+            let mut fresh = TargetBoard::default();
+            let mut shared = run.as_ref().map(|r| r.borrow_mut());
+            let board = shared.as_mut().map_or(&mut fresh, |r| &mut r.board);
+            board.load(number);
+            board.clone()
+        };
+        let palette = Palette::parse(&dir.read("td.pal")?)?;
         Ok(Self {
             world,
             tiles: Tileset::parse(&dir.read("td.blk")?)?,
-            palette: Palette::parse(&dir.read("td.pal")?)?,
+            dac: FlightDac::start(&palette, flight.palette_mode),
+            palette,
             ships,
             bank,
             effects,
@@ -214,6 +272,10 @@ impl FlightArena {
             ticker_texts,
             flight,
             modal: None,
+            screen: None,
+            screens,
+            board,
+            run,
             binds: bindings(),
             typematic: Typematic::default(),
             events: Vec::new(),
@@ -223,35 +285,66 @@ impl FlightArena {
 
 impl Screen for FlightArena {
     fn tick_hz(&self) -> f64 {
-        FLIGHT_TICK_HZ
+        // The modal screens step once per vertical retrace (fades, pulses, typing).
+        if self.screen.is_some() {
+            RETRACE_HZ
+        } else {
+            FLIGHT_TICK_HZ
+        }
     }
 
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
-        let c = self.typematic.controls(input, &self.binds);
         // The original reads the joystick only when it is the chosen controller; the port
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
         self.events.clear();
-        if cfg!(debug_assertions) && input.pressed(Key(0x42)) {
-            // F9, debug builds only: complete the mission.
-            self.flight.succeeded = true;
-        }
-        let result = match self.modal.take() {
-            None => self.flight.tick(&self.world, &c, &mut self.events),
-            // The original waits until any key byte is set.
-            Some(Modal::Pause) if input.pressed.is_empty() => {
-                self.modal = Some(Modal::Pause);
-                return Transition::None;
+        let mode = self.flight.palette_mode;
+        let mut result = if let Some(screen) = &mut self.screen {
+            match screen.tick(&self.screens, input) {
+                ModalStep::Continue => return Transition::None,
+                ModalStep::Close { abort } => {
+                    let menu = matches!(screen, FlightModal::Menu(_));
+                    self.screen = None;
+                    self.modal = None;
+                    if abort {
+                        // Quit: g_MissionAborted := 1; the tick then leaves the loop.
+                        self.flight.aborted = true;
+                    } else if menu {
+                        // The menu's last FadeIn restored the mode (flight-screens §4.1).
+                        self.dac.faded_in(&self.palette, self.flight.palette_mode);
+                    }
+                    let c = self.typematic.controls(input, &self.binds);
+                    self.flight.resume(&self.world, &c, &mut self.events)
+                }
             }
-            // The comm viewer and the ship-switch screen are not implemented yet: close them
-            // at once.
-            // The flight menu is not built yet: Esc aborts the flight.
-            Some(Modal::FlightMenu) => {
-                self.flight.aborted = true;
-                self.flight.resume(&self.world, &c, &mut self.events)
+        } else {
+            let c = self.typematic.controls(input, &self.binds);
+            if cfg!(debug_assertions) && input.pressed(Key(0x42)) {
+                // F9, debug builds only: complete the mission.
+                self.flight.succeeded = true;
             }
-            Some(_) => self.flight.resume(&self.world, &c, &mut self.events),
+            let r = self.flight.tick(&self.world, &c, &mut self.events);
+            // 14. Palette effects, in the mode the step saw (Alt acts later, at step 33).
+            self.dac
+                .step(&self.palette, mode, self.flight.frame.white_flash);
+            r
         };
+        while let TickResult::Modal(m) = result {
+            self.modal = Some(m);
+            if let Some(screen) = self.open_screen(m) {
+                self.screen = Some(screen);
+                break;
+            }
+            // Nothing to show: continue the tick at once.
+            self.modal = None;
+            result = self
+                .flight
+                .resume(&self.world, &TickControls::default(), &mut self.events);
+        }
+        // 33. Alt toggled infra-red: the start formula of the new mode.
+        if self.flight.palette_mode != mode {
+            self.dac.toggle(&self.palette, self.flight.palette_mode);
+        }
         let v = self.flight.player.view;
         for &Event::Sound { kind, source } in &self.events {
             ctx.audio.push(AudioCommand::PlayEffect {
@@ -262,26 +355,25 @@ impl Screen for FlightArena {
             });
         }
         match result {
-            TickResult::Done => Transition::None,
-            TickResult::Finished => Transition::Pop,
-            TickResult::Modal(m) => {
-                self.modal = Some(m);
-                Transition::None
+            TickResult::Done | TickResult::Modal(_) => Transition::None,
+            TickResult::Finished => {
+                // Hand the session to the next flight of the program run.
+                if let Some(run) = &self.run {
+                    run.borrow_mut().session = self.flight.session();
+                }
+                Transition::Pop
             }
         }
     }
 
     fn draw(&self, fb: &mut Framebuffer) {
-        fb.clear(0);
-        fb.palette = self.palette.clone();
-        let f = &self.flight.frame;
-        if f.white_flash > 1 {
-            fb.palette.colors.fill(td_formats::palette::Rgb6 {
-                r: 63,
-                g: 63,
-                b: 63,
-            });
+        if let Some(screen) = &self.screen {
+            screen.draw(fb);
+            return;
         }
+        fb.clear(0);
+        fb.palette = self.dac.current().clone();
+        let f = &self.flight.frame;
         let view = ViewPos {
             tile_x: i32::from(f.view.tile_x),
             tile_y: i32::from(f.view.tile_y),
@@ -403,6 +495,8 @@ impl Screen for FlightArena {
             display.tick = Some(f.ticks);
         }
         display.hud.draw(fb);
+        drop(display);
+        self.draw_overlays(fb);
     }
 }
 
@@ -482,6 +576,56 @@ impl FlightArena {
             flight::draw_mission_ship(fb, frame, pos, s.marker);
         }
     }
+
+    /// Text the tick draws over the finished picture: the infra-red notice (step 21).
+    fn draw_overlays(&self, fb: &mut Framebuffer) {
+        if shows_ir_notice(self.flight.palette_mode, self.flight.ticks) {
+            draw_ir_notice(fb, &self.screens);
+        }
+    }
+
+    /// The screen for modal `m`, over the picture on screen now; `None` if there is nothing
+    /// to show.
+    fn open_screen(&self, m: Modal) -> Option<FlightModal> {
+        let mut shown = Framebuffer::new();
+        self.draw(&mut shown);
+        let f = &self.flight;
+        Some(match m {
+            Modal::Pause => FlightModal::Pause(Box::new(Pause::new(shown, &self.screens))),
+            Modal::FlightMenu => FlightModal::Menu(Box::new(ComputerMenu::new(
+                shown,
+                &self.palette,
+                f.palette_mode,
+                f.number,
+            ))),
+            // The mission logic chose the transmission and advanced the phase (step 15).
+            Modal::CommViewer => {
+                let n = usize::from(f.mission.transmission);
+                FlightModal::Comm(Box::new(CommScreen::new(shown, &self.screens, n)?))
+            }
+            Modal::TacticalMap => {
+                let dots: Vec<ShipDot> = f
+                    .ships
+                    .0
+                    .iter()
+                    .map(|s| ShipDot {
+                        class: s.class,
+                        tile: (s.tile_x, s.tile_y),
+                        marked: s.marker != 0,
+                    })
+                    .collect();
+                let v = f.player.view;
+                FlightModal::Map(Box::new(TacticalMap::new(
+                    &shown.palette,
+                    &self.screens,
+                    &self.world.map,
+                    (i32::from(v.tile_x), i32::from(v.tile_y)),
+                    &dots,
+                    &self.board,
+                )))
+            }
+        })
+    }
 }
 
 impl FlightScreen for FlightArena {
@@ -499,25 +643,47 @@ impl FlightScreen for FlightArena {
 }
 
 /// Starts real flights for the campaign; falls back to the placeholder flight if a flight's
-/// data cannot be loaded.
+/// data cannot be loaded. One launcher is one program run: it owns the [`RunState`], so the
+/// RNG stream starts at program start (seed 0, then the AI unit's 20 `Random(2)`,
+/// mission-ships §4.1) and runs through every flight and the front end's `Random` calls.
 #[derive(Debug, Default)]
-pub struct ArenaLauncher;
+pub struct ArenaLauncher {
+    run: Rc<RefCell<RunState>>,
+    fallback: PlaceholderLauncher,
+}
 
 impl td_flow::FlightLauncher for ArenaLauncher {
     fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
-        match FlightArena::new(ctx.data, ctx.resources, flight) {
+        match FlightArena::start(ctx.data, ctx.resources, flight, Some(self.run.clone())) {
             Ok(arena) => Box::new(arena),
             Err(e) => {
                 tracing::error!("flight {flight} could not start: {e:#}");
-                PlaceholderLauncher.launch(ctx, flight)
+                self.fallback.launch(ctx, flight)
             }
         }
+    }
+
+    fn random(&mut self, n: u16) -> u16 {
+        self.run.borrow_mut().session.rng.random(n)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use td_flow::FlightLauncher;
+
+    #[test]
+    fn launcher_random_continues_the_program_stream() {
+        // Program start: seed 0, then the AI unit's 20 Random(2); the front end's Random(10)
+        // comes from the same stream as the flights.
+        let mut launcher = ArenaLauncher::default();
+        let mut session = Session::new();
+        for _ in 0..3 {
+            assert_eq!(launcher.random(10), session.rng.random(10));
+        }
+        assert_eq!(launcher.run.borrow().session.rng, session.rng);
+    }
 
     #[test]
     fn typematic_repeats_after_the_delay() {

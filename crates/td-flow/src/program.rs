@@ -1,8 +1,10 @@
 //! The Episode 1 program (`file0001.exe` main body): script choice, main menu and the campaign.
 //!
-//! Spec: `docs/spec/flow/episode-program-flow.md` (rev 1) §4.1–§4.2; menu graphics per
-//! `docs/re/FORMATS.md` §12.1 and `docs/re/asset-load-sites.md` §3; music per
-//! `docs/spec/audio/music-cues.md` §4.2. Fidelity: T2 for the order of screens.
+//! Spec: `docs/spec/flow/episode-program-flow.md` (rev 2) §4.1–§4.2; screen layouts per
+//! `docs/spec/flow/screens.md` (rev 1) §3; menu graphics per `docs/re/FORMATS.md` §12.1 and
+//! `docs/re/asset-load-sites.md` §3; music per `docs/spec/audio/music-cues.md` §4.2.
+//! Fidelity: T0 for the layouts, T1 for the retry prompt's `Random(10)`, T2 for the order and
+//! pacing of screens.
 //!
 //! Not ported (T3 or decided elsewhere): the text-mode configuration screen and command-line
 //! switches (the port has its own settings), joystick calibration, `tdstatus.dat` (menu items
@@ -23,15 +25,16 @@ use td_audio::{AudioCommand, CueRestart, MusicCues};
 use td_formats::cmf::Cmf;
 use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
+use td_render::dialogue::Side;
 use td_render::{Framebuffer, WIDTH, title_text};
 
 use crate::campaign::{Bg, BlockResult, Campaign, FlightLauncher, Rating, Step, rating};
 use crate::dialogue::{DialogueAssets, DialogueScene, ScriptChoice};
 use crate::screen::{FlowContext, Screen, Transition};
-use crate::story::{self, Hold, StoryAssets, StoryError, StoryScreen};
+use crate::story::{self, Hold, StoryAssets, StoryError, StoryScreen, TextItem};
 
 const EXE: &str = "file0001.exe";
-/// Ink of the provisional text-only screens (ASSUMPTION(U-121)).
+/// Ink of the port's own notices ("not available yet").
 const TEXT_INK: (u8, Rgb6) = (
     255,
     Rgb6 {
@@ -158,13 +161,13 @@ impl Program {
             Step::P(set, s) => story::still_set(&self.data, a, set, lines(&s))?,
             Step::P15 => story::still_15(&self.data)?,
             Step::H(n) => story::hint(&self.data, a, &self.texts("e1.hints"), n)?,
-            Step::O => self.page(&self.texts("e1.assignment_orders"), Hold::Key),
-            Step::A => self.page(&self.texts("e1.dossier.enemy"), Hold::Key),
+            Step::O => self.orders(),
+            Step::A => self.enemy_dossier(),
             other => return Err(StoryError::Text(format!("{other:?} is not a story screen"))),
         })
     }
 
-    /// A provisional text page: lines from (10, 10) down, 9 pixels apart (ASSUMPTION(U-121)).
+    /// A port notice: lines from (10, 10) down, 9 pixels apart, in white.
     fn page(&self, lines: &[String], hold: Hold) -> StoryScreen {
         let placed: Vec<_> = lines
             .iter()
@@ -174,22 +177,116 @@ impl Program {
         story::text_screen(&self.assets, &placed, TEXT_INK, hold)
     }
 
-    /// The retry prompt (`051A:6A33`): a taunt and the two key lines; Esc declines.
-    /// ASSUMPTION(U-124): which taunt the original picks is not specified; the port cycles
-    /// through them by attempt (no random number is drawn).
-    pub fn retry_prompt(&self, attempts: u32) -> StoryScreen {
-        let t = self.texts("retry.taunts");
-        let n = t.len().saturating_sub(2).max(1);
-        let pick = t.get(attempts as usize % n).cloned().unwrap_or_default();
-        let lines = [pick, String::new(), t.get(n).cloned().unwrap_or_default()]
-            .into_iter()
-            .chain(t.get(n + 1).cloned())
-            .collect::<Vec<_>>();
-        self.page(&lines, Hold::Key)
+    /// A single text resource (`pstring`), or a list joined (empty if unavailable).
+    fn text_of(&self, id: &str) -> String {
+        self.res
+            .text(id)
+            .map_or_else(|| self.texts(id).join(" "), str::to_owned)
     }
 
-    /// The debrief (`051A:6FF2`, §4.5): labels, kills, and the rating of
-    /// T = kills to date + kills, or the failure note when the outcome is 0. 10 s or a key.
+    /// `Dlg_LoadPortrait(side 1, face, " ", 0)`: the face in the right half of rows 0..99,
+    /// colours 112..223 (screens §3.5).
+    fn portrait(&self, s: &mut StoryScreen, face: u8) {
+        let faces = self
+            .data
+            .read("newfaces.td")
+            .ok()
+            .and_then(|b| td_formats::portraits::Portraits::parse(&b).ok());
+        let face = crate::dialogue::remap_face(Episode::E1, face);
+        let Some(p) = faces.as_ref().and_then(|f| f.by_face_byte(face)) else {
+            tracing::warn!("portrait {face} unavailable");
+            return;
+        };
+        let (fb, pal) = s.parts_mut();
+        td_render::dialogue::draw_portrait(fb, Side::Right, &p.pixels);
+        td_render::dialogue::load_face_palette(pal, Side::Right, &p.palette);
+    }
+
+    /// Assignment orders (`UI_AssignmentOrders` `051A:62FD`, screens §3.4): a frame of
+    /// one-pixel rectangles, the lines typed in green; 5 s.
+    fn orders(&self) -> StoryScreen {
+        let t = self.texts("e1.assignment_orders");
+        let ys = [45, 51, 57, 69, 75, 81, 93, 99, 117];
+        let items = ys
+            .iter()
+            .enumerate()
+            .map(|(i, &y)| TextItem::typed((40, y), line(&t, i), 40))
+            .collect();
+        let mut s = story::typed_page(
+            &self.assets,
+            &self.assets.td_pal,
+            &[(40, GREEN)],
+            items,
+            Hold::Seconds(5),
+        );
+        let (fb, _) = s.parts_mut();
+        for k in 0..=25 {
+            let colour = match k {
+                0..=5 => 5 * k,
+                6..=19 => 25,
+                _ => 5 * (25 - k),
+            };
+            outline(fb, (k, k), (319 - k, 199 - k), colour as u8);
+        }
+        outline(fb, (275, 185), (285, 190), 16);
+        outline(fb, (279, 187), (281, 188), 40);
+        s
+    }
+
+    /// The enemy dossier (`UI_EnemyDossier` `051A:6653`, screens §3.5): face 6; 10 s.
+    fn enemy_dossier(&self) -> StoryScreen {
+        let t = self.texts("e1.dossier.enemy");
+        let ys = [75, 91, 97, 103, 109, 115, 121, 137, 143];
+        let mut items: Vec<TextItem> = ys
+            .iter()
+            .enumerate()
+            .map(|(i, &y)| TextItem::typed((40, y), line(&t, i), 40))
+            .collect();
+        items.push(TextItem::typed((40, 109), line(&t, 9), 39));
+        items.push(TextItem::typed((40, 160), line(&t, 10), 40));
+        let mut s = story::typed_page(
+            &self.assets,
+            &self.assets.td_pal,
+            &[(40, GREEN), (39, RED)],
+            items,
+            Hold::Seconds(10),
+        );
+        self.portrait(&mut s, 6);
+        s
+    }
+
+    /// The retry prompt (`UI_RetryPrompt` `051A:6A33`, screens §3.7): `Random(10)` from the
+    /// program's generator picks the taunt, typed before the fade-in; the two key lines are
+    /// drawn after it. Any key but Esc flies again.
+    pub fn retry_prompt(&mut self) -> StoryScreen {
+        /// Pen x of taunt r (screens §3.7).
+        const TAUNT_X: [i32; 10] = [78, 46, 54, 82, 58, 46, 130, 30, 70, 42];
+        let r = usize::from(self.launcher.random(10).min(9));
+        let t = self.texts("retry.taunts");
+        let items = vec![
+            TextItem::drawn((86, 110), line(&t, 10), 39),
+            TextItem::drawn((82, 117), line(&t, 11), 39),
+        ];
+        let mut s = story::typed_page(
+            &self.assets,
+            &self.assets.td_pal,
+            &[(40, DEBRIEF_GREEN), (39, DEBRIEF_DIM)],
+            items,
+            Hold::Key,
+        );
+        story::type_now(
+            &mut s,
+            &self.assets.small,
+            &line(&t, r),
+            (TAUNT_X[r], 90),
+            40,
+        );
+        s
+    }
+
+    /// The debrief (`UI_Debrief` `051A:6FF2`, screens §3.6, episode-program-flow §4.5): face 1;
+    /// the rating of T = kills to date + kills, or the failure note when the outcome is 0;
+    /// 10 s.
     pub fn debrief(
         &self,
         mission: u8,
@@ -198,40 +295,87 @@ impl Program {
         outcome: bool,
     ) -> StoryScreen {
         let l = self.texts("debrief.labels");
-        let get = |i: usize| l.get(i).cloned().unwrap_or_default();
+        let get = |i: usize| line(&l, i);
         let total = i32::from(kills_to_date) + i32::from(kills);
         let verdict = if !outcome {
-            self.texts("debrief.failure_note").join(" ")
+            self.text_of("debrief.failure_note")
         } else {
             match rating(total) {
-                Rating::Cheater => self.texts("debrief.cheater").join(" "),
-                Rating::Tier(t) => self
-                    .texts("debrief.tiers")
-                    .get(usize::from(t) - 1)
-                    .cloned()
-                    .unwrap_or_default(),
+                Rating::Cheater => self.text_of("debrief.cheater"),
+                Rating::Tier(t) => line(&self.texts("debrief.tiers"), usize::from(t) - 1),
             }
         };
-        let lines = vec![
-            get(2),
-            format!("{}{}{}", get(0), mission, get(1)),
-            if outcome { get(3) } else { get(4) },
-            String::new(),
-            format!("{}{}", get(5), kills),
-            format!("{}{}", get(6), total),
-            String::new(),
-            verdict,
+        let items = vec![
+            TextItem::typed((20, 45), format!("{}{}{}", get(0), mission, get(1)), 40),
+            TextItem::typed((20, 65), get(2), 40),
+            TextItem::typed((20, 75), if outcome { get(3) } else { get(4) }, 39).after(500),
+            TextItem::typed((20, 95), format!("{}{}", get(5), kills), 40),
+            TextItem::typed((20, 105), format!("{}{}", get(6), total), 40).after(500),
+            TextItem::typed((20, 130), self.text_of("debrief.note_label"), 40).after(500),
+            TextItem::typed((20, 140), verdict, 39).after(500),
         ];
-        self.page(&lines, Hold::Seconds(10))
+        let mut s = story::typed_page(
+            &self.assets,
+            &self.assets.td_pal,
+            &[(40, DEBRIEF_GREEN), (39, DEBRIEF_DIM)],
+            items,
+            Hold::Seconds(10),
+        );
+        self.portrait(&mut s, 1);
+        s
     }
 
-    /// The pilot dossier of ending A (`051A:74B2`).
+    /// The pilot dossier of ending A (`UI_PlayerDossier` `051A:74B2`, screens §3.5): face 1;
+    /// 25 s.
     pub fn player_dossier(&self, total: i16) -> StoryScreen {
-        let mut lines = self.texts("e1.dossier.player");
-        lines.push(total.to_string());
-        self.page(&lines, Hold::Key)
+        let t = self.texts("e1.dossier.player");
+        let items = vec![
+            TextItem::typed((20, 45), line(&t, 0), 40),
+            TextItem::typed((20, 91), line(&t, 1), 40).after(500),
+            TextItem::typed((20, 97), line(&t, 2), 40).after(500),
+            TextItem::typed((20, 109), line(&t, 3), 40).after(500),
+            TextItem::typed((20, 121), format!("{}{}", line(&t, 4), total), 40).after(500),
+            TextItem::typed((20, 109), line(&t, 5), 39).after(2000),
+            TextItem::typed((20, 160), line(&t, 6), 40).after(500),
+        ];
+        let mut s = story::typed_page(
+            &self.assets,
+            &self.assets.td_pal,
+            &[(40, GREEN), (39, RED)],
+            items,
+            Hold::Seconds(25),
+        );
+        self.portrait(&mut s, 1);
+        s
     }
 }
+
+/// Line `i` of a resource list ("" if missing).
+fn line(list: &[String], i: usize) -> String {
+    list.get(i).cloned().unwrap_or_default()
+}
+
+/// A one-pixel rectangle outline (`Gfx_DrawRect` `051A:609D`).
+fn outline(fb: &mut Framebuffer, (x0, y0): (i32, i32), (x1, y1): (i32, i32), c: u8) {
+    for x in x0..=x1 {
+        fb.put(x, y0, c);
+        fb.put(x, y1, c);
+    }
+    for y in y0..=y1 {
+        fb.put(x0, y, c);
+        fb.put(x1, y, c);
+    }
+}
+
+/// Inks of the typed pages (screens §3.4–§3.7).
+const GREEN: Rgb6 = Rgb6 { r: 0, g: 63, b: 0 };
+const RED: Rgb6 = Rgb6 { r: 63, g: 0, b: 0 };
+const DEBRIEF_GREEN: Rgb6 = Rgb6 {
+    r: 15,
+    g: 55,
+    b: 15,
+};
+const DEBRIEF_DIM: Rgb6 = Rgb6 { r: 0, g: 40, b: 0 };
 
 /// Menu items (§4.2).
 const ITEMS: u8 = 9;
@@ -302,26 +446,69 @@ impl Episode1 {
         })
     }
 
-    /// The script-choice screen (`051A:527F`). ASSUMPTION(U-121): layout provisional.
+    /// The palette of the script choice and the missing-dialogue notice (screens §3.2): all
+    /// black but 1 (grey), 85 (green), 92 (dark red), 102 and 103 (red).
+    fn choice_screen() -> StoryScreen {
+        let mut s = StoryScreen::blank(Hold::Key);
+        let (_, pal) = s.parts_mut();
+        for (e, (r, g, b)) in [
+            (1, (10, 10, 10)),
+            (85, (0, 33, 0)),
+            (92, (40, 0, 0)),
+            (102, (63, 0, 0)),
+            (103, (63, 0, 0)),
+        ] {
+            pal.colors[e] = Rgb6 { r, g, b };
+        }
+        s
+    }
+
+    /// The script-choice screen (`UI_ScriptChoice` `051A:527F`, screens §3.2).
     fn script_choice(&self) -> StoryScreen {
         let w = self.prog.texts("script_choice.warning");
-        let mut s = self.prog.page(&[], Hold::Key);
-        let (fb, pal) = s.parts_mut();
-        pal.colors[102] = Rgb6 { r: 63, g: 0, b: 0 };
-        pal.colors[85] = Rgb6 { r: 0, g: 33, b: 0 };
-        pal.colors[92] = Rgb6 { r: 40, g: 0, b: 0 };
-        let title = w.first().cloned().unwrap_or_default();
+        let mut s = Self::choice_screen();
+        let (fb, _) = s.parts_mut();
+        for y in (38..=50).chain(138..=150) {
+            fb.pixels[y * WIDTH..(y + 1) * WIDTH].fill(1);
+        }
+        let title = line(&w, 0);
         let x = title_text::centred_x(&title);
-        title_text::draw(fb, &self.prog.assets.title, &title, (x, 20), 102);
-        for (i, line) in w.iter().enumerate().skip(1) {
-            let ink = if i >= 6 { 92 } else { 85 };
-            let y = if i >= 6 {
-                150 + 12 * (i as i32 - 6)
-            } else {
-                50 + 12 * (i as i32 - 1)
-            };
-            let x = 160 - (5 * line.chars().count() as i32 + 1) / 2;
-            td_render::small_text::draw(fb, &self.prog.assets.small, line, (x, y), ink);
+        for y in [40, 140] {
+            title_text::draw(fb, &self.prog.assets.title, &title, (x, y), 85);
+        }
+        let pens = [
+            (66, 62, 92),
+            (54, 69, 92),
+            (42, 76, 92),
+            (38, 83, 92),
+            (66, 90, 92),
+            (66, 110, 102),
+            (90, 117, 102),
+        ];
+        for (i, &(x, y, ink)) in pens.iter().enumerate() {
+            let text = line(&w, i + 1);
+            td_render::small_text::draw(fb, &self.prog.assets.small, &text, (x, y), ink);
+        }
+        s
+    }
+
+    /// The missing-dialogue notice (`051A:56D5`, screens §3.2): any key.
+    fn missing_dialogue(&self) -> StoryScreen {
+        let t = self.prog.texts("script_choice.missing_dialogue");
+        let mut s = Self::choice_screen();
+        let (fb, _) = s.parts_mut();
+        let pens = [
+            (46, 70, 92),
+            (46, 77, 92),
+            (46, 84, 92),
+            (38, 91, 92),
+            (30, 98, 92),
+            (54, 105, 92),
+            (66, 117, 102),
+        ];
+        for (i, &(x, y, ink)) in pens.iter().enumerate() {
+            let text = line(&t, i);
+            td_render::small_text::draw(fb, &self.prog.assets.small, &text, (x, y), ink);
         }
         s
     }
@@ -350,7 +537,10 @@ impl Episode1 {
             },
             5 => {
                 let t = self.prog.texts("e1.background_story");
-                self.stage = Stage::Sub(self.prog.page(&t, Hold::Key));
+                match story::story_so_far(&self.prog.data, &self.prog.assets, &t) {
+                    Ok(s) => self.stage = Stage::Sub(s),
+                    Err(e) => tracing::warn!("story so far unavailable: {e}"),
+                }
             }
             8 => self.stage = Stage::Confirm(8, 1),
             SAVE | 2 => {
@@ -420,8 +610,7 @@ impl Screen for Episode1 {
                     Stage::ScriptChoice(self.script_choice())
                 } else {
                     self.prog.choice = ScriptChoice::Edited;
-                    let t = self.prog.texts("script_choice.missing_dialogue");
-                    Stage::Notice(self.prog.page(&t, Hold::Key))
+                    Stage::Notice(self.missing_dialogue())
                 };
             }
             Stage::ScriptChoice(s) => {
