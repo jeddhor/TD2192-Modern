@@ -477,3 +477,20 @@ kind = "pstring_seq"
 offset = 0x2AB27
 count = 15
 note = "F6 transmission lines"
+
+# HUD tables (RE-7, M1-09, 2026-11-02). DGROUP typed constants: file offset = 16768 + 36B60h + DS offset.
+# The E1 tables after these (heading ring, class tables, shot table, muzzle offsets) are byte-identical
+# at DS offset + 15Eh: use the file0001 resources (docs/re/episode-deltas.md section 11).
+[[resource]]
+id = "e2.hud.radar_tile_colours"
+kind = "u8_table"
+offset = 0x3B04A
+count = 80
+note = "k_TileRadarColour DS:036A: radar colour of each map tile 0..79 for td.map (map set 1); E1 hud.radar_tile_colours with tiles 62..70 changed"
+
+[[resource]]
+id = "e2.hud.radar_tile_colours_set2"
+kind = "u8_table"
+offset = 0x3B09A
+count = 80
+note = "k_TileRadarColour2 DS:03BA: copied over DS:036A at flight start when g_MapSet = 2 (td2.map) and never restored (episode-deltas 4.3, OB-024)"
