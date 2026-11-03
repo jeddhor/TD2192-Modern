@@ -89,7 +89,7 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | 1A8E | 32h M | Replay the HUD ticker message |
 | 1A5D | 01h Esc | Flight menu |
 | 1A75 | 19h P | Pause |
-| 1A9B | 3Fh F5 | Ship-switch screen (`0E8B:A714`, not in mission 14) |
+| 1A9B | 3Fh F5 | Tactical map screen (`UI_TacticalMap` `0E8B:A714`, not in mission 14; [flow/flight-screens](../spec/flow/flight-screens.md) §4.3) |
 | 1A9C | 40h F6 | Comm viewer |
 | 1A7B | 1Fh S | Toggle SFX between off (1) and PC speaker (3) |
 
