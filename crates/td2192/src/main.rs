@@ -23,6 +23,9 @@ struct Cli {
     /// Developer map viewer for a map: e1, e2a, e2b, e3a, e3b or intro.
     #[arg(long, value_name = "MAP")]
     dev_mapview: Option<String>,
+    /// Developer: play one dialogue scene: ID (episode 1), eN:ID, or eN-safe:ID (edited script).
+    #[arg(long, value_name = "SCENE")]
+    dev_dialogue: Option<String>,
     /// Start in fullscreen (overrides settings).
     #[arg(long)]
     fullscreen: bool,
@@ -128,7 +131,15 @@ fn real_main() -> Result<()> {
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let map = cli.dev_mapview.as_deref().unwrap_or("e1");
-    let first = Box::new(mapview::MapView::new(&dir, map)?);
+    let first: Box<dyn td_flow::Screen> = match cli.dev_dialogue.as_deref() {
+        Some(spec) => {
+            let (episode, choice, id) = td_flow::dialogue::parse_scene_spec(spec)?;
+            Box::new(td_flow::DialogueScene::load(
+                &dir, &resources, episode, choice, id,
+            )?)
+        }
+        None => Box::new(mapview::MapView::new(&dir, map)?),
+    };
     let options = run::RunOptions {
         exit_after_ticks: cli.dev_exit_after,
     };

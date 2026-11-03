@@ -970,6 +970,7 @@ dependencies = [
  "td-input",
  "td-render",
  "td-sim",
+ "td-test-support",
  "thiserror",
  "toml",
  "tracing",
