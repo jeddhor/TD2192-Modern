@@ -44,3 +44,46 @@ fn first_dialogue_line_matches_the_original() {
         "pixels differing from the original in rows 162-166"
     );
 }
+
+#[test]
+fn dialogue_portraits_names_and_palette_match_the_original() {
+    use td_formats::palette::Palette;
+    use td_formats::portraits::Portraits;
+    use td_render::dialogue;
+    let data = require_data!();
+    let _oracle = require_oracle!();
+    let font = Font::parse(&fs::read(data.join("td.lt2")).unwrap(), FontKind::Small).unwrap();
+    let faces = Portraits::parse(&fs::read(data.join("newfaces.td")).unwrap()).unwrap();
+    let td_pal = Palette::parse(&fs::read(data.join("td.pal")).unwrap()).unwrap();
+    let script = DialogueScript::parse(&fs::read(data.join("dialogue.dat")).unwrap()).unwrap();
+    let scene = script.scene(1).unwrap();
+    // In frame f2283 the dispatcher (slot 2) is speaking.
+    let mut fb = Framebuffer::new();
+    for sp in &scene.speakers {
+        let face = faces.by_face_byte(sp.face).unwrap();
+        dialogue::draw_portrait(&mut fb, sp.slot, face, sp.slot == 2);
+        dialogue::set_speaker_color(&mut fb.palette, sp.slot, &td_pal, sp.color);
+        dialogue::draw_name(&mut fb, &font, sp.slot, &sp.name);
+    }
+    let raw = fs::read(
+        td_test_support::oracle_dir()
+            .unwrap()
+            .join("C-0002/fb/f00002283_320x200_dialogue-1.vga"),
+    )
+    .unwrap();
+    let frame = &raw[768..];
+    let diffs: Vec<(usize, usize, u8, u8)> = (0..100 * 320)
+        .filter(|&i| fb.pixels[i] != frame[i])
+        .map(|i| (i % 320, i / 320, fb.pixels[i], frame[i]))
+        .collect();
+    assert!(
+        diffs.is_empty(),
+        "{} pixels differ in rows 0-99; first (x, y, ours, original): {:?}",
+        diffs.len(),
+        &diffs[..diffs.len().min(12)]
+    );
+    let pal = Palette::parse_prefix(&raw).unwrap();
+    for i in (0..224).chain([250, 251]) {
+        assert_eq!(fb.palette.colors[i], pal.colors[i], "palette entry {i}");
+    }
+}

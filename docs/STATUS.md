@@ -125,7 +125,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M5-01 | Text renderer per font | SP/IM | M2-08 | IN PROGRESS | main-session | td-render::small_text: proportional td.lt2 + observed punctuation, PIXEL-EXACT vs oracle dialogue frame (L5 test); other fonts' layout pending |
 | M5-02 | Palette fade engine | SP/IM | M1-03 | IN PROGRESS | main-session | td-render::Fade (6-bit linear, provisional) pending DAC-routine RE |
 | M5-03 | Story card player | SP/IM | M1-04, M1-11 | TODO | | |
-| M5-04 | Dialogue scene player | SP/IM | M2-07, M2-10 | TODO | | |
+| M5-04 | Dialogue scene player | SP/IM | M2-07, M2-10 | IN PROGRESS | main-session | td-render::dialogue: portraits (+112 offset slot 2), palette ranges, listener dimming v>>1, name labels with shadow; PIXEL-EXACT vs oracle f2283 (L5). Line reveal/scroll/paging pending RE-3 spec |
 | M5-05 | Dossier screens | SP/IM | M1-11 | TODO | | |
 | M5-06 | Help screens | SP/IM | M2-09 | TODO | | |
 | M5-07 | Script-choice + missing-dialogue screens | SP/IM | M5-01 | TODO | | |

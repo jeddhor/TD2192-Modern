@@ -9,7 +9,7 @@
 
 use td_formats::font::{Font, FontKind};
 
-use crate::framebuffer::{Framebuffer, Image, Rect};
+use crate::framebuffer::{Framebuffer, Rect};
 
 /// Glyph height in pixels.
 pub const HEIGHT: i32 = 5;
@@ -78,17 +78,18 @@ pub fn draw(
     for c in text.chars() {
         match glyph_mask(font, c) {
             Some((w, mask)) if c != ' ' => {
-                let pixels: Vec<u8> = mask
-                    .iter()
-                    .map(|&b| if b == 1 { color } else { 0 })
-                    .collect();
-                fb.blit(
-                    Image::new(&pixels, w, HEIGHT as usize),
-                    cx,
-                    y,
-                    clip,
-                    Some(0),
-                );
+                // Pixels are written directly (not blitted with a transparent index), so that
+                // colour 0 works for drop shadows.
+                for (i, &bit) in mask.iter().enumerate() {
+                    let (px, py) = (cx + (i % w) as i32, y + (i / w) as i32);
+                    let inside = px >= clip.x
+                        && py >= clip.y
+                        && px < clip.x + clip.w
+                        && py < clip.y + clip.h;
+                    if bit == 1 && inside {
+                        fb.put(px, py, color);
+                    }
+                }
                 cx += w as i32 + GAP;
             }
             _ => cx += SPACE_ADVANCE,

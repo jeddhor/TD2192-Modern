@@ -4,6 +4,7 @@
 //! Conversion to RGBA and scaling happen only in `td-platform`. Behaviour is implemented from
 //! `docs/spec/render/` and `docs/re/FORMATS.md`.
 
+pub mod dialogue;
 pub mod fade;
 pub mod framebuffer;
 pub mod headings;
