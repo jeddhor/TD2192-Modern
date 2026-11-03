@@ -54,7 +54,7 @@ E3 addresses (DGROUP `32C5`; [episode-deltas §3.2](../../re/episode-deltas.md#3
 | Radar colours | `k_TileRadarColour` DS:036A | u8[80] | resource `e3.hud.radar_tile_colours`; E3 never copies DS:03BA over it |
 | Class tables | max speed DS:041C, armour DS:0426, shields DS:0430, accel DS:043A | u8[10] | byte-identical to E1/E2 in the exe image: max speed 24, 28, 32, 28, 28, 28, 24, 28, 32, 0; armour 31, 16, 15, 20, 25, 25, 31, 25, 20, 0; shields 0, 0, 18, 20, 25, 20, 31, 25, 25, 0; accel 2, 4, 4, 4, 4, 4, 2, 4, 4, 0 (class 0..9) |
 | View | tile X/Y `g_ViewTileX/Y` DS:395A/DS:395C, offsets `g_ViewSubX/Y` DS:395E/DS:3960 | i16 | player tile = view + (5, 3) |
-| F5 entries | flag DS:1E98 + e, map X DS:1EB8 + e, map Y DS:1ED8 + e, line l of entry e at DS:1EF8 + 155e + 31l | u8, u8, u8, string[30] | E2 layout at −4; e = 0..31, l = 0..4; DS:1EAD is the flag of entry 21 (U-202, resolved: [e3-mission-logic](e3-mission-logic.md) §4.11) |
+| F5 entries | flag DS:1E98 + e, map X DS:1EB8 + e, map Y DS:1ED8 + e, line l of entry e at DS:1EF8 + 155e + 31l | u8, u8, u8, string[30] | E2 layout at −4; e = 0..31, l = 0..4; DS:1EAD is the flag of entry 21 (U-202, resolved: [e3-mission-logic](e3-mission-logic.md) §4.9) |
 | Music buffer | `g_MusicBuffer` DS:11F2 | far pointer | nil = no song loaded |
 | Key-down table | `g_KeyDown` DS:1980 | u8[601] | indices 0..600 |
 
@@ -174,12 +174,12 @@ Final state per flight (entry: k for lines l = 0..4; where the code writes an en
 | 15 | 0: 3 4 5 2 2; 1, 2: 58 7 8 91 92; 4..14: 80 7 8 93 2; 15: 15 7 94 95 2; 21: 41 42 2 2 2 | 21 at (22, 166) |
 | 16 | 0: 3 4 5 2 2; 2..4: 58 7 8 2 2; 6: 24 4 96 2 2; 7: 24 4 97 2 2; 9..14: 12 7 8 2 2; 21: 41 42 2 2 2 | 21 at (22, 166) |
 | 17 | 0: 90 7 5 2 2; 3..7: 17 7 99 100 101; 21: 98 2 2 2 2 | 21 at (22, 166) |
-| 18 | 0: 90 7 5 2 2; 3..5, 9: 106 7 99 2 2; 6..8: 107 7 99 2 2; 21: 102 103 2 104 105 | none at the start: entry 21 at (28, 33) with its flag stored as **0**; `Msn_E3TimedEvents` sets it to 1 at tick 2160 ([e3-mission-logic](e3-mission-logic.md) §4.11) |
+| 18 | 0: 90 7 5 2 2; 3..5, 9: 106 7 99 2 2; 6..8: 107 7 99 2 2; 21: 102 103 2 104 105 | none at the start: entry 21 at (28, 33) with its flag stored as **0**; `Msn_E3TimedEvents` sets it to 1 at tick 2160 ([e3-mission-logic](e3-mission-logic.md) §4.9) |
 | 19 | 0: 17 7 5 2 2; 2: 6 7 108 109 110; 3, 4: 18 7 99 2 2; 21: 41 42 2 2 2 | 21 at (22, 166) |
 | (20) | 0: 111 4 5 2 2; 2..5: 24 4 99 2 2; 6..8: 3 4 99 2 2; 10, 11: 111 4 99 2 2; 12..15: 17 7 99 112 113; 17, 18: 18 4 99 2 2; 19, 20: 49 4 99 2 2 | none (dead block, no fixed-point store) |
 
 - Entries and lines not written keep what an earlier flight of the same program run left (zero-length strings after start-up), as in E1 and E2. Flight 8's entries 15 and 19 get only line 0 (both slots are empty and stay empty in flight 8, so they are never shown).
-- The flags of entries 22..30 are cleared every flight; only flights 8, 10 and 11 set entry 22. Entry 31's flag and entry 0's flag are never written here; the F5 screen rewrites entries 0..20 when it opens ([e3-mission-logic](e3-mission-logic.md) §4.11).
+- The flags of entries 22..30 are cleared every flight; only flights 8, 10 and 11 set entry 22. Entry 31's flag and entry 0's flag are never written here; the F5 screen rewrites entries 0..20 when it opens ([e3-mission-logic](e3-mission-logic.md) §4.9).
 - Every slot that is live after setup has five lines in its flight (checked for all 20 flown flights). Lines for slots that are empty at setup (§5) are for ships that mission logic adds later, or for nothing.
 - Fixed point 21 equals the guidance home point (§3.7) in every flight except 6 (F5 point (172, 68), home (1, 110)), 9 (no flag) and 11 (F5 point the base (22, 166), home (166, 78); entry 22 at (165, 77) is next to the home point). Entry 22 of flights 8 and 10 lies inside the extra overlay boxes of §3.6 ((108..110, 113..115) and (41..42, 57..58)).
 - Block order inside each flight block: flags and coordinates of the fixed points, then the lines of entry 21 (and 22), entry 0, the slot ranges, and last the single-entry line-0 overrides (§4.5).
@@ -347,7 +347,7 @@ Store order of each block ("mk" = marker, "cl" = class, "agg" = aggression, "obj
 | 19 | mk 1–20 := 0; mk 2 := 32h; mk21; obj; phase := 1; player class := 7; agg 2 := 255; armour 2 := 500 |
 | 20 | phase := 1; obj; player class := 5; agg 2–11 := 10; agg 12–15 := 220 (dead) |
 
-Flight 12's map cells, in code order, each := 26h (open, not a hazard), with the `td4.map` value they replace: (40, 121..123), (40, 131..133), (66, 128..130), (66, 121..123) were 44h, 45h, 46h (per column, top to bottom); (53..55, 137), (62..64, 114), (53..55, 114), (53..55, 118), (46..48, 118) were 41h, 42h, 43h (left to right). The other ten hazard cells of `td4.map`, (46..48, 109), (74, 77..79) and (91, 87..90), are not touched. `Msn_E3TimedEvents` writes the original values back at tick 6480 ([e3-mission-logic](e3-mission-logic.md) §4.9.3).
+Flight 12's map cells, in code order, each := 26h (open, not a hazard), with the `td4.map` value they replace: (40, 121..123), (40, 131..133), (66, 128..130), (66, 121..123) were 44h, 45h, 46h (per column, top to bottom); (53..55, 137), (62..64, 114), (53..55, 114), (53..55, 118), (46..48, 118) were 41h, 42h, 43h (left to right). The other ten hazard cells of `td4.map`, (46..48, 109), (74, 77..79) and (91, 87..90), are not touched. `Msn_E3TimedEvents` writes the original values back at tick 6480 ([e3-mission-logic](e3-mission-logic.md) §4.6.3).
 
 Differences from E2's structure: the dispatch puts 21 between 11 and 12 and keeps a dead block 20; block 7 has no phase store; block 18 has a 32h fill instead of the marker clear; block 20 has no marker writes; block 17 writes the class tables before its marker clear; E3 has no comm, palette-mode or late-draw stores and no class-table patch. As in E2, `Msn_LoadTargetInfo` is called first and every block repeats the marker writes, element 21 and the objective.
 
