@@ -6,7 +6,7 @@
 | **Revision** | 1 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
-| **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so (RE-8 runs C-0012..C-0014) |
+| **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014) |
 | **Tasks** | E1 screens (RE-8); feeds M6-07, M7, M8, M9 |
 | **Unknowns** | U-220..U-226 (new); U-122, U-124 answered in [screens.md](screens.md) |
 
@@ -433,7 +433,18 @@ Kind 3 is never drawn (no class fires it). Shots on a two-digit heading (U-160) 
 | 7 | Palette mode 1 at flight start, entry with P = (40, 20, 30) | DAC (5, 3, 8) (Round(40/8) = 5, Round(2.5) = 3, Round(7.5) = 8) | static |
 | 8 | Mode 2 by Alt, R = 41 | DAC R = Round(61.5) = 62 | static |
 
-Comm-screen and IR vectors from C-0013 and C-0014: §6.1.
+### 6.1 Transmission screen and infra-red (C-0013, C-0014)
+
+| # | Setup | Expected | Evidence |
+|---|---|---|---|
+| 9 | E1 flight 2, phase 1, F6 (transmission 1) | `td.cmm` panel cells at (32 + 32c, 16 + 32r): 0 of 12,113 non-zero panel pixels differ; `td1.ccm` records 1 and 0 at (48, 32) and (48, 96): 0 differences | C-0013 f584, f1184, f2384 |
+| 10 | Same | header ink rows 36..40 and 88..92; typed line A rows 68..72, scrolled lines at 6-row steps above (42..54 ...); line B rows 120..124; box A background pixels colour 178 = `td.pal` 178 (3, 15, 3); DAC 40, 43, 45 = `td.pal` | C-0013 |
+| 11 | Same, after both prompts | end marker in both boxes, ink 43; F6 closes; phase 2 | C-0013 (last panel frame, then flight) |
+| 12 | E1 flight 8 start (mode 1) | DAC = (Round(R/8), Round(G/8), Round(B/4)) of `g_FlightPalette` for all entries but 37; DAC 37 = P[255]; the only other differences are entries the flight itself patches (36, 38, 46..49, ...) | C-0014 f522..f1222 |
+| 13 | Same, ticks ≤ 200 | IR notice ink-37 pixels at rows 77..81, x 106..232 | C-0014 f522..f1222 |
+| 14 | Alt (mode 2), then Alt (mode 1) | mode 2: (min(63, Round(1.5 R)), 0, 0); mode 1 again: as #12 | C-0014 f1322, f1422 |
+| 15 | P in mode 1 | pause ink 37 rows 77..81, x 102..242, DAC 37 = P[255] | C-0014 f1522 |
+| 16 | Esc menu in mode 1, then "return to game" | menu in mode 0 (normal palette); after the return DAC = (Round(R/8), Round(G/8), Round(B/8)), DAC 37 = (8, 6, 8) (not P[255]): OB-029 | C-0014 f1822, f1982 |
 
 ## 7. Presentation and audio hooks
 
@@ -441,6 +452,8 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 
 ## 8. Open questions
 
+- U-221: transmissions 2..9 were checked statically only (C-0013 shows transmission 1); capture one more (for example flight 8, transmission 4, whose strings were mis-mapped before).
+- U-222: afterburner flame, explosions and shots (§4.6–4.8) are static only; capture a class-2 flight with a burst and a kill (VE).
 - U-220: F5 map. What does the typematic repeat of F5 do on real hardware (the BIOS reads it while the map is open)? Port: ignore key repeat for closing.
 - U-223: what DS:16E6 (zeroed by the computer menu) is used for.
 - U-224: are ink 40/43/45 and the font background (178) in the comm screen meant to follow the IR palette (they do in the code)?
@@ -453,10 +466,10 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 |---|---|---|---|
 | Computer menu | `file0001:0E8B:794C..7F2E` | static; C-0012 | CONFIRMED (layout, colours) / LIKELY (keys) |
 | Ship library, help | `0E8B:7374..78FF`, `0E8B:6EDF..712x` | static; C-0012 | CONFIRMED (layout) |
-| Comm screen | `0E8B:5435..56EA`, `0E8B:0061`, `012A`, `5032..51FD`, `51FE`, `530B`; loaders `2A15:01EC..2216` | static; C-0013 | LIKELY (see §6.1) |
+| Comm screen | `0E8B:5435..56EA`, `0E8B:0061`, `012A`, `5032..51FD`, `51FE`, `530B`; loaders `2A15:01EC..2216` | static; C-0013 | CONFIRMED (layout, colours, transmission 1) / LIKELY (other transmissions) |
 | F5 map | `0E8B:A714..AED0`; `1EDE:0E6A` (info lines; bytes `1EDE:0ED8..1419` read directly where the disassembly stops) | static; C-0012 (pixels and RAM) | CONFIRMED |
 | Pause, IR notice | `0E8B:E12F..E4FD` | static; C-0012, C-0014 | CONFIRMED (pause) |
-| Palette modes | `0E8B:01F6`, `0426`, `B1EC..B39A`, `CAD2..CBAA`, `DA6B..E019` | static; C-0014 | LIKELY |
+| Palette modes | `0E8B:01F6`, `0426`, `B1EC..B39A`, `CAD2..CBAA`, `DA6B..E019` | static; C-0014 | CONFIRMED (start, toggle, menu fade) / LIKELY (flash formulas) |
 | Afterburner flame | `0E8B:CD78..D160` | static | LIKELY |
 | Explosions | `0E8B:0D31..0F42`, `12xx..14D4`, `14E4..1580`, `16F9..177B`, `D872..DA66` | static | LIKELY |
 | Shots | `0E8B:1785..3F9C` (bytes `1948..197F` read directly) | static | LIKELY |
