@@ -104,6 +104,8 @@ pub enum MapStatus {
 #[derive(Debug, Clone, Default)]
 pub struct ExeResources {
     values: BTreeMap<String, ResourceValue>,
+    /// Strings by (exe, image-relative offset of the length byte).
+    by_address: BTreeMap<(String, usize), String>,
     /// Per executable: what happened when loading its map.
     pub status: Vec<(String, MapStatus)>,
 }
@@ -138,12 +140,18 @@ impl ExeResources {
                 continue;
             }
             let n = map.resource.len();
+            let header = td_formats::mz::MzHeader::parse(&bytes)
+                .map(|h| h.header_bytes)
+                .ok();
             for def in &map.resource {
                 let value = extract(&bytes, def).map_err(|detail| ExeResError::Extract {
                     exe: map.exe.clone(),
                     id: def.id.clone(),
                     detail,
                 })?;
+                if let Some(header) = header {
+                    out.index_strings(&map.exe, header, def.offset, &value);
+                }
                 out.values.insert(def.id.clone(), value);
             }
             out.status
@@ -176,6 +184,31 @@ impl ExeResources {
     /// All resource ids, sorted.
     pub fn ids(&self) -> impl Iterator<Item = &str> {
         self.values.keys().map(String::as_str)
+    }
+
+    /// The ShortString of a mapped `pstring`/`pstring_seq` resource that starts at the
+    /// image-relative offset `image_offset` of `exe` (the `0000:OOOO` string references of the
+    /// specs, ADG §7.8, with segment 0). `None` if no mapped string starts there.
+    pub fn text_at(&self, exe: &str, image_offset: usize) -> Option<&str> {
+        self.by_address
+            .get(&(exe.to_owned(), image_offset))
+            .map(String::as_str)
+    }
+
+    /// Records the image offset of every string of a text resource.
+    fn index_strings(&mut self, exe: &str, header: usize, offset: usize, value: &ResourceValue) {
+        let Some(mut at) = offset.checked_sub(header) else {
+            return;
+        };
+        let texts: &[String] = match value {
+            ResourceValue::Text(s) => std::slice::from_ref(s),
+            ResourceValue::TextList(v) => v,
+            _ => return,
+        };
+        for s in texts {
+            self.by_address.insert((exe.to_owned(), at), s.clone());
+            at += 1 + s.chars().count(); // one byte per (Latin-1) character
+        }
     }
 }
 
