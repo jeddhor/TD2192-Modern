@@ -115,6 +115,7 @@ address,kind,name,signature,comment,confidence,source_task
 3A9A:10C9,func,BP_RealMulCore,,Real48 multiply DX:BX:AX * DI:SI:CX,LIKELY,M1-01
 3A9A:11CC,func,BP_RealDivCore,,Real48 divide DX:BX:AX / DI:SI:CX,LIKELY,M1-01
 3A9A:1243,func,BP_RealCmpCore,,"Real48 compare, result in flags",LIKELY,M1-01
+3A9A:125A,func,BP_RealCmpMagnitude,,"internal: same-sign compare: exponent, then high word, middle word, low byte",CONFIRMED,M1-01.b
 3A9A:126D,func,BP_RealFromLongCore,,LongInt DX:AX to Real48 (exact),CONFIRMED,M1-01
 3A9A:12A9,func,BP_RealToLongCore,,"Real48 to LongInt, CH=0 truncate / CH=1 round half away from zero; carry on overflow",CONFIRMED,M1-01
 3A9A:1317,func,BP_RealAdd,,Real48 + (RunError 205 on overflow),CONFIRMED,M1-01
@@ -126,13 +127,24 @@ address,kind,name,signature,comment,confidence,source_task
 3A9A:133D,func,BP_RealFromLong,,LongInt to Real48 conversion,CONFIRMED,M1-01
 3A9A:1341,label,BP_RealTrunc,,Trunc(Real): LongInt entry (CH=0); unreferenced in file0001,CONFIRMED,M1-01
 3A9A:1349,func,BP_RealRound,,Round(Real): LongInt (CH=1); RunError 207 on overflow,CONFIRMED,M1-01
+3A9A:1363,func,BP_RealAddKeep,,internal: Real48 add that preserves the second operand (CX/SI/DI),CONFIRMED,M1-01.b
+3A9A:136D,func,BP_RealSubKeep,,internal: Real48 subtract that preserves the second operand,CONFIRMED,M1-01.b
+3A9A:1377,func,BP_RealMulKeep,,internal: Real48 multiply that preserves the second operand,CONFIRMED,M1-01.b
+3A9A:1381,func,BP_RealDivKeep,,internal: Real48 divide that preserves the second operand (no zero check),CONFIRMED,M1-01.b
 3A9A:138B,func,BP_RealInt,,Int(Real): clears fraction bits,LIKELY,M1-01
 3A9A:13DC,func,BP_RealFrac,,Frac(Real) = X - Int(X),LIKELY,M1-01
 3A9A:13F0,func,BP_RealSqrt,,Sqrt(Real): Newton iteration; RunError 207 if negative,LIKELY,M1-01
 3A9A:144F,func,BP_RealCos,,Cos(X) computed as Sin(pi/2 - X),LIKELY,M1-01
 3A9A:1462,func,BP_RealSin,,"Sin(X): reduce by 2*pi, polynomial",LIKELY,M1-01
 3A9A:14C3,data,k_RealTrigConsts,,Real48 constant/coefficient table used by Sin/ArcTan,HYPOTHESIS,M1-01
+3A9A:14ED,func,BP_RealLn,,Ln(Real): RunError 207 if x <= 0; not called by game code,LIKELY,M1-01.b
+3A9A:1572,data,k_RealLnCoefs,real48[6],odd-series coefficients used by Ln,LIKELY,M1-01.b
+3A9A:1596,func,BP_RealExp,,Exp(Real); not called by game code,LIKELY,M1-01.b
+3A9A:1609,data,k_RealExpCoefs,real48[8],polynomial coefficients used by Exp,HYPOTHESIS,M1-01.b
 3A9A:1639,func,BP_RealArcTan,,"ArcTan(X): |X|>1 reduced via 1/X, polynomial",LIKELY,M1-01
+3A9A:171A,data,k_RealAtanTable,real48[9],"ArcTan reduction rows (upper bound, tangent, angle) x3; see spec core/real48",CONFIRMED,M1-01.b
+3A9A:174A,data,k_RealAtanCoefs,real48[5],ArcTan odd-polynomial coefficients (-1/11 .. -1/3),CONFIRMED,M1-01.b
+3A9A:1768,func,BP_RealAtanPoly,,x * P(x*x) with the 5 ArcTan coefficients (enters BP_RealPolyOdd),CONFIRMED,M1-01.b
 3A9A:176E,func,BP_RealPolyOdd,,internal: odd polynomial in X (X * P(X*X)) over a CS coefficient table,HYPOTHESIS,M1-01
 3A9A:1787,func,BP_RealPolyEval,,internal: Horner evaluation over a CS table of Real48 coefficients,HYPOTHESIS,M1-01
 3A9A:17D6,func,BP_RandomInt,,Random(Range: Word): Word = (new RandSeed * Range) shr 32,CONFIRMED,M1-01

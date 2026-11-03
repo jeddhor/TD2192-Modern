@@ -59,7 +59,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M1-01 | BP7 runtime identification; Random/Real48 semantics spec | RE | M0-08 | DONE | RE-1 | 2026-11-02; docs/spec/core/bp7-runtime-semantics.md rev 1 + docs/re/symbols/file0001.csv (162 rows); RNG exact; Real48 used by gameplay (U-022, U-023 resolved); Real48 algorithms split to M1-01.b |
-| M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | IN PROGRESS | RE-4 | Real48 bit-exact spec + emulator vectors |
+| M1-01.b | Real48 bit-exact algorithms spec (add/mul/div rounding, Sqrt/Sin/Cos/ArcTan) + vectors from the original routines (U-029) | RE/SP | M1-01 | DONE | RE-4 | 2026-11-02; docs/spec/core/real48.md rev 1 + real48-vectors.csv (1,705 rows from the original); model = original on 247,705 inputs; U-029 resolved |
 | M1-02 | WORX API + call-site catalogue (music cues, SFX policy draft) | RE | M1-01 | IN PROGRESS | RE-4 | WORX API + call sites |
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | TODO | | |
