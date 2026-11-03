@@ -41,6 +41,14 @@ Input for `tools/scripts/match-episodes.py`, the cross-episode matcher (M1-09, [
 
 Forces flow-following disassembly where auto-analysis stopped early, clears stray defined data first (`clear:`), regrows the containing or preceding function body and reports why disassembly stopped (the next code unit and any "conflicting data" error bookmark). Typical loop: `ExportListing range:` the unit, list the non-instruction gaps that are not Pascal strings, `DisassembleAt` those addresses with `clear:` over the gaps, re-export, repeat. RE-9 used it to complete E2 `Msn_UpdateB` (`td2:2236:240A..31DD`, 3540 bytes; Ghidra had stopped at `2236:27E8`) and the code gaps in `Msn_UpdateA` on a private project copy. Run `SetupBp7Program` afterwards if the new code straddles a 64 KB line.
 
+The E2 unit-2236 fix as RE-9 ran it on `td2.exe` (three runs; the export after each run showed what was still missing):
+
+1. `at:2236:27E8`, then `SetupBp7Program`;
+2. `clear:2236:0CB3-2236:0CBA clear:2236:0CF1-2236:1128 clear:2236:193F-2236:195D clear:2236:2822-2236:28A6 clear:2236:2980-2236:2B4A clear:2236:2C28-2236:31DD at:2236:0CB3 at:2236:0CF1 at:2236:193F at:2236:2822 at:2236:2833 at:2236:2980 at:2236:2A61 at:2236:2C28 at:2236:2C39`;
+3. `at:2236:0CF3 at:2236:2C41 at:2236:2C49` (the "conflicting data" bookmarks of run 2 are gone once the data is cleared).
+
+Result: `2236:0000..31EF` has no gap left except the two ShortString runs (`070F..0ADA`, `1D2A..2409`) and the zero tail. The F5 routine `1E0B:0DCC` is still misdecoded in places; RE-9a decoded it from the raw bytes instead ([sim/e2-mission-setup §4.5](../../docs/spec/sim/e2-mission-setup.md)).
+
 ### ExportListing
 
 A plain disassembly listing per function (or per address range), one instruction per line with the image-relative address, the bytes, the instruction and its references as image-relative addresses with names. Flow references include the overrides `SetupBp7Program` installs, so near calls in the segments that straddle a 64 KB line show their real targets. Useful where the decompiler drops arguments (Real48 constants, `PUSH` sequences before calls to routines with odd signatures). Like `ExportDecompiled`, it refuses to write inside a git work tree.
