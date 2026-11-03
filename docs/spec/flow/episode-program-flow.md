@@ -95,7 +95,7 @@ Switches (first command-line argument only, exact case variants): `/pc` → musi
 |---|---|---|
 | `g_PlayerDied` DS:12CD | end of `Sim_FlyMission` (`0E8B:F85E`) | 1 when the flight ended because the player's death sequence ran to its end (end-sequence counter DS:32B8 reached 35) |
 | `g_MissionAborted` DS:12CE | flight menu `0E8B:794C` | player quit the flight from the Esc menu |
-| `g_MissionLost` DS:12CC | mission logic (`0E8B:9860`, `2404:*`) | mission failed by objective (missions 17, 18, 20 test it) |
+| `g_MissionLost` DS:12CC | `Msn_UpdateEvents` (`0E8B:9860`) in flights 17, 18 and 20 ([mission-logic](../sim/mission-logic.md) §5.17–5.20) | mission failed by objective (missions 17, 18, 20 test it) |
 | `g_MissionOutcome` DS:12CF | end of `Sim_FlyMission` | 1 by default; mission-specific test in missions 3, 5, 12, 16 (where particular slots ended) and 17 (= not `g_MissionLost`). Chooses between alternative post-mission dialogue and, in the debrief, between the rating and a "mission failed" note |
 | `g_MissionSucceeded` DS:329E | mission logic | ends the flight normally |
 
