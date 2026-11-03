@@ -1025,6 +1025,7 @@ dependencies = [
  "proptest",
  "td-assets",
  "td-formats",
+ "td-test-support",
  "thiserror",
  "tracing",
 ]
@@ -1050,6 +1051,7 @@ dependencies = [
  "td-input",
  "td-platform",
  "td-render",
+ "td-sim",
  "tracing",
  "tracing-subscriber",
 ]
