@@ -13,7 +13,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|
 | **Current milestone** | M1–M8 in parallel. Done or in review: M0 core, M2 parsers, M3 audio (CMF write-exact vs oracle), M5 text + dialogue player (pixel-exact), M6 flight core (confirmed vectors, pixel-exact playfield), M7 weapons (static spec). Active: RE-5 (mission ships/AI, M8-01/03), RE-6 (mission logic, HUD; M8-02, M6-07) |
 | **Last updated** | 2026-11-02 |
-| **Ghidra lock** | free (RE-9 applied file0001.csv (550 rows), td2.csv (505) and td3.csv (493) to the canonical project on 2026-11-02, 0 skipped. **Pending for the next holder:** td2.csv is now 530 rows (RE-9, M10-01), and the canonical td2 still has E2 `Msn_UpdateB` truncated at `2236:27E8`: run `DisassembleAt.java` with the `clear:`/`at:` lists in tools/ghidra/README.md (or copy td2 from `re-workghidra-re9`), then `ApplySymbols`) |
+| **Ghidra lock** | **held by RE-10** (2026-11-02, M10-02): finishing td2 `Msn_UpdateB` (2236:240A..31DD) with `DisassembleAt`, then applying td2.csv (530 rows); released after that |
 | **Active handoffs** | [2026-11-02-M1-06](handoffs/2026-11-02-M1-06.md) (timing: VE measurements) · [2026-11-02-M6-01](handoffs/2026-11-02-M6-01.md) (flight-core specs: flight model drafted) |
 
 ### Blocking user decisions (MDG §14)
