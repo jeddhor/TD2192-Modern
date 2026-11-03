@@ -144,7 +144,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M6-06 | Jurisdiction, IR toggle, pause | IM | M6-03 | TODO | | |
 | M6-07 | HUD frame + instruments | IM | M6-05 | TODO | | |
 | M6-08 | Dev arena | IM | M6-03 | IN PROGRESS | main-session | td2192 --dev-flight N: E1 map, original key bytes (keypad/arrows, keypad +/0 burst, P pause, Esc quits), deterministic AT typematic; no ships/weapons/radar/gauges yet |
-| M6-09 | Flight parity + feel sign-off | VE | M6-03..M6-07 | TODO | | |
+| M6-09 | Flight parity + feel sign-off | VE | M6-03..M6-07 | IN PROGRESS | main-session | L5 td-sim/tests/oracle_flight.rs: td-sim driven by the original's recorded key bytes matches the original's view, speeds, target, turn and heading on every tick of C-0007 + C-0008 (E1M1; class 4 and 0). L5 render: playfield pixel-exact vs C-0002. Feel sign-off (human) pending |
 
 ## M7: Combat & entities
 
