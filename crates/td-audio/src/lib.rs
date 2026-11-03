@@ -9,6 +9,6 @@ pub mod cmf_player;
 pub mod mixer;
 pub mod sound;
 
-pub use cmf_player::{CmfPlayer, OplWrite};
+pub use cmf_player::{CmfDriver, CmfPlayer, OplSink, OplWrite};
 pub use mixer::{AudioCommand, Mixer, SfxPolicy};
 pub use sound::{Pcm8, SoundError, decode_voc};
