@@ -41,8 +41,10 @@ This is the one-time (and repeatable) preparation of a BP7 program imported with
 3. sets **DS = DGROUP** over every code block;
 4. turns off the "Non-Returning Functions – Discovered" analyzer and clears false no-return flags (functions that contain a `RET`), re-disassembling the dropped fall-throughs;
 5. **re-targets near `CALL`/`JMP rel16` instructions that Ghidra resolves 64 KB off.** Ghidra's x86 SLEIGH wraps `rel16` at a linear 64 KB boundary rather than at the segment base. The script replaces each wrong reference with an overriding reference, then removes the bogus functions and the "code" decoded from text at the wrong targets;
-6. seeds code from the entry point, every far-call relocation target, the prologues `55 89 E5` / `55 8B EC` / `C8 nn nn 00`, code pointers (an immediate next to `PUSH CS` or next to a relocated code-segment word, unless it points at a Pascal string), and every undefined call or jump target;
-7. re-runs auto-analysis and repeats until nothing changes, then prints coverage (instructions, Pascal-string bytes, zero fill, other).
+6. re-points `CS:[disp]` data references to the instruction's own segment. Ghidra's real-mode SLEIGH derives CS as `(linear >> 4) & 0xF000`. The decompiler still shows the raw constant, so read `CS:[x]` as own-segment:`x`;
+7. marks real exits (INT 21h with AH=4Ch, such as System `Halt`) as no-return, and clears the unreferenced fall-through after calls to them;
+8. seeds code from the entry point, every far-call relocation target, the prologues `55 89 E5` / `55 8B EC` / `C8 nn nn 00`, code pointers (an immediate next to `PUSH CS` or next to a relocated code-segment word, unless it points at a Pascal string), and every undefined call or jump target;
+9. re-runs auto-analysis and repeats until nothing changes, then prints coverage (instructions, Pascal-string bytes, zero fill, other).
 
 ### ExportFunctionIndex
 
@@ -66,4 +68,4 @@ Lists every `IN`/`OUT`/`INS`/`OUTS`/`INT`. It resolves the port from an immediat
 
 ## Tested
 
-2026-11-02, Ghidra 12.2 + Temurin 25, headless via the wrapper, against all five programs (`SetupBp7Program`) and against `file0001.exe` (all the others; the symbols round trip used a scratch CSV).
+2026-11-02, Ghidra 12.2 + Temurin 25, headless via the wrapper. `SetupBp7Program` was run from a clean import on all five programs, and a second run changed nothing. The other scripts were run against `file0001.exe`; the symbols round trip used a scratch CSV, then the real `docs/re/symbols/file0001.csv`.

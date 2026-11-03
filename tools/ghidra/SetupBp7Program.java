@@ -83,8 +83,8 @@ public class SetupBp7Program extends GhidraScript {
 		for (int pass = 1; pass <= passes; pass++) {
 			int wraps = fixNearBranchWrap();
 			int cleared = clearBogusTargets();
-			int seeded = repairNoReturn() + seedEntry() + seedFarCallTargets() + seedPrologues() +
-				seedCodePointers() + seedFlowTargets();
+			int seeded = repairNoReturn() + markExitsNoReturn() + seedEntry() +
+				seedFarCallTargets() + seedPrologues() + seedCodePointers() + seedFlowTargets();
 			wraps += fixNearBranchWrap();
 			cleared += clearBogusTargets() + clearOrphanText();
 			println(String.format(
@@ -106,7 +106,10 @@ public class SetupBp7Program extends GhidraScript {
 			}
 		}
 		fixupFunctionBodies();
+		clearOrphanText(); // runs detached from a function body by the fix-up
 		removeFunctionsOutsideCode();
+		// auto-analysis re-creates the wrong CS references every time it runs, so this count
+		// repeats on every run; the end state is correct
 		println("[setup] CS-relative data references re-pointed: " + fixCsRelativeRefs());
 		Stats after = stats();
 		println("[setup] after:  " + after);
@@ -472,15 +475,25 @@ public class SetupBp7Program extends GhidraScript {
 					if (!text.contains("CS:[")) {
 						continue;
 					}
+					Long disp = null;
+					for (Object o : ins.getOpObjects(op)) {
+						if (o instanceof ghidra.program.model.scalar.Scalar s) {
+							disp = s.getUnsignedValue() & 0xFFFF;
+						}
+						else if (o instanceof Register reg && !reg.getName().equalsIgnoreCase("CS")) {
+							disp = null; // register-relative: no fixed target
+							break;
+						}
+					}
+					if (disp == null) {
+						continue;
+					}
+					Address correct = space.getAddress(seg, disp.intValue());
 					for (Reference r : ins.getOperandReferences(op)) {
-						if (!r.isMemoryReference() || r.getReferenceType().isFlow()) {
+						if (!r.isMemoryReference() || r.getReferenceType().isFlow() ||
+							r.getToAddress().getOffset() == correct.getOffset()) {
 							continue;
 						}
-						long disp = r.getToAddress().getOffset() - normSegBase;
-						if (disp < 0 || disp > 0xFFFF) {
-							continue; // already re-pointed, or not of this shape
-						}
-						Address correct = space.getAddress(seg, (int) disp);
 						rm.delete(r);
 						Reference nr = rm.addMemoryReference(ins.getAddress(), correct,
 							r.getReferenceType(), SourceType.USER_DEFINED, op);
@@ -672,13 +685,16 @@ public class SetupBp7Program extends GhidraScript {
 			if (!f.hasNoReturn()) {
 				continue;
 			}
-			boolean hasReturn = false;
+			boolean hasReturn = false, terminates = false;
 			InstructionIterator it = currentProgram.getListing().getInstructions(f.getBody(), true);
-			while (it.hasNext() && !hasReturn) {
-				String m = it.next().getMnemonicString().toUpperCase();
-				hasReturn = m.startsWith("RET") || m.startsWith("IRET");
+			while (it.hasNext()) {
+				Instruction ins = it.next();
+				String m = ins.getMnemonicString().toUpperCase();
+				hasReturn |= m.startsWith("RET") || m.startsWith("IRET");
+				terminates |= m.equals("INT") && ins.getScalar(0) != null &&
+					ins.getScalar(0).getUnsignedValue() == 0x21 && setsAh4C(ins);
 			}
-			if (hasReturn) {
+			if (hasReturn && !terminates) {
 				f.setNoReturn(false);
 				fixed.add(f);
 			}
@@ -706,6 +722,105 @@ public class SetupBp7Program extends GhidraScript {
 			}
 		}
 		return n;
+	}
+
+	/**
+	 * Marks genuine exits as no-return: a function with no RET/RETF/IRET whose body issues
+	 * INT 21h (System Halt: AH=4Ch) or ends in a jump into a function already marked. Then
+	 * clears the bogus fall-through after each call to it (for example after the main block's
+	 * final "call far Halt", the paragraph pad byte decodes as an ADD that swallows the next
+	 * segment's first prologue).
+	 */
+	private int markExitsNoReturn() throws Exception {
+		List<Function> marked = new ArrayList<>();
+		boolean changed = true;
+		while (changed) {
+			changed = false;
+			for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {
+				if (f.hasNoReturn() || !isCode(f.getEntryPoint())) {
+					continue;
+				}
+				boolean hasReturn = false, exits = false, terminates = false;
+				InstructionIterator it = currentProgram.getListing().getInstructions(f.getBody(), true);
+				while (it.hasNext()) {
+					Instruction ins = it.next();
+					String m = ins.getMnemonicString().toUpperCase();
+					if (m.startsWith("RET") || m.startsWith("IRET")) {
+						hasReturn = true; // BP7 Halt also has a RETF (into ExitProc): see below
+					}
+					if (m.equals("INT") && ins.getScalar(0) != null &&
+						ins.getScalar(0).getUnsignedValue() == 0x21 && setsAh4C(ins)) {
+						terminates = true;
+					}
+					if (m.equals("JMP")) {
+						for (Address t : ins.getFlows()) {
+							Function g = getFunctionAt(t);
+							if (g != null && g.hasNoReturn()) {
+								exits = true;
+							}
+						}
+					}
+				}
+				if (terminates || (!hasReturn && exits)) {
+					f.setNoReturn(true);
+					marked.add(f);
+					changed = true;
+					println("[setup]   marked no-return: " + f.getName() + " @ " + f.getEntryPoint());
+				}
+			}
+		}
+		int n = 0;
+		for (Function f : marked) {
+			for (var ref : getReferencesTo(f.getEntryPoint())) {
+				if (!ref.getReferenceType().isCall()) {
+					continue;
+				}
+				Instruction call = getInstructionAt(ref.getFromAddress());
+				if (call == null) {
+					continue;
+				}
+				// clear only an unreferenced run that nothing else flows into (<= 256 bytes)
+				Address a = call.getAddress().add(call.getLength());
+				Address start = a;
+				ReferenceManager rm = currentProgram.getReferenceManager();
+				while (a != null && a.getOffset() - start.getOffset() < 256) {
+					Instruction ins = getInstructionAt(a);
+					if (ins == null || getFunctionAt(a) != null || (!a.equals(start) && hasFlowRefTo(rm, a)) ||
+						(a.equals(start) && hasFlowRefTo(rm, a))) {
+						break;
+					}
+					Address next = ins.getFallThrough();
+					clearListing(ins.getAddress(), ins.getMaxAddress());
+					n++;
+					a = next;
+				}
+			}
+		}
+		return n;
+	}
+
+	/** True if AH is loaded with 4Ch (mov ah,4Ch / mov ax,4Cxxh) within 6 instructions before. */
+	private static boolean setsAh4C(Instruction intIns) {
+		Instruction p = intIns;
+		for (int k = 0; k < 6 && (p = p.getPrevious()) != null;) {
+			k++;
+			if (!p.getMnemonicString().equalsIgnoreCase("MOV") || p.getNumOperands() != 2) {
+				continue;
+			}
+			String dst = p.getDefaultOperandRepresentation(0).toUpperCase();
+			ghidra.program.model.scalar.Scalar s = p.getScalar(1);
+			if (s == null) {
+				continue;
+			}
+			long v = s.getUnsignedValue();
+			if (dst.equals("AH")) {
+				return v == 0x4C;
+			}
+			if (dst.equals("AX")) {
+				return (v >> 8) == 0x4C;
+			}
+		}
+		return false;
 	}
 
 	/**

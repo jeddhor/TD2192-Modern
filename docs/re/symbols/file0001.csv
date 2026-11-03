@@ -1,12 +1,32 @@
 address,kind,name,signature,comment,confidence,source_task
+0000:0F06,func,Main_CampaignLoop,,mission sequencer: calls Sim_FlyMission 21 times,LIKELY,M1-06
 0000:4526,func,Main_Entry,,"program entry: calls each unit init (System first), then the main body",CONFIRMED,M1-01
 0000:454E,label,Main_Body,,main block after the init chain,CONFIRMED,M1-01
 051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
+0E8B:0052,func,Gfx_WaitRetraceStart,,polls 3DAh until bit 3 (vertical retrace) is set; no wait for the end of the previous retrace,CONFIRMED,M1-03
+0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
+0E8B:A714,func,Inp_RestoreKeyboard,,restores the saved INT 09h vector (DS:18C2) and resets CRTC 12h,LIKELY,M1-03
+0E8B:B880,func,Sim_FlyMission,,"one mission in flight: setup, per-tick loop, teardown; hooks INT 09h",LIKELY,M1-06
+0E8B:E05C,label,Sim_TickLimiter,,busy-waits on DOS time until > 4 hundredths past the previous tick,LIKELY,M1-06
 0E8B:F9E7,func,Unit0E8B_Init,,unit init part (7th in chain),CONFIRMED,M1-01
+1E2A:0000,func,Snd_Int1CHandler,,INT 1Ch (BIOS user tick) handler installed by 1E2A:06C6,HYPOTHESIS,M1-03
+1E2A:06C6,func,Snd_InstallTick,,saves INT 1Ch to DS:1E34 and installs 1E2A:0000,LIKELY,M1-03
+1EBF:0000,func,Inp_JoystickAvailable,,returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead,HYPOTHESIS,M1-03
+1EBF:0026,func,Inp_JoystickRead,,port 201h trigger and timing loop for axes and buttons (all joystick port I/O),LIKELY,M1-03
 1EDE:5247,func,Unit1EDE_Init,,unit init part (6th in chain),CONFIRMED,M1-01
 2404:60FD,func,Unit2404_Init,,unit init part (5th in chain),CONFIRMED,M1-01
 2A15:220F,func,Unit2A15_Init,,unit init part (4th in chain),CONFIRMED,M1-01
+2C37:0000,func,WORX_CallDriver,,Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h,LIKELY,M1-03
+2C37:3285,func,WORX_InstallInterrupts,,"hooks INT 63h (driver API, 2C37:34EE) and INT 08h (2C37:4558); PIT divisor 0952h",CONFIRMED,M1-03
+2C37:336E,func,WORX_RemoveInterrupts,,restores INT 08h and INT 63h,CONFIRMED,M1-03
+2C37:34EE,label,WORX_Int63Handler,,WORX driver API (software interrupt 63h),LIKELY,M1-03
+2C37:4558,func,WORX_TimerIsr,,INT 08h: music tick if active; chains BIOS every N fast ticks; else EOI,CONFIRMED,M1-06
+2C37:4A72,func,WORX_SetTimerRate,,AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick,CONFIRMED,M1-06
 34E6:3836,func,Unit34E6_Init,,unit init part (3rd in chain),CONFIRMED,M1-01
+386E:1991,func,Gfx_SetLogicalWidth,,CRTC 13h (offset) write,LIKELY,M1-03
+386E:19A0,func,Gfx_SetSplitLine,,"waits for a full vertical retrace, then programs line compare (CRTC 18h/07h/09h)",LIKELY,M1-03
+386E:19EF,func,Gfx_InitUnchained,,"INT 10h mode 13h, then chain-4 off (SEQ 04h), CRTC 14h/17h: planar 320x200",CONFIRMED,M1-03
+386E:1A6C,func,Gfx_FlipPage,,"waits display-enable low, sets CRTC start address 0Ch/0Dh, then waits for vertical retrace",CONFIRMED,M1-03
 3A1C:000D,func,Crt_Init,,"Crt unit init (2nd in chain): video setup, AssignCrt Input/Output, Delay calibration",CONFIRMED,M1-01
 3A1C:003B,func,Crt_InitVideo,,reads BIOS video mode (INT 10h AH=0Fh) and sets up text state,LIKELY,M1-01
 3A1C:00A3,func,Crt_SetVideoMode,,internal: set text mode via INT 10h AH=00h,HYPOTHESIS,M1-01
@@ -153,6 +173,13 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:04FD,data,g_Test8087,u8,FPU class,LIKELY,M1-01
 3C43:04FE,data,g_FileMode,u8,open mode for Reset (initial 2),CONFIRMED,M1-01
 3C43:0500,data,k_CrLf,u8[2],CR LF used by WriteLn,LIKELY,M1-01
+3C43:1708,data,g_TickPrevTime,u16[4],"hour, minute, second, hundredths of the previous tick (DOS time)",LIKELY,M1-06
+3C43:1710,data,g_TickNowTime,u16[4],current DOS time sample in the tick limiter,LIKELY,M1-06
+3C43:1718,data,g_MissionTicks,u32,"per-mission counter compared with 25, 200 and 15000",HYPOTHESIS,M1-06
+3C43:18C2,data,g_OldInt09,farptr,saved keyboard vector,CONFIRMED,M1-03
+3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
+3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
+3C43:1E34,data,g_OldInt1C,farptr,saved BIOS user-tick vector,CONFIRMED,M1-03
 3C43:9B8A,data,g_CrtCheckBreak,u8,Crt.CheckBreak,LIKELY,M1-01
 3C43:9B8E,data,g_CrtLastMode,u16,Crt.LastMode,HYPOTHESIS,M1-01
 3C43:9B90,data,g_CrtTextAttr,u8,Crt.TextAttr,CONFIRMED,M1-01

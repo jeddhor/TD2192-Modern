@@ -74,19 +74,21 @@ Code segments (image-relative start, size in bytes). The unit names are ours (M1
 3. **DGROUP marked executable** (named `CODE_n`). The script renames it `DGROUP`/`DGROUP_BSS` and clears the execute flag.
 4. **False "non-returning" functions.** The analyzer "Non-Returning Functions – Discovered" flagged System's string-assign helper (`td2:350D:0D1E`, `td3:311C:0D1E`) as non-returning and dropped the code after every call to it (about 16 KB of code per exe). The script disables that analyzer, clears the flag on any function that contains a return instruction, and re-disassembles the dropped fall-throughs.
 5. **Near branches 64 KB off (Ghidra x86 SLEIGH bug).** The 16-bit `rel16` operand is computed as `((inst_next >> 16) << 16) | ((inst_next + rel) & 0xFFFF)` on the *linear* address, so it wraps at a 64 KB linear boundary instead of at the segment base. In a segment that straddles a 64 KB linear boundary, every near `CALL`/`JMP rel16` that crosses that line resolves 64 KB away from the real `CS:((IP+rel) & 0xFFFF)` target, and Ghidra then disassembles and creates "functions" in whatever lies there (usually string literals). Affected segments: `file0001` `0E8B`, `1EDE`, `2C37`; equivalent segments in `td2`/`td3`. The script replaces each wrong flow reference with a `CALL_OVERRIDE_UNCONDITIONAL`/`JUMP_OVERRIDE_UNCONDITIONAL` reference to the correct target (78 in `file0001`, 115 in `td2`, 54 in `td3`; flow following and the decompiler both honour these). It then removes the bogus functions and clears any orphan run of "instructions" that is at least 70% printable ASCII. **Any new disassembly in those segments needs the same fix, so re-run the script after manual disassembly.**
-6. The loader's "adjust segment starts" heuristic (it moves bytes up to a `RETF` in the first 16 bytes of a block into the previous block) did **not** fire for any of the five exes: every block starts at offset 0. Re-check this if an exe is ever re-imported.
+6. **Real-mode CS is derived, not taken from context.** The SLEIGH computes CS for a `CS:` override as `(linear >> 4) & 0xF000`, so every `CS:[disp]` operand outside a 64 KB-aligned segment references the wrong place. This matters because WORX and System keep variables and constants CS-relative. The script re-points those references to `<own segment>:disp` (about 300 per exe). The decompiler still prints the raw constant, so read `CS:[x]` as own-segment:`x`. Auto-analysis re-creates the wrong references whenever it runs, so the count repeats on every run.
+7. **System `Halt` is not recognised as an exit.** It contains a `RETF` (into the ExitProc chain), so nothing marks it no-return, and decoding runs on past the main block's final `call far Halt` into the next segment (the paragraph pad byte decodes as an `ADD` that swallows `051A:0000`'s prologue). The script marks any function that issues INT 21h with AH=4Ch (and anything that only jumps into one) as no-return, and clears the unreferenced fall-through.
+8. The loader's "adjust segment starts" heuristic (it moves bytes up to a `RETF` in the first 16 bytes of a block into the previous block) did **not** fire for any of the five exes: every block starts at offset 0. Re-check this if an exe is ever re-imported.
 
 **Coverage after setup** (instructions as a share of all code-segment bytes; the rest is classified by the script):
 
 | Exe | Functions | Instruction bytes | Code-segment bytes | % instructions | Pascal-string bytes | Zero fill | Other (tables, unreached) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `file0001.exe` | 391 | 199,947 | 246,832 | 81.0% | 25,682 | 5,024 | 15,930 (6.5%) |
-| `td2.exe` | 400 | 178,810 | 224,096 | 79.8% | 19,594 | 5,191 | 20,141 (9.0%) |
-| `td3.exe` | 387 | 168,751 | 207,952 | 81.1% | 16,782 | 5,127 | 16,941 (8.1%) |
-| `file0000.exe` | 175 | 23,248 | 46,032 | 50.5% | 1,375 | 5,022 | 16,127 (35.0%) |
-| `td1.exe` | 141 | 11,479 | 33,136 | 34.6% | 577 | 4,939 | 15,801 (47.7%) |
+| `file0001.exe` | 392 | 200,152 | 246,832 | 81.1% | 25,682 | 5,018 | 15,729 (6.4%) |
+| `td2.exe` | 394 | 179,040 | 224,096 | 79.9% | 19,592 | 5,182 | 19,929 (8.9%) |
+| `td3.exe` | 384 | 169,177 | 207,952 | 81.4% | 16,780 | 5,103 | 16,541 (8.0%) |
+| `file0000.exe` | 176 | 23,233 | 46,032 | 50.5% | 1,375 | 5,034 | 16,129 (35.0%) |
+| `td1.exe` | 142 | 11,466 | 33,136 | 34.6% | 577 | 4,950 | 15,803 (47.7%) |
 
-Before setup, `file0001` had 340 functions and 196,388 instruction bytes, but some of those were string literals decoded as code (defect 5).
+These are the numbers after a from-scratch run on the imported programs (2026-11-02; a second run changes nothing). Before setup, `file0001` had 340 functions and 196,388 instruction bytes, but some of those were string literals decoded as code (defect 5).
 
 In `file0001` the remaining "other" bytes are almost all in WORX (`2C37`: an 11 KB run of tables and zeroed buffers starting at `2C37:0410`, plus some handler code that is still unreached) and System (`3A9A:14C3..`: Real48/8087-emulator constant tables).
 
