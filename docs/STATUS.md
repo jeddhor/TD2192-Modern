@@ -249,6 +249,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M10-42 | E3 mission 19: spec + script + success replay | RE/SP, IM, VE | M10-03 | TODO | | |
 | M10-43 | E3 mission 20: spec + script + success replay (numbering per U-012) | RE/SP, IM, VE | M10-03 | TODO | | |
 | M10-44 | E2/E3 narrative scripts + endings | RE/SP/IM | M10-01, M10-02 | TODO |  | E2 part specified by RE-9 (M10-01): flow/e2-program-flow.md rev 1 (20 blocks, music, endings A/B/C, end card); E3 not started |
+| M10-44.a | E2 front end: program (start-up, menu, saves), 20 blocks, music, debrief, retries, endings; `td2192 --episode 2` | IM | M10-01, M10-03 | IN PROGRESS | IM-8 | 2026-11-03 |
+| M10-44.b | E2 in-flight presentation: F5 target board, comm screens, flight-8 sprites, overlay tiles, radar set 2, home points | IM | M10-01, M10-03 | IN PROGRESS | IM-8 | 2026-11-03 |
 | M10-45 | Full E2 + E3 playthroughs + parity reports | VE | M10-04..M10-44 | TODO | | |
 
 ## M11: Front end, options & meta
