@@ -6,7 +6,7 @@
 | **Revision** | 1 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, success and failure decide the outcome of a flight; the order of the per-tick rules matters where two rules write the same ship) · T2 for the ticker text itself (render/hud.md) |
-| **Confidence** | LIKELY overall (static: every rule below was read from the instruction stream, with the listing checked where the decompiler drops operands). Flights 1–3 CONFIRMED for the objective ticker start by capture (§7). The behaviour that `AI_SetTarget` triggers is RE-5's ([mission-ships](mission-ships.md)) |
+| **Confidence** | LIKELY overall (static: every rule was read from the instruction stream, with the listing checked where the decompiler drops operands). Flight 1 CONFIRMED by capture C-0010 for phases 1→5, the spawns and hides, the exit rules, the ticker-idle gate and the respawn distance (§7). Flights 4–21 LIKELY (static only). The behaviour that `AI_SetTarget` triggers is RE-5's ([mission-ships](mission-ships.md)) |
 | **Tasks** | M8-02 (feeds M8-05, M8-06, M8-07, M8-08, M8-10, M9) |
 | **Unknowns** | U-031 (resolved for `2404`), U-180, U-181, U-182, U-183, U-184 |
 
@@ -692,30 +692,51 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | Quirk | Original behaviour | Port policy |
 |---|---|---|
 | Three player positions (§2) | Engagement ranges are measured from the view's top-left tile, about (−5, −3) tiles from the ship | Preserve (T1) |
-| Escaped targets count as done | Exit rules and "all dead" tests treat leaving like destruction | Preserve |
-| Respawn distance uses AND | A dead ship respawns only when the player is more than 15 tiles away on **both** axes | Preserve |
+| Escaped targets count as done | Exit rules and "all dead" tests treat leaving like destruction; flights 1–3 can be completed without a kill | Preserve |
+| Respawn distance uses AND | A dead ship respawns only when the player is more than 15 tiles away on **both** axes, at the tile where it died | Preserve |
 | Ticker interrupts | A rule that posts without testing "ticker idle" cuts the current message off | Preserve |
+| Repeated announcements | A transmission announcement is re-posted every time the ticker goes idle until F6 is pressed in the right phase | Preserve |
+| Flight 4 phase 3 | Lasts exactly one tick (§5.4) | Preserve |
+| Flight 7: mines re-armed | Rule "layer on mine tile ⇒ class 3" runs every tick for mines 2..8, also for a dead layer and for destroyed mines | Preserve (OB-015) |
+| Flight 7: completion without message | The instruments routine can set phase 100 before `M1[26]` is posted (§5.7) | Preserve (U-180) |
+| Flight 8 soft lock | If slots 8 and 9 are gone before the player comes within 30 tiles of one of them, the phase stays 3 and the flight cannot be completed | Preserve in Classic; **fix-enhanced** candidate (OB-016, U-182) |
+| Flight 17 base hits ignore class | A destroyed ship lying on tile (107, 106) counts as an attacker that reached the base | Preserve |
+| Flight 20 bombs with no free slot | All three bombs overwrite projectile slot 40 | Preserve (equivalent to weapons §5 policy for enemy shots) |
+| Flight 13 time limit | Exactly at tick 15,000 the flight ends as a death | Preserve |
 | Shared loop counters | Rule loops use globals DS:32BE/32C0/32C2 | Harmless (nothing else reads them); a port may use locals |
 
 ## 7. Test vectors
 
 | # | Setup | Expected | Evidence |
 |---|---|---|---|
-| 1 | Flight 1, first tick | Phase 1; ticker restarted with `e1.objectives[0]`; slots 3..8 class FFh | static; C-0002 (`g_MissionPhase` = 1 in the +1 s and +2 s dumps) |
+| 1 | Flight 1, first tick | Phase 1; ticker restarted with `e1.objectives[0]`; slots 3..11 class FFh at the first dump; markers 1..11 = 32h, 12..20 = 0, element 21 = 3Dh | C-0002 f3543 RAM; C-0010 f3475 |
 | 2 | `Msn_NearLive(8, 0, 20)` with view (102, 104), tile(8) = (121, 104), class(8) = 7 | true (\|121 − 102\| = 19 < 20 and 0 < 20) | static |
 | 3 | `Msn_NearLive(8, 0, 20)` with tile(8) = (122, 104) | false (\|122 − 102\| = 20 is not < 20) | static |
 | 4 | `Msn_NearLive(8, 0, 20)` with tile(8) = (110, 100) and class(8) = FFh | false (dead) | static |
+| 5 | Flight 1, ship parked at the start (no steering; T+I+M chord every 70 frames; preset P1) | Phase 1 → 2 between ticks 740 and 788, when slot 2 reaches its exit (51, 197) (slot 1 had been destroyed at (103, 110)); slots 3, 4 live from then | C-0010 (DS dumps every 35 frames) |
+| 6 | Same run | Phase 2 → 3 between ticks 1536 and 1603: slots 3, 4 end at their exits (50, 2), (51, 2); slots 5..8 live from then, never before | C-0010 |
+| 7 | Same run | Phase 3 → 4 between ticks 2419 and 2716: slots 5, 6, 7 end at their exits (198, 122/123/124), slot 8 destroyed at (107, 107); slots 9, 10 live from then | C-0010 |
+| 8 | Same run (ticker-idle gate of step D) | Slots 9, 10 gone by tick 3973 while the ticker is at 61; phase stays 4 until the ticker is idle (tick 4164: phase 4, ticker 0) and is 5 at tick 4174 (ticker 6): `M1[3]` posted at the first idle tick; slot 11 live from then | C-0010 |
+| 9 | Same run | Slot 11 (class 7) engages the parked player and never leaves: phase stays 5 to the end of the run (tick 7119); `g_MissionSucceeded` stays 0 although the view is at the base tile | C-0010 |
+| 10 | Same run | Slots 19 and 20 are destroyed near the player (ticks 1747, 2266) and do not respawn: the player is never more than 15 tiles away on both axes | C-0010 |
+| 11 | Flight 3 outcome | tile(4) = (107, 106) at teardown → outcome 1; Montgomery destroyed elsewhere → 0 | static |
+| 12 | Flight 18 bomb | Phase 2 entered at tick *t*: lost at the tick where the timer reaches 1000 (tick *t* + 1000 if the ion truck is still alive) | static |
 
 ## 8. Open questions
 
 - [ ] U-180: the flight-7 completion shortcut in the instruments routine (§5.7) can skip the "all mines destroyed" message. Confirm in a capture.
-- [ ] U-181: `AI_SetTarget` re-arms the target every tick while the range test holds; what the AI does when the target leaves the range (RE-5, U-045).
+- [ ] U-181: `AI_SetTarget` re-arms the target every tick while the range test holds; what the AI does when the target dies or leaves the range (RE-5, U-045).
+- [ ] U-182: flight 8 soft lock (§5.8): confirm that slots 8 and 9 can leave or die before the player comes within range, e.g. through slot 1 (which engages them within 10 tiles).
+- [ ] U-183: flight 11: are slots 8 and 9 hidden at the start (RE-5's setup)? If so, the respawn rule of §4.7 brings them in before Dispater's phase.
+- [ ] U-184: flight 20's start state and lander behaviour are split between `Msn_Setup`, `AI_UpdateShips` and §5.20; a capture of a complete flight 20 is needed to confirm the "two hits" rule.
 
 ## 9. Provenance
 
 | Claim | Address / capture | Method | Confidence |
 |---|---|---|---|
 | Blocks per flight, base test, exit/engage/phase rules | `2404:1426..2F2D`, `2404:3521..60FC` | static (decompiler + listing for every call's push order) | LIKELY |
+| Flight 1 sequence | C-0010 | capture | CONFIRMED |
+| Flight-7 rule in the guidance routine | `0E8B:8DA4..8DC0` | static (listing) | CONFIRMED (code) |
 | Primitive semantics | `2404:05DC`, `2404:06EE`, `2404:07DB`, `2404:0616`, `2404:030A`, `34E6:3232` | static | CONFIRMED (code) |
 | Comm viewer table | `0E8B:80D3..8241` | static | LIKELY |
 | Respawns and scripted events | `0E8B:9860..A713` | static | LIKELY |

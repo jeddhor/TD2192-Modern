@@ -11,8 +11,7 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | Address | Type | Our name | Meaning | Conf. |
 |---|---|---|---|---|
 | DS:0000..0262 | text | `k_ConfigScreenText` | Text-mode configuration screen and help (attribute bytes interleaved). Game text: not reproduced | LIKELY |
-| DS:0295..029F | u8[] | `k_Class0295` | Per-class bytes (06 07 06 10 11 0F 11 06 07 06 07); use unknown | HYPOTHESIS |
-| DS:02A2..02AA | u8[9] | `k_Class02A2` | 50h for every class; use unknown | HYPOTHESIS |
+| DS:0264..02AA | u8[0..70] | `k_TileRadarColour` | Radar colour of each map tile (resource `hud.radar_tile_colours`; [hud](../spec/render/hud.md) §3.4). The bytes earlier listed as `k_Class0295` (DS:0295..029F) and `k_Class02A2` (DS:02A2..02AA) are its entries for tiles 49..59 and 62..70 | CONFIRMED (RE-6: code + C-0002 radar) |
 | DS:02AC..02BD | u8[18] | `k_HeadingRing` | The 16 headings in clockwise order with wrap entries: `01, [0E 04 4A 07 4E 08 62 09 60 06 24 03 20 02 0C 01], 0E` (structures §7) | CONFIRMED |
 | DS:02BE + c | u8 | `k_ClassMaxSpeed` | Maximum speed component per class c (biased by 16, structures §6) | CONFIRMED |
 | DS:02C8 + c | u8 | `k_ClassArmour` | Armour per class (player: as is; mission ships: × 2) | LIKELY |
@@ -122,10 +121,17 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | DS:32B7 | u8 | `g_MissionOver` | Flight is ending (death, success, timer) | LIKELY |
 | DS:32B8 | u8 | `g_EndTicks` | Ticks since `g_MissionOver`; player hidden from 15; loop ends at 35 | LIKELY |
 | DS:32B9 | u8 | `g_FlightNumber` | `Sim_FlyMission` argument (1..21) | CONFIRMED |
-| DS:32BA | u8 | `g_MissionPhase` | Mission-script state (written 92 times in `2404`, `0E8B:60D8`, ...) | LIKELY |
-| DS:32BC | u16 | `g_TickerPos` | HUD ticker scroll position 1..78 (0 idle); a new edge alert is raised only while it is 0 (`0E8B:7FDF`) | LIKELY |
-| DS:329C | u8 | `g_CommIncoming` | Incoming transmission waiting (F6) | LIKELY |
-| DS:329E | u8 | `g_MissionSucceeded` | Ends the flight normally | LIKELY |
+| DS:32BA | u8 | `g_MissionPhase` | Mission-script state: 1 at start, 100 = objectives done ([mission-logic](../spec/sim/mission-logic.md)) | CONFIRMED (RE-6, C-0010) |
+| DS:32BC | u16 | `g_TickerPos` | HUD ticker scroll position 1..78 (0 idle); a new edge alert is raised only while it is 0 (`0E8B:7FDF`) | CONFIRMED (C-0010) |
+| DS:32BE, 32C0, 32C2 | u16 | `g_MsnI`, `g_MsnJ`, `g_MsnK` | Loop counters of the mission rules (unit `2404`) | CONFIRMED |
+| DS:329C | u8 | `g_CommIncoming` | Incoming transmission waiting (F6); raised and cleared by mission logic, cleared by the comm viewer | CONFIRMED (code) |
+| DS:329D | u8 | `g_MsnEventCount` | Flight 17: base hits, then the destruction counter; flight 20: lander hits | LIKELY |
+| DS:32A0..32B3 | u8[1..20] | `g_BaseHit` | Flight 17: slot already counted as reaching the base | LIKELY |
+| DS:32B1 | u8 | `g_IonBomb` | Flight 18: bomb timer expired (mission lost) | LIKELY |
+| DS:32B4 | u16 | `g_IonTimer` | Flight 18: ticks since the ion truck was found | LIKELY |
+| DS:32B6 | u8 | `g_CutsceneRequest` | Flight 17: play the `td1-17.pic` cut-scene in `Msn_UpdateEvents` | LIKELY |
+| DS:329E | u8 | `g_MissionSucceeded` | Ends the flight normally; re-evaluated every tick by the base test | CONFIRMED (code) |
+| DS:3958..396C | u8[1..21] | `g_SlotMarker` | Guidance marker per slot (0 none, 32h target, 39h friend, 3Dh home); element 21 = home point | CONFIRMED (RE-6, C-0002) |
 | DS:398E | i8 | `g_PlayerArmour` | Player armour; < 1 = destroyed | CONFIRMED (C-0002: 25 for class 4) |
 | DS:398F | i8 | `g_PlayerShields` | Player shields; +1 per tick up to `k_ClassShields` | CONFIRMED (C-0002: 25) |
 | DS:3995..3998 | u8 × 4 | `g_PlayerSpeed` | Speed components up, down, left, right (biased by 16) | CONFIRMED (code); C-0002: all 0 at rest |
@@ -176,6 +182,7 @@ Layouts and field meanings: [structures.md](structures.md) §2–§5.
 | DS:4432..9765 | record[1..20] | `g_Ships` (1065 bytes each, structures §3) | LIKELY |
 | DS:9770, 9774, 9778, 977C, 9B82, 9B86, 18BE | farptr | Flight buffers: 9770 `td.lt2` (3B6h read), 9774 `td.sc3` (3840h), 9778 `td.sc2` (3840h), 977C `td.shr` (32000), 9B82 `td.shp` (5000h) + `td.exp` (1C00h at +5000h), 9B86 `td.fac` (F50h), 18BE `td.wea` (F30h). Mission extras overwrite parts: `mine.td` (flight 7, 400h at 9B82+C00h), `lander.td` (flight 20, 800h at 9B82 and C00h at 9B82+1000h), `td.hel` (flights 12/15/21, 800h at 9B82+800h), `td.h2` (same flights, C80h each at +C80h of 9778, 977C and 9774) | CONFIRMED (loads) |
 | DS:13E6 | u8[768] | `g_FlightPalette` (`td.pal`, used for fades and flashes) | CONFIRMED |
+| DS:9780..9A8F | u8[28×28] | `g_RadarBuf` (radar scratch, [hud](../spec/render/hud.md) §4.6) | CONFIRMED (C-0010) |
 
 ## 7. Sound-effect unit (`1E2A`)
 

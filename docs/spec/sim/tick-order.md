@@ -46,7 +46,7 @@ Routines called once per tick, in call order (all `file0001:`):
 | 15 | `0E8B:80D3` | `UI_CommViewer` (F6) | comm requested and back page = 0 |
 | 16 | (step 7 code) | `Gfx_DrawPlayerShip` | late, end ticks < 15 |
 | 17 | `1EBF:0026` | `Inp_JoystickRead` | joystick present and controller = joystick |
-| 18 | `0E8B:9860` | `UI_UpdateStatusPanel` (messages, ship info, switching) | always |
+| 18 | `0E8B:9860` | `Msn_UpdateEvents` (respawns, scripted events; [mission-logic](mission-logic.md) §4.7; earlier `UI_UpdateStatusPanel`) | always |
 | 19 | `0E8B:8E87` | `UI_DrawInstruments` (gauges, radar, guidance line, jurisdiction warning) | always |
 | 20 | `0E8B:E05C` | `Sim_TickLimiter` | always |
 | 21 | `0E8B:4947` | `Txt_DrawFlightText` (IR-mode notice) | IR mode and tick counter ≤ 200 |
@@ -99,7 +99,7 @@ each tick (0E8B:CC7F):
   15. if the comm viewer was requested (F6) and the back page is 0: run it
   16. if late and end ticks < 15: draw the player ship now
   17. read the joystick when enabled
-  18. status panel / messages / ship switching (0E8B:9860)
+  18. mission events: respawns and scripted events (0E8B:9860, mission-logic 4.7)
   19. instruments (0E8B:8E87)
   20. wait for the tick boundary (Sim_TickLimiter); g_TickPrevTime := now
   21. palette mode 1 (IR) during the first 200 ticks: draw the IR notice
@@ -161,7 +161,7 @@ Sound effects are started by steps 5, 6, 31 and the mission and HUD routines thr
 ## 8. Open questions
 
 - [ ] Q1 (U-041): internals of `0E8B:0984` (projectile movement, hit tests, kill attribution, player primary fire for classes other than 2 and 5).
-- [ ] Q2: split of work between `2404:1426` and `2404:3521` (both contain objective-message strings and call the same predicates `2404:06EE` and `34E6:3232`).
+- [x] Q2: `2404:1426` holds flights 1–9 and `2404:3521` flights 10–20 ([mission-logic](mission-logic.md), RE-6).
 - [ ] Q3 (VE): confirm with breakpoints that steps 18 and 19 run once per tick and never call `Crt.Delay` in normal flight (timing §8 M4).
 
 ## 9. Provenance
