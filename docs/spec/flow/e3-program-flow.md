@@ -388,12 +388,12 @@ Run on a **scratch copy** of the game directory: `td3.exe` writes `td.cfg` when 
 
 **The keyboard flush (E3 only).** `Flow_WaitSecondsOrKey` empties the BIOS keyboard buffer when it starts, and it starts only after the card has read its picture, drawn its captions and faded in. A key sent before that moment (during the menu fade-out, the loading or the fade-in) is **discarded**, and the card then runs its full time; the next step (here D1, which opens `dialogu3.dat`/`safedia3.dat`) shows that the Esc was too early. In E2 capture C-0016 (fixed 20,000 cycles) the scene card's fade-in ran from 20 to 53 frames after its `.scr` file opened, so in E3 send the Esc **at least ~60 frames after the `.scr` opens**; 120 frames is a safe choice, well inside the windows (15 s ≈ 1,050 frames for `shuttle0`, `sel-pain`, `melting`; 10 s ≈ 700 for other cards; 5 s ≈ 350 for title cards, which load only `td-let.cin` and fade in within ~35 frames, so +90 after `td-let.cin` opens is safe). The E2 rule "Esc may be pressed at any time after 0.5 s" does **not** hold for E3. Dialogue pages and the retry prompt do not flush: there a buffered key is used at once.
 
-Proposed oracle scenario (same format as C-0016, for RE-10 to run):
+Oracle scenario (the key lines of C-0036; scenario syntax in `re-work\dosbox\ORACLE.md` §5, outside the repo, ADG §11):
 
 ```text
 open:td-let.cin+140      press 2
 open:tdmen.pal+180       press enter
-open:shuttle0.scr+120    press esc
+open:shuttle0.scr+121    press esc
 open:m1.td3+1            mark m1-open
 ```
 

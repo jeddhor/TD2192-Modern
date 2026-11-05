@@ -1135,7 +1135,7 @@ OB-028 says the flight-16 patch persists "for the rest of the program run" and t
 
 ### 6.4 Corrections to [episode-deltas](../../re/episode-deltas.md) rev 2
 
-| Section | Says | Correct (this draft) |
+| Section | Says | Correct (this spec) |
 |---|---|---|
 | §4.1 timed-event table, flight 12 | map patch "(hazard tiles, §4.2)" | Right cells and codes; the patch restores the `td4.map` bytes that `Msn_Setup` case 12 replaced with 26h (§4.6.3) |
 | §4.1 timed-event table, flight 18 | "E3 DS:1EAD := 1 (meaning unknown, U-202)" | DS:1EAD = flag of F5 target-information entry 21; flight 18 starts with 0 at (28, 33) (§4.9) |
