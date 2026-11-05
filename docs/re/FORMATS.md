@@ -289,15 +289,15 @@ The main-menu loader also copies main-menu rows 84..115 (bytes 42,880..53,119) t
 
 Static (M1-05, 2026-11-02): `file0001` reads the three bytes into DS:12C6 (music), DS:12C7 (effects) and DS:12C8 (controller) at start-up (`0000:49C1`) and writes them back from the configuration screen (`0000:5044`). Music plays only when byte 0 = 2 (`0E8B:07ED`); the joystick is read only when byte 2 = 2; the effects start-up `1E2A:06C6` loads the VOC files for 2 and installs a PC-speaker tick handler for 3. This agrees with the meanings above.
 
-### 13.2 `td.sav`, `td2.sav`, `td3.sav` (70 bytes), PARTIAL
+### 13.2 `td.sav`, `td2.sav`, `td3.sav` (70 bytes), CONFIRMED
 
-Shipped `td.sav`: 10 × `02 0D 00`, then 40 × `0xFF`. The shipped `td2.sav` and `td3.sav` differ from `td.sav` and from each other; not yet examined.
+Shipped `td.sav`: 10 × `02 0D 00`, then 40 × `0xFF`. The shipped `td2.sav` (10 × `02 0F 00`) and `td3.sav` (10 × `02 0E 00`) have the same layout, so every shipped slot is a used slot at mission 2.
 
-Static (M1-05, E1 save/restore screens `051A:76EA` and `051A:7EEA`): slot *s* (1..10) is the 3 bytes at offset (*s* − 1) × 3: a **mission number** byte (0 or > 20 means "empty slot") and a **16-bit word** shown next to it (meaning still open: U-011). Saving rewrites only those 3 bytes. Bytes 30..69 are never read or written by these screens; what (if anything) uses them is open (U-011).
+Slot *s* (1..10) is the 3 bytes at offset (*s* − 1) × 3: the **mission number** to play next (u8; 0 or > 20 means "empty slot") and the **kills to date** (u16 little-endian, loaded into the i16 `g_KillsToDate`). A save writes **all ten slots** (bytes 0..29): the chosen slot gets (mission, kills), the others keep their kills word and their normalised mission byte (an empty slot's 21..255 becomes 0). Bytes 30..69 are never read or written by any E1 code. Static (`051A:76EA`, `051A:7EEA`) and oracle (C-0042, C-0043); full rules: [flow/save-screens](../spec/flow/save-screens.md) (U-011, U-301 resolved).
 
-### 13.3 `td.stt`, `td2.stt`, `td3.stt` (260 bytes), LIKELY
+### 13.3 `td.stt`, `td2.stt`, `td3.stt` (260 bytes as shipped), CONFIRMED
 
-10 save names × 26 bytes: a space, then the name padded with spaces to 24 characters, then CR LF. The shipped files hold two alternating placeholder names.
+Text file, 10 lines (CR LF), one name per slot, read with `ReadLn`. A name written by the save screen is 24 characters: a space, up to 20 typed characters (a–z, 0–9, space, `-`, `.`), then spaces. The save screen rewrites the whole file: other used slots' lines are written back as read, and empty slots' lines become the 19-character empty label, so the file is 260 bytes only while all slots are used (C-0042: 215 bytes). The shipped files hold two alternating placeholder names. [flow/save-screens](../spec/flow/save-screens.md).
 
 ### 13.4 `tdstatus.dat`
 

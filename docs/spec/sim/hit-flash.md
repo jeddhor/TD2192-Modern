@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/hit-flash` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the DAC values of every tick; T1 for when the flash starts and how it decays (frame parity depends on it). It feeds only the palette: no gameplay state reads `g_HitFlash` |
-| **Confidence** | CONFIRMED for the formula, the decay and the palette (static, E1 `0E8B:06C5`, `0E8B:DA6B..DE36`; dynamic, C-0041 end sequence, E3 code that matches E1 instruction for instruction) |
+| **Confidence** | CONFIRMED for the formula, the decay and the palette (static, E1 `0E8B:06C5`, `0E8B:DA6B..DE36`; dynamic: E1 kills in C-0009, C-0023, C-0033 and the E3 end sequence in C-0041, whose code matches E1 instruction for instruction) |
 | **Tasks** | M6-07, M7 (feeds IM-7); resolves U-300 |
 | **Unknowns** | U-300 (resolved here); U-082 / OB-009 (shared overflow) |
 
@@ -140,13 +140,15 @@ Consequences:
 | 1 | E3 flight 8, player destroyed by hazard damage; end-sequence step with end ticks 12 at mission tick 274 (mode 0) | `g_HitFlash` after each tick: 274 → 17, 275 → 15, 276 → 13, 277 → 11, 278 → 9, 279 → 7, 280 → 5, 281 → 3, 282 → 1, 283 → 0 | C-0041, DGROUP every frame f2023–2127 (E3 DS:11E4, DS:31DC) |
 | 2 | Same capture, frames 2068 (flash 15) and 2072 (flash 13) | DAC i = (min(63, R + f), min(63, G + f), B) of `g_FlightPalette` for i = 0..45 except 36, 38; every other entry = P[i] (256/256 entries match) | C-0041 fb f2068, f2072 vs DGROUP DS:1300 |
 | 3 | Same capture, frame 2064 (before) and 2100 (after) | DAC = P (except E3 entry 144, which another E3 effect changes) | C-0041 |
-| 4 | Kill at the player's tile, mode 0 | 18, 16, 14, 12, 10, 8, 6, 4, 2, 0 | static |
-| 5 | Kill at dx = 3, dy = 4 (sq 25) | v = 15: 13, 11, 9, 7, 5, 3, 1, 0 | static |
-| 6 | Kill at dx = 13, dy = 14 (sq 365) | v = 1: 0 in the same tick; full palette rewrite | static |
-| 7 | Kill at dx = 14, dy = 14 (sq 392) | no change | static |
-| 8 | Mode 1, kill at the player's tile | 17, 14, 11, 8, 5, 2, 0 | static |
-| 9 | `g_HitFlash` = 10 after step 14, kill with v = 6 next tick | 10 stays; step 14 → 8 | static |
-| 10 | dx = 188, dy = 174 (true sq 65,620) | wrapped sq 84 → v = 11 | static |
+| 4 | E1 flight 1, view (102, 104) (player tile (107, 107)); slot 1 destroyed by a mission-ship shot at (103, 110) in tick 254, mode 0: dx 4, dy −3, sq 25, v 15 | `g_HitFlash` 13 (tick 254), 11, 9, 7, 5, 3, 1, 0 (tick 261) | C-0009 f4396–4421 (DS:12C4) |
+| 5 | E1 flight 8, mode 1, same view; slot 15 destroyed at (110, 122): sq 234, v 5; slot 1 at (113, 122): sq 261, v 4 | 2, then 0; 1, then 0 | C-0023 f1747, f1772 (IM-7) |
+| 6 | E1 flight 18, mode 0, same view; slot 1 destroyed at (107, 91): sq 256, v 4 | 2, then 0 | C-0033 f1839 (IM-7) |
+| 7 | Kill at the player's tile, mode 0 | 18, 16, 14, 12, 10, 8, 6, 4, 2, 0 | static |
+| 8 | Kill at dx = 13, dy = 14 (sq 365) | v = 1: 0 in the same tick; full palette rewrite | static |
+| 9 | Kill at dx = 14, dy = 14 (sq 392) | no change | static |
+| 10 | Mode 1, kill at the player's tile | 17, 14, 11, 8, 5, 2, 0 | static |
+| 11 | `g_HitFlash` = 10 after step 14, kill with v = 6 next tick | 10 stays; step 14 → 8 | static |
+| 12 | dx = 188, dy = 174 (true sq 65,620) | wrapped sq 84 → v = 11 | static |
 
 ## 7. Presentation and audio hooks
 
@@ -165,6 +167,7 @@ No sound of its own; the destruction sound (100) at the ship or at the player co
 | Zeroing writers | `0E8B:0417`, `0644`, `9FA7`, `A1EF`, `A31F`, `B229`, `B2BA`, `BEFA`, `DE33` | static | CONFIRMED |
 | Decay, threshold, flashed entries | `0E8B:DA6B..DE36` | static; C-0041 | CONFIRMED |
 | End tick 12 → 19 → 17 | `0E8B:5761..5778`; C-0041 | static + dynamic (E3) | CONFIRMED |
+| Ship kill → flash, any owner, distance from the player's tile | C-0009, C-0023, C-0033 (four mission-ship kills) | dynamic (E1) | CONFIRMED |
 | Integer equivalent of Round(Sqrt) | arithmetic argument, §4.1 | analysis | CONFIRMED |
 
 ## 10. Revision history
@@ -172,3 +175,4 @@ No sound of its own; the destruction sound (100) at the ship or at the player co
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-05 | RE-11 (Archaeologist + Spec author) | Initial; resolves U-300 |
+| 2 | 2026-11-05 | RE-11 | E1 test vectors 4–6 from C-0009, C-0023, C-0033 (found by IM-7; vector 4 re-checked by RE-11). No behaviour change |

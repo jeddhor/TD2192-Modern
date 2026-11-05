@@ -53,8 +53,8 @@ address,kind,name,signature,comment,confidence,source_task
 051A:6A33,func,UI_RetryPrompt,Boolean far,after a failed flight; AL<>0 = fly again; also: retry question with taunts; also: retry prompt after a failed flight; true = retry (Flow_RetryPrompt),LIKELY,M1-02
 051A:6FF2,func,UI_Debrief,"void far(Kills, KillsToDate: Integer; Outcome: Byte)",after a successful flight (with low.cmf); also: debriefing text screen with portrait 1 on the right; also: debriefing; rating tier by total kills; cheater if total < 0 or > 29999 (Flow_Debrief) (UI_Debriefing),LIKELY,M1-02
 051A:74B2,func,UI_PlayerDossier,void far(TotalKills: Integer),player dossier with portrait 1 on the right; also: end-game pilot dossier (death ending) (Flow_PilotDossierEnd),LIKELY,M5-05
-051A:76EA,func,Sav_RestoreScreen,,"td.stt names, td.sav slots, td.sss bars; choose a slot; also: restore-game screen (menu item 2) (Sav_RestoreGame)",LIKELY,M2-12
-051A:7EEA,func,Sav_SaveScreen,void far(Mission: Byte; Kills: Integer; Pal),"as Sav_RestoreScreen, then writes td.sav slot and td.stt; also: save-game screen (menu item 1) (Sav_SaveGame)",LIKELY,M2-12
+051A:76EA,func,Sav_RestoreScreen,void far(Pal: TPalette),"restore-game screen (menu item 2): td.stt names, td.sav slots, td.sss bars; a used slot sets g_MissionNumber and g_KillsToDate; Esc leaves (flow/save-screens.md)",CONFIRMED,U-301
+051A:7EEA,func,Sav_SaveScreen,void far(Mission: Byte; Kills: Integer; Pal: TPalette),"save-game screen (menu item 1): as Sav_RestoreScreen, then a 20-character name entry (no cancel); Enter writes all 10 td.sav slots and rewrites td.stt (flow/save-screens.md)",CONFIRMED,U-301
 051A:8EAA,func,Scene_BackgroundStory,,background story text pages (30 s and 45 s waits); also: story-so-far screen (menu item 5) (Flow_StorySoFar),LIKELY,M5-03
 051A:92AF,func,Dlg_PlayScene,void far(Id: Byte),(sceneId) plays one dialogue.dat/safedial.dat scene; also: plays dialogue scene Id from dialogue.dat or safedial.dat (Flow_DialogueScene),CONFIRMED,M5-04
 051A:96F9,func,Unit051A_Init,,unit init part (8th in chain),CONFIRMED,M1-01
@@ -397,6 +397,9 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:0D2E,data,g_Palette,u8[768],u8[768] scene/dialogue palette used by the fades,CONFIRMED,M1-05
 3C43:102E,data,g_ScreenLit,,"1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M5-04
 3C43:1032,data,g_FontTitle,farptr,"farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M2-08
+3C43:123E,data,g_UiFile,FileRec,"untyped file variable of unit 051A (td.lt2, td.sav, td.sss in the save screens)",LIKELY,U-301
+3C43:12BE,data,g_UiI,u16,shared loop counter of unit 051A (fades, portraits, save screens),CONFIRMED,U-301
+3C43:12C0,data,g_UiJ,u16,second shared loop counter of unit 051A,CONFIRMED,U-301
 3C43:12C2,data,g_FlashTmpR,u8,hit-flash temporary (red component),LIKELY,RE-8
 3C43:12C3,data,g_FlashTmpG,u8,hit-flash temporary (green component),LIKELY,RE-8
 3C43:12C4,data,g_HitFlash,u16,"hit-flash intensity 0..20: raised only by Sim_DistanceFlash, lowered by 2 (3 in palette mode 1) in tick step 14 (sim/hit-flash.md)",CONFIRMED,U-300
