@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-logic` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, success and failure decide the outcome of a flight; the order of the per-tick rules matters where two rules write the same ship) · T2 for the ticker text itself (render/hud.md) |
 | **Confidence** | LIKELY overall (static: every rule was read from the instruction stream, with the listing checked where the decompiler drops operands). Flight 1 CONFIRMED by capture C-0010 for phases 1→5, the spawns and hides, the exit rules, the ticker-idle gate and the respawn distance (§7). Flights 4–21 LIKELY (static only). The behaviour that `AI_SetTarget` triggers is RE-5's ([mission-ships](mission-ships.md)) |
@@ -23,10 +23,10 @@ Episode 1 has no mission scripts in data files: every flight's logic is code. Ea
 | **Live** | class(*s*) ≠ FFh | |
 | Tile(*s*) | (`g_SlotTileX` DS:3B2D + *s*, `g_SlotTileY` DS:3B41 + *s*), u8 | Kept after the ship dies or leaves |
 | Phase | `g_MissionPhase` DS:32BA, u8 | Set to 1 by the per-flight setup (`Msn_Setup` `0E8B:60D8`); 100 = objectives complete |
-| Ticker idle | `g_TickerPos` DS:32BC = 0 (u16) | A posted message sets it to 1; it returns to 0 after 78 page-0 ticks, i.e. about 156 ticks ([hud](../render/hud.md) §4.5) |
-| Comm pending | `g_CommIncoming` DS:329C, u8 | 1 = a transmission waits for F6 (HUD indicator + sound, hud §4.6) |
+| Ticker idle | `g_TickerPos` DS:32BC = 0 (u16) | A posted message sets it to 1; it returns to 0 after 78 page-0 ticks, i.e. about 156 ticks ([hud](../render/hud.md) §4.7) |
+| Comm pending | `g_CommIncoming` DS:329C, u8 | 1 = a transmission waits for F6 (HUD indicator + sound, hud §4.8) |
 | Marker(*s*) | `g_SlotMarker` DS:3957 + *s*, u8, *s* = 1..21 | Guidance colour class of slot *s*: 0 none, 32h target, 39h friend, 3Dh home. Element 21 (DS:396C) is the marker of the home point. Read by the guidance line and the compass lamps (hud §4.3) |
-| Succeeded | `g_MissionSucceeded` DS:329E, u8 | Ends the flight at the end of the tick (tick-order step 35) |
+| Succeeded | `g_MissionSucceeded` DS:329E, u8 | Ends the flight at the end of the tick (tick-order step 33) |
 | Lost | `g_MissionLost` DS:12CC, u8 | Ends the flight; mission failed (flow spec §4.5) |
 | Over | `g_MissionOver` DS:32B7, u8 | Starts the end sequence; after 35 end ticks the flight ends with `g_PlayerDied` = 1 |
 | Outcome | `g_MissionOutcome` DS:12CF, u8 | Computed at teardown (§4.8) |
@@ -53,7 +53,7 @@ The ship is drawn at playfield pixel (144..175, 68..99), i.e. over tile (viewX +
 | `Msn_NearLive` | `2404:06EE` | `(A, B, Range: Byte): Boolean` | Position of *k* = view tile if *k* = 0, else tile(*k*). True when \|xA − xB\| < Range **and** \|yA − yB\| < Range (signed 16-bit differences of the byte values, strict), and neither A nor B (when non-zero) has class FFh |
 | `Msn_Near` | `2404:07DB` | same | As `Msn_NearLive` without the class tests (dead or hidden ships count at their last tile) |
 | `Msn_PlayerTouches` | `2404:0616` | `(Slot): Boolean` | Pixel test of the ship against the player: ΔX = (tileX(Slot) − viewX) × 32 + subX(Slot) − (4 × Round(viewSubX / 4) + 128) and ΔY = (tileY(Slot) − viewY) × 32 + subY(Slot) − (viewSubY + 84); true when \|ΔX\| < 32 and \|ΔY\| < 32 and class(Slot) ≠ FFh. `Round` is the Real48 round of `viewSubX / 4.0` ([real48](../core/real48.md) §4.6), the X difference is a 32-bit signed value |
-| `Msn_PostTicker` | `2404:030A` | `(X, Y: Integer; S: String; Colour: Byte)` | Draws S opaquely into the ticker strip (always X = 0, Y = 735) with the mission glyph routine `2404:0000`; render/hud §4.5 |
+| `Msn_PostTicker` | `2404:030A` | `(X, Y: Integer; S: String; Colour: Byte)` | Draws S opaquely into the ticker strip (always X = 0, Y = 735) with the mission glyph routine `2404:0000`; render/hud §4.7 |
 | `AI_SetTarget` | `34E6:3232` | `(Slot, Target: Byte)` | Ship record of Slot: +41Fh := Target (0 = player), +415h := 1, +41Bh := 1. What the ship then does is the AI's business ([mission-ships](mission-ships.md) §3.1, RE-5) |
 
 ### 3.2 Notation used in the flight sections
@@ -113,7 +113,7 @@ step 15  comm viewer      (only when F6 was requested and the back page is 0): �
 step 18  Msn_UpdateEvents (0E8B:9860): respawns and scripted events, §4.7
 step 19  instruments      (0E8B:8E87): guidance line, compass lamps, radar, ticker, indicator;
                           contains the flight-7 completion rule (§5.7)
-step 35  leave the loop if aborted, end ticks = 35, lost, or succeeded
+step 33  leave the loop if aborted, end ticks = 35, lost, or succeeded
 teardown outcome tests (§4.8)
 ```
 
@@ -186,7 +186,7 @@ Despite its earlier name (`UI_UpdateStatusPanel`) this routine draws no HUD elem
 ### 4.8 End of flight and outcome (`0E8B:F826..F990`)
 
 ```text
-step 35: if aborted or end ticks = 35 or lost or succeeded: leave the tick loop
+step 33: if aborted or end ticks = 35 or lost or succeeded: leave the tick loop
 fade out; restore the keyboard handler
 g_PlayerDied := (end ticks = 35)
 outcome := 1
@@ -523,7 +523,7 @@ engage 13 → player, 35;  13 → 1, 20;  13 → 2, 20;  15 → player, 25;  16 
 
 ### 5.14 Flight 14 (Vulture II; the Stiletto; transmission)
 
-Start: objective `e1.objectives[12]` (a blank line, colour 42); player class 8; markers 8..10, 12, 13 = 32h. F5 (ship switch) is disabled in this flight. Comm viewer: phase 2 → transmission 7, markers := 0 for 1..20 then 32h for 1..6, phase := 100.
+Start: objective `e1.objectives[12]` (a blank line, colour 42); player class 8; markers 8..10, 12, 13 = 32h. F5 (tactical map) is disabled in this flight. Comm viewer: phase 2 → transmission 7, markers := 0 for 1..20 then 32h for 1..6, phase := 100.
 
 ```text
 succeeded := view = (102,104) and phase = 100
@@ -660,7 +660,7 @@ B: if phase > 1: for s = 1..10: engage s → player, 25
 
 ### 5.20 Flight 20 (the lander)
 
-Start: no objective; player class 2; marker 5 = 32h; slots 3, 4, 5 classes 4, 5, 6 and class tables patched (RE-5). No base test: only `Msn_UpdateEvents` sets the result. Mission ships: slots 1..5 drift down 2 px per tick ([mission-ships](mission-ships.md) §3); shots of slot 1 never hit ships ([weapons](weapons.md) §4.3). Sim: view x > 170 and view y > 170 → armour := 64 (tick-order step 34).
+Start: no objective; player class 2; marker 5 = 32h; slots 3, 4, 5 classes 4, 5, 6 and class tables patched (RE-5). No base test: only `Msn_UpdateEvents` sets the result. Mission ships: slots 1..5 drift down 2 px per tick ([mission-ships](mission-ships.md) §3); shots of slot 1 never hit ships ([weapons](weapons.md) §4.3). Sim: view x > 170 and view y > 170 → armour := 64 (after the cheat chords of tick-order step 32, before the end-of-flight test of step 33).
 
 ```text
 Msn_UpdateB: engage 7 → player, 35;  8 → player, 35
@@ -749,3 +749,4 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-6 (Archaeologist + Spec author) | Initial: architecture, primitives, flights 1–3 |
+| 2 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: hud references (ticker §4.7, F6 indicator §4.8); loop exit is tick-order step 33 (was 35), flight-20 armour rule after step 32 (was "step 34"); F5 in flight 14 is the tactical map, not a ship switch |
