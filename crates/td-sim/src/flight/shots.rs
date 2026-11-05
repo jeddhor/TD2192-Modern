@@ -6,6 +6,7 @@
 //! original does; later tests in the same pass then fail on distance by themselves.
 
 use super::explosions::Explosions;
+use super::hit_flash;
 use super::player::{Event, Player};
 use super::ships::{SHIP_SLOTS, Ships};
 use super::tables::{player_damage, ship_damage, shot_entry};
@@ -104,6 +105,8 @@ pub struct Combat<'a> {
     pub kills: &'a mut i16,
     /// Full-palette white flash countdown (`g_FlashFrames`).
     pub white_flash: &'a mut u8,
+    /// Hit-flash level (`g_HitFlash`), raised by kills near the player.
+    pub hit_flash: &'a mut u16,
     /// `g_PlayerDrawLate` (also disables the player's shots' map test and enemy hits on the
     /// player).
     pub late_draw: bool,
@@ -416,6 +419,9 @@ impl Shots {
                 kind: 100,
                 source: at,
             });
+            // The distance flash at the ship's tile (hit-flash.md §4.2 caller 1; the episodes
+            // order sound, flash and armour differently, P6, which changes nothing here).
+            hit_flash::distance_flash(c.hit_flash, c.player.view, (ship.tile_x, ship.tile_y));
             ship.armour = 0;
         }
         if shot.kind == HOMING {

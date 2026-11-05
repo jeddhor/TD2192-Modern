@@ -344,8 +344,10 @@ impl Screen for FlightArena {
                         // Quit: g_MissionAborted := 1; the tick then leaves the loop.
                         self.flight.aborted = true;
                     } else if menu {
-                        // The menu's last FadeIn restored the mode (flight-screens §4.1).
+                        // The menu's last FadeIn restored the mode (flight-screens §4.1); every
+                        // fade level zeroed g_HitFlash (hit-flash.md §4.2).
                         self.dac.faded_in(&self.palette, self.flight.palette_mode);
+                        self.flight.hit_flash = 0;
                     }
                     let c = self.typematic.controls(input, &self.binds);
                     self.flight.resume(&self.world, &c, &mut self.events)
@@ -358,7 +360,9 @@ impl Screen for FlightArena {
                 self.flight.succeeded = true;
             }
             let r = self.flight.tick(&self.world, &c, &mut self.events);
-            // 14. Palette effects, in the mode the step saw (Alt acts later, at step 33).
+            // 14. Palette effects, in the mode the step saw (Alt acts later, at step 33), from
+            // the hit-flash level the step found (hit-flash.md §4.3).
+            self.dac.set_hit_flash(self.flight.frame.hit_flash);
             self.dac
                 .step(&self.palette, mode, self.flight.frame.white_flash);
             r

@@ -614,6 +614,7 @@ impl Flight {
                     source: Some((90, 29)),
                 });
                 // Hit flash := 0, the whole DAC and the palette copy white (presentation).
+                self.hit_flash = 0;
                 self.mission.white_out = true;
             }
         }
