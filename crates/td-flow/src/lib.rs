@@ -6,6 +6,7 @@
 pub mod campaign;
 pub mod dialogue;
 pub mod flight_screens;
+pub mod main_menu;
 pub mod program;
 pub mod screen;
 pub mod settings;

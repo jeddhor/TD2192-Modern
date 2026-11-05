@@ -329,6 +329,20 @@ impl DialogueScene {
         self.skip
     }
 
+    /// Keys already in the BIOS buffer when the scene starts (typed during the previous
+    /// screen, flow/screens §2.2): the first page breaks take them.
+    pub fn type_ahead(&mut self, keys: Vec<Key>) {
+        let mut all: VecDeque<Key> = keys.into();
+        all.append(&mut self.keys);
+        all.truncate(KEY_BUFFER);
+        self.keys = all;
+    }
+
+    /// The keys left in the buffer (for the next screen).
+    pub fn take_keys(&mut self) -> Vec<Key> {
+        std::mem::take(&mut self.keys).into()
+    }
+
     /// Advances one frame: takes new keys, then runs the scene until its next wait.
     pub fn step(&mut self, input: &TickInput) {
         for &k in &input.pressed {

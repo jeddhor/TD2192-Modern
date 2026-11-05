@@ -835,6 +835,8 @@ pub struct Campaign {
     ending_dossier: bool,
     resume_after_fly21: Pos,
     result: BlockResult,
+    /// Keys still in the BIOS buffer for the next screen.
+    type_ahead: Vec<Key>,
 }
 
 impl fmt::Debug for Campaign {
@@ -872,7 +874,16 @@ impl Campaign {
                 advance: true,
                 ..BlockResult::default()
             },
+            type_ahead: Vec::new(),
         }
+    }
+
+    /// Keys typed before the block started (during the menu's fade-out): the first screen
+    /// finds them in the buffer.
+    #[must_use]
+    pub fn with_type_ahead(mut self, keys: Vec<Key>) -> Self {
+        self.type_ahead = keys;
+        self
     }
 
     /// True while the retry prompt is shown.
@@ -890,6 +901,15 @@ impl Campaign {
         let mut input = Some(input);
         loop {
             if let Some(child) = &mut self.child {
+                // Keys left in the BIOS buffer by the previous screen (screens §2.2, U-123).
+                let keys = std::mem::take(&mut self.type_ahead);
+                match child {
+                    Child::Story(s) if !keys.is_empty() => s.type_ahead(keys),
+                    Child::Dialogue(d) if !keys.is_empty() => d.type_ahead(keys),
+                    // ASSUMPTION(U-302): a flight starts with an empty buffer (its keyboard
+                    // handler replaces the BIOS one), so keys typed before it are dropped.
+                    _ => {}
+                }
                 let inp = input.take()?;
                 let done = match child {
                     Child::Story(s) => {
@@ -905,7 +925,12 @@ impl Campaign {
                 if !done {
                     return None;
                 }
-                let child = self.child.take();
+                let mut child = self.child.take();
+                self.type_ahead = match &mut child {
+                    Some(Child::Story(s)) => s.take_keys(),
+                    Some(Child::Dialogue(d)) => d.take_keys(),
+                    _ => Vec::new(),
+                };
                 self.finish_child(prog, ctx, child);
                 continue;
             }
