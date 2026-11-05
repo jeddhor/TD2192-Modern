@@ -173,7 +173,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M8-08 | Ship switching, wingmen, protected targets | IM | M8-05 | IN PROGRESS | IM-3 | 2026-11-02 IM-3: wingmen/protected targets via engage rules, flight-19 truck-to-Vulture switch in Msn_UpdateEvents (U-146); F5 is the tactical map (RE-8), not a ship switch |
 | M8-09 | Debrief computation + retry flow | IM | M8-05 | REVIEW | IM-1, IM-5 | IM-1: debrief tiers + retry flow. IM-5 2026-11-02 per spec/flow/screens.md rev 1 3.6-3.7: debrief layout (face 1, delays, pstring notes), retry prompt calls Random(10) once from the program RNG via FlightLauncher::random (U-124; the arena launcher draws from the td_sim Session); L5 0-diff vs C-0002 f6300 (one taunt matches), RNG call counted |
 | M8-10 | E1M01-E1M03 specs + scripts | SP/IM | M8-04..M8-09 | REVIEW | IM-3 | 2026-11-02 IM-3: flights 1-3 (and 4-21, LIKELY, unit tests only) in td-sim flight/logic.rs; flight 1 CONFIRMED vs C-0010; outcome feeds FlightResult |
-| M8-11 | E1M01-E1M03 parity | VE | M8-10 | IN PROGRESS | VE-1 | 2026-11-02 VE-1: oracle captures of E1 flights 2-21 started directly (tdstatus.dat), L5 tests tests/oracle_e1_flights.rs, report docs/parity/M8-missions.md |
+| M8-11 | E1M01-E1M03 parity | VE | M8-10 | REVIEW | VE-1 | 2026-11-05 VE-1: L5 td-sim/tests/oracle_e1_flights.rs vs 23 new captures: flights 2-20 started directly (C-0017..C-0035, no input, setup + ticks 1-386/387) and F6 comm runs of flights 2, 6, 9, 10 (C-0037..C-0040, transmissions 1, 3, 5, 6, up to tick 666): setup, slot arrays + records, phase, markers, ticker, comm, player exact (seed = 40 Random steps, Session::new()). One divergence: BUG-1 / M8-12 (class FFh setup shields/armour, U-143). Report docs/parity/M8-missions.md; later phases, outcomes, deaths not captured |
+| M8-12 | Fix BUG-1: setup shields/armour of mission-file class FFh slots | IM | M8-11 | TODO | | mission-ships rev 2 4.1 step 3 and 5 ("Class FFh at setup"): the original reads the class tables past their end (DS:03D1, DS:03C7), both 22h, so such slots start with shields 34, armour 68; ours 0/0 (U-143). Test: td-sim/tests/oracle_e1_flights.rs class_ffh_slots_setup_shields_and_armour (ignored until fixed); see docs/parity/M8-missions.md D1 |
 
 ## M9: Episode 1 campaign
 
@@ -199,7 +200,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M9-18 | E1 narrative script (cards, dialogue, stills, dossiers, music between missions) | RE/SP/IM | M5-09, M1-04 | REVIEW | IM-1 | 2026-11-02 td-flow::campaign: all 20 E1 blocks as data (episode-program-flow 4.4), retry rules, debrief, endings A/B/C, flight 21, music cues. IM-5 2026-11-02: skip tests per spec/flow/screens.md 3.12 (U-125: Block::untested; Esc after a tested pre-flight step goes straight to the flight; test vector 3 L5); td2192 ArenaLauncher owns the program run's td_sim Session (RNG, class tables, ships, mission state) + F5 board, flights start with Flight::start(.., session) and hand it back; FlightLauncher::random(n) for front-end Random calls |
 | M9-19 | Main menu, new game, save/load, kills-to-date | IM | M8-09 | IN PROGRESS | IM-1 | IM-1: td-flow::program::Episode1 menu (td.men, 9 items, cursor colours), new game/next mission/kills to date; save/restore stubs (D3); items 6/7 'not yet'. IM-5 2026-11-02: story so far (screens 3.8) done; NOT done: menu highlight pulses, '8'/'2' keys, buffer discard, half-brightness confirm boxes, menu fade-in, DAC 255 (screens 3.1, U-120): see docs/handoffs/2026-11-02-IM-5.md |
 | M9-20 | Episode endings (success, continuation, failure variants) | SP/IM | M9-18 | TODO | | |
-| M9-21 | Full E1 playthrough + parity report | VE | M9-01..M9-20 | IN PROGRESS | VE-1 | 2026-11-02 VE-1: first-ticks parity of flights 2-21 (see M8-11); full playthrough not started |
+| M9-21 | Full E1 playthrough + parity report | VE | M9-01..M9-20 | IN PROGRESS | VE-1 | 2026-11-05 VE-1: start + first ticks of flights 2-20 match (see M8-11, docs/parity/M8-missions.md); full playthrough and later phases not started |
 
 ## M10: Episodes 2 and 3
 
@@ -291,4 +292,13 @@ Not yet broken into tasks. See MDG §12 M14.
 
 ## Bugs
 
-None yet. Use the bug template in ADG §17.5.
+Template: ADG §17.5.
+
+### BUG-1: setup gives mission-file class FFh slots 0 shields and 0 armour
+- Found by / date / milestone: VE-1, 2026-11-03, M8 (M8-11)
+- Profile: Classic
+- Steps: `cargo test -p td-sim --test oracle_e1_flights -- --ignored class_ffh` with `TD2192_DATA` and `TD2192_ORACLE`
+- Expected (original, C-0017 and every capture of C-0018..C-0035): a slot whose `mN.td` class is FFh gets shields `k_ClassShields[FFh]` = DS:03D1 = 22h (34) and armour 2 × `k_ClassArmour[FFh]` = 2 × DS:03C7 = 68 (flight 2: slots 8, 10–13, 15–17)
+- Actual (port): shields 0, armour 0 (`ClassTables::entry` returns 0 past the table, U-143)
+- Spec reference: mission-ships.md rev 2 §4.1 step 3, §5 "Class FFh at setup"; U-143
+- Severity: minor (hidden slots; matters only if mission logic spawns such a slot: ours would be removed at once with armour 0). Fix task M8-12
