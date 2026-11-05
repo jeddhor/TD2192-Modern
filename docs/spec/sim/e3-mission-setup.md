@@ -6,9 +6,9 @@
 | **Revision** | 1 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (setup state, order of writes, RNG use) · T2 for the objective text, the F5 lines and the screen state during loading (presentation) |
-| **Confidence** | CONFIRMED (static) for every table value: constants read from the instruction stream of `td3:0C5D:6149..6DFA`, `td3:0C5D:A9CC..BB1B` and `td3:1BD8:0DCF..4121`. The two per-flight routines were also executed from the raw exe bytes with a private 16-bit model of the instructions they use (§9), once per flight, and the store lists checked against the hand reading. Test vectors are computed from the shipped `m<n>.td3` files with these rules. Vectors 1 (flight 1) and 2 (flight 8) are **confirmed** against the last setup frame and ticks 1–2 of captures C-0036 and C-0041; the others remain static (U-285) |
+| **Confidence** | CONFIRMED (static) for every table value: constants read from the instruction stream of `td3:0C5D:6149..6DFA`, `td3:0C5D:A9CC..BB1B` and `td3:1BD8:0DCF..4121`. The two per-flight routines were also executed from the raw exe bytes with a private 16-bit model of the instructions they use (§9), once per flight, and the store lists checked against the hand reading. Test vectors are computed from the shipped `m<n>.td3` files with these rules. Vectors 1 (flight 1) and 2 (flight 8) are **confirmed** against the last setup frame and ticks 1–2 of captures C-0036 and C-0041; the others remain static (U-284) |
 | **Tasks** | M10-02 (feeds the E3 mission specs and the E3 first tick) |
-| **Unknowns** | U-284, U-285 (vectors 1, 2 confirmed), U-286 (new, §8); U-205 (E2 resolution applies, §4.1); U-270 (flight 7 phase, [e3-mission-logic](e3-mission-logic.md)) |
+| **Unknowns** | U-283, U-284 (vectors 1, 2 confirmed), U-285 (new, §8); U-205 (E2 resolution applies, §4.1); U-270 (flight 7 phase, [e3-mission-logic](e3-mission-logic.md)) |
 | **Read with** | [e2-mission-setup.md](e2-mission-setup.md) rev 1 (E2), [mission-setup.md](mission-setup.md) rev 1 (E1), [mission-ships.md](mission-ships.md) §3.1/§4.1, [weapons.md](weapons.md) §3.2, [flight-screens.md](../flow/flight-screens.md) §3.4, [episode-deltas.md](../../re/episode-deltas.md) rev 2 §4.3, §4.4, §6, §10, §11, [e3-mission-logic](e3-mission-logic.md) rev 1 |
 
 ## 1. Summary
@@ -17,10 +17,10 @@ E3's `Sim_FlyMission` (`td3:0C5D:A9CC`) prepares a flight the way E2 does ([e2-m
 
 - **One map set** (`g_MapSet` := 1 always) but **two maps**: `td3.map` for flights 1–6, `td4.map` for flights 7 and up; always `td3.blk`; one tile-attribute table (41h–46h open) and the radar colours as they are.
 - **Start views are final before `Msn_Setup`**; nothing overrides them later (E2 overrode them after the HUD was drawn).
-- One block per flight in the dispatch order **1..11, 21, 12..20** (table §3.2). Flight 20's block is dead (E3 never flies flight 20). **Flight 7's block has no phase store** (OB-043), **flight 18's block fills the markers with 32h instead of clearing them** (OB-053), flight 17's block **restores the class tables** that flight 16 patches (OB-028), and flight 12's block **writes 27 map cells**.
+- One block per flight in the dispatch order **1..11, 21, 12..20** (table §3.2). Flight 20's block is dead (E3 never flies flight 20). **Flight 7's block has no phase store** (OB-043), **flight 18's block fills the markers with 32h instead of clearing them** (OB-052), flight 17's block **restores the class tables** that flight 16 patches (OB-028), and flight 12's block **writes 27 map cells**.
 - No palette-mode, late-draw or comm writes anywhere in setup: every E3 flight starts with palette mode 0, late draw 0 and no transmission waiting. No extra sprite files.
 - Player state: class 2 in flight 12 starts with **10 missiles**; flight 7 starts with **5 armour** (as E2).
-- The F5 routine has a second fixed point (**entry 22**) in flights 8, 10 and 11, writes no flag for entry 21 in **flight 9** (OB-054) and stores flag 0 for it in flight 18.
+- The F5 routine has a second fixed point (**entry 22**) in flights 8, 10 and 11, writes no flag for entry 21 in **flight 9** (OB-053) and stores flag 0 for it in flight 18.
 - Song cue 44 instead of E2's 45 (same song, `td03`).
 - Like E2, no setup loop calls `AI_ChooseWaypoint`, and the only RNG use before the first tick is the 20 draws of `AI_ResetShipRecords`.
 
@@ -71,7 +71,7 @@ E3 addresses (DGROUP `32C5`; [episode-deltas §3.2](../../re/episode-deltas.md#3
 
 ### 3.2 Per-flight table (`Msn_Setup`)
 
-Common part. Every block except 18 and 20 clears the markers of slots 1..20 to 0 before its own marker writes; block 18 writes 32h to all twenty instead (OB-053); block 20 has no marker writes. Every block except 20 sets marker element 21 := 3Dh after its own markers. Every block draws its objective with `Txt_FlightDrawStringOpaque(0, 735, text, ink)` (`0C5D:45C8`, ticker strip, VGA row 735) and then sets the ticker := 1. The objective is element k of `e3.objectives` (21 strings at `0C5D:59C8..6148`, file offset 15868h): k = n − 1 for flights 1..11, k = 11 for flight 21, k = n for flights 12..20. Ink is 37 for flights 1–7, 10, 11, 21 and 42 for flights 8, 9, 12–20.
+Common part. Every block except 18 and 20 clears the markers of slots 1..20 to 0 before its own marker writes; block 18 writes 32h to all twenty instead (OB-052); block 20 has no marker writes. Every block except 20 sets marker element 21 := 3Dh after its own markers. Every block draws its objective with `Txt_FlightDrawStringOpaque(0, 735, text, ink)` (`0C5D:45C8`, ticker strip, VGA row 735) and then sets the ticker := 1. The objective is element k of `e3.objectives` (21 strings at `0C5D:59C8..6148`, file offset 15868h): k = n − 1 for flights 1..11, k = 11 for flight 21, k = n for flights 12..20. Ink is 37 for flights 1–7, 10, 11, 21 and 42 for flights 8, 9, 12–20.
 
 Lists are in the order the code writes them; a later write to the same slot and field wins. Armour, shields and aggression are record fields of the slot. The "Start view" column is the final view tile (§4.1 step 9; no later override); view offsets are (32, 16) in every flight. "Markers" lists only non-zero values; slots not listed have marker 0 (except flight 18). The full store order of each block is in §4.2.
 
@@ -95,7 +95,7 @@ Lists are in the order the code writes them; a later write to the same slot and 
 | 15 | 2 | (17, 164) | | 15 := 32h | **shields 15 := 1750** | 4–15 := 255 | 1 | [15] (42) | OB-048 |
 | 16 | 2 | (17, 164) | | 2–4 := 32h | | 6–14 := 255 | 1 | [16] (42) | player class written last |
 | 17 | 3 | (88, 76) | | none | | 3–7 := 255 | **100** | [17] (42) | the class tables are rewritten first (§4.3) |
-| 18 | 3 | (17, 164) | | **1–20 := 32h**, then 3–6 := 32h | | 3–9 := 255 | 1 | [18] (42) | no marker clear (OB-053) |
+| 18 | 3 | (17, 164) | | **1–20 := 32h**, then 3–6 := 32h | | 3–9 := 255 | 1 | [18] (42) | no marker clear (OB-052) |
 | 19 | 7 | (88, 76) | | 2 := 32h | armour 2 := 500 | 2 := 255 | 1 | [19] (42) | |
 | (20) | 5 | (17, 164) | | no marker writes, element 21 not written | | 2–11 := 10; 12–15 := 220 | 1 | [20] (42) | dead block (never reached) |
 
@@ -164,7 +164,7 @@ Final state per flight (entry: k for lines l = 0..4; where the code writes an en
 | 6 | 0: 3 4 5 2 2; 2..5: 24 4 8 37 38; 6, 7: 3 4 8 37 38; 8: 17 4 8 37 38; 9, 10: 18 4 8 37 38; 13, 14: 17 7 8 39 40; 15..17: 15 7 8 39 40; 21: 0 1 2 2 2 | 21 at (172, 68) |
 | 7 | 0: 3 4 5 2 2; 2..5: 24 4 8 37 43; 6, 7: 3 4 8 37 43; 8: 17 4 8 37 43; 9, 10: 18 4 8 37 43; 12..14, 19, 20: 6 7 8 39 40; 15..18: 15 7 8 39 40; 21: 41 42 2 2 2 | 21 at (22, 166) |
 | 8 | 0: 15 4 5 2 2; 1: 49 4 52 50 51; 2: 49 4 53 50 51; 3: 49 4 54 50 51; 4..10: 17 7 8 55 56; 15, 19: 6 – – – –; 21: 41 42 2 2 2; 22: 44 45 46 47 48 | 21 at (22, 166); **22 at (108, 115)** |
-| 9 | 0: 57 4 5 2 2; 1..3: 58 7 8 59 60; 4, 5, 8, 9: 61 7 8 62 63; 6, 7: 12 7 8 62 63; 21: 41 42 2 2 2 | **none**: entry 21 gets (22, 166) and its lines, but no flag store, so its flag keeps the 0 of the clear loop (OB-054) |
+| 9 | 0: 57 4 5 2 2; 1..3: 58 7 8 59 60; 4, 5, 8, 9: 61 7 8 62 63; 6, 7: 12 7 8 62 63; 21: 41 42 2 2 2 | **none**: entry 21 gets (22, 166) and its lines, but no flag store, so its flag keeps the 0 of the clear loop (OB-053) |
 | 10 | 0: 69 4 5 2 2; 3: 3 4 73 74 2; 4: 3 4 75 74 2; 5: 18 4 70 71 72; 7, 8, 11, 13: 17 7 8 2 2; 9, 10, 12: 6 7 8 2 2; 21: 41 42 2 2 2; 22: 64 65 66 67 68 | 21 at (22, 166); **22 at (41, 58)** |
 | 11 | 0: 15 4 5 2 2; 3..8: 17 7 8 2 2; 9..13: 80 7 8 2 2; 14, 15: 81 7 8 2 2; 21: 41 42 2 2 2; 22: 76 77 2 78 79 | 21 at (22, 166); **22 at (165, 77)** |
 | 21 | as flight 11 (its own block, same values) | as flight 11 |
@@ -265,7 +265,7 @@ Steps follow [e2-mission-setup §4.1](e2-mission-setup.md); steps marked **E3** 
     td.win, td.wea, td.shr                                                                     (AD31..B099)
     flash frames, mission ticks (32-bit), palette mode := 0; draw page := 0; Crt_NoSound;
     flush the BIOS keyboard buffer (tail := head)                                              (B09E..B0CD)
-    E3: no hit flash := 0 and no "all 256 DAC entries black" here (E2 B06D..B092; U-286)
+    E3: no hit flash := 0 and no "all 256 DAC entries black" here (E2 B06D..B092; U-285)
  6. E3: no extra sprites in any flight (E2 loaded td.hel/td.h2 for flight 8)
  7. mission file m<n>.td3 and the ship records exactly as E2: header A (DS:3976), B (DS:39B2),
     classes (DS:399E), D (DS:398A), 20 bytes each; path X and Y, 10,000 bytes each;
@@ -405,8 +405,8 @@ Ghidra misdecodes the start of the routine (it treats bytes after the stack-chec
 
 | Quirk | Original | Port policy |
 |---|---|---|
-| **OB-053**: flight 18's marker loop stores 32h where every other block stores 0 | Block 18 (`td3:0C5D:6CAD..6CC7`) writes 32h to the markers of slots 1..20, then 32h again to slots 3..6. Every live ship of flight 18 (slots 3..9) starts marked: the brackets are drawn around all seven, the compass lamps count them and the guidance line goes to the lowest live marked slot (3) instead of slots 3..6 only. Empty slots 1, 2, 10..20 are marked too (no effect while they are FFh). Mission rule A clears markers 1..20 at tick 2161 ([e3-mission-logic](e3-mission-logic.md) §5.18). The second loop shows that slots 3..6 were meant; the first loop is the marker clear with the wrong value | preserve in Classic (HUD targets only: no flight-18 mission rule reads markers, [e3-mission-logic](e3-mission-logic.md) §5.18) |
-| **OB-054**: flight 9's F5 block writes no flag for entry 21 | `Msn_LoadTargetInfo` block 9 (stores at `td3:1BD8:23E8` and `23ED`) stores the base point (22, 166) and five lines for entry 21, but not its flag, so the flag keeps the 0 of the clear loop and the F5 cursor never offers the base in flight 9. Flights 1–8, 10–17, 19 and 21 store 1; flight 18 stores 0 on purpose (set by the tick-2160 event) | preserve (presentation only; no simulation effect) |
+| **OB-052**: flight 18's marker loop stores 32h where every other block stores 0 | Block 18 (`td3:0C5D:6CAD..6CC7`) writes 32h to the markers of slots 1..20, then 32h again to slots 3..6. Every live ship of flight 18 (slots 3..9) starts marked: the brackets are drawn around all seven, the compass lamps count them and the guidance line goes to the lowest live marked slot (3) instead of slots 3..6 only. Empty slots 1, 2, 10..20 are marked too (no effect while they are FFh). Mission rule A clears markers 1..20 at tick 2161 ([e3-mission-logic](e3-mission-logic.md) §5.18). The second loop shows that slots 3..6 were meant; the first loop is the marker clear with the wrong value | preserve in Classic (HUD targets only: no flight-18 mission rule reads markers, [e3-mission-logic](e3-mission-logic.md) §5.18) |
+| **OB-053**: flight 9's F5 block writes no flag for entry 21 | `Msn_LoadTargetInfo` block 9 (stores at `td3:1BD8:23E8` and `23ED`) stores the base point (22, 166) and five lines for entry 21, but not its flag, so the flag keeps the 0 of the clear loop and the F5 cursor never offers the base in flight 9. Flights 1–8, 10–17, 19 and 21 store 1; flight 18 stores 0 on purpose (set by the tick-2160 event) | preserve (presentation only; no simulation effect) |
 | OB-043: flight 7 has no phase store | §3.2; the phase is whatever flight 6 or the previous attempt left (U-270) | as OB-043 |
 | OB-028 (rev 2 correction): flight-16 class patch, restored by flight 17 | §4.3 | as OB-028 |
 | OB-048: Kreel's 1750 shields | §3.2 flight 15; the first hit sets shields > 60 to 0 ([weapons](weapons.md) §4.3) | as OB-048 |
@@ -416,19 +416,19 @@ Ghidra misdecodes the start of the routine (it treats bytes after the stack-chec
 | Flight 18 header byte | `m18.td3` header A of slot 11 is 76 (all other header bytes A, B, D of all 20 files are 0); never read (U-038) | ignore |
 | Flight 20 | Dead block in both routines (never reached: no campaign block flies flight 20). If it ran: no marker writes (markers keep the previous flight's values, element 21 too), phase 1, player class 5 (4 missiles), F5 lines without any fixed point | not needed |
 | Flight outside 1..21 | No block runs (unreachable) | not needed |
-| Screen during loading | E3 does not black the DAC or clear the hit flash before the loads (E2 did); the fade-in still starts the visible flight (U-286) | presentation (T2) |
+| Screen during loading | E3 does not black the DAC or clear the hit flash before the loads (E2 did); the fade-in still starts the visible flight (U-285) | presentation (T2) |
 
 Side observation for the E2 owner (not E3 behaviour): E2 allocates the same 47h-byte tile-attribute block (`td2:2F63:3866`) but its fill writes up to index 51h (set 1: 47h–51h; set 2: up to 4Bh), 11 bytes past the block. [e2-mission-setup §3.5](e2-mission-setup.md) treats 47h–51h as table entries.
 
 ## 6. Test vectors
 
-Computed from the shipped mission files with the rules above. Vectors 1 and 2 are **confirmed** against RAM at the last setup frame and at ticks 1–2 of C-0036 (flight 1, frames 693–699) and C-0041 (flight 8, frames 1069–1075): slot classes, tiles, armour, shields, aggression, markers (element 21 = 3Dh), player class, weapon, missiles, cooldown, armour and shields, view and offsets, phase, ticker, palette mode, late draw, comm, map set, class tables, radar table and the F5 flags and fixed points (entries 21 and 22; line lengths only, not the text). Vectors 3–14 remain static (U-285). Lists are per slot 1..20; "× n" repeats. Tiles are (X, Y) = path step 1 (file offsets 80 + (s − 1) × 501 and 10,080 + (s − 1) × 501). "Start of tick 1" means the state at the tick top `0C5D:BB20` of the first tick (§4.1, last note).
+Computed from the shipped mission files with the rules above. Vectors 1 and 2 are **confirmed** against RAM at the last setup frame and at ticks 1–2 of C-0036 (flight 1, frames 693–699) and C-0041 (flight 8, frames 1069–1075): slot classes, tiles, armour, shields, aggression, markers (element 21 = 3Dh), player class, weapon, missiles, cooldown, armour and shields, view and offsets, phase, ticker, palette mode, late draw, comm, map set, class tables, radar table and the F5 flags and fixed points (entries 21 and 22; line lengths only, not the text). Vectors 3–14 remain static (U-284). Lists are per slot 1..20; "× n" repeats. Tiles are (X, Y) = path step 1 (file offsets 80 + (s − 1) × 501 and 10,080 + (s − 1) × 501). "Start of tick 1" means the state at the tick top `0C5D:BB20` of the first tick (§4.1, last note).
 
 | # | Flight | Expected after setup (start of tick 1) | Evidence |
 |---|---|---|---|
 | 1 | 1 (`m1.td3`, `td3.map`) | classes FFh × 4, 7, 7, FFh, 8, 8, FFh × 11 (file: FFh, 0 × 3, 7, 7, FFh, 8, 8, FFh, 7 × 4, FFh × 6); tiles (0, 0), (85, 197), (85, 195), (85, 193), (85, 160), (85, 162), (0, 0), (80, 1), (78, 1), (0, 0), (1, 111), (3, 111), (5, 111), (7, 111), (0, 0) × 6; armour 68, 62 × 3, 50 × 2, 68, 40 × 2, 68, 50 × 4, 68 × 6; shields 34, 0 × 3, 25 × 2, 34, 25 × 2, 34, 25 × 4, 34 × 6; aggression 0, 200 × 13, 0 × 6; markers 0, 32h × 3, 0 × 3, 32h × 2, 0, 32h × 4, 0 × 6, element 21 = 3Dh; player class 2, weapon 1, missiles 6, cooldown 0, armour 15, shields 18; view (167, 66, 32, 16); late draw 0; phase 1; ticker 1; palette mode 0; comm incoming 0; map set 1; map `td3.map` unchanged; radar table unchanged; mission ticks 0; song cue 1; F5: flags 1..30 = 0 except 21 = 1, entry 21 at (172, 68), lines k = 0, 1, 2, 2, 2; home (172, 68) | **C-0036** (all listed fields equal) |
 | 2 | 8 (`m8.td3`, `td4.map`) | classes 0 × 3, 7, 8, 8, 7, 8 × 3, FFh × 10 (as the file); tiles (22, 166), (22, 168), (24, 168), (102, 117), (50, 150), (102, 169), (103, 132), (48, 100), (95, 96), (99, 61), (0, 0) × 10; armour 100 × 3, 50, 40, 40, 50, 40 × 3, 68 × 10; shields 0 × 3, 25 × 7, 34 × 10; aggression 0 × 3, 255 × 7, 0 × 10; markers 39h × 3, 0 × 17, element 21 = 3Dh; player class 6, weapon 3, missiles 6, armour 31, shields 31; view (17, 164, 32, 16); late draw 0; phase 1; ticker 1; palette mode 0; map set 1; map `td4.map` unchanged (37 hazard cells); radar table unchanged; song cue 44; F5: flags 1..30 = 0 except 21 = 1 and 22 = 1, entry 21 at (22, 166), lines 41, 42, 2, 2, 2; entry 22 at (108, 115), lines 44..48; home (22, 166) | **C-0041** (all listed fields equal) |
-| 3 | 9 (`m9.td3`, `td4.map`) | classes 0 × 3, 8, 8, 7, 7, 8, 8, FFh × 11; tiles (5, 94), (3, 94), (1, 94), (7, 96), (5, 96), (11, 95), (13, 95), (15, 95), (17, 95), (0, 0) × 11; armour 100 × 3, 40, 40, 50, 50, 40, 40, 68 × 11; shields 0 × 3, 25 × 6, 34 × 11; aggression 0 × 3, 255 × 6, 0 × 11; markers 32h × 3, 0 × 17, element 21 = 3Dh; player class 6, weapon 3, missiles 6, armour 31, shields 31; view (17, 164); phase 1; song cue 2; F5: **all flags 1..30 = 0**, entry 21 coordinates (22, 166), lines 41, 42, 2, 2, 2 (OB-054) | static |
+| 3 | 9 (`m9.td3`, `td4.map`) | classes 0 × 3, 8, 8, 7, 7, 8, 8, FFh × 11; tiles (5, 94), (3, 94), (1, 94), (7, 96), (5, 96), (11, 95), (13, 95), (15, 95), (17, 95), (0, 0) × 11; armour 100 × 3, 40, 40, 50, 50, 40, 40, 68 × 11; shields 0 × 3, 25 × 6, 34 × 11; aggression 0 × 3, 255 × 6, 0 × 11; markers 32h × 3, 0 × 17, element 21 = 3Dh; player class 6, weapon 3, missiles 6, armour 31, shields 31; view (17, 164); phase 1; song cue 2; F5: **all flags 1..30 = 0**, entry 21 coordinates (22, 166), lines 41, 42, 2, 2, 2 (OB-053) | static |
 | 4 | 12 (`m12.td3`, `td4.map`) | classes 0 × 6, FFh, 8 × 8, FFh × 5; tiles (102, 198), (102, 196), (102, 194), (102, 192), (102, 190), (102, 188), (0, 0), (101, 189), (103, 189), (101, 191), (103, 191), (101, 193), (103, 193), (101, 195), (103, 195), (0, 0) × 5; armour 62 × 6, 68, 40 × 8, 68 × 5; shields 0 × 6, 34, 25 × 8, 34 × 5; aggression 0 × 7, 200 × 8, 0 × 5; markers 32h × 6, 0 × 14, element 21 = 3Dh; player class 2, weapon 1, **missiles 10**, armour 15, shields 18; view (17, 164); phase 1; song cue 2; map cells of §4.2 = 26h (for example (40, 122) = 26h, file 45h; (54, 137) = 26h, file 42h); the ten other hazard cells unchanged; F5 entry 21 flag 1 at (22, 166) | static |
 | 5 | 5 (`m5.td3`) | classes FFh, 0, **2**, FFh, 7 × 3, FFh, 7, 6, 6, FFh × 9; armour 68, 900, 50, 68, 50 × 3, 68, 50, 62, 62, 68 × 9; shields 34, 0, 25, 34, 25 × 3, 34, 25, 31, 31, 34 × 9; aggression 0, 0, 250, 250, 150 × 8, 0 × 8; markers 0, 39h, 0, 0, 32h × 3, 0 × 13; tiles (0, 0), (172, 70), (166, 66), …; player class 2; view (167, 66) | static |
 | 6 | 7 (`m7.td3`) | player class 2, weapon 1, missiles 6, **armour 5**, shields 18; **phase = its value at entry** (100 after a successful flight 6; OB-043, U-270); view (185, 32); map `td4.map`; classes FFh, 4, 4, FFh, 4, 2, 2, 7, 0, 0, FFh, 8, 8, FFh, 6, 6, FFh, 6, FFh, FFh; aggression 0 × 11, 75 × 7, 0 × 2; markers 0, 39h × 9, 0 × 10; song cue 1; F5 entry 21 flag 1 at (22, 166) | static |
@@ -448,13 +448,13 @@ Computed from the shipped mission files with the rules above. Vectors 1 and 2 ar
 - Infra-red: never at the start of an E3 flight (§3.3).
 - Comm: no E3 flight starts with a transmission waiting.
 - F5 lines and fixed points: §3.4 (text from the exe, ADR-0003). Entry 22 is a second selectable point in flights 8, 10, 11; flight 9 offers no fixed point; flight 18's point appears at tick 2160.
-- Loading screen: E3 skips E2's DAC blackout before the loads (§4.1 step 5); what the player sees before the fade-in is open (U-286).
+- Loading screen: E3 skips E2's DAC blackout before the loads (§4.1 step 5); what the player sees before the fade-in is open (U-285).
 
 ## 8. Open questions
 
-- [ ] **U-284** (new): F5 presentation of the E3 fixed points. Confirm with a capture that entry 22 is selectable and drawn in flights 8 (108, 115), 10 (41, 58) and 11 (165, 77), that flight 9 offers no fixed point (OB-054), and what the screen shows for flight 8's entries 15 and 19 if they ever became live (only line 0 written). Owner: [flow/flight-screens](../flow/flight-screens.md). P3.
-- [ ] **U-285** (new): vectors 1 (flight 1, C-0036) and 2 (flight 8, C-0041) are confirmed (fields: slot arrays DS:399E.., DS:3A52.., DS:3A66.., DS:387C..DS:3890; ship records +3F6h/+3F8h/+3FAh; player DS:197B, DS:1BDC..1BDE, DS:38B2..38B3; view DS:395A..3961; phase, ticker; DS:1E98..1EF7 and the lines of entries 0..22). Still to confirm: vectors 3–9 with prepared saves ([e3-program-flow](../flow/e3-program-flow.md) §8). P2.
-- [ ] **U-286** (new): E3 removed E2's "hit flash := 0; DAC entries 0..255 := black" before the file loads (`td2:0E96:B06D..B092`). Is anything visible between the previous screen and the flight fade-in (mode set, HUD and window drawing in the BIOS default palette)? Capture of a flight start. P3 (presentation).
+- [ ] **U-283** (new): F5 presentation of the E3 fixed points. Confirm with a capture that entry 22 is selectable and drawn in flights 8 (108, 115), 10 (41, 58) and 11 (165, 77), that flight 9 offers no fixed point (OB-053), and what the screen shows for flight 8's entries 15 and 19 if they ever became live (only line 0 written). Owner: [flow/flight-screens](../flow/flight-screens.md). P3.
+- [ ] **U-284** (new): vectors 1 (flight 1, C-0036) and 2 (flight 8, C-0041) are confirmed (fields: slot arrays DS:399E.., DS:3A52.., DS:3A66.., DS:387C..DS:3890; ship records +3F6h/+3F8h/+3FAh; player DS:197B, DS:1BDC..1BDE, DS:38B2..38B3; view DS:395A..3961; phase, ticker; DS:1E98..1EF7 and the lines of entries 0..22). Still to confirm: vectors 3–9 with prepared saves ([e3-program-flow](../flow/e3-program-flow.md) §8). P2.
+- [ ] **U-285** (new): E3 removed E2's "hit flash := 0; DAC entries 0..255 := black" before the file loads (`td2:0E96:B06D..B092`). Is anything visible between the previous screen and the flight fade-in (mode set, HUD and window drawing in the BIOS default palette)? Capture of a flight start. P3 (presentation).
 - [ ] U-270 ([e3-mission-logic](e3-mission-logic.md) §5.7): flight 7's phase at the first tick.
 - [ ] Resource map: `e3.target_info` (pstring_seq, file offset 1F650h, count 114) is needed in `td3.toml`; it replaces `e3.locations` and `e3.target_info.01`..`.07`, which cover 109 of the 114 strings (§3.4).
 
@@ -485,10 +485,10 @@ Computed from the shipped mission files with the rules above. Vectors 1 and 2 ar
 | Class tables and class-FFh bytes | `td3:32C5:041C..0443`, `0525`, `052F` (file bytes) | static (exe bytes; equal to E2) | CONFIRMED |
 | `AI_UpdateShips` = E2 | `td3:2935:0011..23C2` vs `td2:2D26:0011..23C2` | raw byte comparison, every difference classified (far-call segments, DGROUP −4) | CONFIRMED |
 | Map statistics, flight-12 cell values | `td3.map`, `td4.map` | asset decode (counts only) | CONFIRMED |
-| Test vectors | `m1`, `m5`, `m7`, `m8`, `m9`, `m12`, `m15`, `m17`, `m18.td3` | computed (static): mission files decoded and `Msn_Setup` executed on that state; vectors 1 and 2 compared with C-0036 and C-0041 | CONFIRMED (1, 2); LIKELY (others, U-285) |
+| Test vectors | `m1`, `m5`, `m7`, `m8`, `m9`, `m12`, `m15`, `m17`, `m18.td3` | computed (static): mission files decoded and `Msn_Setup` executed on that state; vectors 1 and 2 compared with C-0036 and C-0041 | CONFIRMED (1, 2); LIKELY (others, U-284) |
 
 ## 10. Revision history
 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
-| 1 | 2026-11-03 | RE-10d (Archaeologist + Spec author, draft for RE-10) and RE-10 (merge, checks, captures) | Initial: E3 setup order against E2, per-flight table 1..11, 21, 12..20, block store order, player state, `Msn_LoadTargetInfo` table and `e3.target_info` resource proposal, tile attributes, overlay tiles, home points, class-table restore, song, `AI_UpdateShips` identity check, OB-053, OB-054, U-284..U-286, test vectors, corrections to episode-deltas |
+| 1 | 2026-11-03 | RE-10d (Archaeologist + Spec author, draft for RE-10) and RE-10 (merge, checks, captures) | Initial: E3 setup order against E2, per-flight table 1..11, 21, 12..20, block store order, player state, `Msn_LoadTargetInfo` table and `e3.target_info` resource proposal, tile attributes, overlay tiles, home points, class-table restore, song, `AI_UpdateShips` identity check, OB-052, OB-053, U-283..U-285, test vectors, corrections to episode-deltas |

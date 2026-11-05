@@ -8,7 +8,7 @@
 | **Fidelity tier** | T1 (positions, waypoints, AI state, RNG use, player armour and shields per tick), as [mission-ships](mission-ships.md) and [flight-model](flight-model.md) |
 | **Confidence** | CONFIRMED: static (byte comparison of `td3:2935:0011` with `td2:2D26:0011`; listing of the E3 hazard test `td3:0C5D:D27A..D3CB` and of the setup `0C5D:A9CC..BB1B`) and two captures: C-0036 (E3 flight 1, `td3.map`, ticks 0–58, no input) and C-0041 (E3 flight 8, `td4.map`, ticks 0–36 without input, then a keypad route into a hazard cell and the whole end sequence) |
 | **Tasks** | M10-02 (feeds M10-03 and every E3 mission task) |
-| **Unknowns** | U-205 (E2 resolution confirmed for E3), U-201 (as E2), U-273 (resolved, §4.3), U-287 (new) |
+| **Unknowns** | U-205 (E2 resolution confirmed for E3), U-201 (as E2), U-273 (resolved, §4.3), U-286 (new) |
 
 Read this as a **delta against [e2-mission-ships](e2-mission-ships.md) rev 1**, which is itself a delta against [mission-ships](mission-ships.md) rev 2 (E1). §5 is the E3 delta section to [flight-model](flight-model.md) rev 2 (the player); `flight-model.md` itself is not changed. Addresses are `td3:<seg>:<off>` (ADG §7.8); DGROUP is `32C5`, and the E3 ship record *s* is at DS:4356 + 429h × (*s* − 1) (E2 address − 4).
 
@@ -16,7 +16,7 @@ Read this as a **delta against [e2-mission-ships](e2-mission-ships.md) rev 1**, 
 
 **Mission ships behave exactly as in E2.** `AI_UpdateShips` (`td3:2935:0011`) is E2's routine (`td2:2D26:0011`): same length (9,138 bytes), and every differing byte is a relocated far-call segment or a DGROUP operand 4 lower ([e3-mission-setup](e3-mission-setup.md) §4.1). The AI unit `2B72` is E1's `34E6`, code-identical ([episode-deltas](../../re/episode-deltas.md) §3.1). The E3 setup, like E2's, has **no `AI_ChooseWaypoint` loop** before the first tick, so every ship's first AI call is the null path step in tick 1 and path-following ships start moving one tick later than in E1 (U-205, [e2-mission-ships §4.3](e2-mission-ships.md)). Both E3 captures confirm this.
 
-**The player's flight model is E1's with five E3 changes** (§5): the hazard tiles 41h–46h (shields to 0 and armour −17 every tick on one, in every flight except 14, 17 and 19), no new afterburner burst in flight 16 from phase 2, the joystick read whenever a stick is present, map collision always active (late draw is never set), and the flight-16 class-table patch. C-0041 confirms the hazard test and shows that its damage continues through the whole end sequence with the signed-byte armour wrapping round (OB-055).
+**The player's flight model is E1's with five E3 changes** (§5): the hazard tiles 41h–46h (shields to 0 and armour −17 every tick on one, in every flight except 14, 17 and 19), no new afterburner burst in flight 16 from phase 2, the joystick read whenever a stick is present, map collision always active (late draw is never set), and the flight-16 class-table patch. C-0041 confirms the hazard test and shows that its damage continues through the whole end sequence with the signed-byte armour wrapping round (OB-054).
 
 ## 2. Definitions and units
 
@@ -80,7 +80,7 @@ if hit:
 - The tests are made in the order written and stop at the first hit; only one hit per tick.
 - **Damage per tick spent on a hazard:** shields 0 and armour − 17. There is no immunity time: a ship that stays on (or keeps touching) a hazard cell loses 17 every tick. Class 6 (armour 31) is destroyed after two ticks, class 2 (15) after one.
 - **Destruction** follows the normal rule ([flight-model](flight-model.md), [tick-order](tick-order.md) step 26): armour < 1 is seen at step 26 of the **next** tick, which starts the end sequence (mission over, end ticks counting to 35).
-- **The test does not look at the mission-over flag.** During the end sequence the player keeps losing 17 per tick if the view still touches a hazard; the armour byte wraps from −122 to +117 and goes on falling (OB-055). It has no effect on the result: the loop ends at end tick 35 and `g_PlayerDied` comes from the end-tick count.
+- **The test does not look at the mission-over flag.** During the end sequence the player keeps losing 17 per tick if the view still touches a hazard; the armour byte wraps from −122 to +117 and goes on falling (OB-054). It has no effect on the result: the loop ends at end tick 35 and `g_PlayerDied` comes from the end-tick count.
 - **Sound.** Effect 9 (`punyexp.voc`, priority 0) at full volume with a Sound Blaster ([sfx-policy](../audio/sfx-policy.md) §4.1: source FFh = distance 0, the player's own sound). It is requested every tick of contact; with the PC speaker (device 3) the effect path may call `Random` ([sfx-policy](../audio/sfx-policy.md) §3.1 and §4.5: per effect id), which then shifts the shared RNG.
 - **Mission ships** are not affected: `AI_UpdateShips` has no hazard test (E2 code), and the tiles are open to them.
 - **Flights.** The test is skipped in flights 14, 17 and 19, which start at view (88, 76), between the hazard cells (74, 77..79) and (91, 87..90). It applies in every other flight, but only `td4.map` (flights 7–19, 21) has hazard cells; in flight 12 most of them are off until tick 6480.
@@ -100,7 +100,7 @@ if hit:
 
 | Quirk | Original | Port policy |
 |---|---|---|
-| **OB-055**: hazard damage during the end sequence | The hazard test has no "mission over" condition, so a destroyed player who still touches a hazard loses 17 armour every tick until end tick 35; the i8 armour wraps round (C-0041: 14, −3, −20, …, −122, then 117, 100, …). The HUD shows whatever the armour byte holds (U-287) | preserve (Classic); no effect on the outcome |
+| **OB-054**: hazard damage during the end sequence | The hazard test has no "mission over" condition, so a destroyed player who still touches a hazard loses 17 armour every tick until end tick 35; the i8 armour wraps round (C-0041: 14, −3, −20, …, −122, then 117, 100, …). The HUD shows whatever the armour byte holds (U-286) | preserve (Classic); no effect on the outcome |
 | Redundant third clause | `hazard(5, 2) and offsetY ≤ 32` repeats the first test | preserve (no effect) |
 | Hazard tested before collision and carry | A move that carries the view onto a hazard is only damaged in the next tick (C-0041: carry to view X 35 in tick 260, first damage in tick 261) | preserve (T1) |
 | One-tick delay of path starts | §4.3 (as E2) | preserve |
@@ -123,7 +123,7 @@ if hit:
 
 ## 8. Open questions
 
-- [ ] **U-287** (new): what the HUD armour gauge and lamps show while the end-sequence armour wraps round (OB-055), and whether effect 9 is heard every tick of contact on a Sound Blaster (priority 0 re-triggers). Presentation only; check the framebuffers of C-0041 ticks 263–296 and a WAV capture. P3.
+- [ ] **U-286** (new): what the HUD armour gauge and lamps show while the end-sequence armour wraps round (OB-054), and whether effect 9 is heard every tick of contact on a Sound Blaster (priority 0 re-triggers). Presentation only; check the framebuffers of C-0041 ticks 263–296 and a WAV capture. P3.
 - [ ] Long-run E3 ship behaviour has not been compared with a model beyond tick 2 (the E1 model of [mission-ships §6](mission-ships.md) should apply with §4).
 
 ## 9. Provenance
@@ -141,4 +141,4 @@ if hit:
 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
-| 1 | 2026-11-05 | RE-10 (Archaeologist + Spec author + Verifier, M10-02) | Initial: E3 ships = E2 (AI routine identity, no setup waypoint loop, first tick), U-273 resolved; player flight-model delta (hazard tiles, flight-16 rules, joystick, collision, infra-red); OB-055, U-287; vectors from C-0036 and C-0041 |
+| 1 | 2026-11-05 | RE-10 (Archaeologist + Spec author + Verifier, M10-02) | Initial: E3 ships = E2 (AI routine identity, no setup waypoint loop, first tick), U-273 resolved; player flight-model delta (hazard tiles, flight-16 rules, joystick, collision, infra-red); OB-054, U-286; vectors from C-0036 and C-0041 |

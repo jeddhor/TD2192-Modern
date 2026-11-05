@@ -568,7 +568,7 @@ The only reader of the flags is the F5 screen (`UI_ShipSwitchScreen` `0C5D:9A99`
 
 DS:1EAD has no simulation effect. The flag store in the event routine is unconditional on anything but flight and tick. U-202 is RESOLVED (static; the F5 drawing detail is LIKELY).
 
-Flights 8, 10 and 11/21 also have a second fixed point, entry 22 (flag DS:1EAE): (108, 115), (41, 58) and (165, 77) ([e3-mission-setup](e3-mission-setup.md) §3.4). In flight 11 entry 21 is the base (22, 166) and entry 22 lies next to the destination (home point (166, 78)). Flight 9 stores entry 21's point and lines but no flag (OB-054).
+Flights 8, 10 and 11/21 also have a second fixed point, entry 22 (flag DS:1EAE): (108, 115), (41, 58) and (165, 77) ([e3-mission-setup](e3-mission-setup.md) §3.4). In flight 11 entry 21 is the base (22, 166) and entry 22 lies next to the destination (home point (166, 78)). Flight 9 stores entry 21's point and lines but no flag (OB-053).
 
 ## 5. Per-flight logic
 
@@ -1121,7 +1121,7 @@ Recorded in [original-bugs](../original-bugs.md):
 - **OB-048** flight 15 Kreel's 1750 shields absorb one hit (§5.15);
 - **OB-049** flight 16 tint inconsistencies (§4.7.3);
 - **OB-028** (rev 2, corrected): the flight-16 class freeze lasts until the next flight-17 setup (§6.3);
-- **OB-053**, **OB-054** (setup): [e3-mission-setup](e3-mission-setup.md) §5.
+- **OB-052**, **OB-053** (setup): [e3-mission-setup](e3-mission-setup.md) §5.
 
 ### 6.3 Correction to OB-028 (flight-16 class freeze)
 
@@ -1230,7 +1230,7 @@ Existing unknowns that apply unchanged: U-204 (kills seen one tick late), U-205 
 | U-276 | E3 OB-046: confirm that the flight-16 convoy trucks (and flight-15 truck 1) reach (168, 199), are never removed there, and drive back along their paths, so that flight 16 needs all three trucks destroyed | P2 | Static: exit tiles (199, 168) not on the walks; row 199 has no map-edge removal ([mission-ships](../spec/sim/mission-ships.md) §4.2.3) | Mission-ships model run on `m16.td3`; capture | M10 | OPEN |
 | U-277 | E3 flight 10: confirm that the medical truck leaves its start and exit tile (22, 166) well before tick 335 (when its exit opens), how long its round trip to (41, 57..58) takes, and that it is removed on its return | P3 | Static: [sim/e3-mission-logic §5.10](../spec/sim/e3-mission-logic.md); first-waypoint delay U-205 | Mission-ships model run on `m10.td3`; capture | M10 | OPEN |
 | U-278 | E3 flight 14: confirm that slots 11 and 8 vanish without explosion, sound or kill one tick after their armour is zeroed (ticks 76, 176), and what a player hit in the gap does | P3 | Static: [sim/e3-mission-logic §4.6.5](../spec/sim/e3-mission-logic.md); E2 e2-mission-logic §5.11 (same pass-1 removal) | Capture of flight 14 ticks 70–180 | M10 | OPEN |
-| U-279 | E3 F5 target-information entry 21: confirm the presentation (flight 18: the point (28, 33) becomes selectable on the F5 screen only after tick 2160; what is drawn for it) and the second point (entry 22) of flights 8, 10, 11/21, and flight 9's missing flag (OB-054) (with U-284) | P3 | Static: [sim/e3-mission-logic §4.9](../spec/sim/e3-mission-logic.md); `UI_ShipSwitchScreen` `td3:0C5D:9A99`, `Msn_LoadTargetInfo` `td3:1BD8:0DCF` | [flow/flight-screens](../spec/flow/flight-screens.md) owner; capture of the F5 screen in flights 11 and 18 | M10 | OPEN |
+| U-279 | E3 F5 target-information entry 21: confirm the presentation (flight 18: the point (28, 33) becomes selectable on the F5 screen only after tick 2160; what is drawn for it) and the second point (entry 22) of flights 8, 10, 11/21, and flight 9's missing flag (OB-053) (with U-283) | P3 | Static: [sim/e3-mission-logic §4.9](../spec/sim/e3-mission-logic.md); `UI_ShipSwitchScreen` `td3:0C5D:9A99`, `Msn_LoadTargetInfo` `td3:1BD8:0DCF` | [flow/flight-screens](../spec/flow/flight-screens.md) owner; capture of the F5 screen in flights 11 and 18 | M10 | OPEN |
 
 Resolutions of existing rows:
 
