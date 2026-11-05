@@ -398,7 +398,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:102E,data,g_ScreenLit,,"1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M5-04
 3C43:1032,data,g_FontTitle,farptr,"farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M2-08
 3C43:123E,data,g_UiFile,FileRec,"untyped file variable of unit 051A (td.lt2, td.sav, td.sss in the save screens)",LIKELY,U-301
-3C43:12BE,data,g_UiI,u16,shared loop counter of unit 051A (fades, portraits, save screens),CONFIRMED,U-301
+3C43:12BE,data,g_UiI,u16,"shared loop counter of unit 051A (fades, portraits, save screens)",CONFIRMED,U-301
 3C43:12C0,data,g_UiJ,u16,second shared loop counter of unit 051A,CONFIRMED,U-301
 3C43:12C2,data,g_FlashTmpR,u8,hit-flash temporary (red component),LIKELY,RE-8
 3C43:12C3,data,g_FlashTmpG,u8,hit-flash temporary (green component),LIKELY,RE-8
