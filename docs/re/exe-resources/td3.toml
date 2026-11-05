@@ -322,57 +322,11 @@ count = 2
 note = "infra-red and pause prompts"
 
 [[resource]]
-id = "e3.locations"
+id = "e3.target_info"
 kind = "pstring_seq"
 offset = 0x1F650
-count = 3
-note = "location names (target information)"
-
-[[resource]]
-id = "e3.target_info.01"
-kind = "pstring_seq"
-offset = 0x1F6AB
-count = 2
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e3.target_info.02"
-kind = "pstring"
-offset = 0x1F6EB
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e3.target_info.03"
-kind = "pstring"
-offset = 0x1F70A
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e3.target_info.04"
-kind = "pstring_seq"
-offset = 0x1F72A
-count = 2
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e3.target_info.05"
-kind = "pstring"
-offset = 0x1F7C6
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e3.target_info.06"
-kind = "pstring_seq"
-offset = 0x1F824
-count = 3
-note = "fixed-width target information lines"
-
-[[resource]]
-id = "e3.target_info.07"
-kind = "pstring_seq"
-offset = 0x1F883
-count = 96
-note = "fixed-width target information lines"
+count = 114
+note = "F5 target information: location names and fixed-width lines, td3:1BD8:0000..0DCE; Msn_LoadTargetInfo (1BD8:0DCF) copies up to 30 characters per line per flight (sim/e3-mission-setup 3.4; RE-10 replaced e3.locations and e3.target_info.01..07, which skipped 5 strings)"
 
 [[resource]]
 id = "e3.flight_messages.01"

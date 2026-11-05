@@ -125,30 +125,7 @@ Resulting player start state (weapon, missiles, armour, shields): class 2 → 1,
 
 The routine has E2's structure ([e2-mission-setup §3.4](e2-mission-setup.md)): it clears the flags of entries 1..30, then the block for the flight writes the fixed points (entry 21, in flights 8, 10, 11 also entry 22) and five lines for some entries. Each line is copied from string k of the proposed resource `e3.target_info` with a maximum length of 30 (a longer string keeps its first 30 characters: k = 3, 4, 6, 7, 13, 15, 17–20, 22, 24–26, 28, 30, 31, 34, 37, 39, 49, 57, 61, 69, 82, 90, 110, 111). Three strings are all blanks: k = 2 (30 spaces, the blank line every block uses), k = 25 (31 spaces) and k = 74 (29 spaces).
 
-`e3.target_info` is the run of **114** consecutive ShortStrings that starts at file offset 1F650h (`td3:1BD8:0000`, the routine's literal pool, which ends at `1BD8:0DCE`; the walk ends exactly at `0DCF`). Proposed entry for [td3.toml](../../re/exe-resources/td3.toml), replacing `e3.locations` and `e3.target_info.01`..`.07`:
-
-```toml
-[[resource]]
-id = "e3.target_info"
-kind = "pstring_seq"
-offset = 0x1F650
-count = 114
-note = "F5 target-information lines (literal pool of Msn_LoadTargetInfo, td3:1BD8:0000..0DCE); indexed by sim/e3-mission-setup §3.4"
-```
-
-Until it exists, k maps to the current ids as follows (five strings have no id):
-
-| k | Current id |
-|---|---|
-| 0–2 | `e3.locations[0..2]` (k = 2 is the blank line, not a location) |
-| 3, 4 | `e3.target_info.01[0..1]` |
-| 5 | `e3.target_info.02` |
-| 6 | `e3.target_info.03` |
-| 7, 8 | `e3.target_info.04[0..1]` |
-| 12 | `e3.target_info.05` |
-| 15–17 | `e3.target_info.06[0..2]` |
-| 18–113 | `e3.target_info.07[0..95]` |
-| 9, 10, 11, 13, 14 | none (needs the toml change, §8) |
+`e3.target_info` ([td3.toml](../../re/exe-resources/td3.toml), pstring_seq at file offset 1F650h, count 114) is the run of **114** consecutive ShortStrings that starts at `td3:1BD8:0000`, the routine's literal pool, which ends at `1BD8:0DCE` (the walk ends exactly at `0DCF`). It replaces the earlier ids `e3.locations` and `e3.target_info.01`..`.07` (RE-10), which skipped k = 9, 10, 11, 13 and 14.
 
 k = 111..113 are used only by the dead flight-20 block.
 
@@ -456,7 +433,6 @@ Computed from the shipped mission files with the rules above. Vectors 1 and 2 ar
 - [ ] **U-284** (new): vectors 1 (flight 1, C-0036) and 2 (flight 8, C-0041) are confirmed (fields: slot arrays DS:399E.., DS:3A52.., DS:3A66.., DS:387C..DS:3890; ship records +3F6h/+3F8h/+3FAh; player DS:197B, DS:1BDC..1BDE, DS:38B2..38B3; view DS:395A..3961; phase, ticker; DS:1E98..1EF7 and the lines of entries 0..22). Still to confirm: vectors 3–9 with prepared saves ([e3-program-flow](../flow/e3-program-flow.md) §8). P2.
 - [ ] **U-285** (new): E3 removed E2's "hit flash := 0; DAC entries 0..255 := black" before the file loads (`td2:0E96:B06D..B092`). Is anything visible between the previous screen and the flight fade-in (mode set, HUD and window drawing in the BIOS default palette)? Capture of a flight start. P3 (presentation).
 - [ ] U-270 ([e3-mission-logic](e3-mission-logic.md) §5.7): flight 7's phase at the first tick.
-- [ ] Resource map: `e3.target_info` (pstring_seq, file offset 1F650h, count 114) is needed in `td3.toml`; it replaces `e3.locations` and `e3.target_info.01`..`.07`, which cover 109 of the 114 strings (§3.4).
 
 ### 8.1 Corrections to [episode-deltas](../../re/episode-deltas.md) rev 2 (applied in rev 3)
 

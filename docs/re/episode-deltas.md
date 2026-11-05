@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Document** | RE knowledge base, cross-episode deltas |
-| **Revision** | 2 (2026-11-02) |
+| **Revision** | 3 (2026-11-05) |
 | **Task** | M1-09 (RE-7, Archaeologist + Spec author) |
 | **Read with** | The E1 specs under [docs/spec/](../spec/), [EXECUTABLES.md §1.1](EXECUTABLES.md#11-ghidra-image-base-segments-and-dgroup-m0-08-2026-11-02), symbol tables [td2.csv](symbols/td2.csv), [td3.csv](symbols/td3.csv) |
 | **Confidence** | Unit and function identity: CONFIRMED (instruction-level comparison of every function, §2). Behavioural deltas: CONFIRMED where a row says so (static reading of the instruction stream), otherwise as stated |
@@ -161,10 +161,10 @@ For flash frames 1..4 the final DAC is the same in both orders, so no visible di
 |---|---|---|
 | 5 | phase < 100 and slot 2 class = FFh | mission lost |
 | 10 | tick 10 / tick 300 | phase := 2 and slot 4 class := 2 / phase := 3 |
-| 12 | tick 6480 | Map patch (hazard tiles, §4.2): cells x 40, y 121..123 and 131..133, and x 66, y 121..123 and 128..130 := 44h/45h/46h. Strips x 53..55 at y 114/118/137, x 62..64 at y 114 and x 46..48 at y 118 := 41h/42h/43h |
+| 12 | tick 6480 | Map patch (hazard tiles, §4.2; rev 3: it writes back the `td4.map` bytes that `Msn_Setup` case 12 replaced with tile 26h at flight start, [sim/e3-mission-logic §4.6.3](../spec/sim/e3-mission-logic.md)): cells x 40, y 121..123 and 131..133, and x 66, y 121..123 and 128..130 := 44h/45h/46h. Strips x 53..55 at y 114/118/137, x 62..64 at y 114 and x 46..48 at y 118 := 41h/42h/43h |
 | 14 | ticks 25 / 27 / 75 / 175 | slots 6–8 class := 8 and slots 9–11 class := 7 / phase := 2 / slot 11 armour := 0 / slot 8 armour := 0 |
 | 16 | phase = 3 | Five-step magenta fade of DAC 1..255, one retrace wait per step, ending on the half-tint step. Then every class 0..8 gets max speed := 0 and accel := 0, class 2 gets max speed 20 and accel 4, and phase := 5. These are typed-constant patches that persist (OB-028) |
-| 18 | tick 2160 | phase := 2; E3 DS:1EAD := 1 (meaning unknown, U-202) |
+| 18 | tick 2160 | phase := 2; E3 DS:1EAD := 1: the flag of F5 target-information entry 21, which offers the point (28, 33) on the F5 map (U-202 resolved, rev 3) |
 | 21 | tick 10 | phase := 2 |
 
 ### 4.2 Flight model
@@ -179,7 +179,7 @@ For flash frames 1..4 the final DAC is the same in both orders, so no visible di
      ```
      - The third clause repeats the first, as read.
      - Destruction is detected at the next tick's step 26.
-     - Only `td4.map` contains tiles 41h..46h (37 cells); `td3.map` gets them from the flight-12 patch (§4.1).
+     - Only `td4.map` contains tiles 41h..46h (37 cells); no `td3.map` flight ever has them: flight 12 flies `td4.map`, and its patch restores cells that its own setup switched off (rev 3). Capture C-0041 confirms the test, and that the damage continues through the end sequence ([sim/e3-mission-ships §5.1](../spec/sim/e3-mission-ships.md))
   2. Flight 16: no new afterburner burst while phase ≥ 2.
   3. The joystick is read whenever one is present, so a connected stick steers even when the keyboard is configured.
   4. Late draw is never set, so map collision is always active.
@@ -196,7 +196,7 @@ For flash frames 1..4 the final DAC is the same in both orders, so no visible di
 | Infra-red at start | flights 4 and 8 | flights 3 and 10 (also set in E2 `Msn_Setup`) | never. Alt only toggles between modes 1 and 2, so infra-red is unreachable in E3 |
 | Flight song | flight mod 3: 1 → `td01`, 2 → `td03`, 0 → `td02` | same rule. **New:** if the song buffer is still nil after the request, a second request tries the rotated choice (mod 3 = 2 → `td02`, 1 → `td03`, 0 → `td01`) | same as E2 |
 | Start view (view tile; offsets 32, 16) | [mission-setup.md](../spec/sim/mission-setup.md) | default (102, 104). After setup: flights 5–6 → (179, 33), 9–20 → (87, 28), 7 → (120, 70), late draw (flight 8) → (102, 100). E1's flights 13/14 override is gone | Set before `Msn_Setup`, with no later override: default (167, 66); flights ≥ 7 → (17, 164); 21 → (160, 75); 14, 17, 19 → (88, 76); 7 → (185, 32) |
-| Player armour | from class | flight 7: armour := 5 (`td2:0E96:B986`) | flight 7: armour := 5 (`td3:0C5D:B90E`) |
+| Player armour | from class | flight 7: armour := 5 (`td2:0E96:B986`) | flight 7: armour := 5 (test `td3:0C5D:B90E`, store `B915`) |
 | Missiles, class 5 | 1 | 4 | 4; flight 12 with class 2: 10 |
 | `AI_ChooseWaypoint` for slots 1..20 at setup (E1 `0E8B:CC63..CC7D`) | yes | **absent** | **absent** |
 | Difficulty byte := 1, music buffer freed at entry | yes | no | no |
@@ -305,7 +305,7 @@ Other changes in this routine:
 | Episode | (flight, phase) → screen n, new phase |
 |---|---|
 | E2 | (1,2)→1,3 · (5,2)→2,3 · (7,2)→3,100 · (11,1)→4,2 · (19,2)→5,3 · (15,2)→6,3 · (16,2)→7,3 |
-| E3 | (8,2)→1,3 · (15,2)→2,3 · (16,2)→3,3 · (19,2)→5,3 |
+| E3 | code order (rev 3): (8,2)→1,3 · (16,2)→3,3 · (19,2)→5,3 · (15,2)→2,3. In flight 16 the request is also forced every tick in phase 2 ([sim/e3-mission-logic §4.5](../spec/sim/e3-mission-logic.md)) |
 
 **Comm screen** (`UI_CommScreen`: E2 `0E96:5401`, E3 `0C5D:540E`). Only the dispatch to the comm text routines differs:
 
@@ -643,7 +643,7 @@ The per-mission content is for the M10 mission specs ([mission-logic.md](../spec
 |---|---|---|---|
 | `Msn_UpdateA` / `Msn_UpdateB` | `2404:1426` / `3521`: 1..9 / 10..20 | `2236:0ADB` / `240A`: 1..9 / 10..20 | `1FEB:0A7F` / `19AD`: 1..19, 21 |
 | `Msn_Setup` | `0E8B:60D8`: 1..21 | `0E96:60F9`: 1..20 | `0C5D:6149`: 1..11, 21, 12..20 (20 is dead) |
-| F5 target information (`Msn_LoadTargetInfo`, called once from `Msn_Setup`; flags, X, Y and five lines per entry; rev 2: was "message tables") | `1EDE:0E6A`: 1..13, 15..20 | `1E0B:0DCC`: 1..20 ([sim/e2-mission-setup §3.4](../spec/sim/e2-mission-setup.md)) | `1BD8:12A1`: 1..11, 21, 12..20 (20 is dead) |
+| F5 target information (`Msn_LoadTargetInfo`, called once from `Msn_Setup`; flags, X, Y and five lines per entry; rev 2: was "message tables") | `1EDE:0E6A`: 1..13, 15..20 | `1E0B:0DCC`: 1..20 ([sim/e2-mission-setup §3.4](../spec/sim/e2-mission-setup.md)) | `1BD8:0DCF` (rev 3; `12A1` is the flight-3 test): 1..11, 21, 12..20 ([sim/e3-mission-setup §3.4](../spec/sim/e3-mission-setup.md)): 1..11, 21, 12..20 (20 is dead) |
 | Per-tick event routine | `0E8B:9860` | `0E96:99B8` (17, 18) | `0C5D:959E` (§4.1) |
 | Comm text routines | 9 (`2A15`) | 7 (`2555`) | 4 (`2215`) |
 
@@ -709,16 +709,29 @@ Applied here: [dialogue-player.md](../spec/narrative/dialogue-player.md) (E2/E3 
 - §8.3: E1 also resets kills on New Game (`file0001:0000:38FF`), so that is not a delta; E2 menu items 0–5 also lose the item-3 highlight, DAC-255 and MemAvail rules (OB-041), the menu loop plays song 7 on entry, and item 3 calls `Gfx_InitUnchained` first. The `/?` text is 8 lines: four unmapped strings at file offset 0x826C, then `e2.startup[0..3]`.
 - §10: `e2.flight_messages.02` has 20 strings, not 7; `e2.target_info` (113 strings) replaces `e2.locations` and `e2.target_info.01..06` in [td2.toml](exe-resources/td2.toml).
 
+### 13.2 Corrections in rev 3 (RE-10, M10-02)
+
+E3 per-flight content now lives in [sim/e3-mission-setup](../spec/sim/e3-mission-setup.md), [sim/e3-mission-logic](../spec/sim/e3-mission-logic.md), [sim/e3-mission-ships](../spec/sim/e3-mission-ships.md) and [flow/e3-program-flow](../spec/flow/e3-program-flow.md). Corrections to this document:
+
+- §4.1, flight 12: the tick-6480 patch restores the `td4.map` bytes that `Msn_Setup` case 12 replaced with 26h; §4.2: no `td3.map` flight has hazard tiles. Flight 18: DS:1EAD is the F5 entry-21 flag (U-202). §4.3: flight-7 armour store `B915`. §6: E3 comm viewer rows in code order (8, 16, 19, 15).
+- §4.1/§12 OB-028: `Msn_Setup` case 17 restores the class tables; the freeze lasts only until the next flight-17 setup (OB-028 corrected).
+- §7: the ending's music call is at `0000:298C` (`298A` is the label); E3 never passes index 45 and starts the menu song once (from the loader).
+- §8.1: `1CAC` is the F11 retry label (the call is at `1CAE`); a retry also replays M13 and D64. Aborting F21 shows the debrief and forces F11 again; aborting F7 replays block 6 from F6. Flight 7 therefore always starts in phase 100 (OB-043, U-270).
+- §8.2 E3: block 1 begins with a skip test that `Main_CampaignLoop` no longer clears (OB-050); block 8's outcome-0 path, block 10's post-flight `mining2` card and D59 and block 11's D64 have no skip test. `g_MissionLost` is set only in flight 5; it is not folded into the outcome by code. Decline-and-replay (blocks 2, 3, 4, 5, 9, 12) is CONFIRMED; block 10's decline clears advance, block 8's continues as a success.
+- §8.3 E3: the menu loader flushes the keyboard (keys typed after the script choice do not reach the menu); every timed wait flushes on entry; no song-7 call at menu-loop entry; no text mode between flights; `Crt.ClrScr` after the memory gate; the restore screen accepts missions 7 and 20, which have no block (OB-051).
+- §10: `Msn_LoadTargetInfo` E3 is `1BD8:0DCF` with a 114-string pool (`e3.target_info`); `AI_UpdateShips` E3 is byte-identical to E2 apart from relocations and DGROUP −4.
+- New original bugs: OB-043..OB-054 (E3).
+
 ## 14. Open questions
 
 | ID | Question |
 |---|---|
 | U-200 | What sets E2 DS:31DE (`g_CutsceneRequest`) for flights 17/18? **Resolved (rev 2):** [sim/e2-mission-logic §4.7.2](../spec/sim/e2-mission-logic.md) |
 | U-201 | Who reads the new E2/E3 ship-record flag +000h written by the `AI_UpdateShips` prologue? **Resolved (rev 2): nobody** ([sim/e2-mission-ships §4.2](../spec/sim/e2-mission-ships.md)) |
-| U-202 | Meaning of E3 DS:1EAD (set by the flight-18 timed event and by unit `1BD8`) |
-| U-203 | Is the E3 flight-16 magenta tint ever restored, and what does the player see? |
+| U-202 | Meaning of E3 DS:1EAD. **Resolved (rev 3):** the flag of F5 target-information entry 21 ([sim/e3-mission-logic §4.9](../spec/sim/e3-mission-logic.md)) |
+| U-203 | Is the E3 flight-16 magenta tint ever restored? **Resolved (rev 3, static):** DAC-only, removed by a white flash until the next Esc menu ([sim/e3-mission-logic §4.7.3](../spec/sim/e3-mission-logic.md)) |
 | U-204 | Capture check of the E2/E3 double kill (OB-026) and of the palette-effect reordering (§4.1) |
-| U-205 | E2/E3 first-tick behaviour without the setup `AI_ChooseWaypoint` loop. **Resolved for E2 (rev 2):** a null path step in tick 1, one-tick delay, no RNG change ([sim/e2-mission-ships §4.3](../spec/sim/e2-mission-ships.md), C-0015, C-0016) |
+| U-205 | E2/E3 first-tick behaviour without the setup `AI_ChooseWaypoint` loop. **Resolved for E2 (rev 2):** a null path step in tick 1, one-tick delay, no RNG change ([sim/e2-mission-ships §4.3](../spec/sim/e2-mission-ships.md), C-0015, C-0016) **E3 (rev 3):** the same, confirmed by C-0036 and C-0041 ([sim/e3-mission-ships §4.3](../spec/sim/e3-mission-ships.md)) |
 | U-206 | Not analysed for E2/E3: the `UI_LoadMainMenu` highlight changes, the menu palette fades, `Scene_BackgroundStory`, and the "02 line uses its own entry" rule (dialogue-player §4.9) |
 | U-207 | E1 spec corrections in §13 to be confirmed and applied by the owners |
 
@@ -780,7 +793,7 @@ This table lists every routine that is not IDENT in E2 or E3, plus the new routi
 | — | `Gfx_HitFlashStep` (new) | `0E96:6D53` | `0C5D:A55B` | E1 inline block made a procedure (§4.1) |
 | — | `Msn_E2FlightEvents`, `Msn_E3TimedEvents` (new) | `0E96:99B8` | `0C5D:959E` | §4.1 |
 | `1E2A:006A` | `Snd_PlayEffect` | identical | `1B1E:006A` | DGROUP offset only |
-| `1EDE:0E6A` | Message tables | `1E0B:1475` | `1BD8:12A1` | Per-flight content (§10) |
+| `1EDE:0E6A` | Message tables | `1E0B:1475` | `1BD8:0DCF` | Per-flight content (§10) |
 | `2404:0616`, `07DB` | `Msn_PlayerTouches`, `Msn_Near` | — | — | Removed |
 | `2404:06EE` | `Msn_NearLive` | `2236:0616` | `1FEB:0616` | Player tile = view + (5, 3) (§10) |
 | `2404:1426`, `3521` | `Msn_UpdateA`, `Msn_UpdateB` | `2236:0ADB`, `240A` | `1FEB:0A7F`, `19AD` | Per-flight content (§10) |
@@ -795,3 +808,4 @@ This table lists every routine that is not IDENT in E2 or E3, plus the new routi
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-7 (Archaeologist + Spec author) | Initial: matcher, unit identity, DS map, flight/weapons/AI/HUD/audio/front-end/narrative/mission-framework deltas, data tables |
 | 2 | 2026-11-02 | RE-9 (M10-01) | §10 message-table row is `Msn_LoadTargetInfo` `1E0B:0DCC`; `Msn_UpdateB` completed; OB-018 E2 instance; U-200, U-201, U-205 resolved; corrections §13.1. E2 per-flight content now lives in sim/e2-mission-setup, sim/e2-mission-logic, sim/e2-mission-ships and flow/e2-program-flow |
+| 3 | 2026-11-05 | RE-10 (M10-02) | E3 corrections (§13.2): flight-12 patch, hazard tiles on `td4.map` only (C-0041), U-202 and U-203 resolved, U-205 confirmed for E3 (C-0036, C-0041), comm viewer order, `Msn_LoadTargetInfo` `1BD8:0DCF`, OB-028 corrected, campaign details. E3 per-flight content now lives in sim/e3-mission-setup, sim/e3-mission-logic, sim/e3-mission-ships and flow/e3-program-flow |
