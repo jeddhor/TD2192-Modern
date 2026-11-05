@@ -12,6 +12,11 @@
 //! rev 1), and mission logic (steps 8–9, 15, 18 and the game rules of step 19:
 //! `mission-logic.md` rev 1, see [`logic`]). Cheat chords (34) are not ported (decision D5/D9).
 //!
+//! Episodes: one engine flies all three episodes. [`Flight::episode`] selects the setup tables,
+//! the mission logic and the tick-order, weapon and AI deltas of `docs/re/episode-deltas.md`
+//! rev 2 ([`episode`]); E2 setup and logic follow `docs/spec/sim/e2-mission-setup.md`,
+//! `e2-mission-logic.md` and `e2-mission-ships.md` (rev 1 each).
+//!
 //! Session state: the original keeps the RNG, the class tables (patched by some flights,
 //! OB-018) and the ship slots and records across the flights of one program run. [`Session`]
 //! carries them from one [`Flight`] to the next.
@@ -21,6 +26,7 @@
 //! the caller shows the screen and then calls [`Flight::resume`], which clears the key table
 //! (the original's modal screens do) and runs the rest of the tick.
 
+pub mod episode;
 pub mod explosions;
 pub mod heading;
 pub mod logic;
@@ -36,6 +42,7 @@ use td_formats::mission::Mission;
 use crate::hash::{HashState, StateHasher};
 use crate::input::{FlightKey, Joystick, KeyTable, TickControls};
 use crate::rng::BpRandom;
+pub use episode::Episode;
 use explosions::Explosions;
 use heading::Heading;
 use logic::{HudSnapshot, MissionState};
@@ -125,6 +132,8 @@ pub const START_VIEW: View = View {
 /// What the original keeps across the flights of one program run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
+    /// The program (`file0001.exe`, `td2.exe` or `td3.exe`).
+    pub episode: Episode,
     /// The program's `Random` generator.
     pub rng: BpRandom,
     /// Class tables, with the patches of the flights flown so far.
@@ -136,21 +145,32 @@ pub struct Session {
     pub ai_player: (u8, u8),
     /// Mission-logic globals (setup re-initialises only part of them, [`MissionState`]).
     pub mission: MissionState,
+    /// E2: `k_TileRadarColour` holds the map-set-2 colours. A set-2 flight copies them over
+    /// the table and nothing restores it (OB-024), so it is session state (presentation).
+    pub radar_set2: bool,
 }
 
 impl Session {
-    /// Program start: the AI unit's initialisation resets the ship records and draws 20
-    /// `Random(2)` before anything else uses the generator (mission-ships §4.1 step 1).
+    /// Program start of `file0001.exe` (Episode 1).
     pub fn new() -> Self {
+        Self::for_episode(Episode::E1)
+    }
+
+    /// Program start: the AI unit's initialisation resets the ship records and draws 20
+    /// `Random(2)` before anything else uses the generator (mission-ships §4.1 step 1; the AI
+    /// unit is identical in E2 and E3, episode-deltas §3.1).
+    pub fn for_episode(episode: Episode) -> Self {
         let mut rng = BpRandom::new();
         let mut ships = Ships::default();
         ships.reset_records(&mut rng);
         Self {
+            episode,
             rng,
             classes: ClassTables::default(),
             ships,
             ai_player: (0, 0),
             mission: MissionState::default(),
+            radar_set2: false,
         }
     }
 }
@@ -164,6 +184,8 @@ impl Default for Session {
 /// The state of one flight.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flight {
+    /// The program flying this flight; selects the episode deltas ([`episode`]).
+    pub episode: Episode,
     /// Flight number 1..=21 (`Sim_FlyMission` argument).
     pub number: u8,
     /// Ticks since flight start.
@@ -199,6 +221,8 @@ pub struct Flight {
     pub ai_player: (u8, u8),
     /// Mission phase, ticker, transmission state and the other mission-logic globals.
     pub mission: MissionState,
+    /// E2 radar colours of map set 2 in effect (session state, see [`Session`]).
+    pub radar_set2: bool,
     /// `g_MissionKills`.
     pub kills: i16,
     /// Full-palette white flash countdown (`g_FlashFrames`).
@@ -242,60 +266,97 @@ impl Flight {
         Self::start(number, Some(mission), world, Session::new())
     }
 
-    /// Flight setup (`Sim_FlyMission`, mission-ships §4.1, mission-setup §3): reset the ship
-    /// records (20 `Random(2)`), load the mission file (`None` for flight 21), apply
-    /// `Msn_Setup`, set the start view, and choose every slot's first waypoint.
+    /// Flight setup (`Sim_FlyMission`, mission-ships §4.1, mission-setup §3; E2:
+    /// e2-mission-setup §4.1): reset the ship records (20 `Random(2)`), load the mission file
+    /// (`None` for E1 flight 21), apply `Msn_Setup`, set the player and the start view, and (E1
+    /// only) choose every slot's first waypoint. The episode is the session's.
     pub fn start(number: u8, mission: Option<&Mission>, world: &World, session: Session) -> Self {
         let Session {
+            episode,
             mut rng,
             mut classes,
             mut ships,
             ai_player,
             mission: mut logic,
+            mut radar_set2,
         } = session;
         ships.reset_records(&mut rng);
         if let Some(m) = mission {
             ships.load_mission(m, &classes);
+            if episode == Episode::E2 {
+                // A class-FFh slot reads the bytes after the class tables: shields DS:052F = 34,
+                // armour 2 × DS:0525 = 68 (e2-mission-setup §2).
+                for s in ships.0.iter_mut().filter(|s| !s.alive()) {
+                    s.shields = 34;
+                    s.armour = 68;
+                }
+            }
         }
-        let flags = setup::msn_setup(number, &mut ships, &mut classes);
-        logic.setup(number);
-        let mut view = START_VIEW;
-        if flags.late_draw {
-            view.tile_y = 100;
+        if episode == Episode::E2 && episode::map_set(episode, number) == 2 {
+            radar_set2 = true;
         }
-        if matches!(number, 13 | 14) {
-            (view.tile_x, view.tile_y) = (177, 153);
+        let flags = match episode {
+            Episode::E1 => {
+                let flags = setup::msn_setup(number, &mut ships, &mut classes);
+                logic.setup(number);
+                flags
+            }
+            Episode::E2 => {
+                logic.setup_e2(number);
+                setup::e2::msn_setup(number, &mut ships, &mut classes)
+            }
+            // ASSUMPTION(M10-02): no E3 setup or mission logic yet; the mission file's ships fly
+            // without rules.
+            Episode::E3 => {
+                logic.scripted = false;
+                setup::SetupFlags {
+                    late_draw: false,
+                    palette_mode: 0,
+                }
+            }
+        };
+        let view = episode::start_view(episode, number, flags.late_draw);
+        let class = episode::player_class(episode, number);
+        let mut player = Player::new(class, view);
+        player.armour = classes.armour(class) as i8;
+        if episode == Episode::E2 && number == 7 {
+            player.armour = 5;
         }
-        let mut player = Player::new(tables::player_class(number), view);
-        player.armour = classes.armour(player.class) as i8;
-        player.shields = classes.shields(player.class) as i8;
+        player.shields = classes.shields(class) as i8;
         let mut f = Self::with_player(number, player);
+        f.episode = episode;
+        f.missiles = episode::start_missiles(episode, class, f.missiles);
         f.late_draw = flags.late_draw;
         f.palette_mode = flags.palette_mode;
         // Default start: draw page 1 (mission-setup §3.1).
         f.draw_page = 1;
-        let mut ctx = AiContext {
-            world,
-            rng: &mut rng,
-            player: ai_player,
-        };
-        ships.choose_all(&mut ctx);
+        if episode::setup_waypoint_loop(episode) {
+            let mut ctx = AiContext {
+                world,
+                rng: &mut rng,
+                player: ai_player,
+            };
+            ships.choose_all(&mut ctx);
+        }
         f.rng = rng;
         f.classes = classes;
         f.ships = ships;
         f.ai_player = ai_player;
         f.mission = logic;
+        f.radar_set2 = radar_set2;
         f
     }
 
     /// The state to carry into the next flight of the same program run.
     pub fn session(&self) -> Session {
         Session {
+            episode: self.episode,
             rng: self.rng,
             classes: self.classes.clone(),
             ships: self.ships.clone(),
             ai_player: self.ai_player,
             mission: self.mission,
+            radar_set2: self.radar_set2,
         }
     }
 
@@ -310,6 +371,7 @@ impl Flight {
     pub fn with_player(number: u8, player: Player) -> Self {
         let (weapon, _, missiles) = tables::player_weapons(player.class).unwrap_or((1, 1, 0));
         Self {
+            episode: Episode::E1,
             number,
             ticks: 0,
             draw_page: 0,
@@ -340,6 +402,7 @@ impl Flight {
             classes: ClassTables::default(),
             ai_player: (0, 0),
             mission: MissionState::default(),
+            radar_set2: false,
             kills: 0,
             white_flash: 0,
             difficulty: 1,
@@ -390,9 +453,9 @@ impl Flight {
         from: u8,
     ) -> TickResult {
         if from <= 1 {
-            // 1. Tick counter; flight 21 ends itself after 25 ticks.
+            // 1. Tick counter; E1 flight 21 ends itself after 25 ticks.
             self.ticks = self.ticks.wrapping_add(1);
-            if self.number == 21 && self.ticks == 25 {
+            if self.episode == Episode::E1 && self.number == 21 && self.ticks == 25 {
                 self.end_mission();
             }
             // 3. Turn step.
@@ -418,7 +481,13 @@ impl Flight {
                 white_flash: &mut self.white_flash,
                 late_draw: self.late_draw,
                 flight: self.number,
-                difficulty: self.difficulty,
+                // E2/E3 have no difficulty multiplier: always 2 × (kind + 1) (P2).
+                difficulty: if self.episode == Episode::E1 {
+                    self.difficulty
+                } else {
+                    1
+                },
+                episode: self.episode,
             });
             self.drawn.shots.clone_from(&self.shots);
             // 7. Player ship (unless drawn late).
@@ -428,11 +497,19 @@ impl Flight {
             }
             // 8–9. Mission logic (`Msn_UpdateA`/`Msn_UpdateB`, mission-logic §4.2, §5).
             self.msn_update();
-            // 10. Mission ships: AI, movement, removal (mission-ships §4.2).
+            // 10. Mission ships: AI, movement, removal (mission-ships §4.2). E2/E3 have no
+            // per-flight cases (flight 0 selects none) and a prologue that flags the live slots
+            // (record +000h, read by nobody; e2-mission-ships §4.2).
             self.ai_player = self.player_tile();
             let player = self.ai_player;
+            let ai_flight = if self.episode == Episode::E1 {
+                self.number
+            } else {
+                self.ships.flag_live();
+                0
+            };
             self.ships.update(
-                self.number,
+                ai_flight,
                 &self.classes,
                 &mut AiContext {
                     world,
@@ -440,8 +517,8 @@ impl Flight {
                     player,
                 },
             );
-            // Flight 19 with mission phase > 1 caps the player's shields and pins slot 19
-            // (mission-ships §4.2.4).
+            // E1 flight 19 with mission phase > 1 caps the player's shields and pins slot 19
+            // (mission-ships §4.2.4; removed in E2/E3).
             self.flight_19_pin();
             self.drawn.ships.clone_from(&self.ships);
             // 11. End sequence (provisional: counts the end ticks; its other effects are not
@@ -475,7 +552,7 @@ impl Flight {
             if self.joystick_enabled {
                 self.joystick = c.joystick();
             }
-            // 18. Mission events (respawns, scripted events; mission-logic §4.7).
+            // 18. Mission events (respawns, scripted events; mission-logic §4.7; E1 only).
             self.msn_update_events(events);
             // 19. Instruments: the flight-7 rule, the ticker and the transmission indicator
             // (hud §4.3, §4.7, §4.8); the rest is presentation.
@@ -507,6 +584,10 @@ impl Flight {
             }
         }
         if from <= 26 {
+            // E2: `Msn_E2FlightEvents` after the flight menu (e2-mission-logic §4.7.1).
+            if self.episode == Episode::E2 {
+                self.e2_flight_events(events);
+            }
             // 26 is audio. 27. Shields and destruction.
             if self.player.shields_step(&self.classes, self.mission_over) {
                 self.end_mission();
@@ -520,7 +601,7 @@ impl Flight {
             if self.keys.get(FlightKey::F6) && !self.mission_over {
                 self.comm_request = true;
             }
-            if self.keys.get(FlightKey::F5) && self.number != 14 {
+            if self.keys.get(FlightKey::F5) && (self.episode != Episode::E1 || self.number != 14) {
                 return self.interrupt(30, Modal::TacticalMap);
             }
         }
@@ -531,7 +612,8 @@ impl Flight {
         // 31. Mission-ship volleys on back page 1; 32. fire requests cleared every tick
         // (mission-ships §4.4.2).
         if self.draw_page == 1 {
-            self.shots.ship_volleys(&self.ships, &world.muzzles, events);
+            self.shots
+                .ship_volleys(&self.ships, &world.muzzles, self.episode, events);
         }
         self.ships.clear_fire_requests();
         // 33–34. The missile cooldown counts down *before* the fire keys are handled (C-0011:
@@ -539,6 +621,15 @@ impl Flight {
         // then weapons and infra-red; the cheat chords checked at step 34 are not ported.
         self.missile_cooldown = self.missile_cooldown.saturating_sub(1);
         self.player_specials(world, events);
+        // Flight 20: view beyond (170, 170) → armour 64, at the end of every tick (mission-logic
+        // §5.20; e2-mission-logic §5.20, `td2:0E96:EA00..EA17`; not in E3).
+        if self.number == 20
+            && self.episode != Episode::E3
+            && self.player.view.tile_x > 170
+            && self.player.view.tile_y > 170
+        {
+            self.player.armour = 64;
+        }
         // 35. End of flight.
         if self.aborted || self.end_ticks == 35 || self.lost || self.succeeded {
             TickResult::Finished
@@ -598,6 +689,7 @@ impl Flight {
 
 impl HashState for Flight {
     fn hash_state(&self, h: &mut StateHasher) {
+        h.bytes(&[self.episode as u8, u8::from(self.radar_set2)]);
         self.number.hash_state(h);
         self.ticks.hash_state(h);
         self.draw_page.hash_state(h);

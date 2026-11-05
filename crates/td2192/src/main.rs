@@ -24,9 +24,10 @@ struct Cli {
     /// Developer map viewer for a map: e1, e2a, e2b, e3a, e3b or intro.
     #[arg(long, value_name = "MAP")]
     dev_mapview: Option<String>,
-    /// Developer flight arena: fly flight N (1..21) on the Episode 1 map.
-    #[arg(long, value_name = "N")]
-    dev_flight: Option<u8>,
+    /// Developer flight arena: fly flight N of Episode 1 (1..21), or eN:N (e2:9 = Episode 2
+    /// flight 9).
+    #[arg(long, value_name = "FLIGHT")]
+    dev_flight: Option<String>,
     /// Developer: play one dialogue scene: ID (episode 1), eN:ID, or eN-safe:ID (edited script).
     #[arg(long, value_name = "SCENE")]
     dev_dialogue: Option<String>,
@@ -39,6 +40,21 @@ struct Cli {
     /// Developer: save a screenshot and exit after this many simulation ticks.
     #[arg(long, value_name = "TICKS")]
     dev_exit_after: Option<u64>,
+}
+
+/// Parses `--dev-flight`: `N` (Episode 1) or `eN:N`.
+fn parse_flight_spec(spec: &str) -> Result<(Episode, u8)> {
+    let (episode, n) = match spec.split_once(':') {
+        None => (Episode::E1, spec),
+        Some(("e1" | "E1", n)) => (Episode::E1, n),
+        Some(("e2" | "E2", n)) => (Episode::E2, n),
+        Some(("e3" | "E3", n)) => (Episode::E3, n),
+        Some(_) => bail!("--dev-flight takes N or eN:N (for example e2:9), not {spec:?}"),
+    };
+    let n = n
+        .parse()
+        .with_context(|| format!("--dev-flight: bad flight number in {spec:?}"))?;
+    Ok((episode, n))
 }
 
 fn main() {
@@ -135,7 +151,10 @@ fn real_main() -> Result<()> {
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
-        (Some(n), _) => Box::new(flight::FlightArena::new(&dir, &resources, n)?),
+        (Some(spec), _) => {
+            let (episode, n) = parse_flight_spec(&spec)?;
+            Box::new(flight::FlightArena::new(&dir, &resources, episode, n)?)
+        }
         (None, Some(spec)) => {
             let (episode, choice, id) = td_flow::dialogue::parse_scene_spec(spec)?;
             Box::new(td_flow::DialogueScene::load(
@@ -162,4 +181,17 @@ fn real_main() -> Result<()> {
         user_dir: &user_dir,
     };
     run::run(td_flow::Flow::new(first), &rd, &options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flight_specs() {
+        assert_eq!(parse_flight_spec("7").unwrap(), (Episode::E1, 7));
+        assert_eq!(parse_flight_spec("e2:9").unwrap(), (Episode::E2, 9));
+        assert!(parse_flight_spec("e4:1").is_err());
+        assert!(parse_flight_spec("e2:x").is_err());
+    }
 }

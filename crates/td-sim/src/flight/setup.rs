@@ -2,7 +2,9 @@
 //!
 //! Spec: `docs/spec/sim/mission-setup.md` rev 1 §3 (table 3.2, in the order the code writes;
 //! a later write wins). Objective text, ticker and comm tables are presentation and mission
-//! logic (RE-6) and are not here.
+//! logic (RE-6) and are not here. Episode 2's blocks are in [`e2`].
+
+pub mod e2;
 
 use super::ships::{NO_SHIP, Ship, Ships};
 use super::tables::ClassTables;
