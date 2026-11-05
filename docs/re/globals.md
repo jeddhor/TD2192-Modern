@@ -105,7 +105,7 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 | DS:16F6 | u8 | `g_PlayerSprite` | Sprite set used to draw the player (= class, or 2/3 alternating in late mode) | LIKELY |
 | DS:16F8 | string[10] | `g_MissionFileName` | `m<n>.td` built at setup | CONFIRMED |
 | DS:1828 | u8 | `g_FlashFrames` | Full-palette flash countdown (4 white … 1 restore) | LIKELY |
-| DS:12C4 | u16 | `g_HitFlash` | Red hit-flash intensity, decays 2 or 3 per tick | LIKELY |
+| DS:12C4 | u16 | `g_HitFlash` | Hit-flash intensity 0..20, raised by `Sim_DistanceFlash`, decays 2 or 3 per tick ([sim/hit-flash](../spec/sim/hit-flash.md)) | CONFIRMED |
 | DS:1836 / 1837 | u8 | `g_BurstFrame` / `g_BurstHeading` | Afterburner burst animation (classes 2 and 5), 0 = idle, 1..5; frames 2 and 3 set the speed in the burst heading | LIKELY |
 | DS:194C | FileRec | `g_FlightFile` | File variable for flight loads | CONFIRMED |
 | DS:1A52 / 1A54 | u16 | `g_I` / `g_J` | **Shared global loop counters** used by most game routines (a nested call clobbers the caller's counter) | CONFIRMED |

@@ -185,7 +185,7 @@ To be captured (§8). Static examples:
 
 ## 7. Presentation and audio hooks
 
-Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hit (9), destruction (100), enemy volleys (kind = shooter class). Flashes: white (kind 6 hits), red distance flash `0E8B:06C5` = `max(flash, 20 − round(sqrt(distance)))` with Real48 `Sqrt` (presentation only).
+Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hit (9), destruction (100), enemy volleys (kind = shooter class). Flashes: white (kind 6 hits), red distance flash `0E8B:06C5` = `max(flash, 20 − round(sqrt(distance)))` with Real48 `Sqrt` (presentation only). Full rules for the distance flash (argument order, distance from the player's tile, 16-bit square, decay in step 14, all callers): [sim/hit-flash](hit-flash.md).
 
 ## 8. Open questions
 

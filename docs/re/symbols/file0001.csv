@@ -65,7 +65,7 @@ address,kind,name,signature,comment,confidence,source_task
 0E8B:01F6,func,Gfx_FadeInFlight,,"flight fade-in: target = g_FlightPalette for palette mode 0, (R/8,G/8,B/8) rounded for mode 1, (min(63,1.5R),0,0) for mode 2; 17 levels Round(c*s/16) on DAC 1..255; zeroes g_HitFlash (flow/flight-screens.md 4.5.3)",CONFIRMED,RE-8
 0E8B:0426,func,Gfx_FadeOutFlight,,reverse of Gfx_FadeInFlight (s = 16..0) over DAC 0..255,LIKELY,RE-8
 0E8B:0653,func,Inp_KeyboardIsr,,"INT 09h handler: reads port 60h, E0 prefix, key-state table DS:1A5C, EOI",CONFIRMED,M1-03
-0E8B:06C5,func,Sim_DistanceFlash,"void near(TileY, TileX: Byte)",raises g_HitFlash to 20 - round(sqrt(distance)) for an explosion near the player,LIKELY,U-041
+0E8B:06C5,func,Sim_DistanceFlash,"void near(TileX, TileY: Byte)","g_HitFlash := max(g_HitFlash, 20 - Round(Sqrt(dx*dx+dy*dy))) with dx, dy = player tile (view+5, view+3) - argument tile, 16-bit square; TileX FFh -> 20; callers 0E8B:11E1 (ship killed) and 0E8B:5778 (end tick 12) (sim/hit-flash.md)",CONFIRMED,U-300
 0E8B:07ED,func,Snd_PlayMusic,void far(N: Byte),"(N): if g_MusicDevice = 2: stop, free, load song N, play (see spec audio/music-cues); also: (cue 1..14) stops the song and loads/plays a CMF if td.cfg music = 2; also: stops the current song and plays CMF n (1..14; table in flow spec 3.1) when music is on",CONFIRMED,M1-02
 0E8B:0984,func,Sim_ProjectilesAndHits,,per tick for projectile slots 0..50: bounds; life and map test; hits on ships and player; damage; kills; drawing; one-tile move (sim/weapons.md),LIKELY,U-041
 0E8B:40B2,func,Txt_FlightDrawGlyphOpaque,,"flight-unit copy of Txt_DrawGlyph, opaque",CONFIRMED,M2-08
@@ -399,7 +399,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1032,data,g_FontTitle,farptr,"farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M2-08
 3C43:12C2,data,g_FlashTmpR,u8,hit-flash temporary (red component),LIKELY,RE-8
 3C43:12C3,data,g_FlashTmpG,u8,hit-flash temporary (green component),LIKELY,RE-8
-3C43:12C4,data,g_HitFlash,u16,red hit-flash intensity,LIKELY,M1-07
+3C43:12C4,data,g_HitFlash,u16,"hit-flash intensity 0..20: raised only by Sim_DistanceFlash, lowered by 2 (3 in palette mode 1) in tick step 14 (sim/hit-flash.md)",CONFIRMED,U-300
 3C43:12C6,data,g_MusicDevice,u8,2 = FM music; other values = no music; also: td.cfg byte 0 (2 = music on); also: 1 off; 2 on; 0 = show config screen (g_CfgMusic),CONFIRMED,M1-02
 3C43:12C7,data,g_SfxDevice,u8,"1 none, 2 Sound Blaster digital, 3 PC speaker; also: td.cfg byte 1 (g_CfgSfx)",CONFIRMED,M1-02
 3C43:12C8,data,g_CfgController,u8,td.cfg byte 2 (2 = joystick); also: 1 keyboard; 2 joystick,CONFIRMED,M1-05
