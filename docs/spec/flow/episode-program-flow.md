@@ -133,8 +133,8 @@ Menu cursor `g_MenuCursor` DS:0754 (0..8; Up/Down wrap; items 1 and 3 are skippe
 | Item | Action |
 |---:|---|
 | 0 | Start new game (asks for confirmation if a game is in progress): mission := 1, kills to date := 0, play one mission block (§4.3), then flush the BIOS keyboard buffer (`0000:390A..391D`). If the block completed: mission += 1, kills to date += mission kills, cursor := 3. If the game ended (`g_GameOver` DS:060F): mission := 0 |
-| 1 | Save game `051A:7EEA(mission, kills to date, palette)` (only while a game is in progress) |
-| 2 | Restore game `051A:76EA(palette)` (confirmation if a game is in progress); cursor := 3 when a game was loaded |
+| 1 | Save game `051A:7EEA(mission, kills to date, palette)` (only while a game is in progress; [save-screens](save-screens.md)) |
+| 2 | Restore game `051A:76EA(palette)` (confirmation if a game is in progress); cursor := 3 when a game is in progress afterwards, even after Esc ([save-screens](save-screens.md)) |
 | 3 | Next mission: play one mission block, then flush the BIOS keyboard buffer (`0000:3B97..3BAA`). On completion: mission += 1, kills += mission kills; if mission reaches 21: mission := 0, cursor := 7 (episode finished). On game over: mission := 0, cursor := 0 |
 | 4 | Help screens `0000:02AF` (`td.hlp`) |
 | 5 | Story so far `051A:8EAA`, then reload `tdmen.pal` |
