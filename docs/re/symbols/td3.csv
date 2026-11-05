@@ -68,7 +68,7 @@ address,kind,name,signature,comment,confidence,source_task
 0C5D:52E4,func,UI_DrawCommPortraitB,,"= E1 file0001:0E8B:530B, same code, 1 operand(s) differ. E1: second transmission portrait (same as UI_DrawCommPortraitA)",LIKELY,M1-09
 0C5D:540E,func,UI_CommScreen,,"= E1 file0001:0E8B:5435, changed (similarity 0.97). E1: F6 transmission: td.cmm panel, portraits, message lines",LIKELY,M1-09
 0C5D:568F,func,Sim_EndSequenceStep,,"= E1 file0001:0E8B:56ED, changed (similarity 1.00). E1: per tick while g_MissionOver: end-sequence explosions and g_EndTicks",LIKELY,M1-09
-0C5D:6149,func,Msn_Setup,,"= E1 file0001:0E8B:60D8, changed (similarity 0.35). E1: per-mission set-up: objective text into VGA row 735, mission-specific ship state; also: per-mission overrides at flight start: player class...",HYPOTHESIS,M1-09
+0C5D:6149,func,Msn_Setup,,"= E1 file0001:0E8B:60D8, changed (similarity 0.35). E3 (RE-10): dispatch 1..11, 21, 12..20 (20 dead); flight 7 has no phase store (OB-043); flight 17 restores the class tables (sim/e3-mission-setup 3.2, 4.2). E1: per-mission set-up: objective text into VGA row 735, mission-specific ship state; also: per-mission overrides at flight start: player class...",HYPOTHESIS,M1-09
 0C5D:6E02,func,UI_FlightHelp,,"= E1 file0001:0E8B:6EDF, identical. E1: td.hlp pages in flight",LIKELY,M1-09
 0C5D:7337,func,UI_ShipLibrary,,"= E1 file0001:0E8B:7374, changed (similarity 0.87). E1: ship library: td.shp sprites 0..8 and class text; also: ship class chart with sprites and stat lines (UI_ShipRecognitionChart)",LIKELY,M1-09
 0C5D:7916,func,UI_FlightMenu,,"= E1 file0001:0E8B:794C, changed (similarity 0.95). E1: in-flight computer menu from td.men bytes 0..15999 at (80,50); also: Esc menu in flight (td.men); may set g_MissionAborted",LIKELY,M1-09
@@ -78,7 +78,7 @@ address,kind,name,signature,comment,confidence,source_task
 0C5D:817E,func,Pal_StoreEntry,"void near(Index, R, G, B: Byte)","= E1 file0001:0E8B:829A, identical. E1: sets one entry of g_FlightPalette only (applied by the next fade)",CONFIRMED,M1-09
 0C5D:81C1,func,UI_DrawGuidanceLine,,"= E1 file0001:0E8B:82DD, changed (similarity 0.97). E1: compass lamps (8 palette entries: red = live marked ships per octant, blue = home) and six guidance dots toward the lowest live marked slot o...",LIKELY,M1-09
 0C5D:8DD7,func,UI_DrawInstruments,,"= E1 file0001:0E8B:8E87, identical. E1: per tick: guidance and lamps; low-armour pulse; armour and shield bars; missile lamp and column; radar; ticker and F6 indicator; render/hud.md 4.2",CONFIRMED,M1-09
-0C5D:959E,func,Msn_E3TimedEvents,,"new: per-tick timed events of flights 5, 10, 12, 14, 16, 18, 21 (episode-deltas.md 4)",CONFIRMED,M1-09
+0C5D:959E,func,Msn_E3TimedEvents,,"new: per-tick timed events of flights 5, 10, 12, 14, 16, 18, 21 (sim/e3-mission-logic 4.6: no RNG; flight-12 map cells, flight-16 fade and class patch)",CONFIRMED,M1-09
 0C5D:9A99,func,UI_ShipSwitchScreen,,"= E1 file0001:0E8B:A714, changed (similarity 1.00). E1: F5 ship-switch screen in flight (not in mission 14; tick-order step 29); earlier misnamed Inp_RestoreKeyboard",LIKELY,M1-09
 0C5D:A28E,func,UI_JoystickCalibration,,"= E1 file0001:0E8B:AF1F, identical. E1: td.joy icon at (140,70) and calibration loop; also: joystick calibration screen at start-up (Inp_CalibrateJoystick)",LIKELY,M1-09
 0C5D:A55B,func,Gfx_HitFlashStep,,new near procedure: copy of the E1 inline hit-flash palette block file0001:0E8B:DA6B..DE29 (episode-deltas.md 4),CONFIRMED,M1-09
@@ -95,13 +95,14 @@ address,kind,name,signature,comment,confidence,source_task
 1BB3:0000,func,Inp_JoystickAvailable,,"= E1 file0001:1EBF:0000, identical. E1: returns AL<>0 when the joystick may be read; callers then check the controller setting (DS:12C8 = 2) before Inp_JoystickRead",HYPOTHESIS,M1-09
 1BB3:0026,func,Inp_JoystickRead,,"= E1 file0001:1EBF:0026, identical. E1: port 201h trigger and timing loop for axes and buttons (all joystick port I/O)",LIKELY,M1-09
 1BB3:01ED,func,Inp_WaitKeyOrButton,,"E1 file0001:051A:1A40 moved into the joystick unit, same logic; called by Dlg_PlayScene",CONFIRMED,M1-09
+1BD8:0DCF,func,Msn_LoadTargetInfo,void far(Flight: Byte),"new: F5 target information per flight: clears flags 1..30, then the block of the flight (dispatch 1..11, 21, 12..20) writes the fixed points (entry 21; 22 in flights 8, 10, 11, 21) and five lines per entry copied (max 30) from the 114-string pool 1BD8:0000..0DCE (e3.target_info); called once by Msn_Setup. Ghidra misdecodes 0DDA..0E33 and 1043..10CA (sim/e3-mission-setup 3.4, 4.5)",CONFIRMED,M10-02
 1BD8:4122,func,Unit1EDE_Init,,"= E1 file0001:1EDE:5247, identical. E1: unit init part (6th in chain)",CONFIRMED,M1-09
 1FEB:0000,func,Msn_DrawTickerGlyph,"void near(X, Y: Integer; Ch: Char; Colour: Byte)","= E1 file0001:2404:0000, identical. E1: opaque small-font glyph for mission messages (copy of the text.md glyph routine; 6 drawn from g)",LIKELY,M1-09
 1FEB:030A,func,Msn_PostTicker,"void near(X, Y: Integer; S: String; Colour: Byte)","= E1 file0001:2404:030A, identical. E1: draws a mission message into the ticker strip (always 0, 735); callers then set g_TickerPos := 1",CONFIRMED,M1-09
 1FEB:05DC,func,Msn_ExitAt,"void near(Slot, X, Y: Byte)","= E1 file0001:2404:05DC, identical. E1: class(Slot) := FFh when the ship stands on tile (X, Y)",CONFIRMED,M1-09
 1FEB:0616,func,Msn_NearLive,"Boolean near(A, B, Range: Byte)","= E1 file0001:2404:06EE, changed (similarity 0.93). E1: tiles of A and B (0 = view tile) closer than Range on both axes, both live",LIKELY,M1-09
-1FEB:0A7F,func,Msn_UpdateA,,"= E1 file0001:2404:1426, changed (similarity 0.23). E1: per tick (step 8): mission rules of flights 1..9 (base test, exits, engagement, phase script); mission-logic.md 5",HYPOTHESIS,M1-09
-1FEB:19AD,func,Msn_UpdateB,,"= E1 file0001:2404:3521, changed (similarity 0.14). E1: per tick (step 9): mission rules of flights 10..20; mission-logic.md 5",LIKELY,M1-09
+1FEB:0A7F,func,Msn_UpdateA,,"= E1 file0001:2404:1426, changed (similarity 0.23). E3 (RE-10): flights 1..9 (sim/e3-mission-logic 5.1-5.9). E1: per tick (step 8): mission rules of flights 1..9 (base test, exits, engagement, phase script); mission-logic.md 5",HYPOTHESIS,M1-09
+1FEB:19AD,func,Msn_UpdateB,,"= E1 file0001:2404:3521, changed (similarity 0.14). E3 (RE-10): flights 10, 11, 21, 12..19 (sim/e3-mission-logic 5.10-5.21). E1: per tick (step 9): mission rules of flights 10..20; mission-logic.md 5",LIKELY,M1-09
 2215:0C35,func,Unit2A15_Init,,"= E1 file0001:2A15:220F, identical. E1: unit init part (4th in chain)",CONFIRMED,M1-09
 22DA:0000,func,WORX_CallDriver,,"= E1 file0001:2C37:0000, identical. E1: Pascal-side WORX entry: loads registers from DS:3950.. and issues INT 63h",LIKELY,M1-09
 22DA:0055,func,WORX_Shutdown,,"= E1 file0001:2C37:0055, identical. E1: removes the INT 08h/63h hooks (stop VOC and music, PIT 18.2 Hz)",LIKELY,M1-09
@@ -147,7 +148,7 @@ address,kind,name,signature,comment,confidence,source_task
 22DA:5E47,func,WORX_DspWrite,,"= E1 file0001:2C37:5E47, identical. E1: AL to the DSP write port (waits for ready)",CONFIRMED,M1-09
 22DA:62D5,func,WORX_FnPlayVoc,,"= E1 file0001:2C37:62D5, identical. E1: fn 06h handler: stop current; parse VOC blocks from memory",CONFIRMED,M1-09
 2935:0000,func,AI_ResetShipRecords,void far(void),"= E1 file0001:3292:0000, identical. E1: flight setup (0E8B:B8BA): calls AI_ClearShipRecords",CONFIRMED,M1-09
-2935:0011,func,AI_UpdateShips,void far(Flight: Byte),"= E1 file0001:3292:0011, changed (similarity 0.98). E1: per tick (tick-order step 10): shield regen and removal; per live slot: waypoint arrival -> AI_ChooseWaypoint; turn; thrust toward the waypoi...",LIKELY,M1-09
+2935:0011,func,AI_UpdateShips,void far(Flight: Byte),"Byte-identical to td2:2D26:0011 apart from relocations and DGROUP -4 (RE-10). = E1 file0001:3292:0011, changed (similarity 0.98). E1: per tick (tick-order step 10): shield regen and removal; per live slot: waypoint arrival -> AI_ChooseWaypoint; turn; thrust toward the waypoi...",LIKELY,M1-09
 2B72:0000,func,AI_ClearShipRecords,void far(void),"= E1 file0001:34E6:0000, identical. E1: clears the AI fields of the 20 ship records and path steps 1..255; record +419h := (Random(2) = 1) per slot 1..20 (detour hand); unit init and flight start",CONFIRMED,M1-09
 2B72:02AD,func,AI_BlockSolid,Boolean near(Slot: Byte; X: Byte; Y: Byte),"= E1 file0001:34E6:02AD, identical. E1: true if any of the map cells (X..X+1, Y..Y+1) has tile attribute != 2; Slot unused",CONFIRMED,M1-09
 2B72:0396,func,AI_TargetPosition,void near(Slot: Byte),"= E1 file0001:34E6:0396, identical. E1: record +420h/+421h := position selected by +41Fh (0 player tile, FFh return point +426h, C8h fixed point +424h, n = waypoint of slot n)",CONFIRMED,M1-09
@@ -415,6 +416,10 @@ address,kind,name,signature,comment,confidence,source_task
 32C5:1E8C,data,g_JoyY,i8,"= E1 file0001:3C43:1F68, DS offset by refs 28/28. E1: joystick Y: 1 up; -1 down",LIKELY,M1-09
 32C5:1E8D,data,g_JoyButton2,u8,"= E1 file0001:3C43:1F69, DS offset by refs 12/12. E1: second joystick button",LIKELY,M1-09
 32C5:1E8E,data,g_JoyButton1,u8,"= E1 file0001:3C43:1F6A, DS offset by refs 13/13. E1: first joystick button (fire)",LIKELY,M1-09
+32C5:1E98,data,g_TgtInfoFlag,u8[32],"F5 target-information flag per entry (0 player, 1..20 slots, 21 and 22 fixed points); DS:1EAD = entry 21, set at flight-18 tick 2160 (U-202 resolved; sim/e3-mission-logic 4.9)",CONFIRMED,M10-02
+32C5:1EB8,data,g_TgtInfoX,u8[32],"F5 target-information map X per entry",CONFIRMED,M10-02
+32C5:1ED8,data,g_TgtInfoY,u8[32],"F5 target-information map Y per entry",CONFIRMED,M10-02
+32C5:1EF8,data,g_TgtInfoLines,u8[4960],"F5 target-information text: entry e (0..31), line l (0..4) at DS:1EF8 + 155e + 31l, string[30] each",CONFIRMED,M10-02
 32C5:31C0,data,g_CommIncoming,u8,"= E1 file0001:3C43:329C, DS offset by refs 11/15. E1: an incoming transmission is waiting (set by mission logic; cleared by the comm viewer)",HYPOTHESIS,M1-09
 32C5:31C1,data,g_MsnEventCount,u8,"= E1 file0001:3C43:329D, DS offset by refs 1/1. E1: flight 17 base hits then destruction counter; flight 20 lander hits",LIKELY,M1-09
 32C5:31C2,data,g_MissionSucceeded,u8,"= E1 file0001:3C43:329E, DS offset by refs 11/12. E1: ends the flight normally",LIKELY,M1-09
@@ -427,6 +432,7 @@ address,kind,name,signature,comment,confidence,source_task
 32C5:31DE,data,g_MissionPhase,u8,"= E1 file0001:3C43:32BA, DS offset by refs 37/51. E1: mission-script phase: 1 at start, 100 = objectives done",HYPOTHESIS,M1-09
 32C5:31E0,data,g_TickerPos,u16,"= E1 file0001:3C43:32BC, DS offset by refs 30/35. E1: HUD ticker scroll position 1..78 (0 = idle); edge alerts are only raised while it is 0",HYPOTHESIS,M1-09
 32C5:31E2,data,g_MsnI,u16,"= E1 file0001:3C43:32BE, DS offset by refs 51/51. E1: loop counter of the mission rules",CONFIRMED,M1-09
+32C5:31E4,data,g_MsnJ,u16,"inner loop counter of the mission rules (flights 4, 6, 7); = E2 DS:31E8",CONFIRMED,M10-02
 32C5:386A,data,g_MusicSize,u16,"= E1 file0001:3C43:3946, DS offset by refs 8/9. E1: size of the loaded song (WORX_LoadMusic)",HYPOTHESIS,M1-09
 32C5:386C,data,g_SfxLoadSize,u16,"= E1 file0001:3C43:3948, DS offset by refs 2/2. E1: size of the last VOC loaded (WORX_LoadSfx)",CONFIRMED,M1-09
 32C5:3874,data,g_WorxParamAL,u8,"= E1 file0001:3C43:3950, DS offset by refs 1/1. E1: WORX_CallDriver inputs: AL (3950), BX (3952), DX (3954), DI (3956)",LIKELY,M1-09
@@ -454,7 +460,7 @@ address,kind,name,signature,comment,confidence,source_task
 32C5:395E,data,g_ViewSubX,i16,"= E1 file0001:3C43:3A3A, DS offset by refs 100/100. E1: view pixel offset in tile (10h..30h)",CONFIRMED,M1-09
 32C5:3960,data,g_ViewSubY,i16,"= E1 file0001:3C43:3A3C, DS offset by refs 96/96. E1: view pixel offset in tile (10h..30h)",CONFIRMED,M1-09
 32C5:3962,data,g_SlotUnused3A3E,u8[20],"= E1 file0001:3C43:3A3E, DS offset by refs 1/1. E1: set to 1 for slots 1..20 at flight setup; no reader found",LIKELY,M1-09
-32C5:399E,data,g_SlotClass,u8[20],"= E1 file0001:3C43:3A7A, DS offset by refs 13/16. E1: slot class code (file bytes 40..59; FFh empty)",HYPOTHESIS,M1-09
+32C5:399E,data,g_SlotClass,u8[20],"Element of slot s at DS:399D + s (DS:399E = slot 1; listing annotations are 0-based). = E1 file0001:3C43:3A7A, DS offset by refs 13/16. E1: slot class code (file bytes 40..59; FFh empty)",CONFIRMED,M10-02
 32C5:39C6,data,g_SlotHeading,u8[20],"= E1 file0001:3C43:3AA2, DS offset by refs 1/1. E1: slot heading (keypad code); 6 at setup",LIKELY,M1-09
 32C5:39DA,data,g_SlotTargetHeading,u8[20],"= E1 file0001:3C43:3AB6, DS offset by refs 1/1. E1: heading the ship turns toward (one ring step per tick)",LIKELY,M1-09
 32C5:39EE,data,g_SlotSubX,i16[20],"= E1 file0001:3C43:3ACA, DS offset by refs 5/5. E1: slot pixel offset X (16 at setup)",CONFIRMED,M1-09
