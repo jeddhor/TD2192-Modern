@@ -129,6 +129,26 @@ fn last_text_entry(episode: Episode) -> u8 {
     if episode == Episode::E1 { 253 } else { 254 }
 }
 
+/// First text entry of a scene: 250 in E1, 240 (F0h) in E2 and E3 (dialogue-player rev 2
+/// §3.4; episode-deltas rev 2 §9.3).
+fn first_text_entry(episode: Episode) -> u8 {
+    if episode == Episode::E1 {
+        FIRST_TEXT_ENTRY
+    } else {
+        TEXT_ENTRY_WRAP
+    }
+}
+
+/// Last row of the scrolling text area: 189 in E1; 199 in E2 and E3, whose `Dlg_ShowLine`
+/// passes 64h rows instead of 5Ah (episode-deltas rev 2 §9.3, Appendix A).
+fn last_text_row(episode: Episode) -> usize {
+    if episode == Episode::E1 {
+        dialogue::TEXT_ROWS.1
+    } else {
+        199
+    }
+}
+
 /// Parses a developer scene spec: `ID` (episode 1, original script), `eN:ID` or
 /// `eN-safe:ID` (edited script).
 pub fn parse_scene_spec(spec: &str) -> Result<(Episode, ScriptChoice, u8), DialogueError> {
@@ -296,7 +316,7 @@ impl DialogueScene {
             lit: false,
             speaker_color: [0; 2],
             entry_of: [None; 256],
-            next_entry: FIRST_TEXT_ENTRY,
+            next_entry: first_text_entry(episode),
             wait: 0,
             keys: VecDeque::new(),
             skip: false,
@@ -347,7 +367,7 @@ impl DialogueScene {
                         continue;
                     }
                     // §4.5 step 5.
-                    dialogue::scroll_text_area(&mut self.screen);
+                    dialogue::scroll_text_rows(&mut self.screen, last_text_row(self.episode));
                     self.state = State::Run;
                 }
                 State::Fading(f) => {
@@ -678,21 +698,23 @@ mod tests {
     #[test]
     fn episodes_2_and_3_use_254_and_the_line_s_own_colour() {
         let mut lines: Vec<&[u8]> = vec![b"\x06\x05"];
-        let speakers: Vec<Vec<u8>> = (0..6u8)
+        let speakers: Vec<Vec<u8>> = (0..16u8)
             .map(|i| vec![1, 1 + (i % 2), 200, 10 + i])
             .collect();
         lines.extend(speakers.iter().map(Vec::as_slice));
-        // Colour 12 belonged to an earlier left speaker; slot 1 is now colour 14.
+        // Colour 12 belonged to an earlier left speaker; slot 1 is now colour 25.
         lines.extend([&b"\x03"[..], &b"\x02\x01\x0cx"[..], &b"\x04"[..], &b"d"[..]]);
         for episode in [Episode::E2, Episode::E3] {
             let mut s = DialogueScene::new(assets(script(&lines)), episode, 5);
             run_until(&mut s, |s| s.lit);
-            for (i, e) in [250, 251, 252, 253, 254, 240].into_iter().enumerate() {
+            // Rev 2 §3.4: 240 first, then 241..254, wrapping to 240.
+            let expected = (240..=254).chain([240]);
+            for (i, e) in expected.enumerate() {
                 assert_eq!(s.entry_of[10 + i], Some(e), "{episode}");
             }
             assert_eq!(
                 s.screen().get(5, 176),
-                Some(252),
+                Some(242),
                 "{episode}: entry of colour 12"
             );
         }

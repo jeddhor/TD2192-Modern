@@ -153,7 +153,13 @@ pub fn draw_name(fb: &mut Framebuffer, font: &Font, side: Side, name: &str, ink:
 /// Scrolls the text area up one line: 7 times, rows 102..189 are copied one row up, so row 189
 /// is duplicated and row 100 never changes (§4.5 step 5).
 pub fn scroll_text_area(fb: &mut Framebuffer) {
-    let (top, bottom) = TEXT_ROWS;
+    scroll_text_rows(fb, TEXT_ROWS.1);
+}
+
+/// As [`scroll_text_area`] with the area ending at row `bottom` (E2 and E3: 199,
+/// episode-deltas rev 2 §9.3).
+pub fn scroll_text_rows(fb: &mut Framebuffer, bottom: usize) {
+    let top = TEXT_ROWS.0;
     for _ in 0..LINE_PITCH {
         fb.pixels
             .copy_within((top + 1) * WIDTH..(bottom + 1) * WIDTH, top * WIDTH);

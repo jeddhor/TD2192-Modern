@@ -4,6 +4,9 @@
 //! Spec: `docs/spec/audio/music-cues.md` rev 1 (§3.1 table, §4.1 `Snd_PlayMusic`, §4.2 flight and
 //! death cues). Fidelity: T1 for which song plays when. The campaign sequence (§4.3) is the flow's
 //! business; this module only knows the cue numbers.
+//!
+//! Episode 2 (`td2.exe`) has its own index table (`docs/spec/flow/e2-program-flow.md` rev 1
+//! §3.1): [`CueTable::E2`].
 
 use std::sync::Arc;
 
@@ -70,6 +73,57 @@ pub fn cue_loops(n: u8) -> bool {
     n != DEATH
 }
 
+/// E2 cue of `td03.cmf` (e2-program-flow §3.1; the E1 index [`TD03`] = 14 loads nothing in E2).
+pub const E2_TD03: u8 = 45;
+/// E2 cue of `intro.cmf` (menu items 6 and 7, e2-program-flow §3.1).
+pub const E2_INTRO: u8 = 69;
+
+/// Which program's `Snd_PlayMusic` index table the cues follow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CueTable {
+    /// `file0001.exe` (music-cues §3.1).
+    #[default]
+    E1,
+    /// `td2.exe` (e2-program-flow §3.1): 1..=13 as E1, 45 = `td03`, 69 = `intro.cmf`; 14 and
+    /// every other index load nothing.
+    E2,
+}
+
+impl CueTable {
+    /// The song file of cue `n`, if `n` is in the table.
+    pub fn song_file(self, n: u8) -> Option<&'static str> {
+        match self {
+            CueTable::E1 => song_file(n),
+            CueTable::E2 => match n {
+                1..=13 => song_file(n),
+                E2_TD03 => Some("td03.cmf"),
+                E2_INTRO => Some("intro.cmf"),
+                _ => None,
+            },
+        }
+    }
+
+    /// The flight song of flight `flight` (E1: music-cues §4.2; E2: e2-program-flow §3.1, mod 3
+    /// = 1 → 1, = 2 → 45, = 0 → 2, the same songs as E1).
+    pub fn flight_cue(self, flight: u8) -> u8 {
+        match (self, flight_cue(flight)) {
+            (CueTable::E2, TD03) => E2_TD03,
+            (_, n) => n,
+        }
+    }
+
+    /// Whether cue `n` starts with the loop flag set. E1 switches looping off only around
+    /// `death`, which [`cue_loops`] folds into the cue. E2 plays `death` looping in the block-20
+    /// end sequence (e2-program-flow §4.4 notes) and switches looping off explicitly in its
+    /// endings ([`MusicCues::set_loop`]), so every E2 cue starts with the flag on.
+    pub fn cue_loops(self, n: u8) -> bool {
+        match self {
+            CueTable::E1 => cue_loops(n),
+            CueTable::E2 => true,
+        }
+    }
+}
+
 /// When a cue for the song that is already playing restarts it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CueRestart {
@@ -83,15 +137,28 @@ pub enum CueRestart {
 #[derive(Debug, Clone)]
 pub struct MusicCues {
     restart: CueRestart,
+    table: CueTable,
     current: Option<u8>,
 }
 
 impl MusicCues {
+    /// Episode 1 cues.
     pub fn new(restart: CueRestart) -> Self {
+        Self::with_table(restart, CueTable::E1)
+    }
+
+    /// Cues of the program whose index table is `table`.
+    pub fn with_table(restart: CueRestart, table: CueTable) -> Self {
         Self {
             restart,
+            table,
             current: None,
         }
+    }
+
+    /// The index table in use.
+    pub fn table(&self) -> CueTable {
+        self.table
     }
 
     /// The cue last started, until [`Self::stop`].
@@ -115,16 +182,14 @@ impl MusicCues {
         load: impl FnOnce(&'static str) -> Option<Arc<Cmf>>,
         out: &mut Vec<AudioCommand>,
     ) -> bool {
-        if self.restart == CueRestart::IfDifferent && self.current == Some(n) && cue_loops(n) {
+        let looping = self.table.cue_loops(n);
+        if self.restart == CueRestart::IfDifferent && self.current == Some(n) && looping {
             return false;
         }
-        let Some(song) = song_file(n).and_then(load) else {
+        let Some(song) = self.table.song_file(n).and_then(load) else {
             return false;
         };
-        out.push(AudioCommand::PlayMusic {
-            song,
-            looping: cue_loops(n),
-        });
+        out.push(AudioCommand::PlayMusic { song, looping });
         self.current = Some(n);
         true
     }
@@ -136,7 +201,7 @@ impl MusicCues {
         load: impl FnOnce(&'static str) -> Option<Arc<Cmf>>,
         out: &mut Vec<AudioCommand>,
     ) -> bool {
-        self.play_cue(flight_cue(mission), load, out)
+        self.play_cue(self.table.flight_cue(mission), load, out)
     }
 
     /// Music stopped with no new song (flight start and end, the title card before mission 13).
@@ -235,6 +300,26 @@ mod tests {
         c.stop(&mut out);
         assert!(c.play_cue(DEATH, |_| Some(dummy()), &mut out));
         assert!(matches!(out[3], AudioCommand::StopMusic));
+    }
+
+    #[test]
+    fn episode_2_table() {
+        // e2-program-flow §6 vectors 1 and 2.
+        let t = CueTable::E2;
+        assert_eq!(t.song_file(E2_TD03), Some("td03.cmf"));
+        assert_eq!(t.song_file(E2_INTRO), Some("intro.cmf"));
+        assert_eq!(t.song_file(MOOD2), Some("mood2.cmf"));
+        assert_eq!(t.song_file(TD03), None, "14 loads nothing in E2");
+        let songs: Vec<_> = [1, 2, 3, 20]
+            .iter()
+            .map(|&f| t.song_file(t.flight_cue(f)).unwrap())
+            .collect();
+        assert_eq!(songs, ["td01.cmf", "td03.cmf", "td02.cmf", "td03.cmf"]);
+        let mut c = MusicCues::with_table(CueRestart::Always, t);
+        let mut out = Vec::new();
+        assert!(c.play_cue(DEATH, |_| Some(dummy()), &mut out));
+        assert_eq!(requested(&out), [true], "E2 death starts looping");
+        assert_eq!(CueTable::E1.song_file(E2_INTRO), None);
     }
 
     #[test]
