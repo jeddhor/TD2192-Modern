@@ -26,6 +26,7 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | Address | Type | Our name | Meaning | Conf. |
 |---|---|---|---|---|
 | DS:0502 | u16 | `g_SoundCard` | WORX card detection result (FFFFh = none; set to FFFFh when `g_NoSoundDriver`) | LIKELY |
+| DS:0504 | string[255] | `g_MemAvailText` | `Str(MemAvail)` at every main-menu load (drawn in ink 0, invisible); `203352` on the reference machine; only its length byte and digits are ever written (two-digit muzzle reads, [weapons §3.3](../spec/sim/weapons.md)) | CONFIRMED |
 | DS:060A..060C | u8 × 3 | `g_CfgEdit` | Working copies of music / SFX / controller on the configuration screen | LIKELY |
 | DS:060D | u8 | `g_CfgCursor` | Configuration screen cursor (1..4) | LIKELY |
 | DS:060E | u8 | `g_MenuExitItem` | Menu item that ended the menu | HYPOTHESIS |
@@ -45,6 +46,13 @@ Our names for the game's global variables in DGROUP (`file0001:3C43`, addressed 
 | DS:0D28 | u8 | `g_ScriptChoice` | 1 = `dialogue.dat`, 2 = `safedial.dat` | CONFIRMED |
 | DS:0D29 | u8 | `g_MissionNumber` | 0 = no game, 1..20 next mission (saved, and in `tdstatus.dat`) | CONFIRMED |
 | DS:0D2A | i16 | `g_KillsToDate` | Kills before the current mission | CONFIRMED |
+| DS:0D2E | u8[768] | `g_Palette` | Scene palette of the front-end screens and the dialogue player; kept across screens and flights (never reset), read by two-digit muzzle offsets on headings 4Ah, 4Eh, 60h ([weapons §3.3](../spec/sim/weapons.md)) | CONFIRMED |
+| DS:102E | u8 | `g_ScreenLit` | 1 after a scene fade-in, 0 after a scene fade-out | CONFIRMED |
+| DS:1032 | farptr | `g_FontTitle` | Title-font block, allocated by every text card (`051A:5852`) and the script choice; offset 0008h, segment DGROUP + 192Bh on the reference machine | CONFIRMED |
+| DS:1036 | u8 | `g_DlgLineCode` | Dialogue reader: code byte of the last script line read (64h after a complete scene, 05 after Esc) | CONFIRMED |
+| DS:103A..103C | u8 × 3 | `g_DlgField` | Dialogue reader: fields of the last `01`/`02`/`06` line | CONFIRMED |
+| DS:103E | string[255] | `g_DlgText` | Dialogue reader: name or text of the last `01`/`02` line; longer earlier strings survive past its length | CONFIRMED |
+| DS:113E | TextRec (256) | `g_DlgFile` | Dialogue script file variable (`dialogue.dat` / `safedial.dat`), buffer at DS:11BE | CONFIRMED |
 | DS:12C6 | u8 | `g_CfgMusic` | 1 off, 2 on; 0 = show configuration screen | CONFIRMED |
 | DS:12C7 | u8 | `g_CfgSfx` | 1 off, 2 Sound Blaster, 3 PC speaker (`S` chord toggles 1↔3 in flight) | LIKELY |
 | DS:12C8 | u8 | `g_CfgController` | 1 keyboard, 2 joystick | CONFIRMED |

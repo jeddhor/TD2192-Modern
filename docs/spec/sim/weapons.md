@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/weapons` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
-| **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions) · T2 for the drawing of shots |
-| **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); LIKELY for hits, damage, homing and enemy volleys (static) |
-| **Tasks** | M6-01 (follow-up), feeds M7-02, M7-03, M7-05 |
-| **Unknowns** | U-041 and U-043 (resolved here), U-040 (resolved in mission-ships rev 2), U-061, U-160 |
+| **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions; the two-digit muzzle bytes of §3.3) · T2 for the drawing of shots |
+| **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); CONFIRMED for the two-digit muzzle bytes of §3.3 (every writer read statically; 20 whole flights of VE-2 plus C-0002 and C-0160 reproduced byte for byte); LIKELY for hits, damage, homing and enemy volleys (static) |
+| **Tasks** | M6-01 (follow-up), feeds M7-02, M7-03, M7-05; M9-11, M9-16 |
+| **Unknowns** | U-041 and U-043 (resolved here), U-040 (resolved in mission-ships rev 2), U-061, U-160 and U-391 (resolved here, RE-15), U-440, U-441 |
 
 ## 1. Summary
 
@@ -51,13 +51,13 @@ Damage to a ship by kind k: `(k + 1)² + 4 + 2k` → k = 0: 5, 1: 10, 2: 17, 3: 
 
 The volleys agree with the class chart's armament lines (truck and transport unarmed, four light pulsers for classes 2 and 8, two weapons for 4 and 7), which supports the class names in structures §6.
 
-Muzzle offsets (dx, dy) per heading h and muzzle m are signed bytes at DS:035C + 34h + 2m (h = 1..9; heading 5 is unused). For example heading 8, muzzles 6 and 7: (7, 11) and (22, 11); heading 6, muzzles 1, 2, 4, 5: (16, 25), (16, 9), (31, 19), (31, 15). Two-digit headings index beyond the table: mission ships do fire on them (their volley uses the ship's current heading), reading other globals ([mission-ships §4.4.2](mission-ships.md), OB-017, U-160).
+Muzzle offsets (dx, dy) per heading h and muzzle m are signed bytes at DS:035C + 34h + 2m (h = 1..9; heading 5 is unused). For example heading 8, muzzles 6 and 7: (7, 11) and (22, 11); heading 6, muzzles 1, 2, 4, 5: (16, 25), (16, 9), (31, 19), (31, 15). The address is computed for every heading the volley has: 34 × heading in 16 bits, plus 2m, plus 035Ch for dx and 035Dh for dy, each byte sign-extended. Two-digit headings therefore read other globals far past the table. Both the player and the mission ships fire on them (a volley uses the shooter's current heading, and a turning ship passes through the two-digit headings). §3.3 gives the exact bytes (OB-017, U-160).
 
 ### 3.2 Player weapons per class (set at flight start, `0E8B:C751..C86C`)
 
 | Class | Primary weapon | Missile weapon (Tab) | Missiles at start |
 |---:|---:|---:|---:|
-| 0, 1 | (unchanged from the previous flight) | none | 0 |
+| 0, 1 | (unchanged: see below) | none | 0 |
 | 2 | 1 | 4 (kind 4) | 6 |
 | 3 | 1 | 5 (kind 5) | 20 |
 | 4 | 2 | 4 (kind 4) | 4 |
@@ -67,6 +67,62 @@ Muzzle offsets (dx, dy) per heading h and muzzle m are signed bytes at DS:035C +
 | 8 | 1 | 1 (same as primary) | 0 |
 
 Weapons 1..3 mean "fire the class volley" (the weapon number only selects the HUD icon from `td.wea`); weapons 4..6 fire one missile of kind 4, 5 or 6.
+
+**`g_Weapon` across flights (U-391, RE-15).** `g_Weapon` is an uninitialised global, so it is **0 at program start**. It has exactly two kinds of writers, both inside `Sim_FlyMission`: the flight setup above (`0E8B:C751..C7AA`, classes 2..8 only) and the Tab handler of §4.1 (`0E8B:F535..F645`, classes 2..8 only). Nothing else writes it: not the front end, not a save or restore, not `tdstatus.dat`, not the flight-19 vehicle switch (`0E8B:A185`, which sets the class to 8 and leaves the weapon alone). So for classes 0 and 1 the weapon is the value the previous flight **of the same program run** left, whatever that flight was:
+
+- the flight before it in the campaign. In E1 the only class-0/1 player flight is 19, so normally that is flight 18 (class 2): weapon 1, or 4 if the player ended flight 18 with the missiles selected and missiles left;
+- a retry of the same flight: the value that flight left (flight 19 never writes it, so it stays);
+- **0** if no flight has been flown since the program started. This covers a direct start (C-0069), a saved game restored at mission 19 as the first flight, and a run started again by the launcher after "ordering info" or "about" (`td1.exe` runs the episode again: a new program).
+
+The port's `Session` must carry `weapon: u8`, set to 0 when the program starts and copied back from the flight state at the end of every flight, whatever its outcome (success, death, abort or flight 21). td-sim's start value of 1 is BUG-2. What the weapon does with class 0 or 1: Space fires nothing (no shot-table entry, no missiles); with weapon > 3 the Tab rule of §4.1 clears the Tab byte every tick; after the flight-19 switch to class 8 the carried weapon stays in force (0 fires the class-8 volley, like 1–3). The HUD icon for weapon 0 reads before the icon block ([hud](../render/hud.md) §4.9, OB-090).
+
+### 3.3 Muzzle bytes on two-digit headings (U-160, OB-017)
+
+**Rule.** For a volley on heading h, the offsets of muzzle m are the signed bytes at DS:(035Ch + 34h + 2m) and DS:(035Dh + 34h + 2m) of the program's DGROUP at the moment of the volley (§3.1). For h = 1..9 that is the muzzle table. For the eight two-digit headings it is the following globals of E1 (m = 1..17 reads the 34 bytes from the first address, dx at even offsets from it, dy at odd):
+
+| Heading | Bytes read | What is there (E1 `file0001`) | Value during a flight |
+|---|---|---|---|
+| 0Ch | DS:04F6..0517 | 04F6..0501: System typed constants `SegA000`, `SegB000`, `SegB800` (words A000h, B000h, B800h), `Test8086`, `Test8087`, `FileMode`, a padding byte, `k_CrLf` (0Dh 0Ah). 0502: `g_SbIrq` (word). 0504..: `g_MemAvailText` (`string[255]`, length byte then text) | constants; `g_SbIrq` and `g_MemAvailText` from start-up and the last main-menu load (below) |
+| 0Eh | DS:053A..055B | `g_MemAvailText` characters 54..87 | always 0 |
+| 20h | DS:079E..07BF | `g_File` (FileRec at DS:075A), name bytes 20..53 | always 0 |
+| 24h | DS:0826..0847 | `g_MenuPalette` bytes 70..103 | bytes 70..103 of `tdmen.pal` |
+| 4Ah | DS:0D32..0D53 | `g_Palette` (the scene palette, DS:0D2E) bytes 4..37 | scene palette (below) |
+| 4Eh | DS:0DBA..0DDB | `g_Palette` bytes 140..173 | scene palette |
+| 60h | DS:101E..103F | `g_Palette` bytes 752..767 (m = 1..8); `g_ScreenLit` DS:102E and DS:102F..1031 (m = 9, 10); `g_FontTitle` DS:1032..1035 (m = 11, 12); the dialogue reader's code byte DS:1036, DS:1037..1039, its field bytes DS:103A..103C, DS:103D, and the first two bytes of its text buffer DS:103E (m = 13..17) | scene palette, front-end state (below) |
+| 62h | DS:1062..1083 | the dialogue reader's text buffer `g_DlgText` (DS:103E, `string[255]`), characters 36..69 | front-end state (below) |
+
+**None of these bytes is written while a flight runs.** No routine of the flight unit `0E8B`, the mission units `2404`/`3292`/`34E6`, the transmission loaders `2A15` or the sound unit writes them, and the flight unit calls nothing in the front-end units `0000` and `051A` (static, the full xref of every operand in these ranges). VE-2's 20 E1 flights (C-0051..C-0069, C-0090: 17,563 ticks, every transmission screen, the flight-17 cut-scene, the flight-19 V.C.I. screen) keep all 272 bytes constant from tick 1 to the end. So the port computes them once, before the flight starts, from the state described below, and hands them to td-sim with the muzzle table (td-sim already takes the 3,402 DGROUP bytes from DS:035C as its muzzle world, `--alt-muzzles`).
+
+**Where each value comes from.** Everything is set by the program start or by the front end before the flight.
+
+1. **Machine and runtime constants.** `SegA000`/`SegB000`/`SegB800` are the Borland runtime's fixed segment constants. `Test8086` is 2 on any 386 or later (written once by the runtime's CPU test). `Test8087` keeps its initial 0 and `FileMode` its initial 2: no code writes either. The padding byte DS:04FF is 0. `g_SbIrq` is set once at start-up by the WORX Sound Blaster probe: the IRQ number (7 on the reference preset P1, SB16 at IRQ 7), or FFFFh with no card, `/nosound` or `/pc`. **Port: 7** (the reference machine, as OB-013 does for the IVT bytes).
+2. **`g_MemAvailText`** is `Str(MemAvail)`, written each time the main menu is loaded (`UI_LoadMainMenu` `0000:2E88`; it is drawn in ink 0, so nobody sees it). On the reference machine it is `203352` (6 digits) after a direct start (C-0051..C-0090) and after a start through `td1.exe` (C-0002): the MZ header limits the memory the program takes beyond its image to 4A80h paragraphs, which both layouts can give in full, so the value does not depend on where DOS loads the program. Only the length byte and up to 6 digits are ever written; every byte after them stays 0. **Port: the length 6 and the six digits `203352`**, the rest 0. Only classes 3 and 6 read the digits (muzzles 8..11 on heading 0Ch); whether the value stays the same later in a long campaign is U-440.
+3. **`g_File.Name`**: every name ever assigned to it (`td.men`, `tdmen.pal`, `tdstatus.dat`, `td.cfg`, `dialogue.dat`) is at most 12 characters long, so name bytes 20..53 are never written: 0.
+4. **`g_MenuPalette`** is loaded from `tdmen.pal` by every main-menu load. The menu changes only entries 224..233 (the item highlights); the help screen saves and restores the whole buffer. A flight is always preceded by the main menu, so bytes 70..103 are `tdmen.pal` bytes 70..103.
+5. **The scene palette `g_Palette`** (768 bytes, 0 at program start) is the palette buffer of the front-end screens: every scene card, still, hint screen, briefing, dossier, debrief, retry prompt and save or restore screen reads its 768-byte palette into it, the screens then change entries in it as their specs say (single entries: [text](../render/text.md) §4.5 "entry n = (r, g, b)" and [screens](../flow/screens.md); the story-so-far pages scale entries 0..250 by 6 div 9, [screens](../flow/screens.md) §3.8), and the dialogue player overwrites entries 0..111 and 112..223 with the two portraits, the speakers' text entries from 250 on, and entry 254 for the scene-1 prompt ([dialogue-player](../narrative/dialogue-player.md) §4.4, §4.6). The script-choice screen and the missing-dialogue notice clear it and set entry 1 to (10, 10, 10) and three other entries. Nothing resets it between screens or between flights, and the flight uses its own palette (`g_FlightPalette` DS:13E6), so the flight reads **whatever the last front-end screen before it left**. Neither the hit flash nor the infra-red modes nor the in-flight screens touch it. In-place writes that fall inside the three ranges read (bytes 4..37, 140..173, 752..767), besides the palette loads and the dialogue player: entry 1 (script choice, missing-dialogue notice), entry 12 (`velsroom` card, bytes 36..37), entries 0..250 (story so far: × 6 div 9), entry 250 (auditorium card, byte 752), entry 254 (story so far: bytes 763..764 := 63), entry 255 (`marauder`, `helihang`, `eggbase` cards, the `td1-13`/`td1-14` stills). After a direct start through `tdstatus.dat` with Esc at the mission card no screen has loaded it, so the three ranges are all 0 (C-0051..C-0090).
+6. **`g_ScreenLit`** (1 after a scene fade-in, 0 after a scene fade-out) is 0 at the start of every flight observed (every pre-flight sequence ends with a fade-out; C-0002, C-0051..C-0090, C-0160). DS:102F..1031 and DS:1037..1039 and DS:103D are never written: 0.
+7. **`g_FontTitle`** is the far pointer to the title-font block (`td-let.cin`), allocated anew by every text card (`Flow_TextCard` `051A:5852`; every mission block starts with one, the mission title) and by the script choice; freeing it leaves the pointer as it was. Its offset word is 0008h. Its segment word is the heap address of the block, which depends on where DOS loaded the program: on the reference machine it is DGROUP + 192Bh, that is **6916h** when the game is started through `td1.exe` (C-0002; DGROUP 4FEBh) and **5D92h** when `FILE0001.EXE` is started directly (C-0051..C-0090, C-0160; DGROUP 4467h). **Port: 6916h for a game played through the launcher flow, 5D92h for a direct start** (the oracle captures). Only class 6 (muzzle 11: offset (8, 0)) and class 7 (muzzle 12: the segment bytes) read it, on heading 60h.
+8. **The dialogue reader** (`Dlg_PlayScene` `051A:92AF`) keeps its line state in DGROUP: DS:1036 = the code byte of the last line it read (during the search for the scene it holds the first byte of each line read and then the scene number; inside the scene the line codes of [dialogue-player](../narrative/dialogue-player.md) §3.1; an empty line reads as 13); DS:103A..103C = the fields of the last `01`, `02` or `06` line as stored (`01`: slot, face after the remap of §3.3 there, then DS:103C := the text entry allocated; `02`: the ignored byte, the colour; `06` inside a scene: its id at DS:103A); DS:103E = `g_DlgText`, the name of the last `01` line or the text of the last `02` line, read as `string[255]` (length byte, then the characters; a longer earlier string survives after the end of a shorter one). At the end of a scene played to its `d` line DS:1036 = 64h ('d'); when Esc ends a scene at a `05` wait it is 05h and the lines after that wait are never read. The flight reads this state as the last dialogue scene of the program run left it; 0 everywhere if no dialogue scene has been played (a direct start).
+
+**Which shooters read what.** Only muzzles with a shot-table entry fire (§3.1). E1 player classes 2, 3, 4, 8 (and 0 in flight 19, which has none); E1 mission ships of classes 2..8.
+
+| Class (muzzles) | 0Ch | 0Eh, 20h | 24h | 4Ah, 4Eh | 60h | 62h |
+|---|---|---|---|---|---|---|
+| 2 (1, 2, 4, 5) | (0, −96), (0, −80), (2, 0), (2, 0) | (0, 0) | `tdmen.pal` | scene palette | scene palette | text |
+| 3 (8, 9) | (6, 50), (48, 51): length and digits of `g_MemAvailText` | (0, 0) | `tdmen.pal` | scene palette | scene palette; `g_ScreenLit`, 0 | text |
+| 4 (6, 7) | (13, 10), (`g_SbIrq` low, high) = (7, 0) | (0, 0) | `tdmen.pal` | scene palette | scene palette | text |
+| 5 (3) | (0, −72) | (0, 0) | `tdmen.pal` | scene palette | scene palette | text |
+| 6 (10, 11) | (51, 53), (50, 0): digits | (0, 0) | `tdmen.pal` | scene palette | 0; (8, 0) | text |
+| 7 (12, 13) | (0, 0), (0, 0) | (0, 0) | `tdmen.pal` | scene palette | (`g_FontTitle` segment low, high), (DS:1036, 0) | text |
+| 8 (14..17) | (0, 0) × 4 | (0, 0) | `tdmen.pal` | scene palette | (0, 0), (DS:103A, DS:103B), (DS:103C, 0), (length, first character of `g_DlgText`) | text |
+
+So the four southern and western intermediate headings (0Ch, 0Eh, 20h, 24h) read constants on the reference machine, and the four northern ones (4Ah, 4Eh, 60h, 62h) read the scene palette and the dialogue state that the front end left.
+
+**Test vectors.** (a) Direct start, any E1 flight (C-0051..C-0069, C-0090): all 272 bytes identical in all 20 captures and constant in every tick; 4Ah, 4Eh and 62h all 0; 60h is 0 except DS:1032..1035 = 08 00 92 5D. (b) Start through `td1.exe`, mission 1 played with Space, Space, Esc in dialogue 1 and the hint screen (C-0002): the scene palette is `secret.pic`'s palette with entry 240 := (63, 10, 10) (the hint screen), DS:1032..1035 = 08 00 16 69, and DS:1036..113D equal a model of the reader that plays dialogue 1 from its start and stops at the third `05` wait, byte for byte (DS:1036 = 05h). (c) C-0160 (mission 3 started directly with the story played to the end): see [§6](#6-test-vectors) vector 7. (d) A class-7 volley on heading 60h in a direct start leaves at offsets (−110 + subX − 16, 93 + subY − 16) for muzzle 12; through `td1.exe`, (22 + subX − 16, 105 + subY − 16).
+
+**How much it matters.** A two-digit volley lives for exactly one hit test (§4.3 steps 3–5, then step 8 deletes it), but with these offsets that test happens up to about 4 tiles away from the shooter. In VE-2's 20 replays (17,563 ticks) the player fired 292 shots and the mission ships 230 shots on two-digit headings. With the offsets of policy (0, 0) instead of the original's, VE-2's first plans for flights 2, 3, 6, 8, 15 and 16 took another course, and flights 8, 15 and 16 ended later. With the bytes of the start through `td1.exe` (C-0002) instead of a direct start's, 10 of the 20 replays (flights 1, 4, 5, 8, 9, 10, 11, 16, 17, 18; all planned so that the direct start's bytes and (0, 0) give the same flight) take another course with the same inputs. Example: flight 1, tick 117: the player's volley on heading 62h kills truck 3 at (124, 79) after a direct start and misses after the start through `td1.exe` (`tdtool replay --alt-muzzles`). The bytes therefore change outcomes often, and they differ between a direct start and a campaign.
+
+**Port policy (OB-017): preserve** (proposed; the coordinator or the user decides). The bytes are a deterministic function of three reference-machine constants (`g_SbIrq` 7, `g_MemAvailText` `203352`, the `g_FontTitle` segment 6916h or 5D92h) and of front-end state the port already has to model exactly for its screens: the scene palette, the main-menu palette and the dialogue reader's last line. The port keeps a small "legacy front-end state" in its session for the whole program run (the 768-byte scene palette exactly as the front-end screens and the dialogue player leave it, the lit flag, the reader's code byte, field bytes and 256-byte text buffer, and the launch kind) and builds the 272 bytes from it at every flight start. Two weaker alternatives, if that is judged too costly: (B) a fixed block equal to the direct-start bytes of test vector (a): exact for every direct start and for headings 0Ch, 0Eh, 20h, 24h always, wrong in campaigns on the four northern headings; (C) offset (0, 0) for all two-digit headings: wrong on all eight (10 of 20 replays and 6 of VE-2's first 20 plans would change). E2 and E3 read their own DGROUP from DS:04BA (U-441); this section is E1 only.
 
 ## 4. Behaviour
 
@@ -167,6 +223,8 @@ The tests in steps 3–5 use the positions before this tick's move; a shot can t
 | Destroyed ship sets projectile kind[s] := 1 | Changes the kind of projectile slot s | Preserve (T1) |
 | Homing missile with target 0 reads slot-0 arrays (DS:3B2D/3B41) | Steers toward garbage | Cannot happen (downgraded to kind 0) unless the target dies; then it keeps homing on the dead ship's last tile |
 | Two-digit headings | Shot deleted on its first move | Preserve |
+| OB-017: two-digit headings read past the muzzle table | Offsets from other globals: constants, the scene palette and the dialogue reader's last line (§3.3) | **Preserve** (proposed, §3.3): the port builds the 272 bytes at flight start from its front-end state and three reference-machine constants |
+| `g_Weapon` for classes 0 and 1 | Kept from the previous flight of the program run; 0 at program start (§3.2) | Preserve: the session carries it (BUG-2) |
 | Tile-step movement | Shots jump 32 px per tick | Preserve |
 | Flight 20, owner 1 | Slot 1's shots never hit ships | Preserve (mission rule) |
 
@@ -182,6 +240,8 @@ To be captured (§8). Static examples:
 | 4 | C-0011: class 4, heading 8, view sub (32, 16), Space held from tick 25 | volleys at ticks 26, 28, 30, … (back page 1 only) into slots 48/47 then 46/45; offsets (23, −1) and (38, −1) (muzzles 6, 7: dx 7 and 22); each shot moves one tile up and is freed by the map test two updates later |
 | 5 | C-0011: Tab, then Space taps (weapon 4, 4 missiles) | missile in slot 40 at offsets (30, 4), missiles 4 → 3, cooldown 4, 3, 2, 1, 0; the held Space byte is cleared by the launch |
 | 6 | C-0011: heading 6, Space held | volleys at offsets (36, −3) and (36, 12) (muzzles 6, 7 of heading 6: (20, 9), (20, 24)) |
+| 7 | C-0160: mission 3 started directly, title card, hangar card and dialogue 11 played to its `d` line, then flight 3 | the 272 bytes of §3.3 constant over ticks 1..80; scene palette = `hangar.scr`'s palette with entries 0..111 and 112..223 replaced by the two portraits of dialogue 11 and entries 250, 251 := `td.pal` of the two speaker colours (all 768 bytes match); DS:1036..113D match a model of the reader that plays dialogue 11 to its end (DS:1036 = 64h); DS:1032..1035 = 08 00 92 5D; heading 0Ch, 0Eh, 20h, 24h bytes as in every direct start |
+| 8 | `g_Weapon` at flight 19 started directly (C-0069) | 0 after setup and to the end of the flight, the switch to class 8 included |
 
 ## 7. Presentation and audio hooks
 
@@ -192,6 +252,9 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 - [ ] Q1 (VE): capture a volley, a missile launch and a ship kill in E1M1 (class 4) with per-frame dumps of the projectile arrays (heap; follow the far pointers at DS:396E..398A) and the ship records.
 - [x] Q2: explosion tiles, offsets, slot choice and drawing: [flow/flight-screens](../flow/flight-screens.md) §4.7 (RE-8); shot drawing §4.8. The `06C5` distance formula is in §7.
 - [x] Q3 (U-040): answered in [mission-ships §4.4.2](mission-ships.md): bytes at DS:035C + 34 × heading + 2m (other globals); port policy U-160.
+- [x] Q4 (U-160): the exact bytes and where they come from, §3.3 (RE-15). The policy itself (preserve, proposed) is the coordinator's or the user's to accept.
+- [ ] Q5 (U-440, VE): in a long campaign, do `g_MemAvailText` and the `g_FontTitle` segment stay at their first values (they would change only if the heap were left in another state at a later main-menu load or mission title)? Capture a campaign through at least two flights.
+- [ ] Q6 (U-441, RE): the same mapping for E2 and E3 (muzzle table DS:04BA; the eight ranges are E1's + 15Eh but hold other globals; in E3 heading 62h muzzles 16 and 17 read DS:11DE and DS:11E0, which change during a flight, C-0036).
 
 ## 9. Provenance
 
@@ -203,6 +266,10 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 | Update order and movement | `0E8B:0984..1AxX` | static | LIKELY |
 | Damage formulas | `0E8B:0984` (ships), same routine (player) | static | LIKELY |
 | Enemy volleys | tick-order step 31 | static | LIKELY |
+| Muzzle address 34 × heading + 2m + 035Ch/035Dh, sign-extended, for every heading | `0E8B:F429..F466` (ships), `0E8B:B72B..B756` (player) | static; VE-2 C-0051..C-0090 (with the capture's DGROUP bytes td-sim matches every two-digit volley) | CONFIRMED |
+| Contents and writers of the eight two-digit ranges (§3.3) | `0000:2E88` (menu palette, `g_MemAvailText`), `0000:02AF`, `0000:4526` (`g_SbIrq`), `3A9A:00B1` (`Test8086`), every scene loader of `051A` (`g_Palette`), `051A:5852`, `051A:527F` (`g_FontTitle`), `051A:92AF` (dialogue reader), all `Assign` calls on DS:075A | static (operand xref of every code listing); C-0002, C-0051..C-0090, C-0160 | CONFIRMED |
+| No writer during a flight | no flight-time routine writes the ranges; `0E8B` never calls `0000`/`051A` | static; 17,563 ticks of C-0051..C-0090, 80 of C-0160 | CONFIRMED |
+| `g_Weapon` writers and start value | `0E8B:C751..C7AA`, `0E8B:F535..F645` (only writers); BSS | static; C-0069 | CONFIRMED |
 
 ## 10. Revision history
 
@@ -211,3 +278,4 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial |
 | 2 | 2026-11-02 | main session (Verifier) | Capture C-0011 (`wpn-e1m1.txt`); L5 test `crates/td-sim/tests/oracle_weapons.rs` matches every frame. Corrections: volley offset X has a −16; the cooldown decrements before the fire keys. Vectors 4–6 |
 | 3 | 2026-11-02 | RE-8 | The `Random` calls of the hit explosions run only when an explosion slot 1..20 is idle (T1: RNG order); explosion and shot presentation moved to flow/flight-screens §4.7–4.8 |
+| 4 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §3.3 new: the exact muzzle bytes of the eight two-digit headings (U-160, OB-017), their sources, constancy during a flight, direct start vs campaign, how often they matter, policy proposal *preserve*. §3.2: `g_Weapon` is 0 at program start and carried from flight to flight for classes 0 and 1 (U-391, BUG-2). §3.1: the address rule applies to every heading and to the player too. Vectors 7, 8; capture C-0160 |

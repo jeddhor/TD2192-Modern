@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-ships` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (positions, waypoints, AI state, fire requests and RNG use per tick) · T2 for drawing |
 | **Confidence** | **CONFIRMED** for §4.1–§4.6: a model written from this text reproduces 3,342 of 3,343 slot-ticks of capture C-0009 byte for byte (slot arrays and the whole 1,065-byte ship record), the one exception being a ship destroyed by a projectile (step 6, [weapons](weapons.md)); shot spawns match in 49 of 51 events (§6). LIKELY for the paths the capture does not exercise (mode +422h, flights 7 and 20 specials, map edges) |
@@ -443,7 +443,7 @@ for s = 1..20:
 then (every tick) clear fireRequest[1..20][1..9]
 ```
 
-The request entry only says "fire": the shot flies along the ship's **current heading**, not toward the target. A ship that has just turned (or is mid-turn) fires along that heading; when the heading is a two-digit code the muzzle bytes come from DS:035C + 34 × heading + 2m, far outside the table (other globals, OB-017), and the shot is deleted by its first projectile move ([weapons §4.3](weapons.md) step 8) after one hit test. In C-0009, 8 of 51 enemy volleys left on two-digit headings. A request raised on a tick where the page is 0 is lost. Muzzle tables, shot kinds, damage: [weapons](weapons.md).
+The request entry only says "fire": the shot flies along the ship's **current heading**, not toward the target. A ship that has just turned (or is mid-turn) fires along that heading; when the heading is a two-digit code the muzzle bytes come from DS:035C + 34 × heading + 2m, far outside the table (other globals, OB-017), and the shot is deleted by its first projectile move ([weapons §4.3](weapons.md) step 8) after one hit test. Which globals those are, what they hold during a flight (constants on the four southern and western intermediate headings; the scene palette and the dialogue reader's last line, as the front end left them, on the four northern ones) and the port rule: [weapons §3.3](weapons.md) (RE-15, U-160). In C-0009, 8 of 51 enemy volleys left on two-digit headings; in VE-2's 20 whole flights, 230 enemy shots (and 292 player shots). A request raised on a tick where the page is 0 is lost. Muzzle tables, shot kinds, damage: [weapons](weapons.md).
 
 ### 4.5 Destruction and removal
 
@@ -484,7 +484,7 @@ Ships are drawn after the player ship (unless `g_PlayerDrawLate`) and before the
 | OB-014: up-thrust brakes the wrong component | Thrusting up while the down speed is above 16 adds and removes the thrust on the up component; the down speed only decays by drag | preserve |
 | OB-015: right-hand follower facing south | Tests the cell ahead where it should test the right-hand cell: with the right side open and the way ahead blocked it turns left | preserve |
 | OB-016: line-of-fire scan direction | Scans only toward increasing x / y; a wall between the ship and a target above or to the left is not seen, and a wall behind the ship can block | preserve |
-| OB-017: two-digit headings read past the muzzle table | Muzzle offsets for 0Ch, 0Eh, 20h, 24h, 4Ah, 4Eh, 60h, 62h come from other globals (DS:04F6.., 053A.., 079E.., 0826.. (menu palette), 0D32.., 0DBA.., 101E.., 1062..: palettes and text buffers) | open (U-160); proposed: Classic uses offset (0, 0) for these shots (they live for one hit test) |
+| OB-017: two-digit headings read past the muzzle table | Muzzle offsets for 0Ch, 0Eh, 20h, 24h, 4Ah, 4Eh, 60h, 62h come from other globals (DS:04F6.. System constants, `g_SbIrq`, `g_MemAvailText`; 053A.. and 079E.. always 0; 0826.. menu palette; 0D32.., 0DBA.., 101E.. scene palette, title-font pointer, dialogue reader; 1062.. dialogue text buffer) | **preserve** (proposed, [weapons §3.3](weapons.md)): U-160 resolved; the 272 bytes are built at flight start from front-end state and three reference-machine constants |
 | Path step 501 | A 500-step path with no 0 terminator reads path[501] = (moveDir, aggression) and flies toward it (m3 slot 2; m9 slot 18 ends at the map edge instead) | preserve |
 | Slot 20, path steps 482..500 | Heap contents (OB-008) | OB-008 |
 | Class FFh at setup | Armour and shields read table bytes past `k_ClassArmour`/`k_ClassShields` (DS:03C7, DS:03D1) | preserve (only visible if mission logic revives the slot) |
@@ -510,7 +510,7 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 
 ## 7. Open questions
 
-- [ ] U-160: what the port does for two-digit-heading muzzle offsets (OB-017).
+- [x] U-160: what the port does for two-digit-heading muzzle offsets (OB-017): [weapons §3.3](weapons.md) (RE-15; policy *preserve* proposed).
 - [ ] U-161: confirm Real48 `Sqrt` is exact for 121 (out-of-range boundary); D = 9 is confirmed.
 - [ ] U-162: policy for a detour with moveDir ∉ {2, 4, 6, 8} (endless loop in the original; not reachable in E1 as far as known).
 - [ ] When and why the mission logic calls `AI_SetTarget` and writes slot classes: RE-6's mission-logic spec (`2404`).
@@ -539,3 +539,4 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | 2 | 2026-11-02 | RE-5 (Archaeologist + Spec author + Verifier) | Complete: setup, AI state machine (U-045), detour followers, firing, removal, drawing (U-042), DS:3A32 nil pointer, test vectors from C-0009 |
 | 3 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: `34E6:3232` is named `AI_SetTarget` (as in mission-logic; was `AI_OrderAttack`); volley spawning is tick-order step 30 and clearing step 31 (were 31/32) |
 | 4 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.3.10: what an attacker does when its target dies, hides or leaves the range (U-181): it keeps attacking the last waypoint until its budget runs out; re-applied orders do not reset the budget |
+| 5 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.4.2 and OB-017: the two-digit muzzle bytes are specified in weapons rev 4 §3.3 (U-160 resolved, policy *preserve* proposed) |
