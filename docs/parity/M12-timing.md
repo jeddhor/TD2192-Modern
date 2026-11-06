@@ -1,4 +1,4 @@
-# Parity: M12-02 timing audit (2026-11-06, VE-3)
+# Parity: M12-02 timing audit (2026-11-06, VE-3; rows 5–8, 11, 12, 19 fixed by IM-19 the same day, §7)
 
 Timing of every kind of screen in the original (oracle captures, preset P1 unless stated) against the port (static reading of `crates/` at this branch, plus the L5 tests that already check timing). Frames are 70.086 Hz retraces ("f"). Tiers per the specs: flight steps per tick T1, wall-clock rates, fades, holds and pacing T2 (a difference of more than about one BIOS tick, 3.65 f, or one fade level is a failure).
 
@@ -86,3 +86,15 @@ Summary: **10 PASS** (row 3 with a vsync note, row 17 timing only), **8 FAIL** (
 - Rows 12 and 13 (flight-menu pulse, comm typing) need fb-cadence checks.
 - Row 19 needs an E2 or E3 front-end capture.
 - `td_flow::DEFAULT_TICK_HZ` (70 Hz placeholder) is exported but unused, and STATUS M4-02 still calls the flight rate a placeholder. Remove both with the §3 decision.
+
+## 7. Port fixes (IM-19, 2026-11-06, M12-13 and M3-09)
+
+| # | Fix | Port now | Original | Test |
+|---:|---|---|---|---|
+| 5 | Scene fades follow the non-zero components of the faded palette (`td_render::fade::frames_per_level`, ≥ 380 → 2 frames per level, U-461); `g_Palette` kept across the program run (`td_flow::Program::scene_palette`); the title card fades it with entry 85 set | first title card after program start: 16 visible frames in, 16 out (1 frame per level); after story so far: 31 in, 31 out | C-0002 18 in, 20 out; C-0170 34 | `td-flow/tests/story_parity.rs` (two new tests) |
+| 6–8 | `Flow_WaitSecondsOrKey(n)` counts round(n × 18.2065) BIOS ticks at 19.2015 Hz (`td_flow::timing::dos_seconds_frames`, `BIOS_TICK_HZ` = `FLIGHT_TICK_HZ`, ADR-0007) for every wait of timing §4.4; `Crt.Delay` stays real ms | 5 s 332, 10 s 664, 15 s 996, 25 s 1,661, 30 s 1,993, 45 s 2,989 frames | 5 s 328, 10 s 664 (C-0002, C-0170) | `timing::dos_time_waits_count_bios_ticks` |
+| 11 | Flight menu, help and ship-library fades at `frames_per_level` (2 for flight palettes); the flight-end `FadeOut` (34 frames) in the td2192 host's teardown, followed by the wait for WORX's playing status | writes over 33 frames out and 33 in | C-0012 33 out, 34 in | `flight_screens_parity` (new test), td2192 `teardown_fades_out_in_34_frames` |
+| 12 | Flight menu item ramp 11 steps per frame | 11, 11, 10 steps | C-0012 f3628..3630: 11, 11, 10 | as row 11 |
+| 19 | E2/E3 menu on `MainMenu` (`MenuStyle::Later`, OB-041): fade-in, start ramp once at loop entry, ramp on cursor changes only, fade-out | E2 (34, 4, 34) frames; E3 (34, 4, 34) | C-0120 (34, 4, 34); C-0125 (34, 4, 34) | `td-flow/tests/menu_pacing.rs` |
+
+Still open: the flight-start `FadeIn` (34 frames before the first tick) is not ported; the port draws each fade level in the last frame of its pair, which matches the menus exactly but gives the flight fade-in 33 frames against 34; between a menu fade-out and the next screen the original spends 1–2 frames more than the port (C-0120, C-0125).
