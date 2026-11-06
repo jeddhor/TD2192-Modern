@@ -39,7 +39,7 @@ Table layout in DGROUP: header A DS:31EC, header B DS:321F, line k at DS:321F + 
 | 2 | `2555:0525` | `e2.comms.02` (10) | 2 / 0 | 2 3 4 5 P 7 8 E | A 1..6, B 7..8 (also bytes 9, 10 := B; no line there) |
 | 3 | `2555:0774` | `e2.comms.03` (14) | 3 / 0 | 2 3 4 5 6 P 8 9 10 11 12 E | A 1..7, B 8..12 |
 | 4 | `2555:0B7E` | `e2.comms.04` (25) | 4 / 0 | 2 3 4 5 P 7 8 9 P 10 11 12 13 14 P 15 16 17 18 19 P 15 20 21 22 23 E | A 1..6, B 7..10, A 11..22, B 23..27 |
-| 5 | `2555:0F93` | `e2.comms.05` (15) | 5 / 0 | 2 3 4 P 6 7 8 4 P 9 10 11 4 P 6 12 13 4 P 9 E | A 1..5, B 6..10, A 11..15, B 16..20; line 21 not written (§5) |
+| 5 | `2555:0F93` | `e2.comms.05` (15) | 5 / 0 | 2 3 4 P 6 7 8 4 P 9 10 11 4 P 6 12 13 4 P 9 E | A 1..5, B 6..10, A 11..15, B 16..20; the speaker byte of line 21 (E) is not written (§5) |
 | 6 | `2555:1325` | `e2.comms.06` (10) followed by `e2.comms.07` (2), one run of 12: `j` 10, 11 are `.07[0]`, `.07[1]` | 6 / 0 | 2 3 4 5 6 7 8 9 10 E | A 1..5, B 6..10 (also byte 11 := B) |
 | 7 | `2555:158D` | `e2.comms.08` (15) | **5** / 0 | 2 3 4 5 P 7 8 9 10 5 P 11 12 13 5 E | A 1..6, B 7..12, A 13..16 |
 
