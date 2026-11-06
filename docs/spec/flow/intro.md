@@ -49,7 +49,7 @@ The intro reuses Episode 1's machinery: the same unchained VGA layout with 352-p
 | `td.lt2` | 950 bytes | font block (heap) | Same font as Episode 1 ([render/text](../render/text.md) §3.1) |
 | `td.shp` | 20,480 bytes | sprite block (heap, 62,464 bytes reserved) | Only record 4 (the hoverskid) is drawn |
 | `intro.map` | 40,000 bytes | `DS:019A` | **20 columns × 2,000 rows, column-major** (§3.2) |
-| `td.blk` | 232 rows × 352 bytes = 81,664 bytes | VGA rows 528..759 | Same rule as Episode 1 ([FORMATS](../../re/FORMATS.md) §4): row count `Round(FileSize / 352) − 2 + 1`. Tile t lands at VGA byte `(B580h + 256 t) mod 65536`. Rows from 745 on wrap to the start of VGA memory (tiles 75..79), where `intro0.scr` later overwrites them; `intro.map` uses no tile above 73 |
+| `td.blk` | 232 rows × 352 bytes = 81,664 bytes | VGA rows 528..759 | Same rule as Episode 1 ([FORMATS](../../re/FORMATS.md) §4): row count `Round(FileSize / 352) − 2 + 1`. Tile t lands at VGA byte `(B580h + 256 t) mod 65536`. Rows from 745 on (from tile 74's pixel row 19 to the end of tile 79) wrap to the start of VGA memory, where `intro0.scr` later overwrites them; `intro.map` uses no tile above 73 |
 | `td.dun` | 96 × 32 bytes | VGA row 734, x 192.. | Written as one 3,072-pixel line, which is linear in VGA memory: `td.dun` bytes 0..3071 go to bytes `FC80h + k div 4`, plane `k mod 4`, that is **tile slots 71, 72, 73**, replacing `td.blk`'s tiles 71..73. They are the desert-dune tiles of `intro.map` |
 | `whoosh.voc`, `pulse.voc`, `ric3.voc`, `scratch.voc`, `home.voc` | whole | heap | Only when sound is not overridden (§4.1). U-036 |
 | `intro.cmf`, `intro1.cmf`, `intro2.cmf` | whole | heap | Same condition |
@@ -216,7 +216,7 @@ Calls (pen x, pen y, ink):
 
 | Text | Routine | Pen |
 |---|---|---|
-| Date line | B | (160 − 5 × (len div 2), VGA row 280); shown at screen row 80 |
+| Date line | B | (160 − 5 × (len div 2), VGA row 280), ink 52; shown at screen row 80 |
 | `intro0` line 1 | B | (20, 180), ink 52 |
 | `intro0` line 2 | B | (27, 180), ink 92 |
 | `intro0` line 3 | B | (12, 180) and (55, 190), ink 195 |
@@ -370,7 +370,7 @@ There are no key checks inside the `intro1` and `intro2` fades. A key pressed th
 |---|---|---|
 | Hoverskid y uses only the low byte (OB-058) | at the exit a fragment flashes at the bottom of the screen for one step (C-0047 f7495..7498) | preserve (Classic); fix-enhanced |
 | Sprite blit flips vertically and reads one column to the right (OB-059) | the hoverskid's left column is missing and its right column shows the row below (the first pixel of record 5 on the top row) | preserve (Classic) |
-| `td.blk` rows 745..759 wrap to VGA offset 0 and are later overwritten by `intro0.scr`; tile 79's last 8 rows are never loaded | tiles 75..79 are garbage, but `intro.map` uses none above 73 | none needed |
+| `td.blk` rows 745..759 wrap to VGA offset 0 and are later overwritten by `intro0.scr`; tile 79's last 8 rows are never loaded | tiles 74..79 are garbage, but `intro.map` uses none above 73 | none needed |
 | Colour fades run about 10 levels per frame at P1 (retrace wait returns at once inside a retrace) | CPU-speed dependent | port uses the P1 rate (§4.3) |
 | Holds and the limiter use the 16-bit timestamp (OB-034) | a hold can end at once near a wrap | fix-all (frame counting) |
 | After the flyover the program checks the `intro.cmf` pointer but starts `intro2.cmf` | harmless (all three are loaded together) | n/a |
