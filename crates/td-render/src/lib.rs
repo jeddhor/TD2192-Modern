@@ -5,6 +5,7 @@
 //! `docs/spec/render/` and `docs/re/FORMATS.md`.
 
 pub mod dialogue;
+pub mod enhanced;
 pub mod fade;
 pub mod flight;
 pub mod flight_palette;

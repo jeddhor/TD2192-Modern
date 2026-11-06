@@ -18,5 +18,6 @@ Every direct dependency, with its licence. All must be compatible with the proje
 | `png` | tdtool | MIT OR Apache-2.0 | Tool output only (never committed) |
 | `hound` | tdtool | Apache-2.0 | Tool output only (never committed) |
 | `proptest` | tests | MIT OR Apache-2.0 | |
+| `rayon` | td-render | MIT OR Apache-2.0 | Row-parallel enhanced presentation stages (ADR-0006, spec/enhanced/presentation.md §7) |
 
 Tools used outside the build (not linked, not distributed): Ghidra (Apache-2.0), DOSBox-X (GPL-2.0, built locally as a reference emulator; **no code from it may enter this repository**).

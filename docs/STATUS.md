@@ -280,8 +280,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M12-08 | Enhanced presentation pipeline + `[enhanced]` settings (ADR-0006) | IM | M6-05 | TODO | | Requested by the user 2026-11-05; spec/enhanced/presentation.md §2-3 |
 | M12-09 | Widescreen viewport (16:10, 16:9, 21:9, auto) | IM | M12-08 | TODO | | spec/enhanced/presentation.md §4; marked "affects gameplay (visibility)" |
 | M12-10 | Pixel-art upscaling (Scale2x/3x/4x, xBR 2x/3x/4x) | IM | M12-08 | TODO | | spec/enhanced/presentation.md §5 |
-| M12-11 | Dynamic lighting (light sources, soft shadows from solid tiles, night ambient) | IM | M12-08 | TODO | | spec/enhanced/presentation.md §6 |
-| M12-12 | Bloom, performance budget, enhanced tests | IM/VE | M12-10, M12-11 | TODO | | spec/enhanced/presentation.md §6.3, §7, §8 |
+| M12-11 | Dynamic lighting (light sources, soft shadows from solid tiles, night ambient) | IM | M12-08 | IN PROGRESS | IM-13 | td_render::enhanced::lighting + light-list builder in td2192 flight.rs; spec/enhanced/presentation.md rev 1 §6 |
+| M12-12 | Bloom, performance budget, enhanced tests | IM/VE | M12-10, M12-11 | IN PROGRESS | IM-13 | td_render::enhanced::bloom; spec/enhanced/presentation.md rev 1 §6.3, §7, §8 (lighting/bloom parts) |
 
 ## M13: Release engineering
 
