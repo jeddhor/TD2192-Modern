@@ -68,7 +68,7 @@ Not covered yet: later phases (they need the player to fly, or targets to leave 
 
 | # | Flight | Tick | Field | Ours | Original | Hypothesis | Test | Fix task |
 |---|---:|---:|---|---|---|---|---|---|
-| D1 | 2 (all flights with mission-file class FFh slots) | setup | record shields (+3F8h) and armour (+3FAh) of slots whose **mission-file class is FFh** (flight 2: slots 8, 10–13, 15–17) | 0 / 0 | 34 / 68 | U-143: setup step 3 reads `k_ClassShields[FFh]` = DS:03D1 and 2 × `k_ClassArmour[FFh]` = 2 × DS:03C7. Both bytes are 22h in every capture (initialised data inside the muzzle-table region). `ClassTables` returns 0 past the table. It matters only when mission logic spawns such a slot: ours would be removed at once (armour < 1) | `class_ffh_slots_setup_shields_and_armour` (ignored) | M8-12 (BUG-1) |
+| D1 | 2 (all flights with mission-file class FFh slots) | setup | record shields (+3F8h) and armour (+3FAh) of slots whose **mission-file class is FFh** (flight 2: slots 8, 10–13, 15–17) | 0 / 0 | 34 / 68 | U-143: setup step 3 reads `k_ClassShields[FFh]` = DS:03D1 and 2 × `k_ClassArmour[FFh]` = 2 × DS:03C7. Both bytes are 22h in every capture (initialised data inside the muzzle-table region). `ClassTables` returns 0 past the table. It matters only when mission logic spawns such a slot: ours would be removed at once (armour < 1) | `class_ffh_slots_setup_shields_and_armour` (ignored at the time; un-ignored and passing since M8-12, VE-6 2026-11-06) | M8-12 (BUG-1), fixed |
 
 No other divergence was found in setup or in the compared ticks of flights 2–20 (19 first-ticks runs, 4 comm runs).
 

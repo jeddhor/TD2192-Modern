@@ -112,7 +112,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M4-01 | Window, texture, palette LUT, scaling modes, F11, high-DPI | IM | M2-02 | DONE | main-session | 2026-11-02; aspect 4:3 sharp-bilinear / integer / stretch; F10 cycles, F11 fullscreen; verified by window read-back (1280x960) |
-| M4-02 | Fixed-timestep driver | IM | M1-06 | DONE | main-session | 2026-11-02; td-flow::FixedStep, no drift over 600 s; tick rate placeholder 70 Hz (U-001) |
+| M4-02 | Fixed-timestep driver | IM | M1-06 | DONE | main-session | 2026-11-02; td-flow::FixedStep, no drift over 600 s; tick rate placeholder 70 Hz (U-001). VE-6 2026-11-06: superseded; flights tick at `FLIGHT_TICK_HZ` 19.2015 Hz (ADR-0007 proposed); the placeholder `DEFAULT_TICK_HZ` is exported but unused (M12-timing §6, docs/parity/M12-checklist.md §5.2) |
 | M4-03 | Input layer (scancodes, gamepad, actions, text) | IM | M4-01 | REVIEW | main-session | SDL3 gamepads -> td_input::Pad (original digital joystick: left stick/D-pad axes with original signs, East=button1 afterburner, South=button2 fire); TickInput.pad; flight arena enables the sim joystick read when a pad is connected. Needs a hands-on check with a real controller |
 | M4-04 | Audio device + ring buffer | IM | M3-06 | DONE | main-session | 2026-11-02; main-thread render + push to SDL stream (~43 ms queue); OPL chip is not Send, so no audio thread |
 | M4-05 | Settings + first-run data picker + validation UI | IM | M0-05 | REVIEW | main-session | settings.toml + first-run folder picker (SDL dialog, validates E1, saves data_dir); picker not yet exercised interactively - needs a manual check |
@@ -273,9 +273,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | TODO | | |
+| M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | REVIEW | VE-6 | VE-6 2026-11-06: docs/parity/M12-checklist.md. 393 items over every spec and FORMATS: 327 PASS, 33 PARTIAL, 15 NOT COVERED, 18 N/A (87.2 % of the 375 Classic items PASS; the ≥ 95 % exit criterion is not met, every gap is documented, and §0 lists what remains for Classic 1.0 by impact on play). L5 re-run: 789 passed, 0 failed, 4 ignored, both with and without TD2192_DATA/TD2192_ORACLE (counts per binary in §3; no data-gated test skips with the variables set). Filed BUG-9 (OB-023 Classic deviation) and BUG-10 (flight-start fade-in missing). §5: stale ASSUMPTIONs U-313, U-001, the fade.rs header; U-146 closable. §6: 67 open U-ids affect Classic (3 P1, 13 P2); 10 are closable from existing evidence |
 | M12-02 | Timing audit | VE | M12-01 | REVIEW | VE-3 | VE-3 2026-11-06: docs/parity/M12-timing.md, 21 screen rows: 10 PASS, 8 FAIL, 2 not measured. FAIL: episode flights tick at 70.086 Hz (BUG-5, blocker), title-card fades (BUG-6), DOS-time waits 5.5 % (BUG-7), flight-menu fades (BUG-8), E2/E3 menu fades/pulse missing, flight 17/19 scenes missing. Canonical tick-rate proposal 19.2015 Hz (section 3) for the coordinator/user RE-16 2026-11-06: spec parts of BUG-6/7/8 done (screens rev 3 §2.1/§2.2, text rev 3 §4.5.2, flight-screens rev 5 §4.5.3, timing rev 4 §4.4); row 19 spec made explicit (e2-program-flow rev 2, e3 rev 2: fades 34 f, entry ramp, C-0120/C-0125); row 12 measured: flight menu item ramp 11 steps per frame (C-0012 f3628..3630) |
-| M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | TODO | | |
+| M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | REVIEW | VE-6 | VE-6 2026-11-06: docs/parity/M12-checklist.md §7. 63 OBs: 45 implemented and pinned; 8 not pinned (OB-018, 021, 022, 026, 030, 037, 038, 046); 8 missing or deviating; 2 moot (OB-008, 011). Missing or deviating: Enhanced fixes OB-012, 024, 032, 056 and 057 (1.0 scope since D5); OB-017 E2/E3 (M10-46); OB-023 Classic not preserved (BUG-9); OB-031 fixed in both profiles by the binding layer. Decisions: 55 OBs are still proposed and OB-008 is open. Recommended: accept 37 as proposed in one batch; relabel OB-005 and OB-034; OB-008 preserve (moot); OB-022 is a user decision; no Enhanced fix for OB-036, 041, 043, 046 or 102 |
 | M12-04 | Enhanced features for 1.0 (D5) | IM | D5 | REVIEW | IM-16 | IM-16 2026-11-06: colour-blind guidance line done (td_render::enhanced::guidance: Okabe-Ito orange/sky blue + white cores with black outline per marker, drawn at the RGBA stage after the palette and over the final image; works under either profile; Classic unchanged with the setting off, invariant test with data; spec frontend/port-front-end rev 2 3.3). The other Enhanced features of this row wait for D5 |
 | M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
 | M12-06 | Replay soak, fuzzing, profiling | VE | M12-01 | TODO | | |
@@ -313,6 +313,7 @@ Template: ADG §17.5.
 - Actual (port): shields 0, armour 0 (`ClassTables::entry` returns 0 past the table, U-143)
 - Spec reference: mission-ships.md rev 2 §4.1 step 3, §5 "Class FFh at setup"; U-143
 - Severity: minor (hidden slots; matters only if mission logic spawns such a slot: ours would be removed at once with armour 0). Fix task M8-12
+- **Status: FIXED** (main session, M8-12 DONE): class-FFh slots get shields 34 / armour 68 at setup (U-143); `oracle_e1_flights.rs::class_ffh_slots_setup_shields_and_armour` is no longer ignored and passes (VE-6 2026-11-06 added this line)
 
 ### BUG-2: g_Weapon is 1 instead of 0 at a direct start in a class-0/1 flight (E1 flight 19)
 - Status: REVIEW (IM-18, 2026-11-06): fixed. `td_sim::flight::Session::weapon` (0 at program start, written back by every flight; setup writes it for classes 2..8 only); the full-flight test no longer copies it; weapon-0 icon B2h (OB-090)
@@ -387,3 +388,21 @@ Template: ADG §17.5.
 - Severity: minor. Fix: SP records the rate, then IM
 - **Spec part DONE (RE-16, 2026-11-06):** flight-screens rev 5 §4.5.3: `Gfx_FadeInFlight`/`FadeOutFlight` take 2 frames per level at P1 with a flight palette (33–34 f; C-0012), for every use (flight start/end, Esc menu, help, ship library, flight 17/19 screens). The menu item ramp makes 11 steps per frame (§3.5). Port (IM): 17 levels × 2 frames in `flight_screens/menu.rs` and the other flight fades
 - **Status: FIXED** (IM-19, 2026-11-06, M12-13): flight menu, help and ship-library fades at 2 frames per level (writes over 33 frames each way; C-0012 33/34), item ramp 11 steps per frame (11, 11, 10 as C-0012 f3628..3630); the flight-end fade-out (34 frames) runs in the host's teardown. The flight-start fade-in is still not ported
+
+### BUG-9: E2 Alt from infra-red mode 2 to mode 1 restores the whole palette; the original leaves it red (OB-023)
+- Found by / date / milestone: VE-6, 2026-11-06, M12 (M12-03), static reading of the port against the spec
+- Profile: Classic (the catalogue's policy: preserve in Classic, fix in Enhanced)
+- Steps: E2 flight in palette mode 1, Alt (mode 2), Alt again (back to mode 1); look at the DAC after the second Alt
+- Expected (original, OB-023; episode-deltas §4.1 step 31, `td2:0E96:E510..E5EA`): only DAC 255 and DAC 37 are rewritten and the hit flash is set to 0; every other entry keeps its mode-2 red tint until the next hit-flash restore. E3 behaves as E1
+- Actual (port): td2192's step 33 calls `td_render::flight_palette::FlightDac::toggle`, which writes `ir_palette(p, new_mode)` for all 256 entries in every episode and profile, so E2 shows the correct mode-1 palette at once
+- Spec reference: original-bugs.md OB-023; episode-deltas §4.1; flow/flight-screens §4.5
+- Severity: minor (cosmetic, E2 only). Fix: IM, an E2-only Classic branch of the toggle (DAC 255 and 37 only), with a test; the full rewrite stays as the Enhanced fix. No capture of E2 infra-red exists; a VE capture would confirm (U-204 covers the neighbouring palette step)
+
+### BUG-10: flights start without the 34-frame fade-in
+- Found by / date / milestone: VE-6, 2026-11-06, M12 (M12-01), from M12-timing §7 ("still open")
+- Profile: Classic
+- Steps: start any flight from a campaign and watch the frames before tick 1
+- Expected (original, flow/flight-screens rev 5 §4.5.3; C-0002): `Gfx_FadeInFlight` brings the flight palette up over 17 levels at 2 frames per level (34 frames) before the first tick
+- Actual (port): the first flight frame appears at full brightness (no flight-start `FadeIn`); the end-of-flight fade-out is ported (IM-19)
+- Spec reference: flow/flight-screens rev 5 §4.5.3; docs/parity/M12-timing.md §7
+- Severity: minor (presentation at every flight start; T2). Fix: IM, the flight-start fade in the td2192 flight host (E3: `FadeIn` covers entry 0 too, `faded_in_from_0`)
