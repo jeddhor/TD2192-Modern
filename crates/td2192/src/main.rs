@@ -21,8 +21,8 @@ struct Cli {
     /// Original game directory (overrides TD2192_DATA and settings).
     #[arg(long)]
     data: Option<PathBuf>,
-    /// Which episode's program to run: 1 (the default, `file0001.exe`) or 2 (`td2.exe`, which
-    /// the original starts directly).
+    /// Which episode's program to run: 1 (the default, `file0001.exe`), 2 (`td2.exe`) or 3
+    /// (`td3.exe`; the original starts both directly).
     #[arg(long, value_name = "N", default_value_t = 1)]
     episode: u8,
     /// Developer map viewer for a map: e1, e2a, e2b, e3a, e3b or intro.
@@ -145,7 +145,8 @@ fn real_main() -> Result<()> {
     let episode = match cli.episode {
         1 => Episode::E1,
         2 => Episode::E2,
-        n => bail!("--episode takes 1 or 2 (Episode 3 is not implemented yet), not {n}"),
+        3 => Episode::E3,
+        n => bail!("--episode takes 1, 2 or 3, not {n}"),
     };
     if episode != Episode::E1 && !report.playable(episode) {
         bail!(
@@ -181,11 +182,23 @@ fn real_main() -> Result<()> {
         (None, None) => match cli.dev_mapview.as_deref() {
             Some(map) => Box::new(mapview::MapView::new(&dir, map)?),
             // The Episode 2 program (`td2.exe`, started directly in the original, U-005).
-            None if episode == Episode::E2 => Box::new(td_flow::Episode2::new(
-                &dir,
-                &resources,
-                Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
-            )?),
+            None if episode == Episode::E2 => Box::new(
+                td_flow::Episode2::new(
+                    &dir,
+                    &resources,
+                    Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
+            // The Episode 3 program (`td3.exe`, started directly, e3-program-flow §8).
+            None if episode == Episode::E3 => Box::new(
+                td_flow::Episode3::new(
+                    &dir,
+                    &resources,
+                    Box::new(flight::ArenaLauncher::for_episode(Episode::E3)),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
             // The Episode 1 program: script choice, menu, campaign, flights. Saved games live
             // in the user data directory, never in the game folder.
             None => Box::new(

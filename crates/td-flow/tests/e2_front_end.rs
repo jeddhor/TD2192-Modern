@@ -324,7 +324,8 @@ fn abort_returns_without_advance() {
             advance: false,
             game_over: false,
             mission_kills: 4,
-            replay: false
+            replay: false,
+            ..BlockResult::default()
         }
     );
     assert!(!r.shown.contains(&Step::D(25)), "no post-flight story");
@@ -359,7 +360,8 @@ fn blocks_8_and_17_replay_after_a_declined_outcome_retry() {
                 advance: true,
                 game_over: false,
                 mission_kills: 4,
-                replay: true
+                replay: true,
+                ..BlockResult::default()
             },
             "block {m}"
         );

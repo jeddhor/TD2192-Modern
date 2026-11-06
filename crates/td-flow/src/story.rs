@@ -116,6 +116,9 @@ pub struct StoryScreen {
     /// Hint screens (screens §3.3): the key buffer is flushed after the fade-in, and a key
     /// waiting after a line skips the remaining lines.
     hint_skip: bool,
+    /// E3 (`Flow_WaitSecondsOrKey` `td3:04A0:0269`): every timed wait flushes the keyboard
+    /// when it starts, so keys typed during the fade-in or the typing are lost.
+    flush_waits: bool,
     /// Second page (help, story so far): shown after the first wait, then held again.
     next_page: Option<(Box<[u8]>, Palette, Hold)>,
     phase: Phase,
@@ -176,6 +179,7 @@ impl StoryScreen {
             items: Vec::new(),
             font: None,
             hint_skip: false,
+            flush_waits: false,
             next_page: None,
             phase: Phase::FadeIn(0),
             wait: FADE_FRAMES_PER_LEVEL,
@@ -213,6 +217,14 @@ impl StoryScreen {
     /// True once the screen has faded out.
     pub fn finished(&self) -> bool {
         self.phase == Phase::Done
+    }
+
+    /// With `on`, every timed wait of this screen flushes the keys typed before it starts (E3,
+    /// e3-program-flow rev 1 §3.5).
+    #[must_use]
+    pub fn flushing_waits(mut self, on: bool) -> Self {
+        self.flush_waits = on;
+        self
     }
 
     /// Lines to show after the fade-in, before the wait.
@@ -329,9 +341,14 @@ impl StoryScreen {
         }
     }
 
-    fn hold_phase(&self) -> Phase {
+    fn hold_phase(&mut self) -> Phase {
         Phase::Hold(match self.hold {
-            Hold::Seconds(s) => seconds(s),
+            Hold::Seconds(s) => {
+                if self.flush_waits {
+                    self.keys.clear();
+                }
+                seconds(s)
+            }
             Hold::Key => u32::MAX,
         })
     }

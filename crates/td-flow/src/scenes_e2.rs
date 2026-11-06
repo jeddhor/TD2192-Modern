@@ -158,6 +158,16 @@ pub fn scene_card(
     crate::scene_card::scene_card(data, assets, &bg.layout(), text)
 }
 
+/// A scene card with layout `l` (used by the E3 cards, `crate::scenes_e3`).
+pub fn scene_card_with(
+    data: &DataDir,
+    assets: &StoryAssets,
+    l: &Layout,
+    text: [&str; 3],
+) -> Result<StoryScreen, StoryError> {
+    crate::scene_card::scene_card(data, assets, l, text)
+}
+
 /// A title card (`Scene_MissionTitle(text, 3Fh, 0, 0)` `04EC:5A89`): E1's text card.
 pub fn title_card(assets: &StoryAssets, text: &str) -> StoryScreen {
     crate::story::text_card(assets, text)
