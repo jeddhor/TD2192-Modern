@@ -421,8 +421,8 @@ note = "F6 transmission lines"
 id = "e2.comms.06"
 kind = "pstring_seq"
 offset = 0x2A89E
-count = 2
-note = "F6 transmission lines"
+count = 10
+note = "F6 transmission 6, strings 0..9 (RE-12: count was 2, which dropped the 8 strings td2:2555:11E3..12E9 that loader 2555:1325 uses; e2.comms.07 holds strings 10..11 of the same run)"
 
 [[resource]]
 id = "e2.comms.07"

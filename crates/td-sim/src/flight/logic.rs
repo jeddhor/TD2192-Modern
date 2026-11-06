@@ -12,8 +12,9 @@
 //! player, whose position is the **view tile** (§2). Messages are carried as resource ids
 //! ([`Message`]); resolving text is the renderer's job.
 //!
-//! Episode 2 (`docs/spec/sim/e2-mission-logic.md` rev 1) is in [`e2`]; the primitives here
-//! serve both, and the episode-specific parts below branch on [`Flight::episode`].
+//! Episode 2 (`docs/spec/sim/e2-mission-logic.md` rev 1) is in [`e2`], Episode 3
+//! (`docs/spec/sim/e3-mission-logic.md` rev 1) in [`e3`]; the primitives here serve all three,
+//! and the episode-specific parts below branch on [`Flight::episode`].
 
 use super::player::Event;
 use super::ships::{NO_SHIP, SHIP_SLOTS};
@@ -62,6 +63,14 @@ pub enum Message {
     E2Jurisdiction,
     /// `e2.flight_events` (one text: the flight-18 base destruction).
     E2Events,
+    /// `e3.objectives[k]` (`td3.exe`).
+    E3Objective(u8),
+    /// `e3.flight_messages.01[k]` (E3 `M1[k]`, `Msn_UpdateA`).
+    E3Flight1(u8),
+    /// `e3.flight_messages.02[k]` (E3 `M2[k]`, `Msn_UpdateB`).
+    E3Flight2(u8),
+    /// `e3.jurisdiction.warnings` (one text).
+    E3Jurisdiction,
 }
 
 impl Message {
@@ -76,9 +85,13 @@ impl Message {
             Self::E2Objective(k) => ("e2.objectives", k),
             Self::E2Flight1(k) => ("e2.flight_messages.01", k),
             Self::E2Flight2(k) => ("e2.flight_messages.02", k),
+            Self::E3Objective(k) => ("e3.objectives", k),
+            Self::E3Flight1(k) => ("e3.flight_messages.01", k),
+            Self::E3Flight2(k) => ("e3.flight_messages.02", k),
             // Single texts (`ExeResources::text`), index 0.
             Self::E2Jurisdiction => ("e2.jurisdiction.warnings", 0),
             Self::E2Events => ("e2.flight_events", 0),
+            Self::E3Jurisdiction => ("e3.jurisdiction.warnings", 0),
         };
         (id, usize::from(k))
     }
@@ -94,6 +107,8 @@ impl Message {
                 | Self::E2Objective(_)
                 | Self::E2Jurisdiction
                 | Self::E2Events
+                | Self::E3Objective(_)
+                | Self::E3Jurisdiction
         )
     }
 
@@ -109,6 +124,10 @@ impl Message {
             Self::E2Flight2(k) => [8, k],
             Self::E2Jurisdiction => [9, 0],
             Self::E2Events => [10, 0],
+            Self::E3Objective(k) => [11, k],
+            Self::E3Flight1(k) => [12, k],
+            Self::E3Flight2(k) => [13, k],
+            Self::E3Jurisdiction => [14, 0],
         }
     }
 }
@@ -200,6 +219,9 @@ pub struct MissionState {
     /// E2 flight 18: the debris counter of `Msn_E2FlightEvents` (E2 DS:11E8, cleared at flight
     /// start; e2-mission-logic §4.7.1).
     pub debris: u16,
+    /// E3 flight 16: the magenta tint is on the DAC (set with the class freeze, phase 3 → 5;
+    /// presentation, e3-mission-logic §4.6.4, §4.7.3). Cleared at every E3 flight start.
+    pub tint: bool,
 }
 
 impl Default for MissionState {
@@ -222,6 +244,7 @@ impl Default for MissionState {
             white_out: false,
             truck: [0; 4],
             debris: 0,
+            tint: false,
         }
     }
 }
@@ -305,6 +328,7 @@ impl HashState for MissionState {
             u8::from(self.base_rubble),
             u8::from(self.bomb),
             u8::from(self.white_out),
+            u8::from(self.tint),
         ]);
         for w in [t.pos, t.draws, t.window, self.ion_timer, self.debris] {
             w.hash_state(h);
@@ -554,7 +578,7 @@ impl Flight {
         match self.episode {
             Episode::E1 => {}
             Episode::E2 => return self.e2_update(),
-            Episode::E3 => return,
+            Episode::E3 => return self.e3_update(),
         }
         match self.number {
             1 => self.flight_1(),
@@ -1596,7 +1620,7 @@ impl Flight {
         let (n, next) = match self.episode {
             Episode::E1 => transmission(self.number, self.phase())?,
             Episode::E2 => e2::transmission(self.number, self.phase())?,
-            Episode::E3 => return None,
+            Episode::E3 => e3::transmission(self.number, self.phase())?,
         };
         if self.episode == Episode::E1 && self.number == 14 {
             let all: Vec<usize> = (1..=20).collect();
@@ -1631,10 +1655,11 @@ impl Flight {
         }
         // Ticker (hud §4.7).
         if self.edge_hit {
-            // E2 has one warning text (episode-deltas §6).
+            // E2 and E3 have one warning text each (episode-deltas §6).
             let m = match self.episode {
                 Episode::E1 => Message::Jurisdiction(u8::from(matches!(self.number, 13 | 14))),
-                _ => Message::E2Jurisdiction,
+                Episode::E2 => Message::E2Jurisdiction,
+                Episode::E3 => Message::E3Jurisdiction,
             };
             self.post(m);
             self.edge_hit = false;
@@ -1671,8 +1696,7 @@ impl Flight {
         match self.episode {
             Episode::E1 => {}
             Episode::E2 => return self.e2_outcome(),
-            // ASSUMPTION(M10-02): E3 outcome tests are not ported yet.
-            Episode::E3 => return true,
+            Episode::E3 => return self.e3_outcome(),
         }
         let t = |s| self.slot_tile(s);
         match self.number {
@@ -1705,6 +1729,7 @@ impl Flight {
 }
 
 pub mod e2;
+pub mod e3;
 
 #[cfg(test)]
 mod tests;

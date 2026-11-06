@@ -14,8 +14,10 @@
 //!
 //! Episodes: one engine flies all three episodes. [`Flight::episode`] selects the setup tables,
 //! the mission logic and the tick-order, weapon and AI deltas of `docs/re/episode-deltas.md`
-//! rev 2 ([`episode`]); E2 setup and logic follow `docs/spec/sim/e2-mission-setup.md`,
-//! `e2-mission-logic.md` and `e2-mission-ships.md` (rev 1 each).
+//! rev 3 ([`episode`]); E2 setup and logic follow `docs/spec/sim/e2-mission-setup.md`,
+//! `e2-mission-logic.md` and `e2-mission-ships.md` (rev 1 each), E3 setup, logic and the E3
+//! player deltas `e3-mission-setup.md`, `e3-mission-logic.md` and `e3-mission-ships.md` (rev 1
+//! each).
 //!
 //! Session state: the original keeps the RNG, the class tables (patched by some flights,
 //! OB-018) and the ship slots and records across the flights of one program run. [`Session`]
@@ -209,7 +211,9 @@ pub struct Flight {
     /// `g_EdgeHit`: the view was pushed back at a map limit while the ticker was idle; the
     /// instruments step posts the jurisdiction warning and clears it.
     pub edge_hit: bool,
-    /// Read the joystick each tick (controller = joystick).
+    /// Read the joystick each tick. E1 and E2: the configured controller is the joystick; E3:
+    /// whenever a stick was detected, whatever the configuration (e3-mission-ships §5.2 row 2,
+    /// episode-deltas §4.1 step 17). The caller sets it.
     pub joystick_enabled: bool,
     pub joystick: Joystick,
     pub keys: KeyTable,
@@ -227,6 +231,10 @@ pub struct Flight {
     pub mission: MissionState,
     /// E2 radar colours of map set 2 in effect (session state, see [`Session`]).
     pub radar_set2: bool,
+    /// E3 flight 12: the cells of [`setup::e3::FLIGHT12_CELLS`] hold tile 26h instead of the
+    /// map's hazard tiles (from setup until the end of tick 6480). The map buffer is reloaded
+    /// at every flight start, so this is per-flight state; [`Flight::map_tile`] applies it.
+    pub cells_off: bool,
     /// `g_MissionKills`.
     pub kills: i16,
     /// Full-palette white flash countdown (`g_FlashFrames`).
@@ -290,14 +298,13 @@ impl Flight {
         ships.reset_records(&mut rng);
         if let Some(m) = mission {
             ships.load_mission(m, &classes);
-            if matches!(episode, Episode::E1 | Episode::E2) {
-                // A class-FFh slot reads the bytes after the class tables: shields 34, armour
-                // 2 × 34 = 68 (E1 DS:03D1 / DS:03C7, confirmed by VE-1 in C-0017, U-143 and
-                // BUG-1; E2 DS:052F / DS:0525, e2-mission-setup §2).
-                for s in ships.0.iter_mut().filter(|s| !s.alive()) {
-                    s.shields = 34;
-                    s.armour = 68;
-                }
+            // A class-FFh slot reads the bytes after the class tables: shields 34, armour
+            // 2 × 34 = 68 in every episode (E1 DS:03D1 / DS:03C7, confirmed by VE-1 in C-0017,
+            // U-143 and BUG-1; E2 DS:052F / DS:0525, e2-mission-setup §2; E3 the same DS:052F /
+            // DS:0525, e3-mission-setup §2, confirmed in C-0036 and C-0041).
+            for s in ships.0.iter_mut().filter(|s| !s.alive()) {
+                s.shields = 34;
+                s.armour = 68;
             }
         }
         if episode == Episode::E2 && episode::map_set(episode, number) == 2 {
@@ -313,27 +320,22 @@ impl Flight {
                 logic.setup_e2(number);
                 setup::e2::msn_setup(number, &mut ships, &mut classes)
             }
-            // ASSUMPTION(M10-02): no E3 setup or mission logic yet; the mission file's ships fly
-            // without rules.
             Episode::E3 => {
-                logic.scripted = false;
-                setup::SetupFlags {
-                    late_draw: false,
-                    palette_mode: 0,
-                }
+                logic.setup_e3(number);
+                setup::e3::msn_setup(number, &mut ships, &mut classes)
             }
         };
         let view = episode::start_view(episode, number, flags.late_draw);
         let class = episode::player_class(episode, number);
         let mut player = Player::new(class, view);
-        player.armour = classes.armour(class) as i8;
-        if episode == Episode::E2 && number == 7 {
-            player.armour = 5;
-        }
+        player.armour = episode::start_armour(episode, number, classes.armour(class));
         player.shields = classes.shields(class) as i8;
         let mut f = Self::with_player(number, player);
         f.episode = episode;
-        f.missiles = episode::start_missiles(episode, class, f.missiles);
+        f.missiles = episode::start_missiles(episode, number, class, f.missiles);
+        // E3 flight 12: 27 hazard cells of `td4.map` are tile 26h until tick 6480
+        // (e3-mission-setup §4.2, e3-mission-logic §4.6.3).
+        f.cells_off = episode == Episode::E3 && number == 12;
         f.late_draw = flags.late_draw;
         f.palette_mode = flags.palette_mode;
         // Default start: draw page 1 (mission-setup §3.1).
@@ -366,6 +368,20 @@ impl Flight {
             mission: self.mission,
             radar_set2: self.radar_set2,
         }
+    }
+
+    /// The map tile at (x, y) as the flight sees it: the world's map with the E3 flight-12
+    /// cell patch while it is in effect ([`Flight::cells_off`]). `None` outside the map.
+    pub fn map_tile(&self, world: &World, x: usize, y: usize) -> Option<u8> {
+        let t = world.map.get(x, y)?;
+        if self.cells_off
+            && setup::e3::FLIGHT12_CELLS
+                .iter()
+                .any(|&(cx, cy, _)| (usize::from(cx), usize::from(cy)) == (x, y))
+        {
+            return Some(setup::e3::FLIGHT12_TILE);
+        }
+        Some(t)
     }
 
     /// The player's tile as the AI sees it (DS:9766/9767: view tile + (5, 3), low bytes).
@@ -412,6 +428,7 @@ impl Flight {
             ai_player: (0, 0),
             mission: MissionState::default(),
             radar_set2: false,
+            cells_off: false,
             kills: 0,
             white_flash: 0,
             hit_flash: 0,
@@ -472,11 +489,15 @@ impl Flight {
             self.player.turn_step();
             // 4. Tile window drawn from the current view.
             self.frame.view = self.player.view;
-            // 5. Afterburner burst.
+            // 5. Afterburner burst (E3 flight 16 from phase 2: no new burst, e3-mission-logic
+            // §4.7.1; ASSUMPTION (U-330): the test sits inside the burst trigger test).
+            let no_new_burst =
+                self.episode == Episode::E3 && self.number == 16 && self.mission.phase >= 2;
             self.frame.flame = self.player.afterburner(
                 &mut self.keys,
                 self.joystick.button1,
                 self.mission_over,
+                no_new_burst,
                 events,
             );
             // 6. Projectiles and hits.
@@ -547,7 +568,12 @@ impl Flight {
             self.drawn.explosions.clone_from(&self.explosions);
             self.explosions.step();
             // 14. Palette effects (hit-flash.md §4.3): the hit flash decays (the host draws
-            // it from `frame.hit_flash`), a white flash cancels it and counts down.
+            // it from `frame.hit_flash`), a white flash cancels it and counts down. E3 flight 16
+            // from phase 5 zeroes the hit flash before its step (e3-mission-logic §4.1 step 14,
+            // `0C5D:CC18..CC28`), so no red flash shows there.
+            if self.episode == Episode::E3 && self.number == 16 && self.mission.phase >= 5 {
+                self.hit_flash = 0;
+            }
             self.frame.hit_flash = self.hit_flash;
             hit_flash::decay(&mut self.hit_flash, self.palette_mode);
             if self.white_flash > 0 {
@@ -557,7 +583,11 @@ impl Flight {
             self.white_flash = self.white_flash.saturating_sub(1);
             // 15. Comm viewer on an even back page: a transmission only when the table has
             // one for this flight and phase (mission-logic §4.6); otherwise the request is
-            // consumed.
+            // consumed. E3 flight 16 in phase 2 forces the request every tick, also during the
+            // end sequence (e3-mission-logic §4.5).
+            if self.episode == Episode::E3 && self.number == 16 && self.mission.phase == 2 {
+                self.comm_request = true;
+            }
             if self.comm_request && self.draw_page == 0 {
                 self.comm_request = false;
                 if self.comm_viewer().is_some() {
@@ -607,24 +637,38 @@ impl Flight {
             }
         }
         if from <= 26 {
-            // E2: `Msn_E2FlightEvents` after the flight menu (e2-mission-logic §4.7.1).
-            if self.episode == Episode::E2 {
-                self.e2_flight_events(events);
+            // E2: `Msn_E2FlightEvents`, E3: `Msn_E3TimedEvents`, after the flight menu
+            // (e2-mission-logic §4.7.1, e3-mission-logic §4.6).
+            match self.episode {
+                Episode::E1 => {}
+                Episode::E2 => self.e2_flight_events(events),
+                Episode::E3 => self.e3_timed_events(),
             }
             // 26 is audio. 27. Shields and destruction.
             if self.player.shields_step(&self.classes, self.mission_over) {
                 self.end_mission();
             }
-            // 28. Movement, map collision (skipped while drawing late), carry and limits;
-            // the edge alert is raised only while the ticker is idle (flight-model §4.4).
-            if self.player.move_step(world, !self.late_draw) && self.mission.ticker.idle() {
+            // 28. Movement: drift and drag; E3's hazard tiles (e3-mission-ships §5.1); map
+            // collision (skipped while drawing late), carry and limits. The edge alert is
+            // raised only while the ticker is idle (flight-model §4.4).
+            self.player.drift();
+            if self.episode == Episode::E3 {
+                self.hazard_step(world, events);
+            }
+            if self.player.collide_and_carry(world, !self.late_draw) && self.mission.ticker.idle() {
                 self.edge_hit = true;
             }
-            // 29. Comm request (not once the mission is over) and the F5 tactical map.
+            // 29. Comm request (not once the mission is over) and the F5 tactical map (E1: not
+            // in flight 14; E3: not in flight 16 from phase 5, e3-mission-logic §4.7.1).
             if self.keys.get(FlightKey::F6) && !self.mission_over {
                 self.comm_request = true;
             }
-            if self.keys.get(FlightKey::F5) && (self.episode != Episode::E1 || self.number != 14) {
+            let map_allowed = match self.episode {
+                Episode::E1 => self.number != 14,
+                Episode::E2 => true,
+                Episode::E3 => self.number != 16 || self.mission.phase < 5,
+            };
+            if self.keys.get(FlightKey::F5) && map_allowed {
                 return self.interrupt(30, Modal::TacticalMap);
             }
         }
@@ -663,6 +707,39 @@ impl Flight {
 }
 
 impl Flight {
+    /// E3 hazard tiles 41h..46h (e3-mission-ships rev 1 §5.1, `td3:0C5D:D27A..D3CB`): after
+    /// drift and drag, before collision and carry, every tick (also while the mission is over,
+    /// OB-054), except in flights 14, 17 and 19. The cells are read from the view left by the
+    /// previous carry; the third clause repeats the first, as in the original.
+    fn hazard_step(&mut self, world: &World, events: &mut Vec<Event>) {
+        if matches!(self.number, 14 | 17 | 19) {
+            return;
+        }
+        let v = self.player.view;
+        let hazard = |dx: i16, dy: i16| {
+            // Cell index (viewX + dx) × 201 + (viewY + dy), 16-bit.
+            let i = (v.tile_x + dx)
+                .wrapping_mul(201)
+                .wrapping_add(v.tile_y + dy) as u16;
+            let (x, y) = (usize::from(i) / 201, usize::from(i) % 201);
+            self.map_tile(world, x, y)
+                .is_some_and(|t| (0x41..=0x46).contains(&t))
+        };
+        let hit = hazard(5, 2)
+            || (hazard(4, 2) && v.sub_x <= 32)
+            || (hazard(5, 2) && v.sub_y <= 32)
+            || hazard(4, 3);
+        if hit {
+            // Effect 9 at the player (source FFh, distance 0).
+            events.push(Event::Sound {
+                kind: 9,
+                source: None,
+            });
+            self.player.shields = 0;
+            self.player.armour = self.player.armour.wrapping_sub(17);
+        }
+    }
+
     /// Tab, infra-red toggle and fire (`weapons.md` §4.1, tick-order step 33).
     fn player_specials(&mut self, world: &World, events: &mut Vec<Event>) {
         use FlightKey::{Alt, RightAlt, Space, Tab};
@@ -714,7 +791,11 @@ impl Flight {
 
 impl HashState for Flight {
     fn hash_state(&self, h: &mut StateHasher) {
-        h.bytes(&[self.episode as u8, u8::from(self.radar_set2)]);
+        h.bytes(&[
+            self.episode as u8,
+            u8::from(self.radar_set2),
+            u8::from(self.cells_off),
+        ]);
         self.number.hash_state(h);
         self.ticks.hash_state(h);
         self.draw_page.hash_state(h);
