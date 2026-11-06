@@ -398,3 +398,23 @@ fn missiles_need_a_new_press_and_a_cooldown() {
     f.tick(&w, &held(&[FlightKey::Space]), &mut ev);
     assert_eq!(f.missiles, 2);
 }
+
+#[test]
+fn e3_flight_16_suppresses_the_hit_flash_from_phase_5() {
+    // e3-mission-logic §4.1 step 14: flight 16 with phase >= 5 sets the hit flash to 0 before
+    // its step, so nothing is drawn.
+    let w = open_world();
+    let mut f = Flight::new(16);
+    f.episode = Episode::E3;
+    f.mission.phase = 5;
+    f.hit_flash = 12;
+    f.tick(&w, &TickControls::default(), &mut vec![]);
+    assert_eq!((f.hit_flash, f.frame.hit_flash), (0, 0));
+    // Other phases (and other flights) keep the normal decay.
+    let mut g = Flight::new(16);
+    g.episode = Episode::E3;
+    g.mission.phase = 4;
+    g.hit_flash = 12;
+    g.tick(&w, &TickControls::default(), &mut vec![]);
+    assert_eq!((g.frame.hit_flash, g.hit_flash), (12, 10));
+}

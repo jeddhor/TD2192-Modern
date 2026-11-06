@@ -142,16 +142,20 @@ impl Player {
 
     /// Afterburner burst of classes 2 and 5 (§4.7, tick-order step 5). Returns the flame
     /// sprite drawn this tick, if any.
+    ///
+    /// `no_new_burst` (E3 flight 16 from phase 2, e3-mission-logic §4.7.1): the press is
+    /// consumed but starts no burst; a running burst continues.
     pub(crate) fn afterburner(
         &mut self,
         keys: &mut KeyTable,
         button1: bool,
         over: bool,
+        no_new_burst: bool,
         events: &mut Vec<Event>,
     ) -> Option<u8> {
         let triggered = keys.get(FlightKey::KpPlus) || keys.get(FlightKey::Kp0) || button1;
         if triggered && matches!(self.class, 2 | 5) && !over {
-            if self.burst_frame == 0 && self.heading.is_principal() {
+            if !no_new_burst && self.burst_frame == 0 && self.heading.is_principal() {
                 self.burst_frame = 1;
                 self.burst_heading = self.heading;
                 events.push(Event::Sound {
@@ -211,17 +215,18 @@ impl Player {
         destroyed
     }
 
-    /// Drift and drag, map collision, tile carry and map limits (§4.2–4.4, step 28). Returns
-    /// true when the view was pushed back at a map limit (the edge alert).
-    pub(crate) fn move_step(&mut self, world: &World, collide: bool) -> bool {
-        self.drift();
+    /// Map collision, tile carry and map limits (§4.3–4.4, step 28), after [`Self::drift`] (E3
+    /// runs its hazard test between the two, e3-mission-ships §5.1). Returns true when the view
+    /// was pushed back at a map limit (the edge alert).
+    pub(crate) fn collide_and_carry(&mut self, world: &World, collide: bool) -> bool {
         if collide {
             self.collide(world);
         }
         self.carry()
     }
 
-    fn drift(&mut self) {
+    /// Drift and drag (§4.2, step 28).
+    pub(crate) fn drift(&mut self) {
         let (s, v) = (&mut self.speed, &mut self.view);
         let step = |s: u8| i16::from(s - SPEED_BIAS);
         if s.up > SPEED_BIAS {
