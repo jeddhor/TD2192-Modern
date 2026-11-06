@@ -82,8 +82,8 @@ impl Upscaler {
 pub struct Scratch {
     /// Scale4x's 2× intermediate image.
     mid: Vec<Px>,
-    /// xBR's per-pixel YUV.
-    yuv: Vec<[i32; 3]>,
+    /// xBR's padded input.
+    padded: Padded,
 }
 
 /// Upscales `src` (`size` = (w, h), row-major RGBA8) by `kind`'s factor into `dst`, which is
@@ -112,13 +112,133 @@ pub fn upscale(
         }
         Upscaler::Xbr2 | Upscaler::Xbr3 | Upscaler::Xbr4 => {
             let k = kind.factor();
-            scratch.yuv.clear();
-            scratch.yuv.extend(src.iter().map(|&p| yuv(p)));
+            scratch.padded.build(&img);
             let table = &coverage_tables()[k - 2];
-            let yuv = &scratch.yuv;
+            let padded = &scratch.padded;
             run(&img, k, dst, |img, y, out| {
-                xbr_row(img, yuv, k, table, y, out)
+                xbr_row(padded, img, k, table, y, out)
             });
+        }
+    }
+}
+
+/// xBR's input: each band of the image with a 2-pixel border of repeated edge pixels, its YUV,
+/// and the distances between every pixel and its right, lower, lower-right neighbours and the
+/// anti-diagonal pair right/lower, so that the edge rules read neighbours and distances at
+/// fixed offsets.
+#[derive(Debug, Default)]
+struct Padded {
+    /// Padded width w + 4.
+    pw: usize,
+    px: Vec<Px>,
+    yuv: Vec<[i32; 3]>,
+    /// d(p, p + (1, 1)).
+    dm: Vec<u32>,
+    /// d(p + (1, 0), p + (0, 1)).
+    da: Vec<u32>,
+    /// d(p, p + (1, 0)).
+    dh: Vec<u32>,
+    /// d(p, p + (0, 1)).
+    dv: Vec<u32>,
+    /// Per band: first image row, end row, index of the band's padded row 0.
+    bands: Vec<(usize, usize, usize)>,
+    /// Per padded row: the image row it repeats, and whether the band has a row below it.
+    rows: Vec<(usize, bool)>,
+}
+
+impl Padded {
+    fn build(&mut self, img: &Src<'_>) {
+        let pw = img.w + 4;
+        self.pw = pw;
+        self.bands.clear();
+        self.rows.clear();
+        let mut base = 0;
+        let edges = match img.split {
+            Some(s) => [(0, s), (s, img.h)].to_vec(),
+            None => [(0, img.h)].to_vec(),
+        };
+        for (lo, hi) in edges {
+            self.bands.push((lo, hi, base));
+            let rows = hi - lo + 4;
+            for pr in 0..rows {
+                let y = (lo + pr).saturating_sub(2).clamp(lo, hi - 1);
+                self.rows.push((y, pr + 1 < rows));
+            }
+            base += rows * pw;
+        }
+        let n = base;
+        self.px.resize(n, [0; 4]);
+        self.yuv.resize(n, [0; 3]);
+        for v in [&mut self.dm, &mut self.da, &mut self.dh, &mut self.dv] {
+            v.resize(n, 0);
+        }
+        let rows = &self.rows;
+        self.px
+            .par_chunks_mut(pw)
+            .zip(self.yuv.par_chunks_mut(pw))
+            .zip(rows.par_iter())
+            .for_each(|((px, yv), &(y, _))| {
+                for (pc, (p, q)) in px.iter_mut().zip(yv.iter_mut()).enumerate() {
+                    *p = img.px[y * img.w + pc.saturating_sub(2).min(img.w - 1)];
+                    *q = yuv(*p);
+                }
+            });
+        let yv = &self.yuv;
+        self.dm
+            .par_chunks_mut(pw)
+            .zip(self.da.par_chunks_mut(pw))
+            .zip(self.dh.par_chunks_mut(pw))
+            .zip(self.dv.par_chunks_mut(pw))
+            .enumerate()
+            .for_each(|(r, (((dm, da), dh), dv))| {
+                // The last row and column of each band have no pair partner; they are never
+                // read.
+                let has_next = rows[r].1;
+                for pc in 0..pw {
+                    let i = r * pw + pc;
+                    let inner = has_next && pc + 1 < pw;
+                    dm[pc] = if inner {
+                        dist(yv[i], yv[i + pw + 1])
+                    } else {
+                        0
+                    };
+                    da[pc] = if inner {
+                        dist(yv[i + 1], yv[i + pw])
+                    } else {
+                        0
+                    };
+                    dh[pc] = if inner { dist(yv[i], yv[i + 1]) } else { 0 };
+                    dv[pc] = if inner { dist(yv[i], yv[i + pw]) } else { 0 };
+                }
+            });
+    }
+
+    /// Padded index of image row `y`'s first pixel.
+    fn row(&self, y: usize) -> usize {
+        let &(lo, _, base) = self
+            .bands
+            .iter()
+            .find(|&&(lo, hi, _)| (lo..hi).contains(&y))
+            .expect("row inside the image");
+        base + (y - lo + 2) * self.pw + 2
+    }
+
+    /// The distance between the pixels at offsets `a` and `b` from index `e`, from the
+    /// distance maps when they are neighbours.
+    #[inline(always)]
+    fn d(&self, e: usize, a: (isize, isize), b: (isize, isize)) -> u32 {
+        let pw = self.pw as isize;
+        let at = |(x, y): (isize, isize)| (e as isize + x + y * pw) as usize;
+        match (b.0 - a.0, b.1 - a.1) {
+            (1, 1) => self.dm[at(a)],
+            (-1, -1) => self.dm[at(b)],
+            (1, -1) => self.da[at((a.0, a.1 - 1))],
+            (-1, 1) => self.da[at((b.0, b.1 - 1))],
+            (1, 0) => self.dh[at(a)],
+            (-1, 0) => self.dh[at(b)],
+            (0, 1) => self.dv[at(a)],
+            (0, -1) => self.dv[at(b)],
+            _ => dist(self.yuv[at(a)], self.yuv[at(b)]),
         }
     }
 }
@@ -267,9 +387,6 @@ const BOTH: usize = 3;
 /// for one factor k.
 type Coverage = [[u16; 16]; 4];
 
-/// The corners in the order they are applied, as (x, y) directions.
-const CORNERS: [(isize, isize); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
-
 /// The coverage tables for k = 2, 3, 4.
 fn coverage_tables() -> &'static [Coverage; 3] {
     static TABLES: OnceLock<[Coverage; 3]> = OnceLock::new();
@@ -325,57 +442,90 @@ fn clipped_area(poly: &[(f64, f64)], (a, b, c): (f64, f64, f64)) -> f64 {
 }
 
 /// xBR level 2 for input row `y` into its k output rows.
-fn xbr_row(img: &Src<'_>, yuv: &[[i32; 3]], k: usize, table: &Coverage, y: usize, out: &mut [Px]) {
-    let rows = [-2, -1, 0, 1, 2].map(|dy| img.row(y, dy));
+fn xbr_row(p: &Padded, img: &Src<'_>, k: usize, table: &Coverage, y: usize, out: &mut [Px]) {
+    let row = p.row(y);
+    let pw = p.pw;
     let ow = img.w * k;
     for x in 0..img.w {
-        let cols = [-2, -1, 0, 1, 2].map(|dx| img.col(x, dx));
-        let at = |dx: isize, dy: isize| rows[(dy + 2) as usize] + cols[(dx + 2) as usize];
-        let e = img.px[at(0, 0)];
+        let ie = row + x;
+        let e = p.px[ie];
         let mut cell = [e; 16];
-        for (sx, sy) in CORNERS {
-            let n = |u: isize, v: isize| at(sx * u, sy * v);
-            let (ie, i_f, ih) = (n(0, 0), n(1, 0), n(0, 1));
-            let (f, h) = (img.px[i_f], img.px[ih]);
-            if e == f || e == h {
-                continue;
-            }
-            let (ii, ic, ig, id, ib) = (n(1, 1), n(1, -1), n(-1, 1), n(-1, 0), n(0, -1));
-            let d = |a: usize, b: usize| dist(yuv[a], yuv[b]);
-            // Distances between pairs parallel to the corner's anti-diagonal (H–F) and to its
-            // diagonal (E–I). An edge runs along the anti-diagonal, cutting E's corner, when the
-            // colours change less along it than across it.
-            let along_hf = d(ie, ic) + d(ie, ig) + d(ii, n(0, 2)) + d(ii, n(2, 0)) + 4 * d(ih, i_f);
-            let along_ei =
-                d(ih, id) + d(ih, n(1, 2)) + d(i_f, n(2, 1)) + d(i_f, ib) + 4 * d(ie, ii);
-            if along_hf >= along_ei {
-                continue;
-            }
-            let px = if d(ie, i_f) <= d(ie, ih) { f } else { h };
-            let (ke, ki) = (d(i_f, ig), d(ih, ic));
-            let (g, c) = (img.px[ig], img.px[ic]);
-            let shallow = 2 * ke <= ki && e != g && img.px[id] != g;
-            let steep = 2 * ki <= ke && e != c && img.px[ib] != c;
-            let kind = match (shallow, steep) {
-                (true, true) => BOTH,
-                (true, false) => SHALLOW,
-                (false, true) => STEEP,
-                (false, false) => DIAGONAL,
-            };
-            for j in 0..k {
-                for i in 0..k {
-                    let a = table[kind][j * k + i];
-                    if a == 0 {
-                        continue;
-                    }
-                    let ox = if sx > 0 { i } else { k - 1 - i };
-                    let oy = if sy > 0 { j } else { k - 1 - j };
-                    cell[oy * k + ox] = blend(cell[oy * k + ox], px, a);
-                }
-            }
+        // A corner needs E to differ from both of its side neighbours.
+        let flat = [ie - 1, ie + 1, ie - pw, ie + pw]
+            .iter()
+            .all(|&i| p.px[i] == e);
+        if !flat {
+            corner::<1, 1>(p, ie, k, table, &mut cell);
+            corner::<-1, 1>(p, ie, k, table, &mut cell);
+            corner::<1, -1>(p, ie, k, table, &mut cell);
+            corner::<-1, -1>(p, ie, k, table, &mut cell);
         }
         for j in 0..k {
             out[j * ow + k * x..j * ow + k * x + k].copy_from_slice(&cell[j * k..j * k + k]);
+        }
+    }
+}
+
+/// The edge rule for the corner of the pixel at padded index `ie` in direction (SX, SY): the
+/// rule is written for the bottom-right corner, and (u, v) offsets are mirrored for the
+/// others. Blends into `cell` (k × k sub-pixels).
+#[inline(always)]
+fn corner<const SX: isize, const SY: isize>(
+    p: &Padded,
+    ie: usize,
+    k: usize,
+    table: &Coverage,
+    cell: &mut [Px; 16],
+) {
+    let pw = p.pw as isize;
+    let n = |u: isize, v: isize| (ie as isize + SX * u + SY * v * pw) as usize;
+    let d =
+        |a: (isize, isize), b: (isize, isize)| p.d(ie, (SX * a.0, SY * a.1), (SX * b.0, SY * b.1));
+    let (e, f, h) = (p.px[ie], p.px[n(1, 0)], p.px[n(0, 1)]);
+    if e == f || e == h {
+        return;
+    }
+    // With E (0, 0), F (1, 0), H (0, 1), I (1, 1), C (1, −1), G (−1, 1), D (−1, 0), B (0, −1),
+    // F4 (2, 0), I4 (2, 1), H5 (0, 2), I5 (1, 2): distances between pairs parallel to the
+    // corner's anti-diagonal (H–F) and to its diagonal (E–I). An edge runs along the
+    // anti-diagonal, cutting E's corner, when the colours change less along it than across it.
+    let along_hf = d((0, 0), (1, -1))
+        + d((0, 0), (-1, 1))
+        + d((1, 1), (0, 2))
+        + d((1, 1), (2, 0))
+        + 4 * d((0, 1), (1, 0));
+    let along_ei = d((0, 1), (-1, 0))
+        + d((0, 1), (1, 2))
+        + d((1, 0), (2, 1))
+        + d((1, 0), (0, -1))
+        + 4 * d((0, 0), (1, 1));
+    if along_hf >= along_ei {
+        return;
+    }
+    let px = if d((0, 0), (1, 0)) <= d((0, 0), (0, 1)) {
+        f
+    } else {
+        h
+    };
+    let (ke, ki) = (d((1, 0), (-1, 1)), d((0, 1), (1, -1)));
+    let (g, c) = (p.px[n(-1, 1)], p.px[n(1, -1)]);
+    let shallow = 2 * ke <= ki && e != g && p.px[n(-1, 0)] != g;
+    let steep = 2 * ki <= ke && e != c && p.px[n(0, -1)] != c;
+    let kind = match (shallow, steep) {
+        (true, true) => BOTH,
+        (true, false) => SHALLOW,
+        (false, true) => STEEP,
+        (false, false) => DIAGONAL,
+    };
+    for j in 0..k {
+        for i in 0..k {
+            let a = table[kind][j * k + i];
+            if a == 0 {
+                continue;
+            }
+            let ox = if SX > 0 { i } else { k - 1 - i };
+            let oy = if SY > 0 { j } else { k - 1 - j };
+            cell[oy * k + ox] = blend(cell[oy * k + ox], px, a);
         }
     }
 }

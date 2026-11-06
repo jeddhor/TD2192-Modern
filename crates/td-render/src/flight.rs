@@ -917,9 +917,10 @@ mod tests {
         let mut cells: Vec<u8> = (0..201 * 201)
             .map(|i| 1 + ((i % 201 + i / 201) % 7) as u8)
             .collect();
+        // Map files are column-major: cell (x, y) is byte x * 201 + y.
         for &i in overpass_cols {
             let x = (VIEW.tile_x + i) as usize;
-            cells[(VIEW.tile_y as usize + 2) * 201 + x] = 0x42;
+            cells[x * 201 + VIEW.tile_y as usize + 2] = 0x42;
         }
         (
             TileMap::parse_episode(&cells).unwrap(),
