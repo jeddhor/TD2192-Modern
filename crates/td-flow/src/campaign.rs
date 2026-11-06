@@ -16,12 +16,18 @@
 //! left); after a tested post-flight step it ends the block (the mission still counts as
 //! completed). After an untested step ([`Block::untested`]) the story goes on, so Esc in
 //! dialogue 1 still shows hint 1 (C-0002 frames 2603 → 2788).
+//!
+//! Every story and dialogue screen updates the front-end state of the program run
+//! ([`Program::front_end`]) when it ends, and the launcher receives it before each flight
+//! ([`FlightLauncher::set_front_end`]): the flight's two-digit-heading volleys read it
+//! (weapons rev 4 §3.3, OB-017).
 
 use std::fmt;
 
 use td_input::{Key, TickInput};
 use td_render::Framebuffer;
 use td_render::small_text;
+use td_sim::flight::front_end::FrontEnd;
 
 use crate::dialogue::DialogueScene;
 use crate::program::Program;
@@ -691,6 +697,12 @@ pub trait FlightLauncher: fmt::Debug {
 
     /// `Random(n)` from the program's generator (the stream the flights use).
     fn random(&mut self, n: u16) -> u16;
+
+    /// The front-end state the next flight starts from (weapons rev 4 §3.3: the scene palette,
+    /// the lit flag, the dialogue reader's last line, how the program was started), handed
+    /// over before every [`FlightLauncher::launch`] of Episode 1. A launcher that flies real
+    /// flights builds the two-digit-heading muzzle bytes from it. Default: ignored.
+    fn set_front_end(&mut self, _state: &FrontEnd) {}
 }
 
 /// Stand-in flight: a notice; any key = success, D = died, A = aborted, L = lost,
@@ -891,6 +903,11 @@ impl Campaign {
         self.pos == Pos::Retry
     }
 
+    /// True while a dialogue scene is shown.
+    pub fn in_dialogue(&self) -> bool {
+        matches!(self.child, Some(Child::Dialogue(_)))
+    }
+
     /// Runs the block for one frame; returns the result when the block is over.
     pub fn step(
         &mut self,
@@ -926,6 +943,12 @@ impl Campaign {
                     return None;
                 }
                 let mut child = self.child.take();
+                // What the screen left in DGROUP for the flights (weapons rev 4 §3.3).
+                match &child {
+                    Some(Child::Story(s)) => s.apply_front_end(&mut prog.front_end),
+                    Some(Child::Dialogue(d)) => d.apply_front_end(&mut prog.front_end),
+                    _ => {}
+                }
                 self.type_ahead = match &mut child {
                     Some(Child::Story(s)) => s.take_keys(),
                     Some(Child::Dialogue(d)) => d.take_keys(),
@@ -1146,6 +1169,7 @@ impl Campaign {
     fn launch(&mut self, prog: &mut Program, ctx: &mut FlowContext<'_>, flight: u8) {
         prog.cues.stop(ctx.audio);
         prog.play_flight_song(ctx, flight);
+        prog.launcher.set_front_end(&prog.front_end);
         let f = prog.launcher.launch(ctx, flight);
         self.child = Some(Child::Flight(f));
     }

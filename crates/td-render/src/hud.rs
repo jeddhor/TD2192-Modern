@@ -31,6 +31,10 @@ pub const ICON_H: usize = 18;
 pub const ICON_POS: (usize, usize) = (179, 7);
 /// Number of icons in `td.wea`.
 pub const ICONS: usize = 6;
+/// The weapon icon cell for weapon 0 (OB-090, hud rev 3 §5, preserved): the icon loop reads
+/// the 648 heap bytes before the `td.wea` block, which C-0069 (flight 19 as the first flight of
+/// a program run) shows as one solid colour.
+pub const WEAPON_0_COLOUR: u8 = 0xB2;
 /// F6 indicator frame size, frame count and HUD position (§4.8).
 pub const FAC: usize = 28;
 pub const FAC_FRAMES: usize = 5;
@@ -525,6 +529,14 @@ impl Hud {
 
     /// Weapon icon `weapon` (1..=6) at (179, 7) (§4.9).
     fn weapon_icon(&mut self, assets: &HudAssets, weapon: u8) {
+        if weapon == 0 {
+            // OB-090: x 179..214, y 7..24 in colour B2h (LIKELY: heap contents, one capture).
+            for row in 0..ICON_H {
+                let dst = (ICON_POS.1 + row) * HUD_W + ICON_POS.0;
+                self.bar[dst..dst + ICON_W].fill(WEAPON_0_COLOUR);
+            }
+            return;
+        }
         if !(1..=ICONS as u8).contains(&weapon) {
             return;
         }
@@ -760,6 +772,31 @@ mod tests {
 
     fn map() -> TileMap {
         TileMap::parse_episode(&vec![16u8; 201 * 201]).unwrap()
+    }
+
+    #[test]
+    fn weapon_0_fills_the_icon_cell_with_b2h() {
+        // hud rev 3 §5 OB-090: weapon 0 (a class-0/1 flight first in its program run).
+        let a = assets();
+        let mut hud = Hud::new(&a);
+        let mut st = state();
+        st.weapon = 0;
+        hud.step(&a, &map(), &st);
+        for y in 0..HUD_H {
+            for x in 0..HUD_W {
+                let inside = (ICON_POS.0..ICON_POS.0 + ICON_W).contains(&x)
+                    && (ICON_POS.1..ICON_POS.1 + ICON_H).contains(&y);
+                if inside {
+                    assert_eq!(hud.bar()[y * HUD_W + x], WEAPON_0_COLOUR, "({x}, {y})");
+                }
+            }
+        }
+        // The cell is exactly x 179..214, y 7..24.
+        assert_eq!((ICON_POS, ICON_W, ICON_H), ((179, 7), 36, 18));
+        // Weapon 1 draws td.wea's first icon there.
+        st.weapon = 1;
+        hud.step(&a, &map(), &st);
+        assert_eq!(hud.bar()[7 * HUD_W + 179], 100);
     }
 
     #[test]
