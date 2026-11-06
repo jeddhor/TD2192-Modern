@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/hit-flash` |
-| **Revision** | 2 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the DAC values of every tick; T1 for when the flash starts and how it decays (frame parity depends on it). It feeds only the palette: no gameplay state reads `g_HitFlash` |
 | **Confidence** | CONFIRMED for the formula, the decay and the palette (static, E1 `0E8B:06C5`, `0E8B:DA6B..DE36`; dynamic: E1 kills in C-0009, C-0023, C-0033 and the E3 end sequence in C-0041, whose code matches E1 instruction for instruction) |
@@ -90,7 +90,7 @@ Writers that set `g_HitFlash := 0` (E1):
 | Where | When |
 |---|---|
 | `0E8B:BEFA` | flight setup (with palette mode := 0) |
-| `0E8B:0417`, `0E8B:0644` | every level of the flight fade-in and fade-out ([flight-screens §4.5.3](../flow/flight-screens.md)); so the computer menu, comm viewer and other faded screens end any flash |
+| `0E8B:0417`, `0E8B:0644` | every level of the flight fade-in and fade-out ([flight-screens §4.5.3](../flow/flight-screens.md)); so the screens that fade end any flash: the computer (Esc) menu, the flight-17 cut-scene and the flight-19 V.C.I. screen ([flight-screens §4.10](../flow/flight-screens.md)). The comm viewer does not fade and keeps the flash (C-0058 tick 318: 10 after the transmission screen, VE-2) |
 | `0E8B:B229`, `0E8B:B2BA` | Alt (infra-red toggle) |
 | `0E8B:9FA7`, `0E8B:A1EF`, `0E8B:A31F` | mission events of flights 20, 18 and 17 ([mission-logic §5.20, §5.18, §5.17](mission-logic.md)) |
 | `0E8B:DE33` | the palette step itself, while a white flash runs (§4.3) |
@@ -176,3 +176,5 @@ No sound of its own; the destruction sound (100) at the ship or at the player co
 |---|---|---|---|
 | 1 | 2026-11-05 | RE-11 (Archaeologist + Spec author) | Initial; resolves U-300 |
 | 2 | 2026-11-05 | RE-11 | E1 test vectors 4–6 from C-0009, C-0023, C-0033 (found by IM-7; vector 4 re-checked by RE-11). No behaviour change |
+| 3 | 2026-11-06 | main session | §4.2: the comm viewer does not end a flash (it does not fade); only the Esc menu and the flight-17 cut-scene do (VE-2, C-0058; docs/parity/M9-playthrough.md open question 3). td2192 already behaved this way |
+| 4 | 2026-11-06 | RE-15 | §4.2: the flight-19 V.C.I. screen also uses the flight fades, so it also ends a flash (flight-screens §4.10.2) |

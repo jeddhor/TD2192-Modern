@@ -376,10 +376,13 @@ impl Shots {
                 7 => (-1, -1),
                 1 => (-1, 1),
                 3 => (1, 1),
-                _ => {
+                h if h > 9 => {
                     shot.tile_x = FREE;
                     return;
                 }
+                // Headings 0 and 5 neither move nor delete the shot (weapons §2, §4.3 step 8):
+                // E1 flight 20's third bomb takes heading Random(9).
+                _ => (0, 0),
             };
             shot.tile_x = (i16::from(shot.tile_x) + dx) as u8;
             shot.tile_y = (i16::from(shot.tile_y) + dy) as u8;

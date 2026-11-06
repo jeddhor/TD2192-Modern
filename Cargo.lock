@@ -1177,11 +1177,13 @@ dependencies = [
  "clap",
  "hound",
  "png",
+ "rayon",
  "sha2",
  "td-assets",
  "td-audio",
  "td-formats",
  "td-render",
+ "td-sim",
 ]
 
 [[package]]

@@ -103,6 +103,26 @@ impl Replay {
     }
 }
 
+/// Advances `flight` by one replay tick: the tick runs with input `word`
+/// ([`crate::input::TickControls::from_word`]). A modal screen the tick opens (comm viewer,
+/// pause, flight menu, tactical map) is closed at once with no input, as in the oracle captures,
+/// where no key is held while a screen is open; [`crate::Flight::resume`] then clears the key
+/// table and finishes the tick.
+pub fn step(
+    flight: &mut crate::Flight,
+    world: &crate::World,
+    word: u64,
+) -> crate::flight::TickResult {
+    use crate::flight::TickResult;
+    let c = crate::input::TickControls::from_word(word);
+    let mut events = Vec::new();
+    let mut r = flight.tick(world, &c, &mut events);
+    while let TickResult::Modal(_) = r {
+        r = flight.resume(world, &crate::input::TickControls::default(), &mut events);
+    }
+    r
+}
+
 /// Re-runs `replay` through `step` (which advances one tick with the given input word and
 /// returns the state hash after it) and reports the first checkpoint that differs.
 pub fn verify(replay: &Replay, mut step: impl FnMut(u64) -> u64) -> Result<(), (usize, u64, u64)> {

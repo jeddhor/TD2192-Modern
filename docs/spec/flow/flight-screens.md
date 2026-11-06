@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
 | **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014), the 16 heading blits (C-0080) |
@@ -464,6 +464,93 @@ So a file that replaces only bank slots changes sprite n on the four headings N,
 
 **Sprite slot 0 is reloaded by two screens.** The ship library (§4.1.2) and the comm screen (§4.2) leave `td.shp` record 0 in bank slot 0. In flight 20 this replaces lander piece 0 (OB-057): after the player has opened the ship library, slot 1 is drawn with the stock record 0 for the rest of the flight. E1 flight 20 has no transmission. Flights 7, 12, 15 and 21 replace only slots 2 and 3, so they are not affected.
 
+### 4.10 Screens that mission logic shows in real time (flights 17 and 19)
+
+Two E1 mission events show a screen from inside `Msn_UpdateEvents` (`0E8B:9860`, tick-order step 18). Both run to completion inside the tick that requests them, so **no tick passes and `g_MissionTicks` does not change** while they are on screen; they wait with `Crt.Delay` (real milliseconds, T2) and read no keys. The INT 09h handler stays installed, so keys pressed or released meanwhile are in the key bytes when the tick's input steps run (tick-order steps 23–33); nothing clears them. Music keeps playing; no sound effect is started. Both use the flight fades (`FadeOut`/`FadeIn`, §4.5.3), so both end any hit flash ([hit-flash](../sim/hit-flash.md) §4.2). In flights 17 and 19 the palette mode is 0, so `FadeIn` restores `g_FlightPalette` itself. Text is the small flight font, transparent (`Txt_FlightDrawString` `0E8B:4947`, [text](../render/text.md) §4.2: the first inked column is x + 2 and the glyph rows are y + 1..y + 5); *Text y* is an absolute VGA row (§2), and both screens show page 0 from its origin (VGA row 32), so screen row = text y − 32.
+
+Common frame for both:
+
+```text
+FadeOut
+clear page 0 (232 rows x 88 bytes, colour 0)          (Gfx_ClearPage(0, 88, 0))
+split line := 400 (HUD off; the display still ends after 192 rows)
+show page 0 from its origin (start address 0B00h)
+... screen-specific content (4.10.1, 4.10.2) ...
+FadeOut
+split line := 13Fh (HUD back at row 160)
+clear page 0 (232 rows x 88 bytes, colour 0)
+(flight 19 only: the vehicle switch of mission-logic §5.19)
+FadeIn
+```
+
+The screen is then left showing **page 0 from its origin with the HUD band**: a black playfield and the HUD until this tick's page flip (step 22) shows the tick's back page at the current scroll. Page 0 has just been cleared: if the tick's back page is page 0 (`g_DrawPage` = 0 at step 18), the frame flipped at step 22 shows a black playfield with only what steps 19–21 draw after the screen (guidance dots, the infra-red notice); otherwise it shows the normal frame. Either way the next tick redraws its page completely. C-0067 frame 1520 shows the black playfield with the HUD during the closing `FadeIn`.
+
+#### 4.10.1 Flight 17: the cut-scene (`0E8B:A479..A6E1`)
+
+Requested by mission rule A of flight 17 (Amiel's ship gone, phase 1 → 2: `DS:32B6` := 1, [mission-logic](../sim/mission-logic.md) §5.17) and run at the end of `Msn_UpdateEvents` of the same tick, after the flight-17 base events. It runs once: the request is cleared at its end and nothing sets it again.
+
+```text
+(common frame: FadeOut, clear page 0, split line 400, show page 0 from its origin)
+open td1-17.pic (record size 1)
+for row = 0..89, for x = 0..319: read one byte; pixel (x, VGA row 67 + row) := byte
+    -> the 320 x 90 image at screen rows 35..124; the file has no palette and is read from offset 0
+FadeIn                                                   (g_FlightPalette, mode 0)
+text (10, 172) e1.flight_events.02[0], ink 131           -> screen pen (10, 140)
+Crt.Delay(1000)
+flash, sparing entries 131, 248 and 250 (the three text inks):
+    for e = 0..255, e not in {131, 248, 250}: SetDac(e, 0, 0, 0);    Crt.Delay(100)
+    for e = 0..145, e not in {131}:           SetDac(e, 63, 63, 13); Crt.Delay(100)
+    for e = 0..255, e not in {131, 248, 250}: SetDac(e, 0, 0, 0);    Crt.Delay(100)
+    for e = 0..255, e not in {131, 248, 250}: SetDac(e, g_FlightPalette[e])
+Crt.Delay(1000)
+text (10, 182) e1.flight_events.02[1], ink 248           -> screen pen (10, 150)
+Crt.Delay(1000)
+text (10, 192) e1.flight_events.02[2], ink 131           -> screen pen (10, 160)
+Crt.Delay(1000)
+text (10, 202) e1.flight_events.02[3], ink 248           -> screen pen (10, 170)
+Crt.Delay(1000)
+text (10, 212) e1.flight_events.02[4], ink 250           -> screen pen (10, 180)
+Crt.Delay(2000)
+(common frame: FadeOut; close the file; split line 13Fh; clear page 0; FadeIn)
+DS:32B6 := 0
+```
+
+- The second flash loop runs to entry 145 only (91h): entries 146..255 keep the black of the first loop until the restore. Entries 248 and 250 are skipped only by the test, not by the range, so within 0..145 only 131 is spared.
+- During the flashes the image and the text drawn so far stay in video memory; only the DAC changes. The restore writes the flight palette directly (no fade), entry 0 included.
+- `SetDac(e, r, g, b)` is the DAC write of §2 (`Gfx_SetDacEntry`); the palette buffers are not changed.
+- Real-time length: 7,300 ms of delays plus four 17-level fades (about 34 frames each at P1) plus the file read: C-0067 tick 107 runs from frame 875 to frame 1548 (673 frames, about 9.6 s).
+- Port: the host runs this sequence when td-sim reports the request at step 18 of the tick, before the tick's later steps are presented; td-sim's state does not change during it, except that the host's fades zero `g_HitFlash` (hit-flash §4.2; VE-2's test does this, M9-playthrough D4).
+
+#### 4.10.2 Flight 19: the V.C.I. screen (`0E8B:A0BB..A1DC`)
+
+Condition and state changes: [mission-logic](../sim/mission-logic.md) §5.19 (phase 1, view Y = 70, 117 < view X < 124). Order:
+
+```text
+store the five F5 lines of entry 0 (e1.flight_events.01[1..4], the last twice; string[30] each)
+(common frame: FadeOut, clear page 0, split line 400, show page 0 from its origin)
+text (40, 80) e1.flight_events.01[5], ink 131            -> screen pen (40, 48): glyphs on rows 49..53
+FadeIn
+Crt.Delay(2000)
+(common frame: FadeOut, split line 13Fh, clear page 0)
+the vehicle switch: player class := 8, armour := 1, slot 19 := the truck, phase := 2, view Y += 1
+FadeIn
+```
+
+Nothing else is drawn: the screen is black except that one line (C-0069 frames 1310, 1380: only colour 131 on rows 49..53, columns 42..262). The real-time length is 2,000 ms plus four fades (C-0069 tick 205: frames 1231..1510). The switch happens before the closing `FadeIn`, so the tick goes on (steps 19–33) with the new class, the moved view and slot 19.
+
+#### 4.10.3 Other mission-requested real-time effects
+
+| Episode | Flight | What | Where specified |
+|---|---|---|---|
+| E1 | 17 | cut-scene | §4.10.1 |
+| E1 | 19 | V.C.I. screen | §4.10.2 |
+| E1 | all with a transmission | comm viewer (modal, no fades, waits for keys) | §4.2; [mission-logic](../sim/mission-logic.md) §4.6 |
+| E1 | 17, 18, 20 | DAC flashes and whites of the base destruction, the bomb and the lander (no delay, no screen) | [mission-logic](../sim/mission-logic.md) §5.17, §5.18, §5.20 |
+| E2 | — | no cut-scene and no V.C.I. screen: `Msn_E2FlightEvents` only draws into the ticker strip | [e2-mission-logic](../sim/e2-mission-logic.md) §4.7 |
+| E3 | 16 | forced transmission, then a five-step magenta DAC fade with a retrace wait per step, inside one tick | [e3-mission-logic](../sim/e3-mission-logic.md) §4.6.4 |
+
+E3 sets no cut-scene request ([e3-mission-logic](../sim/e3-mission-logic.md) §2).
+
 ## 5. Edge cases and original bugs
 
 | Quirk | Original behaviour | Port policy (proposal) |
@@ -547,6 +634,7 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | OB-057 (library reloads slot 0) | §4.1.2 (`0E8B:7374..78FF`) with the flight-20 loads; C-0045 | static + capture (RAM) | CONFIRMED |
 | Explosions | `0E8B:0D31..0F42`, `12xx..14D4`, `14E4..1580`, `16F9..177B`, `D872..DA66` | static | LIKELY |
 | Shots | `0E8B:1785..3F9C` (bytes `1948..197F` read directly) | static | LIKELY |
+| Flight-17 cut-scene and flight-19 V.C.I. screen (§4.10) | `0E8B:A479..A6E1`, `0E8B:A0BB..A1DC` | static; C-0067 frames 960..1450 (image at screen rows 35..124 with 0 differing pixels, text glyphs on rows 141..145 to 181..185, DAC 131/248/250), C-0069 frames 1310..1450 | CONFIRMED |
 
 ## 10. Revision history
 
@@ -555,3 +643,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | 1 | 2026-11-02 | RE-8 (Archaeologist + Spec author) | Initial |
 | 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author + Verifier) | §4.9 mission-specific sprites (flights 7, 12, 15, 20, 21): loads, heading-to-buffer map, which ships use them, helicopter rotor frames by draw page; OB-057; test vector 17 (C-0027). E2/E3 transmissions and library: [e2-flight-screens](e2-flight-screens.md) |
 | 3 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.9 pixel transform of all 16 heading blits (U-360): mirrors on E, S, NE, SE and the four mirrored 22.5°/67.5° headings; one-pixel shift on ten blits; 40 × 40 boxes drawn at the 32 × 32 corner, not centred. Test vector 20 (C-0080, every heading of the player) |
+| 4 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.10 new: the flight-17 cut-scene and the flight-19 V.C.I. screen in full (frame, image rows, text pens and inks, delays, DAC flashes, page-0 clear, keys, tick); list of the other mission-requested real-time effects of E1–E3 (BUG-3) |
