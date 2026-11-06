@@ -588,7 +588,7 @@ Captions use the `td.lt2` small font in three lines at y0, y0 + 10 and y0 + 20 (
 | 5358 | tdoffic2 | (10,170) o6 | 4 = (14,50,63) | 10 |
 | 5644 | sbar | (10,10) s1 | 90 = (48,38,63) | 10 |
 | 583E | velsroom | (10,20) s3 | 12 = (40,40,63) | 10 |
-| 5BA3 | hyde | x = 160 − Round(5 × length / 2) per line, y 5/15/25, o4 (E1 voffice layout 5 rows higher) | 3 = (63,63,63) | 10 |
+| 5BA3 | hyde | x = 160 − Round(5 × length / 2) per line, y 5/15/25, o4 (E1 voffice layout 5 rows higher; C-0046) | 3 = (63,63,63) | 10 |
 | 6127 | velvswlf | as hyde | 3, RGB not set (the picture's own entry 3) | 15 |
 
 `velvswlf.scr` was missing from the E2 scene list in [EXECUTABLES.md §6](EXECUTABLES.md#6-episode-2-td2exe).

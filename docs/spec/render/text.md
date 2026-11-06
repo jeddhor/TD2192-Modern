@@ -243,7 +243,7 @@ None. Typed text paces itself on vertical retrace (§4.3); it makes no sound.
 | Title font map, mask F7h, advance, measure | `051A:042A`, `051A:02D7`, `051A:5852` | static + capture | CONFIRMED |
 | 39 title glyphs loaded | `051A:5852`, `051A:527F`; C-0002 int21 (2,496 bytes) | static + dynamic | CONFIRMED |
 | Caption positions and colours | `051A:1E5A`, `051A:4113`, `051A:471B`, `051A:4F5A`, `051A:2B26` | static | LIKELY (only the dialogue and title screens were compared with captures) |
-| E1 scene-card layouts (§4.5.1): pens, black copies, inks, waits, `marauder` offset and joined line, `voffice` centring | all 14 routines `051A:1E5A..3E8E`, `4A66`, `4D66`, `596F` read from RE-12's listing (draw calls, palette writes, plot loops) | static | CONFIRMED (static); `marauder` also matches C-0015 f542 through its E2 copy (`td2:04EC:23AF`, same code) |
+| E1 scene-card layouts (§4.5.1): pens, black copies, inks, waits, `marauder` offset and joined line, `voffice` centring | all 14 routines `051A:1E5A..3E8E`, `4A66`, `4D66`, `596F` read from RE-12's listing (draw calls, palette writes, plot loops) | static | CONFIRMED (static); `marauder` also matches C-0015 f542 through its E2 copy (`td2:04EC:23AF`, same code: the joined line puts the second and third captions at 123 and 226); the centred, o4-outlined layout of `voffice` matches the E2 `hyde` card in C-0046 pixel for pixel (same code at y 5/15/25) |
 | `td.ltr` unused | byte scan of all exes | static | CONFIRMED |
 
 ## 10. Revision history
