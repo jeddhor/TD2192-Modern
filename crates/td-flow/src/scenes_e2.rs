@@ -252,7 +252,16 @@ pub fn scene_card(
     bg: Bg,
     text: [&str; 3],
 ) -> Result<StoryScreen, StoryError> {
-    let l = bg.layout();
+    scene_card_with(data, assets, &bg.layout(), text)
+}
+
+/// A scene card with layout `l` (shared with the E3 cards, `crate::scenes_e3`).
+pub fn scene_card_with(
+    data: &DataDir,
+    assets: &StoryAssets,
+    l: &Layout,
+    text: [&str; 3],
+) -> Result<StoryScreen, StoryError> {
     let scr = ScrImage::parse(&data.read(l.file)?)?;
     let mut s = StoryScreen::blank(Hold::Seconds(l.secs));
     let (fb, pal) = s.parts_mut();
@@ -268,18 +277,18 @@ pub fn scene_card(
     match l.captions {
         Captions::Lines((x, y)) => {
             for (k, t) in text.iter().enumerate() {
-                caption(fb, assets, t, (x, y + 10 * k as i32), &l);
+                caption(fb, assets, t, (x, y + 10 * k as i32), l);
             }
         }
         Captions::Row(xs, y) => {
             for (t, x) in text.iter().zip(xs) {
-                caption(fb, assets, t, (x, y), &l);
+                caption(fb, assets, t, (x, y), l);
             }
         }
         Captions::Centred(ys) => {
             for (t, y) in text.iter().zip(ys) {
                 let x = 160 - round_half(5 * t.chars().count() as i32);
-                caption(fb, assets, t, (x, y), &l);
+                caption(fb, assets, t, (x, y), l);
             }
         }
         Captions::None => {}

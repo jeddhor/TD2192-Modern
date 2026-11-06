@@ -44,11 +44,11 @@ const TEXT_INK: (u8, Rgb6) = (
     },
 );
 
-/// Services shared by the menu and the campaign. The screens shared by Episodes 1 and 2
+/// Services shared by the menu and the campaign. The screens shared by Episodes 1, 2 and 3
 /// (dialogue, retry prompt, debrief, pilot dossier, music) follow [`Program::episode`]
-/// (episode-deltas rev 2 §7, §9).
+/// (episode-deltas rev 3 §7, §9).
 pub struct Program {
-    /// The program: `file0001.exe` (E1) or `td2.exe` (E2).
+    /// The program: `file0001.exe` (E1), `td2.exe` (E2) or `td3.exe` (E3).
     pub episode: Episode,
     pub data: DataDir,
     pub res: ExeResources,
@@ -78,7 +78,7 @@ impl Program {
         Self::for_episode(data, res, launcher, Episode::E1)
     }
 
-    /// The services of `episode`'s program (E1 or E2).
+    /// The services of `episode`'s program.
     pub fn for_episode(
         data: &DataDir,
         res: &ExeResources,
@@ -86,8 +86,9 @@ impl Program {
         episode: Episode,
     ) -> Result<Self, StoryError> {
         let table = match episode {
+            Episode::E1 => CueTable::E1,
             Episode::E2 => CueTable::E2,
-            _ => CueTable::E1,
+            Episode::E3 => CueTable::E3,
         };
         Ok(Self {
             episode,
@@ -102,9 +103,13 @@ impl Program {
         })
     }
 
-    /// Resource id `e1` in Episode 1, `e2` in Episode 2 (the E2 ids carry the `e2.` prefix).
-    fn id(&self, e1: &'static str, e2: &'static str) -> &'static str {
-        if self.episode == Episode::E2 { e2 } else { e1 }
+    /// Resource id `e1` in Episode 1; `e2.<later>` in Episode 2, `e3.<later>` in Episode 3.
+    fn id(&self, e1: &str, later: &str) -> String {
+        match self.episode {
+            Episode::E1 => e1.to_owned(),
+            Episode::E2 => format!("e2.{later}"),
+            Episode::E3 => format!("e3.{later}"),
+        }
     }
 
     /// The `0000:OOOO` string of `file0001.exe` (empty if unavailable).
@@ -282,14 +287,14 @@ impl Program {
 
     /// The retry prompt (`UI_RetryPrompt` `051A:6A33`, screens §3.7): `Random(10)` from the
     /// program's generator picks the taunt, typed before the fade-in; the two key lines are
-    /// drawn after it. Any key but Esc flies again. E2 (`04EC:6E62`, episode-deltas §9.1):
-    /// taunt 5 has its own text and pen x 50.
+    /// drawn after it. Any key but Esc flies again. E2 (`04EC:6E62`) and E3 (`04A0:4F47`,
+    /// episode-deltas §9.1): taunt 5 has its own text and pen x 50.
     pub fn retry_prompt(&mut self) -> StoryScreen {
         /// Pen x of taunt r (screens §3.7).
         const TAUNT_X: [i32; 10] = [78, 46, 54, 82, 58, 46, 130, 30, 70, 42];
         let r = usize::from(self.launcher.random(10).min(9));
-        let t = self.texts(self.id("retry.taunts", "e2.retry.taunts"));
-        let x = if self.episode == Episode::E2 && r == 5 {
+        let t = self.texts(&self.id("retry.taunts", "retry.taunts"));
+        let x = if self.episode != Episode::E1 && r == 5 {
             50
         } else {
             TAUNT_X[r]
@@ -310,10 +315,11 @@ impl Program {
     }
 
     /// The debrief texts: labels (7), the cheater line, tiers (11), the failure note and the
-    /// note label. E2 keeps them as one run of 21 strings in this order (`e2.debrief`).
+    /// note label. E2 and E3 keep them as one run of 21 strings in this order (`e2.debrief`,
+    /// `e3.debrief`; E3 has its own failure note, episode-deltas §9.1).
     fn debrief_texts(&self) -> (Vec<String>, String, Vec<String>, String, String) {
-        if self.episode == Episode::E2 {
-            let all = self.texts("e2.debrief");
+        if self.episode != Episode::E1 {
+            let all = self.texts(&self.id("", "debrief"));
             let part = |r: std::ops::Range<usize>| all.get(r).map(<[_]>::to_vec);
             return (
                 part(0..7).unwrap_or_default(),
@@ -334,7 +340,8 @@ impl Program {
 
     /// The debrief (`UI_Debrief` `051A:6FF2`, screens §3.6, episode-program-flow §4.5): face 1;
     /// the rating of T = kills to date + kills, or the failure note when the outcome is 0;
-    /// 10 s. Identical in E2 (episode-deltas §9.1).
+    /// 10 s. Identical in E2; E3 waits 15 s and flushes the keyboard first (episode-deltas
+    /// §9.1, e3-program-flow §3.3, §3.5).
     pub fn debrief(
         &self,
         mission: u8,
@@ -367,16 +374,18 @@ impl Program {
             &self.assets.td_pal,
             &[(40, DEBRIEF_GREEN), (39, DEBRIEF_DIM)],
             items,
-            Hold::Seconds(10),
-        );
+            Hold::Seconds(if self.episode == Episode::E3 { 15 } else { 10 }),
+        )
+        .flushing_waits(self.episode == Episode::E3);
         self.portrait(&mut s, 1);
         s
     }
 
     /// The pilot dossier of ending A (`UI_PlayerDossier` `051A:74B2`, screens §3.5): face 1;
-    /// 25 s. E2 (`04EC:712D`): same layout, `e2.dossier.player`.
+    /// 25 s. E2 (`04EC:712D`), E3 (`04A0:5212`, flushing first): same layout,
+    /// `e2.dossier.player` / `e3.dossier.player`.
     pub fn player_dossier(&self, total: i16) -> StoryScreen {
-        let t = self.texts(self.id("e1.dossier.player", "e2.dossier.player"));
+        let t = self.texts(&self.id("e1.dossier.player", "dossier.player"));
         let items = vec![
             TextItem::typed((20, 45), line(&t, 0), 40),
             TextItem::typed((20, 91), line(&t, 1), 40).after(500),
@@ -392,7 +401,8 @@ impl Program {
             &[(40, GREEN), (39, RED)],
             items,
             Hold::Seconds(25),
-        );
+        )
+        .flushing_waits(self.episode == Episode::E3);
         self.portrait(&mut s, 1);
         s
     }

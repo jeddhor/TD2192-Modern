@@ -18,6 +18,10 @@
 //! The menu is shown without its fades and highlight ramps (T2); the colours of entries
 //! 224..233 are the ramps' end states, kept as the original keeps them: the palette buffer
 //! (`g_MenuPalette`) and the DAC separately.
+//!
+//! The program is shared with Episode 3 (`td3.exe`, `crate::program_e3`): [`LaterEpisode`]
+//! is the menu of both, parameterised by the episode's campaign ([`EpisodeCampaign`]) and its
+//! [`FrontEnd`] constants (e3-program-flow rev 1 §4.1, §4.2 list the E3 deltas).
 
 use std::fmt;
 
@@ -36,6 +40,97 @@ use crate::program::{Program, line};
 use crate::scenes_e2::{self, Bg};
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::story::{self, Hold, StoryError, StoryScreen};
+
+/// What differs between the E2 and E3 front ends (beyond the campaign).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontEnd {
+    pub episode: Episode,
+    /// Resource of the script-choice warning.
+    pub script_choice: &'static str,
+    /// The original script; without it script 2 is chosen silently (§4.1 step 9).
+    pub dialogue_file: &'static str,
+    /// Resource of the two story-so-far pages (menu item 5).
+    pub background_story: &'static str,
+    /// The `intro.cmf` cue of menu items 6 and 7.
+    pub intro_cue: u8,
+    /// The mission number after the menu's `+= 1` that completes the episode (mission := 0,
+    /// cursor := 7).
+    pub complete_at: u8,
+    /// E2 also plays song 7 on entering the menu loop (§4.2); E3 only from the loader.
+    pub menu_song_at_entry: bool,
+    /// E3: `UI_LoadMainMenu` flushes the keyboard, so keys typed after the script choice do
+    /// not reach the menu (e3-program-flow §4.1).
+    pub loader_flushes: bool,
+}
+
+/// What the menu hands a mission block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BlockStart {
+    /// `g_MissionNumber`.
+    pub mission: u8,
+    /// `g_KillsToDate`.
+    pub kills_to_date: i16,
+    /// The skip flag as the menu left it (E3 does not clear it, OB-050).
+    pub skip: bool,
+    /// `g_MissionKills` of the last flight flown (E3 missions without a block add it, OB-051).
+    pub mission_kills: i16,
+}
+
+/// A later episode's campaign sequencer as the menu drives it.
+pub trait EpisodeCampaign: Sized {
+    /// The episode's front-end constants.
+    const FRONT: FrontEnd;
+    /// `Main_CampaignLoop` for one block.
+    fn start(start: BlockStart) -> Self;
+    /// Runs the block for one frame; the result when it returns to the menu.
+    fn step(
+        &mut self,
+        prog: &mut Program,
+        ctx: &mut FlowContext<'_>,
+        input: &TickInput,
+    ) -> Option<BlockResult>;
+    fn draw(&self, fb: &mut Framebuffer);
+    /// The in-process picture of menu item 6 (`aboutus.scr`) or 7 (`order.scr`).
+    fn picture(prog: &Program, item: u8) -> Result<StoryScreen, StoryError>;
+}
+
+/// The Episode 2 front end (e2-program-flow rev 1 §4.1, §4.2).
+pub const E2_FRONT: FrontEnd = FrontEnd {
+    episode: Episode::E2,
+    script_choice: "e2.script_choice.warning",
+    dialogue_file: "dialogu2.dat",
+    background_story: "e2.background_story",
+    intro_cue: E2_INTRO,
+    complete_at: 21,
+    menu_song_at_entry: true,
+    loader_flushes: false,
+};
+
+impl EpisodeCampaign for CampaignE2 {
+    const FRONT: FrontEnd = E2_FRONT;
+
+    fn start(start: BlockStart) -> Self {
+        CampaignE2::new(start.mission, start.kills_to_date)
+    }
+
+    fn step(
+        &mut self,
+        prog: &mut Program,
+        ctx: &mut FlowContext<'_>,
+        input: &TickInput,
+    ) -> Option<BlockResult> {
+        CampaignE2::step(self, prog, ctx, input)
+    }
+
+    fn draw(&self, fb: &mut Framebuffer) {
+        CampaignE2::draw(self, fb);
+    }
+
+    fn picture(prog: &Program, item: u8) -> Result<StoryScreen, StoryError> {
+        let bg = if item == 6 { Bg::Aboutus } else { Bg::Order };
+        scenes_e2::scene_card(&prog.data, &prog.assets, bg, ["", "", ""])
+    }
+}
 
 /// Menu items (§4.2).
 const ITEMS: u8 = 9;
@@ -74,28 +169,44 @@ enum Back {
     Reload { music: bool },
 }
 
-enum Stage {
+enum Stage<C> {
     Start,
     ScriptChoice(StoryScreen),
     Menu,
     /// A block started from item 0 or item 3.
-    Campaign(Box<CampaignE2>, u8),
-    Sub(StoryScreen, Back),
+    Campaign(Box<C>, u8),
+    /// A sub-screen, what follows it and how its Esc reaches the skip flag.
+    Sub(StoryScreen, Back, SkipRule),
     /// A confirmation box (1 = quit, 2 = current game lost) for an item.
     Confirm(u8, u8),
     Quit,
 }
 
+/// How a menu sub-screen treats the skip flag (e3-program-flow §3.5; only E3 reads it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SkipRule {
+    /// Help and the port's notices: not touched.
+    Keep,
+    /// About and order pictures: cleared on entry, set by Esc.
+    Card,
+    /// Story so far: not cleared on entry, set by Esc.
+    Story,
+}
+
 /// The menu image, the confirmation boxes (320 × 32 each) and `tdmen.pal`.
 type MenuGraphics = (Box<[u8]>, Box<[u8]>, Palette);
 
-/// The Episode 2 program as a screen.
-pub struct Episode2 {
+/// The program of a later episode (E2, E3) as a screen.
+pub struct LaterEpisode<C: EpisodeCampaign> {
     prog: Program,
-    stage: Stage,
+    stage: Stage<C>,
     cursor: u8,
     mission: u8,
     kills_to_date: i16,
+    /// `g_MissionKills`, kept between blocks (OB-051).
+    mission_kills: i16,
+    /// `g_SkipRequested` between blocks (only E3 reads it, OB-050).
+    skip: bool,
     menu: Option<MenuGraphics>,
     /// `g_MenuPalette` entries 224..233.
     buffer: [Rgb6; 10],
@@ -105,9 +216,13 @@ pub struct Episode2 {
     typed_ahead: Vec<Key>,
 }
 
-impl fmt::Debug for Episode2 {
+/// The Episode 2 program.
+pub type Episode2 = LaterEpisode<CampaignE2>;
+
+impl<C: EpisodeCampaign> fmt::Debug for LaterEpisode<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Episode2")
+        f.debug_struct("LaterEpisode")
+            .field("episode", &C::FRONT.episode)
             .field("cursor", &self.cursor)
             .field("mission", &self.mission)
             .field("kills_to_date", &self.kills_to_date)
@@ -115,7 +230,7 @@ impl fmt::Debug for Episode2 {
     }
 }
 
-impl Episode2 {
+impl<C: EpisodeCampaign> LaterEpisode<C> {
     pub fn new(
         data: &DataDir,
         res: &ExeResources,
@@ -134,11 +249,13 @@ impl Episode2 {
             tracing::warn!("td.men or tdmen.pal unavailable; the menu is drawn black");
         }
         let mut ep = Self {
-            prog: Program::for_episode(data, res, launcher, Episode::E2)?,
+            prog: Program::for_episode(data, res, launcher, C::FRONT.episode)?,
             stage: Stage::Start,
             cursor: 0,
             mission: 0,
             kills_to_date: 0,
+            mission_kills: 0,
+            skip: false,
             menu,
             buffer: [DIM; 10],
             dac: [DIM; 10],
@@ -156,6 +273,11 @@ impl Episode2 {
     /// DAC entries 224..233 (the item colours) as shown.
     pub fn item_colours(&self) -> [Rgb6; 10] {
         self.dac
+    }
+
+    /// The skip flag as the menu holds it (E3, OB-050).
+    pub fn skip_flag(&self) -> bool {
+        self.skip
     }
 
     /// The menu after a successful restore of (`mission`, `kills`) from item 2 (§4.2): the
@@ -210,10 +332,10 @@ impl Episode2 {
         };
     }
 
-    /// The script-choice screen (`UI_ScriptChoice` `04EC:689B`): E1's layout with one line
-    /// fewer (screens §3.2).
+    /// The script-choice screen (`UI_ScriptChoice` `04EC:689B`, E3 `04A0:4980`): E1's layout
+    /// with one line fewer (screens §3.2).
     fn script_choice(&self) -> StoryScreen {
-        let w = self.prog.texts("e2.script_choice.warning");
+        let w = self.prog.texts(C::FRONT.script_choice);
         let mut s = StoryScreen::blank(Hold::Key);
         let (fb, pal) = s.parts_mut();
         for (e, (r, g, b)) in [
@@ -244,25 +366,40 @@ impl Episode2 {
         self.mission != 0
     }
 
-    /// Starts the main menu after the start-up (§4.2 entry): song 7, mission 0, cursor 0, then
-    /// the loader, which starts song 7 again.
+    /// Starts the main menu after the start-up (§4.2 entry): song 7 (E2 only), mission 0,
+    /// cursor 0, then the loader, which starts song 7 (again).
     fn enter_menu(&mut self, ctx: &mut FlowContext<'_>) {
-        self.prog.play_cue(ctx, MENU);
+        if C::FRONT.menu_song_at_entry {
+            self.prog.play_cue(ctx, MENU);
+        }
+        if C::FRONT.loader_flushes {
+            self.typed_ahead.clear();
+        }
         self.mission = 0;
         self.cursor = 0;
         self.load_menu(ctx, true);
     }
 
-    fn sub(&mut self, s: Result<StoryScreen, StoryError>, back: Back, what: &str) {
+    fn sub(&mut self, s: Result<StoryScreen, StoryError>, back: Back, skip: SkipRule, what: &str) {
         match s {
-            Ok(s) => self.stage = Stage::Sub(s, back),
+            Ok(s) => {
+                if skip == SkipRule::Card {
+                    self.skip = false;
+                }
+                self.stage = Stage::Sub(s, back, skip);
+            }
             Err(e) => tracing::warn!("{what} unavailable: {e}"),
         }
     }
 
     fn notice(&mut self, text: &str) {
         let s = self.prog.page(&[text.to_owned()], Hold::Key);
-        self.stage = Stage::Sub(s, Back::FadeIn);
+        self.stage = Stage::Sub(s, Back::FadeIn, SkipRule::Keep);
+    }
+
+    /// E3's timed waits flush the keyboard when they start (e3-program-flow §3.5).
+    fn timed(&self, s: StoryScreen) -> StoryScreen {
+        s.flushing_waits(C::FRONT.episode == Episode::E3)
     }
 
     fn select(&mut self, ctx: &mut FlowContext<'_>) {
@@ -274,23 +411,21 @@ impl Episode2 {
             SAVE | RESTORE => self.notice("save and restore are not available yet"),
             4 => {
                 let s = story::help(&self.prog.data);
-                self.sub(s, Back::FadeIn, "help");
+                self.sub(s, Back::FadeIn, SkipRule::Keep, "help");
             }
             5 => {
-                let t = self.prog.texts("e2.background_story");
-                let s = story::story_so_far(&self.prog.data, &self.prog.assets, &t);
-                self.sub(s, Back::Reload { music: false }, "story so far");
+                let t = self.prog.texts(C::FRONT.background_story);
+                let s = story::story_so_far(&self.prog.data, &self.prog.assets, &t)
+                    .map(|s| self.timed(s));
+                let back = Back::Reload { music: false };
+                self.sub(s, back, SkipRule::Story, "story so far");
             }
             6 | 7 => {
                 // In-process pictures with intro.cmf (§4.2 items 6 and 7).
-                self.prog.play_cue(ctx, E2_INTRO);
-                let bg = if self.cursor == 6 {
-                    Bg::Aboutus
-                } else {
-                    Bg::Order
-                };
-                let s = scenes_e2::scene_card(&self.prog.data, &self.prog.assets, bg, ["", "", ""]);
-                self.sub(s, Back::Reload { music: true }, "about/order");
+                self.prog.play_cue(ctx, C::FRONT.intro_cue);
+                let s = C::picture(&self.prog, self.cursor).map(|s| self.timed(s));
+                let back = Back::Reload { music: true };
+                self.sub(s, back, SkipRule::Card, "about/order");
             }
             _ => self.stage = Stage::Confirm(QUIT, 1),
         }
@@ -299,26 +434,39 @@ impl Episode2 {
     fn start_block(&mut self, mission: u8, kills: i16, item: u8) {
         self.mission = mission;
         self.kills_to_date = kills;
-        self.stage = Stage::Campaign(Box::new(CampaignE2::new(mission, kills)), item);
+        let start = BlockStart {
+            mission,
+            kills_to_date: kills,
+            skip: self.skip,
+            mission_kills: self.mission_kills,
+        };
+        self.stage = Stage::Campaign(Box::new(C::start(start)), item);
     }
 
-    /// The bookkeeping of §4.2 items 0 and 3 and §4.6, then the menu reload.
+    /// The bookkeeping of §4.2 items 0 and 3 and §4.6 (E3: e3-program-flow §4.6), then the
+    /// menu reload.
     fn block_done(&mut self, ctx: &mut FlowContext<'_>, r: BlockResult, item: u8) {
+        self.mission_kills = r.mission_kills;
+        self.skip = r.skip;
         if r.game_over {
             self.mission = 0;
             if item == NEXT_MISSION {
                 self.cursor = 0;
             }
         } else if r.advance {
+            if let Some(m) = r.set_mission {
+                self.mission = m;
+            }
             if !r.replay {
-                self.mission += 1;
+                // A byte: E3 missions above 20 (edited saves) count on until it wraps (OB-051).
+                self.mission = self.mission.wrapping_add(1);
             }
             self.kills_to_date = self.kills_to_date.saturating_add(r.mission_kills);
             if item == 0 {
                 self.cursor = NEXT_MISSION;
             }
-            if self.mission == 21 {
-                // Episode complete (`0000:3B80`): "ordering info".
+            if self.mission == C::FRONT.complete_at {
+                // Episode complete (E2 `0000:3B80`, E3 `0000:369E`): "ordering info".
                 self.mission = 0;
                 self.cursor = 7;
             }
@@ -360,12 +508,12 @@ impl Episode2 {
     }
 }
 
-impl Screen for Episode2 {
+impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         match &mut self.stage {
             Stage::Start => {
                 ctx.audio.push(AudioCommand::RestartMusicDriver);
-                if self.prog.data.resolve("dialogu2.dat").is_some() {
+                if self.prog.data.resolve(C::FRONT.dialogue_file).is_some() {
                     self.stage = Stage::ScriptChoice(self.script_choice());
                 } else {
                     // No notice in E2: script 2 silently (§4.1 step 9).
@@ -378,7 +526,8 @@ impl Screen for Episode2 {
                 let mut keys = Vec::new();
                 for &k in input.pressed.iter().filter(|&&k| story::is_keystroke(k)) {
                     if chosen || !keys.is_empty() {
-                        // Typed after the choice: kept for the menu (no flush in E2).
+                        // Typed after the choice: kept for the menu (no flush in E2; the E3
+                        // loader flushes them).
                         self.typed_ahead.push(k);
                     } else if Some(k) == Key::digit(1) || Some(k) == Key::digit(2) {
                         keys.push(k);
@@ -398,10 +547,13 @@ impl Screen for Episode2 {
                     self.enter_menu(ctx);
                 }
             }
-            Stage::Sub(s, back) => {
-                let back = *back;
+            Stage::Sub(s, back, rule) => {
+                let (back, rule) = (*back, *rule);
                 s.step(input);
                 if s.finished() {
+                    if rule != SkipRule::Keep && s.skipped() {
+                        self.skip = true;
+                    }
                     match back {
                         Back::FadeIn => {
                             self.dac = self.buffer;
@@ -452,7 +604,7 @@ impl Screen for Episode2 {
 
     fn draw(&self, fb: &mut Framebuffer) {
         match &self.stage {
-            Stage::ScriptChoice(s) | Stage::Sub(s, _) => s.draw(fb),
+            Stage::ScriptChoice(s) | Stage::Sub(s, ..) => s.draw(fb),
             Stage::Campaign(c, _) => c.draw(fb),
             Stage::Menu | Stage::Confirm(..) | Stage::Start | Stage::Quit => {
                 let Some((image, boxes, pal)) = &self.menu else {
