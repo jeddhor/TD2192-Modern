@@ -5,11 +5,13 @@
 //! (TD2192_DATA; the capture comparisons also TD2192_ORACLE). No game text or captured pixels
 //! are stored here.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
 use td_assets::{DataDir, Episode, ExeResources};
 use td_flow::flight_screens::comm::{Line, SCROLL_ROWS, SCROLL_X, Transmission};
+use td_flow::flight_screens::menu::draw_ship_library;
 use td_flow::flight_screens::{CommScreen, FlightScreenAssets, ModalStep, TargetBoard};
 use td_formats::palette::Palette;
 use td_input::{Key, TickInput};
@@ -234,4 +236,58 @@ fn transmission_4_screen_matches_c0044() {
         }
     }
     assert_eq!(waits, 5, "four prompts and the end marker");
+}
+
+#[test]
+fn ship_library_matches_c0044() {
+    // §6 vector 4 and §6.1 (frame 4000, flight 11): the nine td.shp records, sprite 6
+    // hatched with no text, sprite 5 unhatched with its four lines; 36 text lines.
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let a = assets(false);
+    let mut fb = Framebuffer::new();
+    draw_ship_library(&mut fb, &a, 11);
+    let (dac, f) = frame(&oracle, 4000);
+    let diffs: Vec<(usize, usize, u8, u8)> = (0..f.len())
+        .filter(|&i| fb.pixels[i] != f[i])
+        .map(|i| (i % W, i / W, fb.pixels[i], f[i]))
+        .collect();
+    assert!(
+        diffs.is_empty(),
+        "{} pixels differ, first {:?}",
+        diffs.len(),
+        &diffs[..diffs.len().min(8)]
+    );
+    // The text inks are td.pal entries (the menu palette leaves them alone).
+    let data = td_test_support::data_dir().unwrap();
+    let pal = Palette::parse(&DataDir::open(&data).unwrap().read("td.pal").unwrap()).unwrap();
+    let used: BTreeSet<u8> = f.iter().copied().collect();
+    for e in [92, 94, 96] {
+        assert!(used.contains(&e), "ink {e} drawn");
+        assert_eq!(
+            dac.colors[usize::from(e)],
+            pal.colors[usize::from(e)],
+            "ink {e}"
+        );
+    }
+    // Other flights: sprite 6's block only from 15, sprite 5's from 11.
+    let ink_rows = |flight: u8, rows: std::ops::Range<usize>, x0: usize| {
+        let mut fb = Framebuffer::new();
+        draw_ship_library(&mut fb, &a, flight);
+        rows.flat_map(|y| (x0..x0 + 100).map(move |x| (x, y)))
+            .filter(|&(x, y)| [92, 94, 96].contains(&fb.pixels[y * W + x]))
+            .count()
+    };
+    assert_eq!(
+        ink_rows(10, 147..175, 200),
+        0,
+        "sprite 5 text before flight 11"
+    );
+    assert!(ink_rows(11, 147..175, 200) > 0);
+    assert_eq!(
+        ink_rows(14, 154..182, 40),
+        0,
+        "sprite 6 text before flight 15"
+    );
+    assert!(ink_rows(15, 154..182, 40) > 0);
 }

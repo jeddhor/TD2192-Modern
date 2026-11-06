@@ -193,7 +193,7 @@ const E2_BLOCKS: [LibraryBlock; 9] = later_blocks(15, 11);
 const E3_BLOCKS: [LibraryBlock; 9] = later_blocks(0, 0);
 
 /// Episode 2 (e2-flight-screens §3.3): sprite 6 hatched and without text before flight 15,
-/// sprite 5 before flight 11.
+/// sprite 5 before flight 11. Matches C-0044 (flight 11) pixel for pixel (U-313).
 pub const E2_LIBRARY: LibraryLayout = LibraryLayout {
     blocks: &E2_BLOCKS,
     hatch: &[(6, 15), (5, 11)],
