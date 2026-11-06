@@ -403,6 +403,8 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 - [x] Q6 (U-441, RE): the same mapping for E2 and E3: §3.3.2, §3.3.3 (RE-17). DS:11DE and DS:11E0 do not change during a flight; C-0036 caught the front end's last fade-out before tick 1.
 - [ ] Q7 (U-480, VE): the menu drain key (§3.3.2 item 2) is specified statically only; every capture has 0. A capture that types two keys during the E2 or E3 menu fade-in and then flies a class-4 flight with a heading-0Ch volley would confirm it.
 - [x] Q8 (U-421): homing missiles in steps 3 and 4: §4.3 (RE-17).
+- [ ] Q9 (U-490, M10-46 IM-20): E3 flights 7 and 21 cannot be started directly; the port's tools give them the direct start of their block (flight 6's and flight 11's). A two-flight capture (U-481) would show the bytes a campaign leaves there.
+- [ ] Q10 (U-491, M10-46 IM-20): the drain key's byte for the keypad depends on NumLock (the port assumes off: keypad 8 = 48h); the reference preset's NumLock state at program start is not recorded.
 
 ## 9. Provenance
 

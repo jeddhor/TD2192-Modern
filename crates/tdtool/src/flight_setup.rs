@@ -2,8 +2,10 @@
 //! `FILE0001.EXE` with a prepared `tdstatus.dat`; E2 `TD2.EXE /sb` and E3 `TD3.EXE /sb` through
 //! New game or a prepared save slot, e2-program-flow §8, e3-program-flow §8), so the flight is
 //! the first of its program run (`Session::for_episode`, mission-ships §4.1), with the world
-//! built from the installation (map, tile attributes, the muzzle table of the executable;
-//! E1 adds a direct start's two-digit-heading bytes, weapons rev 4 §3.3, OB-017).
+//! built from the installation (map, tile attributes, the muzzle table of the executable and
+//! the two-digit-heading bytes past it that such a start leaves: weapons rev 5 §3.3, §3.3.2,
+//! §3.3.3, OB-017; in E2/E3 the block's first scene card, or E3's restore screen and title
+//! card, `td_sim::flight::front_end::direct_start`).
 //! Shared by `tdtool plan` and `tdtool replay` (VE-2 M9-21, VE-4 M10-45).
 
 use std::path::Path;
@@ -12,7 +14,7 @@ use anyhow::{Context, Result, bail};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
-use td_sim::flight::front_end::{FrontEnd, muzzle_world};
+use td_sim::flight::front_end::direct_start_world;
 use td_sim::flight::{Episode, Session, episode};
 use td_sim::{Flight, World};
 
@@ -57,17 +59,12 @@ impl FlightSetup {
         let dir = DataDir::open(root)?;
         let res = ExeResources::load(&dir).context("executable resources")?;
         // The muzzle table is byte-identical in every episode (episode-deltas §11).
-        let Some(ResourceValue::Bytes(muzzles)) = res.get("flight.muzzle_offsets").cloned() else {
+        let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
             bail!("file0001.exe resources: no muzzle table");
         };
-        // E1: a direct start's bytes past the table (weapons rev 4 §3.3, OB-017 preserved);
-        // E2 and E3 keep (0, 0) past it (U-441).
-        let muzzles = if episode == Episode::E1 {
-            let menu = dir.read("tdmen.pal")?;
-            muzzle_world(&muzzles, &menu, &FrontEnd::direct_start())
-        } else {
-            muzzles
-        };
+        // A direct start's bytes past the table (weapons rev 5 §3.3, §3.3.2, §3.3.3; OB-017
+        // preserved).
+        let muzzles = direct_start_world(episode, number, &table, |f| dir.read(f))?;
         let map = TileMap::parse_episode(&dir.read(episode::map_file(episode, number))?)?;
         let world = episode::world(episode, number, map, muzzles);
         let mission = match episode::mission_file(episode, number) {
@@ -88,10 +85,10 @@ impl FlightSetup {
     }
 
     /// The same flight with other muzzle bytes: the original reads DGROUP from the table's
-    /// start on for volleys on two-digit headings (U-160); the default E1 world holds a direct
-    /// start's bytes (weapons rev 4 §3.3). `bytes` come from a capture (game-derived data:
-    /// kept outside the repository), for example one started through `td1.exe` or after a
-    /// played story.
+    /// start on for volleys on two-digit headings (U-160, U-441); the default world holds a
+    /// direct start's bytes (weapons rev 5 §3.3, §3.3.2, §3.3.3). `bytes` come from a capture
+    /// (game-derived data: kept outside the repository), for example one started through
+    /// `td1.exe` or after a played story.
     pub fn with_muzzles(&self, bytes: Vec<u8>) -> Self {
         let mut alt = self.clone();
         alt.world.muzzles = td_sim::flight::shots::Muzzles(bytes);

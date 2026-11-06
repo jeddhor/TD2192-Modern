@@ -8,8 +8,9 @@
 //! once with no input), checks every state-hash checkpoint, and checks that the flight ends
 //! with success on the replay's last tick, not earlier. Needs `TD2192_DATA` (map, mission file
 //! and the muzzle table of `file0001.exe`, byte-identical in every episode, episode-deltas
-//! §11; E1 adds a direct start's two-digit-heading bytes built from `tdmen.pal`, weapons rev 4
-//! §3.3, OB-017; E2 and E3 keep (0, 0) past the table, U-441). A replay that diverges after an intended behaviour change is re-recorded only after a
+//! §11, with the two-digit-heading bytes of a direct start built from `tdmen.pal`, `td.men`
+//! and, in E2/E3, the block's first scene card: weapons rev 5 §3.3, §3.3.2, §3.3.3, OB-017).
+//! A replay that diverges after an intended behaviour change is re-recorded only after a
 //! Verifier confirms the new behaviour against the original (ADG §10.5).
 
 use std::path::{Path, PathBuf};
@@ -17,7 +18,7 @@ use std::path::{Path, PathBuf};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
-use td_sim::flight::front_end::{FrontEnd, muzzle_world};
+use td_sim::flight::front_end::direct_start_world;
 use td_sim::flight::{Episode, Session, TickResult, episode};
 use td_sim::replay::Replay;
 use td_sim::{Flight, World, state_hash};
@@ -45,12 +46,7 @@ fn world(data: &Path, ep: Episode, flight: u8) -> (World, Option<Mission>) {
     let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, flight)).unwrap()).unwrap();
     let mission = episode::mission_file(ep, flight)
         .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
-    let muzzles = if ep == Episode::E1 {
-        let menu = dir.read("tdmen.pal").unwrap();
-        muzzle_world(&muzzles, &menu, &FrontEnd::direct_start())
-    } else {
-        muzzles
-    };
+    let muzzles = direct_start_world(ep, flight, &muzzles, |f| dir.read(f)).unwrap();
     (episode::world(ep, flight, map, muzzles), mission)
 }
 

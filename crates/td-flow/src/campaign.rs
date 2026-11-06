@@ -704,9 +704,10 @@ pub trait FlightLauncher: fmt::Debug {
     /// `Random(n)` from the program's generator (the stream the flights use).
     fn random(&mut self, n: u16) -> u16;
 
-    /// The front-end state the next flight starts from (weapons rev 4 §3.3: the scene palette,
-    /// the lit flag, the dialogue reader's last line, how the program was started), handed
-    /// over before every [`FlightLauncher::launch`] of Episode 1. A launcher that flies real
+    /// The front-end state the next flight starts from (weapons rev 5 §3.3: the scene palette,
+    /// the lit flag, the dialogue reader's last line, how the program was started; §3.3.2,
+    /// §3.3.3: the scene palette, the scene-file name, the menu's drain key), handed over
+    /// before every [`FlightLauncher::launch`] of every episode. A launcher that flies real
     /// flights builds the two-digit-heading muzzle bytes from it. Default: ignored.
     fn set_front_end(&mut self, _state: &FrontEnd) {}
 }
