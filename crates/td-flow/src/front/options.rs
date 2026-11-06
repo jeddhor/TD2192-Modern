@@ -5,9 +5,11 @@
 //! `settings.toml` and applies what it can live (window, volumes, SFX policy, Enhanced
 //! presentation; the flight reads the control bindings every tick).
 //!
-//! The Classic profile forces every Enhanced feature off (MDG §6.2), so their rows are shown
-//! but cannot be changed until the profile is Enhanced; the choices made under Enhanced are
-//! kept. Widescreen is marked "affects gameplay - visibility" (spec enhanced/presentation §2).
+//! The Classic profile forces every `[enhanced]` feature off (MDG §6.2, spec
+//! enhanced/presentation rev 2 §2), so their rows are shown but cannot be changed until the
+//! profile is Enhanced; the choices made under Enhanced are kept. The SFX policy and the
+//! accessibility options are separate settings (default off), not governed by the profile.
+//! Widescreen is marked "affects gameplay - visibility" (spec enhanced/presentation §2).
 //!
 //! Keys: arrows (or keypad 8/2/4/6) move and change, Enter or Space opens or changes, Esc or
 //! Backspace goes back, Delete clears a binding. Controller: stick or D-pad, South confirms,
@@ -105,16 +107,13 @@ fn page_name(page: Page) -> &'static str {
     }
 }
 
-/// True for the rows of Enhanced features (MDG §6.2), which the Classic profile forces off.
+/// True for the rows of the `[enhanced]` features, which the Classic profile forces off. The
+/// profile governs only `[enhanced]` (spec enhanced/presentation rev 2 §2): the SFX policy
+/// and the accessibility options are separate settings that default to off.
 pub fn is_enhanced(row: Row) -> bool {
     matches!(
         row,
-        Row::Widescreen
-            | Row::Upscaler
-            | Row::Lighting
-            | Row::Bloom
-            | Row::SfxMode
-            | Row::ColorblindGuidance
+        Row::Widescreen | Row::Upscaler | Row::Lighting | Row::Bloom
     )
 }
 
@@ -611,10 +610,13 @@ impl OptionsScreen {
             }
             if self.page == Page::Profile {
                 let lines: &[&str] = match s.profile {
-                    Profile::Classic => &["the original game", "every enhanced option is off"],
+                    Profile::Classic => &[
+                        "the original presentation",
+                        "every enhanced video option is off",
+                    ],
                     Profile::Enhanced => &[
-                        "the enhanced options you turn on",
-                        "in video, audio and accessibility",
+                        "the enhanced video options you turn on",
+                        "widescreen, upscaler, lighting, bloom",
                     ],
                 };
                 for (i, l) in lines.iter().enumerate() {

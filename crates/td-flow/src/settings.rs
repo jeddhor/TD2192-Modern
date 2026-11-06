@@ -211,8 +211,9 @@ impl EnhancedSettings {
     }
 }
 
-/// Accessibility options (`[accessibility]`, MDG §11). Enhanced features: the Classic profile
-/// forces them off ([`Settings::effective_accessibility`]).
+/// Accessibility options (`[accessibility]`, MDG §11). Each defaults to off. Like
+/// `audio.sfx_mode`, they are separate from the profile, which governs only `[enhanced]`
+/// (spec enhanced/presentation rev 2 §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AccessibilitySettings {
@@ -254,23 +255,6 @@ impl Settings {
         match self.profile {
             Profile::Classic => EnhancedSettings::default(),
             Profile::Enhanced => self.enhanced,
-        }
-    }
-
-    /// The SFX policy in effect: polyphonic SFX is an Enhanced feature (MDG §6.2), so the
-    /// Classic profile always mixes the original's one effect at a time.
-    pub fn effective_sfx_mode(&self) -> SfxMode {
-        match self.profile {
-            Profile::Classic => SfxMode::Classic,
-            Profile::Enhanced => self.audio.sfx_mode,
-        }
-    }
-
-    /// The accessibility options in effect: all off under the Classic profile.
-    pub fn effective_accessibility(&self) -> AccessibilitySettings {
-        match self.profile {
-            Profile::Classic => AccessibilitySettings::default(),
-            Profile::Enhanced => self.accessibility,
         }
     }
 
@@ -454,8 +438,6 @@ mod tests {
         let back = Settings::load(&path).unwrap();
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(back, s);
-        assert_eq!(back.effective_sfx_mode(), SfxMode::Polyphonic);
-        assert!(back.effective_accessibility().colorblind_guidance);
     }
 
     #[test]
@@ -520,11 +502,9 @@ mod tests {
             ..Settings::default()
         };
         assert!(s.effective_enhanced().is_off());
-        assert_eq!(s.effective_sfx_mode(), SfxMode::Classic);
-        assert_eq!(
-            s.effective_accessibility(),
-            AccessibilitySettings::default()
-        );
+        // The profile governs only [enhanced] (spec enhanced/presentation rev 2 §2).
+        assert_eq!(s.audio.sfx_mode, SfxMode::Polyphonic);
+        assert!(s.accessibility.colorblind_guidance);
         // The choices themselves are kept for when the profile changes back.
         assert_eq!(s.enhanced.lighting, Lighting::Full);
     }

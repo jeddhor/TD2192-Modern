@@ -188,9 +188,9 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
     Ok(())
 }
 
-/// The SFX policy of `s` (polyphonic only under the Enhanced profile).
+/// The SFX policy of `s`.
 fn sfx_policy(s: &Settings) -> SfxPolicy {
-    match s.effective_sfx_mode() {
+    match s.audio.sfx_mode {
         SfxMode::Classic => SfxPolicy::Classic,
         SfxMode::Polyphonic => SfxPolicy::Polyphonic(8),
     }
@@ -224,7 +224,7 @@ fn apply_settings(
             sfx: new.audio.sfx_volume,
         });
     }
-    if new.effective_sfx_mode() != old.effective_sfx_mode() {
+    if new.audio.sfx_mode != old.audio.sfx_mode {
         mixer.set_policy(sfx_policy(new));
     }
     Ok(())

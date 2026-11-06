@@ -41,12 +41,12 @@ Reached from the start screen and with **F2** during play (the original reads no
 |---|---|
 | main | video, audio, controls, profile, accessibility, back |
 | video | fullscreen, scaling (aspect 4x3, integer, stretch), widescreen\*, pixel upscaler\*, dynamic lighting\*, bloom\* |
-| audio | music volume, sound volume (0..100 in tens, with a bar), sound effects\* (classic, polyphonic) |
+| audio | music volume, sound volume (0..100 in tens, with a bar), sound effects (classic, polyphonic) |
 | controls | one row per original flight key: action, original key, keyboard binding, gamepad binding; reset to defaults |
 | profile | classic or enhanced, with a two-line description |
-| accessibility | colour-blind guidance line\* |
+| accessibility | colour-blind guidance line |
 
-\* Enhanced features (MDG §6.2). Under the Classic profile they are drawn in entry 226, cannot be chosen, and the page notes `enhanced options need the enhanced profile`. Their values are kept, and the effective settings (`Settings::effective_enhanced`, `effective_sfx_mode`, `effective_accessibility`) are off until the profile is Enhanced. Widescreen is marked `affects gameplay` on its row at all times, and shows the note `affects gameplay - visibility` while selected (spec enhanced/presentation §2).
+\* `[enhanced]` features (MDG §6.2). Under the Classic profile they are drawn in entry 226, cannot be chosen, and the page notes `enhanced options need the enhanced profile`. Their values are kept, and `Settings::effective_enhanced` is all off until the profile is Enhanced. The profile governs only `[enhanced]` (spec enhanced/presentation rev 2 §2): the SFX policy and the accessibility options are separate settings that default to off. Widescreen is marked `affects gameplay` on its row at all times, and shows the note `affects gameplay - visibility` while selected (spec enhanced/presentation §2).
 
 - Left and right change a value; Enter or Space changes it forward or opens a page; Esc or Backspace goes back.
 - Every change goes to the host at once (`SettingsPort`). The host applies it live (fullscreen, scaling, volumes, SFX policy, Enhanced presentation; the flight reads its bindings every tick) and writes `settings.toml`. Only the values the player changed are written (`Settings::with_changes`), so command-line overrides such as `--fullscreen` stay out of the file. F10 and F11 change the session only, and the options screen shows their state.
