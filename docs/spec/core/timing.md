@@ -137,8 +137,10 @@ There is one frame per tick: draw, flip and simulate all happen once per loop it
 |---|---|---|---|
 | 1 | Static: WORX idle (d = 2386) | BIOS and game tick ≈ 18.52 Hz | static arithmetic |
 | 2 | Static: song at 96 ticks/s | BIOS and game tick ≈ 19.20 Hz | static arithmetic |
-| 3 | Dynamic (pending): DOSBox, E1M1 in flight, fast cycles, SB + music | Hits on `0E8B:E117` per second ≈ 19.2 | VE capture (to do) |
-| 4 | Dynamic (pending): same with `/nosound` | ≈ 18.2 or 18.5 per second (tells whether WORX installs its timer without sound) | VE capture (to do) |
+| 3 | Dynamic: DOSBox, E1M1 in flight, cycles 8,000 / 20,000 / 60,000, SB + music | `g_MissionTicks` per second: 19.21 / 19.21 / 19.23 (frame-quantised, ±0.02); 19.208 over 378.5 s at 20,000 | C-0074, C-0010 (VE-3) |
+| 4 | Dynamic: same with `/nosound` | 18.21 / 18.22 per second at 20,000 / 60,000: WORX does not install its timer (IRQ 0 stays at 18.21 Hz) | C-0074 (VE-3) |
+| 5 | Dynamic: SB, music device ≠ 2 (`td.cfg` 01 02 02) | 18.52 / 18.53 per second at 20,000 / 60,000 (IRQ 0 500.28 Hz) | C-0072, C-0074 (VE-3) |
+| 6 | Dynamic: cycles 3,000 | 13.35 (music), 13.39 (no music), 13.90 (`/nosound`) per second: CPU-bound, no catch-up | C-0074 (VE-3) |
 
 ## 7. Presentation and audio hooks
 
@@ -149,13 +151,15 @@ There is one frame per tick: draw, flip and simulate all happen once per loop it
 
 Runtime address = (PSP + 10h + seg):off, where PSP is the program's PSP segment (ADG §7.8).
 
-- [ ] M1 (U-001): breakpoint on `file0001:0E8B:E117` (first instruction after the tick wait). Count hits per wall-clock second in flight, E1M1, at `cycles=max` and at fixed cycles (3000, 8000, 20000), with SB+music, SB without music (if selectable) and `/nosound`. Expected 19.2 / 18.5 / 18.2 Hz on a fast setting, and lower at low cycles.
-- [ ] M2 (U-032): at those breakpoints read the WORX words `2C37:31BE` (N) and `2C37:31BC`, and log every `OUT 40h` value (the PIT divisor) during flight. Confirm d = 2386 at install and d = 1234DCh div *clock* during a song.
-- [ ] M3: rate of the BIOS tick count `0040:006C` during flight (should equal the M1 rate).
-- [ ] M4 (U-033): break on `0E8B:9860` and `0E8B:8E87`: are they called once per tick? Does `0E8B:9860` call `Delay` (`3A1C:02A8`) during normal flight, which would stall ticks?
-- [ ] M5: watch `DS:1718` (`g_MissionTicks`): does it increase by 1 per tick? What happens at 200 and 15000?
-- [ ] M6: count `Gfx_FlipPage` (`386E:1A6C`) calls per tick (expect 1 in steady flight).
-- [ ] M7 (U-024): does `Inp_KeyboardIsr` (`0E8B:0653`) ever chain to the BIOS handler (DS:18C2)?
+Results (VE-3, 2026-11-06; method: `g_MissionTicks` and the BIOS data area dumped every frame instead of breakpoints, so the timing is undisturbed; C-0072, C-0074, C-0075, C-0009, C-0010; details in [M12-timing](../../parity/M12-timing.md) §2):
+
+- [x] M1 (U-001): §6 vectors 3–6. 19.21 / 18.52 / 18.21 Hz at 8,000–60,000 cycles; 13.3–13.9 Hz at 3,000 (CPU-bound). `cycles=max` is not deterministic in the oracle and was replaced by 60,000.
+- [x] M2 (U-032): PIT writes in `pit.tsv`: d = 2386 at WORX install, 12428 at every song start (also at loop restarts), none under `/nosound`. IRQ 0: 500.28 / 96.01 / 18.21 Hz. The WORX words were not read.
+- [x] M3: BIOS tick count `0040:006C`: 19.20–19.22 Hz with music, 18.51–18.54 without, 18.21 with `/nosound`, equal to the M1 rates at ≥ 8,000 cycles. The game tick starts in the frame of the BIOS tick (74–85 %) or the next one (after the retrace wait).
+- [~] M4 (U-033): not broken on. Indirect: frames per tick are 2–5 (3.65 mean) with no stalls in 617 ticks of flight at each fast setting, so `0E8B:9860` does not wait in normal flight.
+- [~] M5: +1 per tick in every frame-by-frame run (617 ticks × 9 runs, 1,131 frames of C-0009). Tick 200: see flight-screens (IR notice). Tick 15,000 not reached: flight 1 parked with difficulty 0 ended at tick 14,766 (C-0075, U-403).
+- [x] M6: one retrace-hit frame per tick in 93 % of ticks (a single retrace wait, so one flip); the others have a second frame with 20–60 retrace hits, the end-of-flight and destruction sequences.
+- [x] M7 (U-024): no chaining for ordinary keys. In flight `q`, `z`, `x` and keypad 8 (C-0074, `/nosound` 20,000) leave the BIOS keyboard buffer head/tail (`0040:001A/1C`) and shift flags unchanged; before the flight the Esc on the mission card moved them.
 - [x] Q (U-007): resolved. The word read at `2C37:47EF` is CMF header offset 0x0C (ticks per second).
 
 ## 9. Provenance
@@ -177,3 +181,4 @@ Runtime address = (PSP + 10h + seg):off, where PSP is the program's PSP segment 
 | 1 | 2026-11-02 | RE-1 (Archaeologist + Spec author) | Initial static draft |
 | 2 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Names for `0E8B:9860`/`8E87`; per-tick order moved to `sim/tick-order.md` (U-033); `g_MissionTicks` confirmed per tick |
 | 3 | 2026-11-02 | RE-4 (Archaeologist) | U-007 resolved (header 0x0C); which tick rate applies in which sound configuration (U-032, static) |
+| 3 + evidence | 2026-11-06 | VE-3 (Verifier) | §6 vectors 3–6 and §8 M1–M7 measured (no rule changed). The canonical Classic rate is a proposal in parity/M12-timing.md §3, for an SP revision and ADR |
