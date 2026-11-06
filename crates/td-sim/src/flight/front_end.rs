@@ -252,7 +252,7 @@ mod tests {
             ]
         );
         // The last byte read (heading 62h, muzzle 17, dy) lies inside the world.
-        assert!(34 * 0x62 + 2 * 17 + 1 < MUZZLE_WORLD_LEN);
+        const { assert!(34 * 0x62 + 2 * 17 + 1 < MUZZLE_WORLD_LEN) };
     }
 
     #[test]
