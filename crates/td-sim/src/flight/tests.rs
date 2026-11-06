@@ -311,7 +311,7 @@ fn weapons_vector_1_volleys_every_second_tick() {
 }
 
 /// weapons.md rev 3 §2, §4.3 step 8: headings 0 and 5 neither move nor delete a shot (E1
-/// flight 20's third bomb takes heading `Random(9)`; VE-2 C-0070 tick 14); above 9 deletes it.
+/// flight 20's third bomb takes heading `Random(9)`; VE-2 C-0090 tick 14); above 9 deletes it.
 #[test]
 fn shots_on_headings_0_and_5_stay_in_place() {
     let w = open_world();
