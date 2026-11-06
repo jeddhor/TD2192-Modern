@@ -172,7 +172,9 @@ fn modal_keys(m: Modal) -> Option<(FlightKey, &'static str, u64, u64)> {
         Modal::Pause => Some((FlightKey::P, "enter", 40, 3)),
         Modal::FlightMenu => Some((FlightKey::Esc, "enter", 200, 40)),
         Modal::TacticalMap => Some((FlightKey::F5, "esc", 80, 3)),
-        Modal::CommViewer => None,
+        // The E1 real-time screens read no keys (flight-screens §4.10); tools never stop for
+        // them (`Flight::stop_for_scenes` is off).
+        Modal::CommViewer | Modal::Scene => None,
     }
 }
 

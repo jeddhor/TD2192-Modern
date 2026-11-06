@@ -79,10 +79,9 @@ fn flight_13_full_matches_oracle() {
     check(13);
 }
 
-/// Known divergence (U-390, docs/parity/M9-playthrough.md D2): after the transmission the
-/// original gives slot 13 no more attack orders; td-sim re-orders it at tick 163.
+/// U-390 (docs/parity/M9-playthrough.md D2): the attacks on the player run only while phase
+/// < 100 (mission-logic rev 3 §5.14), so after the transmission slot 13 gets no new order.
 #[test]
-#[ignore = "U-390: first divergence at tick 163 (slot 13 attack order after phase 100)"]
 fn flight_14_full_matches_oracle() {
     check(14);
 }

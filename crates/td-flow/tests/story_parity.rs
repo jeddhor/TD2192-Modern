@@ -319,8 +319,8 @@ fn a_title_card_after_the_story_so_far_fades_at_two_frames_per_level() {
         n += 1;
         assert!(n < 1_000);
     }
-    prog.leave_palette(s.palette_buffer());
-    assert!(td_render::fade::nonzero_components(&prog.scene_palette, 1) >= 380);
+    s.apply_front_end(&mut prog.front_end);
+    assert!(td_render::fade::nonzero_components(&prog.scene_palette(), 1) >= 380);
     let mut t = prog.story(Step::T(0x478)).unwrap();
     assert_eq!(t.fade_frames_per_level(), 2);
     let mut ink = Vec::new();

@@ -667,17 +667,17 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
         T(n) => Ok(scenes_e3::title_card(
             &prog.assets,
             &text(&format!("e3.mission.{n:02}.title")),
-            &prog.scene_palette,
+            &prog.scene_palette(),
         )),
         Tc(cap) => Ok(scenes_e3::title_card(
             &prog.assets,
             &caption(prog, cap),
-            &prog.scene_palette,
+            &prog.scene_palette(),
         )),
         TEnd => Ok(scenes_e3::title_card(
             &prog.assets,
             &text("e3.ending"),
-            &prog.scene_palette,
+            &prog.scene_palette(),
         )),
         S(bg, caps) => {
             let t = caps.map(|c| caption(prog, c));
@@ -761,8 +761,8 @@ impl CampaignE3 {
                     return None;
                 }
                 let child = self.child.take();
-                if let Some(p) = child.as_ref().and_then(Child::palette_left) {
-                    prog.leave_palette(p);
+                if let Some(c) = &child {
+                    c.apply_front_end(&mut prog.front_end);
                 }
                 self.finish_child(prog, ctx, child);
                 continue;

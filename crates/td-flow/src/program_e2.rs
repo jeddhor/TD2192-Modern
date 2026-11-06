@@ -576,7 +576,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     pad: input.pad,
                 });
                 if s.finished() {
-                    self.prog.leave_palette(s.palette_buffer());
+                    s.apply_front_end(&mut self.prog.front_end);
                     self.prog.choice = if s.last_key() == Key::digit(2) {
                         ScriptChoice::Edited
                     } else {
@@ -592,8 +592,9 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     if rule != SkipRule::Keep && s.skipped() {
                         self.skip = true;
                     }
-                    // ASSUMPTION(U-475): every sub-screen leaves its palette in g_Palette.
-                    self.prog.leave_palette(s.palette_buffer());
+                    // Help uses g_MenuPalette and leaves g_Palette alone (weapons rev 4 §3.3 item
+                    // 4); the in-process story so far, about and order load theirs.
+                    s.apply_front_end(&mut self.prog.front_end);
                     match back {
                         Back::FadeIn => {
                             self.menu

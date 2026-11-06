@@ -30,6 +30,7 @@
 
 pub mod episode;
 pub mod explosions;
+pub mod front_end;
 pub mod heading;
 pub mod hit_flash;
 pub mod logic;
@@ -85,6 +86,13 @@ pub enum Modal {
     FlightMenu,
     /// F5: the tactical map (step 29; no game state changes, `flight-screens.md`).
     TacticalMap,
+    /// A real-time screen of the mission events (step 18, E1 only): flight 17's cut-scene or
+    /// flight 19's V.C.I. screen ([`logic::MissionState::scene`] says which;
+    /// `flow/flight-screens.md` rev 4 §4.10). Returned only when [`Flight::stop_for_scenes`]
+    /// is set. Unlike the other screens it leaves the key table alone: the original's INT 09h
+    /// handler stays installed and nothing clears the bytes, so [`Flight::resume`] applies the
+    /// key changes made while it showed and the tick goes on at step 19.
+    Scene,
 }
 
 /// How a call to [`Flight::tick`] or [`Flight::resume`] ended.
@@ -127,6 +135,9 @@ pub struct DrawnObjects {
     pub explosions: Explosions,
 }
 
+/// The step a tick resumes at after a [`Modal::Scene`] (the one after `Msn_UpdateEvents`).
+const SCENE_RESUME: u8 = 19;
+
 /// Default view at flight start (flight-model §3).
 pub const START_VIEW: View = View {
     tile_x: 102,
@@ -154,6 +165,10 @@ pub struct Session {
     /// E2: `k_TileRadarColour` holds the map-set-2 colours. A set-2 flight copies them over
     /// the table and nothing restores it (OB-024), so it is session state (presentation).
     pub radar_set2: bool,
+    /// `g_Weapon` (DS:1CB8): an uninitialised global, so 0 at program start. Only flight setup
+    /// and Tab write it, both for classes 2..8; a class-0/1 flight keeps what the previous
+    /// flight of the program run left (`weapons.md` rev 4 §3.2, U-391; BUG-2).
+    pub weapon: u8,
 }
 
 impl Session {
@@ -177,6 +192,7 @@ impl Session {
             ai_player: (0, 0),
             mission: MissionState::default(),
             radar_set2: false,
+            weapon: 0,
         }
     }
 }
@@ -264,6 +280,11 @@ pub struct Flight {
     /// requested before the reset, the rest after; the host's model of WORX's playing status
     /// needs the order. Not part of the state hash.
     pub sound_reset_at: Option<usize>,
+    /// Stop the tick for a mission-requested real-time screen ([`Modal::Scene`]). The flight
+    /// host sets it to show the screen inside the tick; when clear (replays, tests, tools) the
+    /// tick runs on as if no key changed while the screen showed, which gives the same state
+    /// (flight-screens rev 4 §4.10). Not part of the state hash.
+    pub stop_for_scenes: bool,
     /// Step to continue at after a modal screen.
     resume_at: u8,
 }
@@ -301,6 +322,7 @@ impl Flight {
             ai_player,
             mission: mut logic,
             mut radar_set2,
+            weapon,
         } = session;
         ships.reset_records(&mut rng);
         if let Some(m) = mission {
@@ -339,6 +361,11 @@ impl Flight {
         player.shields = classes.shields(class) as i8;
         let mut f = Self::with_player(number, player);
         f.episode = episode;
+        // Setup writes g_Weapon for classes 2..8 only (weapons §3.2); classes 0 and 1 fly with
+        // the weapon the program run carries.
+        if tables::player_weapons(class).is_none() {
+            f.weapon = weapon;
+        }
         f.missiles = episode::start_missiles(episode, number, class, f.missiles);
         // E3 flight 12: 27 hazard cells of `td4.map` are tile 26h until tick 6480
         // (e3-mission-setup §4.2, e3-mission-logic §4.6.3).
@@ -374,6 +401,7 @@ impl Flight {
             ai_player: self.ai_player,
             mission: self.mission,
             radar_set2: self.radar_set2,
+            weapon: self.weapon,
         }
     }
 
@@ -398,9 +426,11 @@ impl Flight {
     }
 
     /// A flight with an explicit player (dev arena, tests), without mission logic. Weapons
-    /// follow the player's class (`weapons.md` §3.2; classes 0 and 1 keep weapon 1).
+    /// follow the player's class (`weapons.md` rev 4 §3.2); classes 0 and 1 get no weapon from
+    /// setup and keep `g_Weapon`'s program-start value 0 here ([`Flight::start`] takes the
+    /// session's).
     pub fn with_player(number: u8, player: Player) -> Self {
-        let (weapon, _, missiles) = tables::player_weapons(player.class).unwrap_or((1, 1, 0));
+        let (weapon, _, missiles) = tables::player_weapons(player.class).unwrap_or((0, 0, 0));
         Self {
             episode: Episode::E1,
             number,
@@ -446,6 +476,7 @@ impl Flight {
             palette_mode: 0,
             player,
             sound_reset_at: None,
+            stop_for_scenes: false,
             resume_at: 1,
         }
     }
@@ -457,16 +488,19 @@ impl Flight {
     }
 
     /// Continues the tick interrupted by a modal screen. `c` is the input gathered while the
-    /// screen was open; the key table is cleared first, as the original's screens do.
+    /// screen was open; the key table is cleared first, as the original's screens do, except
+    /// after a [`Modal::Scene`], whose key changes apply to the bytes as they were.
     pub fn resume(
         &mut self,
         world: &World,
         c: &TickControls,
         events: &mut Vec<Event>,
     ) -> TickResult {
-        self.keys.clear_all();
-        self.keys.update(c);
         let from = std::mem::replace(&mut self.resume_at, 1);
+        if from != SCENE_RESUME {
+            self.keys.clear_all();
+        }
+        self.keys.update(c);
         self.run(world, c, events, from)
     }
 
@@ -617,8 +651,14 @@ impl Flight {
             if self.joystick_enabled {
                 self.joystick = c.joystick();
             }
-            // 18. Mission events (respawns, scripted events; mission-logic §4.7; E1 only).
+            // 18. Mission events (respawns, scripted events; mission-logic §4.7; E1 only). A
+            // real-time screen they request runs here, inside the tick (flight-screens §4.10).
             self.msn_update_events(events);
+            if self.mission.scene != 0 && self.stop_for_scenes {
+                return self.interrupt(SCENE_RESUME, Modal::Scene);
+            }
+        }
+        if from <= SCENE_RESUME {
             // 19. Instruments: the flight-7 rule, the ticker and the transmission indicator
             // (hud §4.3, §4.7, §4.8); the rest is presentation.
             self.instruments(events);

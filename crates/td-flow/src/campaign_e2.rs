@@ -16,9 +16,9 @@
 use std::fmt;
 
 use td_assets::Episode;
-use td_formats::palette::Palette;
 use td_input::{Key, TickInput};
 use td_render::Framebuffer;
+use td_sim::flight::front_end::FrontEnd;
 
 use crate::campaign::{FlightResult, FlightScreen};
 use crate::dialogue::DialogueScene;
@@ -713,13 +713,13 @@ impl Child {
         }
     }
 
-    /// What a story screen or a dialogue scene leaves in `g_Palette` (screens rev 3 §2.1);
-    /// `None` for a flight, which does not touch it.
-    pub(crate) fn palette_left(&self) -> Option<&Palette> {
+    /// What a story screen or a dialogue scene leaves in the front-end state, `g_Palette`
+    /// first (screens rev 3 §2.1: the next title card fades it); a flight does not touch it.
+    pub(crate) fn apply_front_end(&self, fe: &mut FrontEnd) {
         match self {
-            Child::Story(s) => Some(s.palette_buffer()),
-            Child::Dialogue(d) => Some(d.palette_buffer()),
-            Child::Flight(_) => None,
+            Child::Story(s) => s.apply_front_end(fe),
+            Child::Dialogue(d) => d.apply_front_end(fe),
+            Child::Flight(_) => {}
         }
     }
 
@@ -783,13 +783,13 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
             Ok(scenes_e2::title_card(
                 &prog.assets,
                 &text,
-                &prog.scene_palette,
+                &prog.scene_palette(),
             ))
         }
         Tc(cap) => Ok(scenes_e2::title_card(
             &prog.assets,
             &caption(prog, cap),
-            &prog.scene_palette,
+            &prog.scene_palette(),
         )),
         S(bg, caps) => {
             let t = caps.map(|c| caption(prog, c));
@@ -861,8 +861,8 @@ impl CampaignE2 {
                     return None;
                 }
                 let child = self.child.take();
-                if let Some(p) = child.as_ref().and_then(Child::palette_left) {
-                    prog.leave_palette(p);
+                if let Some(c) = &child {
+                    c.apply_front_end(&mut prog.front_end);
                 }
                 self.finish_child(prog, ctx, child);
                 continue;
