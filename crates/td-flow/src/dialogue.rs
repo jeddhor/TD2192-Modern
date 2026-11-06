@@ -19,13 +19,18 @@
 //! Not modelled: the joystick button that also ends a page wait (§4.7; there is no joystick
 //! input yet), and palette entries left over from the previous screen (224..239, 255 and the
 //! unused text entries start black here; no pixel uses them).
+//!
+//! What the scene leaves for the flights (weapons rev 4 §3.3 items 5, 6, 8; OB-017): the
+//! palette entries it wrote into `g_Palette` (faces, speaker entries, the scene-1 prompt; the
+//! rest of `g_Palette` keeps the previous screen's colours), the lit flag, and the reader's
+//! last line ([`read_lines`]); [`DialogueScene::apply_front_end`] hands them over.
 
 use std::collections::VecDeque;
 use std::fmt;
 
 use td_assets::{AssetError, DataDir, Episode, ExeResources};
 use td_formats::FormatError;
-use td_formats::dialogue::{Command, read_scene};
+use td_formats::dialogue::{Command, END_OF_LINE_FIELD, read_scene};
 use td_formats::font::{Font, FontKind};
 use td_formats::palette::Palette;
 use td_formats::portraits::Portraits;
@@ -33,6 +38,7 @@ use td_input::{Key, TickInput};
 use td_render::dialogue::{self, Side};
 use td_render::small_text::Typewriter;
 use td_render::{Framebuffer, fade};
+use td_sim::flight::front_end::{DialogueReader, FrontEnd};
 use thiserror::Error;
 
 use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
@@ -149,6 +155,96 @@ fn last_text_row(episode: Episode) -> usize {
     }
 }
 
+/// Splits a script into its lines (CR LF; a trailing CR LF yields a final empty line).
+fn script_lines(data: &[u8]) -> Vec<&[u8]> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i + 1 < data.len() {
+        if data[i] == b'\r' && data[i + 1] == b'\n' {
+            out.push(&data[start..i]);
+            i += 2;
+            start = i;
+        } else {
+            i += 1;
+        }
+    }
+    out.push(&data[start..]);
+    out
+}
+
+/// The reader of `Dlg_PlayScene` playing scene `id` of `script`, as far as its line state in
+/// DGROUP goes (weapons rev 4 §3.3 item 8; dialogue-player §3.1, §4.2–§4.7): `reader` holds
+/// the state the previous scenes of the program run left and is updated line by line.
+///
+/// - During the search the code byte takes the first byte of every line read (an empty line
+///   reads the CR, 13), and a `06` line's ID byte after it; the search ends at the scene's ID.
+/// - In the scene the code byte takes each line's first byte; `06` stores its ID in field 0;
+///   `01` stores slot, the remapped face and then the text entry it allocates (250, 251, ..
+///   in E1; 240, 241, .. in E2 and E3), and reads its name as the text; `02` stores its
+///   ignored byte and its colour and reads its line as the text (`string[255]`: the tail of a
+///   longer earlier string survives).
+/// - Reading ends at the line starting with `d` (code 64h), or at page break number
+///   `stop_at_page` (1-based) when Esc ended the scene there (code 05h).
+///
+/// A scene ID the script lacks leaves the state as it was (the original searches forever).
+pub fn read_lines(
+    reader: &mut DialogueReader,
+    script: &[u8],
+    episode: Episode,
+    id: u8,
+    stop_at_page: Option<usize>,
+) {
+    let lines = script_lines(script);
+    let field = |line: &[u8], i: usize| line.get(i).copied().unwrap_or(END_OF_LINE_FIELD);
+    let rest = |line: &'_ [u8], from: usize| line.get(from..).unwrap_or_default().to_vec();
+    let Some(start) = lines
+        .iter()
+        .position(|l| field(l, 0) == 0x06 && field(l, 1) == id)
+    else {
+        return;
+    };
+    // The search leaves the scene's ID in the code byte (the lines before it only pass
+    // through).
+    reader.code = id;
+    let mut entry = first_text_entry(episode);
+    let mut pages = 0;
+    for &line in &lines[start + 1..] {
+        let code = field(line, 0);
+        reader.code = code;
+        match code {
+            b'd' => break,
+            0x06 => reader.fields[0] = field(line, 1),
+            0x01 => {
+                reader.fields = [field(line, 1), remap_face(episode, field(line, 2)), entry];
+                entry = next_text_entry(episode, entry);
+                reader.read_text(&rest(line, 4));
+            }
+            0x02 => {
+                reader.fields[0] = field(line, 1);
+                reader.fields[1] = field(line, 2);
+                reader.read_text(&rest(line, 3));
+            }
+            0x05 => {
+                pages += 1;
+                if Some(pages) == stop_at_page {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The text entry after `entry` (§3.4): up to 253 (E1) or 254 (E2, E3), then 240.
+fn next_text_entry(episode: Episode, entry: u8) -> u8 {
+    if entry >= last_text_entry(episode) {
+        TEXT_ENTRY_WRAP
+    } else {
+        entry + 1
+    }
+}
+
 /// Parses a developer scene spec: `ID` (episode 1, original script), `eN:ID` or
 /// `eN-safe:ID` (edited script).
 pub fn parse_scene_spec(spec: &str) -> Result<(Episode, ScriptChoice, u8), DialogueError> {
@@ -262,6 +358,12 @@ pub struct DialogueScene {
     keys: VecDeque<Key>,
     skip: bool,
     state: State,
+    /// Palette entries the scene wrote into `g_Palette` (faces, speaker entries, prompt).
+    written: [bool; 256],
+    /// Page breaks reached so far.
+    pages: usize,
+    /// The page break at which Esc ended the scene (1-based).
+    stopped_at: Option<usize>,
 }
 
 impl fmt::Debug for DialogueScene {
@@ -321,7 +423,30 @@ impl DialogueScene {
             keys: VecDeque::new(),
             skip: false,
             state: State::Run,
+            written: [false; 256],
+            pages: 0,
+            stopped_at: None,
         }
+    }
+
+    /// Applies what the scene left in DGROUP to the front-end state the flights read (weapons
+    /// rev 4 §3.3): the `g_Palette` entries it wrote, the lit flag, and the reader's line state
+    /// after the lines it read ([`read_lines`]). Call when the scene has ended.
+    pub fn apply_front_end(&self, fe: &mut FrontEnd) {
+        for (e, &w) in self.written.iter().enumerate() {
+            if w {
+                let c = self.pal.colors[e];
+                fe.set_entry(e as u8, [c.r, c.g, c.b]);
+            }
+        }
+        fe.lit = self.lit;
+        read_lines(
+            &mut fe.reader,
+            &self.assets.script,
+            self.episode,
+            self.id,
+            self.stopped_at,
+        );
     }
 
     /// The video memory and DAC as shown.
@@ -410,6 +535,7 @@ impl DialogueScene {
                     None => return,
                     Some(Key::ESCAPE) => {
                         self.skip = true;
+                        self.stopped_at = Some(self.pages);
                         self.start_fade(false, true);
                     }
                     Some(_) => self.state = State::Run,
@@ -453,12 +579,16 @@ impl DialogueScene {
                     && let Some(prompt) = &self.assets.prompt
                 {
                     self.pal.colors[usize::from(dialogue::PROMPT_ENTRY)] = dialogue::PROMPT_RGB;
+                    self.written[usize::from(dialogue::PROMPT_ENTRY)] = true;
                     dialogue::draw_prompt(&mut self.screen, &self.assets.font, prompt);
                 }
                 self.start_fade(true, false);
             }
             Command::SegmentEnd => self.start_fade(false, false),
-            Command::PageBreak => self.state = State::WaitKey,
+            Command::PageBreak => {
+                self.pages += 1;
+                self.state = State::WaitKey;
+            }
         }
     }
 
@@ -468,13 +598,10 @@ impl DialogueScene {
         self.speaker_color[side.index()] = color;
         let face = remap_face(self.episode, face);
         let entry = self.next_entry;
-        self.next_entry = if entry >= last_text_entry(self.episode) {
-            TEXT_ENTRY_WRAP
-        } else {
-            entry + 1
-        };
+        self.next_entry = next_text_entry(self.episode, entry);
         let e = usize::from(entry);
         self.pal.colors[e] = self.assets.td_pal.colors[usize::from(color)];
+        self.written[e] = true;
         self.entry_of[usize::from(color)] = Some(entry);
         if self.lit {
             self.screen.palette.colors[e] = self.pal.colors[e];
@@ -487,6 +614,8 @@ impl DialogueScene {
             return;
         };
         dialogue::load_face_palette(&mut self.pal, side, &portrait.palette);
+        let base = side.first_entry();
+        self.written[base..base + dialogue::FACE_COLORS].fill(true);
         if self.lit {
             dialogue::dim_both_faces(&mut self.screen.palette, &self.pal);
         }
@@ -546,6 +675,66 @@ mod tests {
             v.extend_from_slice(b"\r\n");
         }
         v
+    }
+
+    /// Two scenes: 4 (one speaker line, one page) and 5 (two speakers, two pages).
+    fn reader_script() -> Vec<u8> {
+        script(&[
+            b"\x06\x04",
+            b"\x01\x01\x02\x2Ename four",
+            b"\x03",
+            b"\x02\x01\x2Ea long line of text",
+            b"\x05",
+            b"\x04",
+            b"d",
+            b"\x06\x05",
+            b"\x01\x01A\x2Eleft",
+            b"\x01\x02N\x39right",
+            b"\x03",
+            b"\x02\x01\x39short",
+            b"\x05",
+            b"\x02\x01\x2E ",
+            b"\x05",
+            b"\x04",
+            b"d",
+        ])
+    }
+
+    #[test]
+    fn reader_state_after_a_scene_played_to_its_end() {
+        // weapons rev 4 §3.3 item 8: code 64h; the last 02 line's ignored byte and colour; the
+        // text keeps the tail of the earlier, longer string.
+        let mut r = DialogueReader::default();
+        read_lines(&mut r, &reader_script(), Episode::E1, 5, None);
+        assert_eq!(r.code, b'd');
+        // Field 2 still holds the second speaker's text entry (251).
+        assert_eq!(r.fields, [0x01, 0x2E, 251]);
+        assert_eq!(r.text[..6], [1, b' ', b'h', b'o', b'r', b't']);
+    }
+
+    #[test]
+    fn reader_state_when_esc_ends_a_scene_at_a_page_break() {
+        // Esc at page break 1 of scene 5: code 05h, the 02 line before it read, nothing after.
+        let mut r = DialogueReader::default();
+        read_lines(&mut r, &reader_script(), Episode::E1, 5, Some(1));
+        assert_eq!(r.code, 0x05);
+        assert_eq!(r.fields, [0x01, 0x39, 251]);
+        assert_eq!(r.text[..6], [5, b's', b'h', b'o', b'r', b't']);
+        // A speaker line: slot, the face after the E1 remap (A -> 10, N -> 13), the entry.
+        let mut r = DialogueReader::default();
+        let s = script(&[b"\x06\x07", b"\x01\x02N\x39abc", b"d"]);
+        read_lines(&mut r, &s, Episode::E1, 7, None);
+        assert_eq!(
+            (r.fields, r.text[..4].to_vec()),
+            ([2, 13, 250], b"\x03abc".to_vec())
+        );
+        // The state carries from scene to scene; an unknown scene leaves it alone.
+        let before = r.clone();
+        read_lines(&mut r, &s, Episode::E1, 99, None);
+        assert_eq!(r, before);
+        read_lines(&mut r, &reader_script(), Episode::E1, 4, None);
+        assert_eq!(r.fields, [0x01, 0x2E, 250]);
+        assert_eq!(r.text[0], 19);
     }
 
     /// Synthetic files: every small-font glyph solid; face n has pixel value n everywhere and

@@ -1249,13 +1249,17 @@ impl Flight {
         }
         self.engage(12, &[1, 2, 3, 4, 6, 5], 5);
         self.engage(13, &[1, 2, 3, 4, 5, 6], 5);
-        self.engage_list(&[
-            (8, 0, 35),
-            (9, 0, 25),
-            (10, 0, 30),
-            (12, 0, 35),
-            (13, 0, 30),
-        ]);
+        // The attacks on the player run only while phase < 100 (`2404:501F`; mission-logic
+        // rev 3 §5.14, U-390): once the transmission is read these slots are never re-ordered.
+        if self.phase() < PHASE_DONE {
+            self.engage_list(&[
+                (8, 0, 35),
+                (9, 0, 25),
+                (10, 0, 30),
+                (12, 0, 35),
+                (13, 0, 30),
+            ]);
+        }
     }
 
     /// §5.15.
@@ -1471,6 +1475,12 @@ impl Flight {
                 self.lost = true;
             }
             _ => {}
+        }
+        // The cut-scene and the V.C.I. screen run inside this step and both use the flight
+        // fades, every level of which zeroes g_HitFlash (hit-flash rev 4 §4.2, flight-screens
+        // rev 4 §4.10). The screen always runs, whoever shows it, so the zeroing is done here.
+        if self.mission.scene != 0 {
+            self.hit_flash = 0;
         }
     }
 

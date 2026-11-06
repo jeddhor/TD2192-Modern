@@ -12,6 +12,9 @@
 //! flag), a fade-out. Fades use the 17 levels of `td_render::fade::write_level`, one level per
 //! [`FADE_FRAMES_PER_LEVEL`] frames as in the dialogue player.
 //!
+//! Every screen also says what it does to the scene palette `g_Palette` ([`ScenePalette`]),
+//! which the program run keeps for its flights (weapons rev 4 §3.3 item 5, OB-017).
+//!
 //! Provisional parts (no spec yet): the line layout of the hint screens and of the text-only
 //! screens (orders, dossiers, debrief, retry prompt, script choice), U-121; what `td1-15.pic`'s
 //! "split-screen" effect does, U-122; which keys end a timed wait and whether keys typed during
@@ -26,6 +29,7 @@ use td_formats::screen::Screen as ScrImage;
 use td_input::{Key, TickInput};
 use td_render::small_text::{self, Typewriter};
 use td_render::{Framebuffer, fade, title_text};
+use td_sim::flight::front_end::FrontEnd;
 use thiserror::Error;
 
 use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
@@ -41,6 +45,22 @@ pub enum StoryError {
     Format(#[from] FormatError),
     #[error("text resource {0} unavailable (unknown file0001.exe version?)")]
     Text(String),
+}
+
+/// What a screen does to the scene palette `g_Palette` (DS:0D2E), which the program run keeps
+/// (weapons rev 4 §3.3 item 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScenePalette {
+    /// The screen loads its palette into `g_Palette` (or clears it) and changes some entries:
+    /// its palette buffer is `g_Palette` afterwards. Scene cards, stills, hints, the typed
+    /// pages, the story so far, the script choice.
+    Loads,
+    /// The screen changes this one entry of whatever `g_Palette` holds (the mission title
+    /// card, `Flow_TextCard`: entry 85).
+    Entry(u8),
+    /// The screen does not use `g_Palette`: the help pages (`g_MenuPalette`) and the port's
+    /// own screens.
+    Untouched,
 }
 
 /// How long a screen holds after its fade-in.
@@ -121,6 +141,8 @@ pub struct StoryScreen {
     flush_waits: bool,
     /// Second page (help, story so far): shown after the first wait, then held again.
     next_page: Option<(Box<[u8]>, Palette, Hold)>,
+    /// What the screen does to `g_Palette`.
+    scene_palette: ScenePalette,
     phase: Phase,
     wait: u32,
     keys: Vec<Key>,
@@ -181,6 +203,7 @@ impl StoryScreen {
             hint_skip: false,
             flush_waits: false,
             next_page: None,
+            scene_palette: ScenePalette::Loads,
             phase: Phase::FadeIn(0),
             wait: FADE_FRAMES_PER_LEVEL,
             keys: Vec::new(),
@@ -217,6 +240,28 @@ impl StoryScreen {
     /// True once the screen has faded out.
     pub fn finished(&self) -> bool {
         self.phase == Phase::Done
+    }
+
+    /// What the screen does to `g_Palette` ([`ScenePalette::Loads`] unless set).
+    #[must_use]
+    pub fn with_scene_palette(mut self, use_: ScenePalette) -> Self {
+        self.scene_palette = use_;
+        self
+    }
+
+    /// Applies the screen's effect on the front-end state the flights read (weapons rev 4 §3.3
+    /// items 5–6): the scene palette as the screen left it, and the lit flag, which its
+    /// closing fade-out cleared.
+    pub fn apply_front_end(&self, fe: &mut FrontEnd) {
+        match self.scene_palette {
+            ScenePalette::Loads => fe.scene_palette.copy_from_slice(&self.pal.to_bytes()),
+            ScenePalette::Entry(e) => {
+                let c = self.pal.colors[usize::from(e)];
+                fe.set_entry(e, [c.r, c.g, c.b]);
+            }
+            ScenePalette::Untouched => return,
+        }
+        fe.lit = false;
     }
 
     /// With `on`, every timed wait of this screen flushes the keys typed before it starts (E3,
@@ -499,7 +544,8 @@ fn still_screen(
 /// A text card (`Flow_TextCard`, `051A:5852`): one title-font line centred at y = 90 in entry
 /// 85 = (63, 0, 0) on black; 5 s. Spec: text.md §4.5; asset-load-sites §4.
 pub fn text_card(assets: &StoryAssets, text: &str) -> StoryScreen {
-    let mut s = StoryScreen::blank(Hold::Seconds(5));
+    let mut s =
+        StoryScreen::blank(Hold::Seconds(5)).with_scene_palette(ScenePalette::Entry(TITLE_ENTRY));
     s.pal.colors[usize::from(TITLE_ENTRY)] = TITLE_RGB;
     let x = title_text::centred_x(text);
     title_text::draw(&mut s.screen, &assets.title, text, (x, 90), TITLE_ENTRY);
@@ -668,7 +714,8 @@ pub fn help(data: &DataDir) -> Result<StoryScreen, StoryError> {
                 .into()
             })
     };
-    let mut s = StoryScreen::blank(Hold::Key);
+    // The help pages use `g_MenuPalette`, which they save and restore (weapons §3.3 item 4).
+    let mut s = StoryScreen::blank(Hold::Key).with_scene_palette(ScenePalette::Untouched);
     s.screen.pixels.copy_from_slice(&page(0)?);
     s.pal = pal.clone();
     s.next_page = Some((page(1)?, pal, Hold::Key));
@@ -676,14 +723,14 @@ pub fn help(data: &DataDir) -> Result<StoryScreen, StoryError> {
 }
 
 /// A text-only screen on black with `td.pal` (port notices): `lines` are (pen, text) drawn in
-/// `ink`.
+/// `ink`. Not an original screen, so it leaves `g_Palette` alone.
 pub fn text_screen(
     assets: &StoryAssets,
     lines: &[((i32, i32), String)],
     ink: (u8, Rgb6),
     hold: Hold,
 ) -> StoryScreen {
-    let mut s = StoryScreen::blank(hold);
+    let mut s = StoryScreen::blank(hold).with_scene_palette(ScenePalette::Untouched);
     s.pal = assets.td_pal.clone();
     s.pal.colors[usize::from(ink.0)] = ink.1;
     for (pen, text) in lines {

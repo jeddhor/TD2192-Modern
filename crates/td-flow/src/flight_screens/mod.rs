@@ -1,7 +1,10 @@
 //! In-flight modal screens: the Esc computer menu (ship library, help), the F6 transmission
-//! screen, the F5 tactical map and the pause line, plus the infra-red notice.
+//! screen, the F5 tactical map and the pause line, plus the infra-red notice, and the two
+//! real-time screens of the E1 mission events ([`interlude`]: flight 17's cut-scene, flight
+//! 19's V.C.I. screen).
 //!
-//! Spec: `docs/spec/flow/flight-screens.md` rev 1 (§3, §4.1–§4.5.2). Fidelity: T0 for the
+//! Spec: `docs/spec/flow/flight-screens.md` rev 1 (§3, §4.1–§4.5.2), rev 4 §4.10 for the
+//! interludes. Fidelity: T0 for the
 //! pictures (CONFIRMED by C-0012..C-0014), T1 for what they change (abort flag, key bytes),
 //! T2 for their pacing.
 //!
@@ -18,6 +21,7 @@
 //! keyboard's typematic repeats.
 
 pub mod comm;
+pub mod interlude;
 pub mod map;
 pub mod menu;
 
@@ -33,6 +37,7 @@ use td_render::small_text;
 use thiserror::Error;
 
 pub use comm::CommScreen;
+pub use interlude::Interlude;
 pub use map::{ShipDot, TacticalMap, TargetBoard};
 pub use menu::ComputerMenu;
 
@@ -111,6 +116,13 @@ pub struct FlightScreenAssets {
     /// `hud.radar_tile_colours` (`k_TileRadarColour`, tiles 0..70); E2 the map-set-1 or, once
     /// a set-2 flight has run, the set-2 table (OB-024); E3 its own table for both maps.
     pub radar_colours: Vec<u8>,
+    /// E1: `td1-17.pic`, the flight-17 cut-scene's picture (320 × 90, no palette); empty in E2
+    /// and E3 (§4.10.3: no cut-scene).
+    pub scene_picture: Vec<u8>,
+    /// E1: `e1.flight_events.02`, the cut-scene's five lines.
+    pub scene_texts: Vec<String>,
+    /// E1: `e1.flight_events.01`, the flight-19 F5 lines and (index 5) the V.C.I. screen's line.
+    pub vci_texts: Vec<String>,
 }
 
 /// The resource ids that differ per episode: ship library, comm prompts, map prompts, flight
@@ -256,6 +268,16 @@ impl FlightScreenAssets {
         let transmissions = (1..=comms.len())
             .map(|n| comm::transmission_for(episode, n))
             .collect();
+        // The real-time screens of the E1 mission events (§4.10).
+        let (scene_picture, scene_texts, vci_texts) = if episode == Episode::E1 {
+            (
+                data.read("td1-17.pic")?,
+                texts(res, "e1.flight_events.02")?,
+                texts(res, "e1.flight_events.01")?,
+            )
+        } else {
+            Default::default()
+        };
         Ok(Self {
             episode,
             font: Font::parse(&font_bytes, FontKind::Small)?,
@@ -273,6 +295,9 @@ impl FlightScreenAssets {
             flight_prompts: texts(res, ids.flight_prompts)?,
             target_info: texts(res, ids.target_info)?,
             radar_colours,
+            scene_picture,
+            scene_texts,
+            vci_texts,
         })
     }
 
@@ -404,6 +429,9 @@ pub enum FlightModal {
     Comm(Box<CommScreen>),
     Map(Box<TacticalMap>),
     Pause(Box<Pause>),
+    /// A real-time screen of the mission events (§4.10), shown inside the tick that requested
+    /// it (`td_sim::Modal::Scene`).
+    Interlude(Box<Interlude>),
 }
 
 impl FlightModal {
@@ -414,6 +442,7 @@ impl FlightModal {
             Self::Comm(c) => c.tick(assets, input),
             Self::Map(m) => m.tick(assets, input),
             Self::Pause(p) => p.tick(input),
+            Self::Interlude(i) => i.tick(assets),
         }
     }
 
@@ -424,6 +453,7 @@ impl FlightModal {
             Self::Comm(c) => c.canvas(),
             Self::Map(m) => m.canvas(),
             Self::Pause(p) => p.canvas(),
+            Self::Interlude(i) => i.canvas(),
         };
         fb.clone_from(canvas);
     }

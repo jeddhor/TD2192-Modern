@@ -28,6 +28,15 @@
 //! keys (this checks the tick rule itself); every slot's arrays and its 1,065-byte record; the
 //! 51 projectile slots. **At the end:** the original's last tick is the replay's last tick, and
 //! the outcome flag is the port's.
+//!
+//! **World.** E1: the port's own muzzle world for a direct start, the executable's table and the
+//! 272 two-digit-heading bytes built from a front end that has shown nothing
+//! (`td_sim::flight::front_end`, weapons rev 4 §3.3, OB-017 preserved), first checked against
+//! the capture's DGROUP at tick 1 (weapons §3.3 test vector (a)). E2 and E3: the capture's
+//! DGROUP from the muzzle table on (their two-digit ranges are not mapped yet, U-441). Nothing
+//! else is copied from the capture: `g_Weapon` comes from the session (BUG-2 fixed), and the
+//! hit flash ended by E1 flight 17's cut-scene is zeroed by td-sim (flight-screens §4.10,
+//! BUG-3).
 
 // Each test crate uses one layout.
 #![allow(dead_code)]
@@ -35,9 +44,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use td_assets::DataDir;
+use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
+use td_sim::flight::front_end::{FrontEnd, MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, muzzle_world};
 use td_sim::flight::player::Turn;
 use td_sim::flight::ships::{NO_SHIP, RECORD_LEN, SHIP_SLOTS, Ship};
 use td_sim::flight::shots::{SHOT_SLOTS, Shot};
@@ -48,6 +58,32 @@ use td_sim::{Flight, FlightKey};
 /// The muzzle table and the DGROUP bytes ships read past it on two-digit headings (U-160).
 const MUZZLE_LEN: usize = 34 * 99 + 36;
 const STALL: u32 = 0x8000_0000;
+
+/// The E1 direct-start muzzle world (weapons rev 4 §3.3), checked against `captured` (the
+/// capture's DGROUP from DS:035C at tick 1): the table and the eight two-digit ranges.
+fn direct_start_muzzles(dir: &DataDir, captured: &[u8], name: &str) -> Vec<u8> {
+    let res = ExeResources::load(dir).unwrap();
+    let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
+        panic!("muzzle table");
+    };
+    let menu = dir.read("tdmen.pal").unwrap();
+    let world = muzzle_world(&table, &menu, &FrontEnd::direct_start());
+    assert_eq!(
+        world[..MUZZLE_TABLE_LEN],
+        captured[..MUZZLE_TABLE_LEN],
+        "{name}: table"
+    );
+    for h in TWO_DIGIT_HEADINGS {
+        let at = 34 * usize::from(h) + 2;
+        assert_eq!(
+            world[at..at + 34],
+            captured[at..at + 34],
+            "{name}: heading {h:02X}h bytes (DS:{:04X})",
+            0x035C + at
+        );
+    }
+    world
+}
 
 /// Where an episode keeps the compared state (DGROUP offsets; E1 `docs/re/symbols/file0001.csv`,
 /// E2 `td2.csv`, E3 `td3.csv`; episode-deltas §3.2).
@@ -597,23 +633,16 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
     let dir = DataDir::open(data).unwrap();
     let first = dump(*by_tick.get(&1).expect("a record of tick 1"));
     let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, flight)).unwrap()).unwrap();
-    let muzzles = first.ds[l.muzzles..l.muzzles + MUZZLE_LEN].to_vec();
+    let captured = &first.ds[l.muzzles..l.muzzles + MUZZLE_LEN];
+    let muzzles = if ep == Episode::E1 {
+        direct_start_muzzles(&dir, captured, &name)
+    } else {
+        captured.to_vec()
+    };
     let world = episode::world(ep, flight, map, muzzles);
     let mission = episode::mission_file(ep, flight)
         .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
     let mut f = Flight::start(flight, mission.as_ref(), &world, Session::for_episode(ep));
-    let mut known = vec![];
-    // Known divergence BUG-2 (weapons §3.2: classes 0 and 1 keep the weapon of the previous
-    // flight; at program start the original's g_Weapon is 0, td-sim's 1): copied from the
-    // original so that the rest of the flight can be compared.
-    if f.player.class <= 1 && f.weapon != first.u8(l.weapon) {
-        known.push(format!(
-            "setup: weapon ours {} orig {} (BUG-2, copied)",
-            f.weapon,
-            first.u8(l.weapon)
-        ));
-        f.weapon = first.u8(l.weapon);
-    }
 
     // Setup: the record of tick 1 holds the state after setup (plus tick 1's turn step).
     let mut errs = differences(&f, &first);
@@ -642,10 +671,8 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
             }
             result = f.resume(&world, &td_sim::TickControls::default(), &mut ev);
         }
-        // The host's part for the real-time interlude of step 18 (mission-logic §5.17): the
-        // E1 flight-17 cut-scene fades out and back, which zeroes g_HitFlash (hit-flash §4.2).
-        if ep == Episode::E1 && f.mission.scene == 17 {
-            f.hit_flash = 0;
+        if f.mission.scene != 0 {
+            cov.events.push(format!("t{t} scene {}", f.mission.scene));
         }
         // After the last tick the host fades the flight out (flight-screens §4.5.3), and every
         // level of that fade zeroes g_HitFlash (hit-flash §4.2): the stall record, 150 ms
@@ -714,7 +741,7 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
     );
     eprintln!(
         "{name} flight {flight}: PASS {} ticks, {} slot-ticks, kills {}, outcome {}, died {}, \
-         comm {:?}, known divergences {known:?}, events {:?}",
+         comm {:?}, events {:?}",
         cov.ticks,
         cov.slot_ticks,
         f.kills,

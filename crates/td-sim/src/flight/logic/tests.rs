@@ -394,6 +394,71 @@ fn flight_19_switch_and_pin() {
 }
 
 #[test]
+fn flight_14_attacks_on_the_player_stop_at_phase_100() {
+    // mission-logic rev 3 §5.14 (U-390): slots 8, 9, 10, 12, 13 are ordered to attack the
+    // player only while phase < 100; the rules against slots 1..6 still run.
+    let mut f = scripted(14);
+    let v = f.player.view;
+    let near = (v.tile_x as u8, v.tile_y as u8);
+    put(&mut f, 13, 7, near);
+    f.msn_update();
+    assert_eq!(
+        f.ships.0[12].record_bytes()[0x415],
+        1,
+        "attack ordered in phase 1"
+    );
+    let mut f = scripted(14);
+    f.mission.phase = PHASE_DONE;
+    put(&mut f, 13, 7, near);
+    f.msn_update();
+    assert_eq!(
+        f.ships.0[12].record_bytes()[0x415],
+        0,
+        "no new order after the transmission"
+    );
+}
+
+#[test]
+fn scenes_stop_the_tick_only_for_a_host_that_shows_them() {
+    // flight-screens rev 4 §4.10: the V.C.I. screen runs inside step 18; with
+    // `stop_for_scenes` the tick returns `Modal::Scene` there and resumes at step 19 with the
+    // key bytes kept (only the screen's own key changes apply); either way the hit flash ends.
+    let world = open_world();
+    let at_vci = |stop: bool| {
+        let mut f = scripted(19);
+        f.player.view = View {
+            tile_x: 120,
+            tile_y: 70,
+            ..START_VIEW
+        };
+        f.stop_for_scenes = stop;
+        f.hit_flash = 12;
+        f
+    };
+    let mut held = TickControls::default();
+    held.set_down(FlightKey::Kp8);
+    held.set_made(FlightKey::Kp8);
+    let mut plain = at_vci(false);
+    assert_eq!(plain.tick(&world, &held, &mut vec![]), TickResult::Done);
+    assert_eq!((plain.mission.scene, plain.hit_flash), (19, 0));
+    let mut f = at_vci(true);
+    assert_eq!(
+        f.tick(&world, &held, &mut vec![]),
+        TickResult::Modal(crate::flight::Modal::Scene)
+    );
+    assert_eq!((f.mission.scene, f.hit_flash, f.player.class), (19, 0, 8));
+    // Nothing changed while it showed: the same key state goes on, as without the stop.
+    let mut still = TickControls::default();
+    still.set_down(FlightKey::Kp8);
+    assert_eq!(f.resume(&world, &still, &mut vec![]), TickResult::Done);
+    assert!(
+        f.keys.get(FlightKey::Kp8),
+        "the key byte survives the screen"
+    );
+    assert_eq!(crate::hash::state_hash(&f), crate::hash::state_hash(&plain));
+}
+
+#[test]
 fn outcomes() {
     let mut f = scripted(12);
     assert!(!f.outcome());

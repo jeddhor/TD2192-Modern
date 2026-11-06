@@ -436,3 +436,30 @@ fn e3_flight_16_suppresses_the_hit_flash_from_phase_5() {
     g.tick(&w, &TickControls::default(), &mut vec![]);
     assert_eq!((g.frame.hit_flash, g.hit_flash), (12, 10));
 }
+
+#[test]
+fn g_weapon_is_carried_from_flight_to_flight() {
+    // weapons rev 4 §3.2 (U-391, BUG-2): 0 at program start; setup writes it for classes 2..8
+    // only; a class-0/1 flight keeps what the previous flight of the run left.
+    let world = World {
+        map: TileMap::parse_episode(&vec![0u8; 201 * 201]).unwrap(),
+        tile_attr: [tables::TILE_OPEN; 256],
+        muzzles: shots::Muzzles(vec![0; 342]),
+    };
+    assert_eq!(Session::new().weapon, 0);
+    let first = Flight::start(19, None, &world, Session::new());
+    assert_eq!(
+        (first.player.class, first.weapon),
+        (0, 0),
+        "flight 19 first in its run"
+    );
+    // Flight 18 (class 2) sets weapon 1; Tab selects the missiles (4).
+    let mut f18 = Flight::start(18, None, &world, Session::new());
+    assert_eq!(f18.weapon, 1);
+    f18.weapon = 4;
+    let f19 = Flight::start(19, None, &world, f18.session());
+    assert_eq!(f19.weapon, 4);
+    // A retry of flight 19 keeps it; a class-2 flight sets it again.
+    assert_eq!(Flight::start(19, None, &world, f19.session()).weapon, 4);
+    assert_eq!(Flight::start(18, None, &world, f19.session()).weapon, 1);
+}

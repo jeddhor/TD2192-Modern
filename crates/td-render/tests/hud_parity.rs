@@ -2,7 +2,8 @@
 //! and compared with the frames captured at the same moment (`docs/spec/render/hud.md` §6):
 //! the HUD bar (rows 160..191), the palette entries the instruments animate, and the guidance
 //! dots in the playfield. C-0002 f3543 (E1 flight 1 at rest, full memory dump) and every
-//! 35th frame of C-0010 (flight 1 objective sequence, DGROUP DS:1700..3CAF dumps).
+//! 35th frame of C-0010 (flight 1 objective sequence, DGROUP DS:1700..3CAF dumps); the weapon-0
+//! icon (OB-090) against C-0069 (flight 19 started directly).
 //! Needs TD2192_DATA and TD2192_ORACLE; skips otherwise. No captured pixels are stored here.
 
 use std::fs;
@@ -450,4 +451,45 @@ fn c0009_mission_ship_brackets_match() {
     }
     eprintln!("C-0009: {frames} frames consistent, {with_brackets} with bracket pixels");
     assert!(frames >= 30 && with_brackets >= 5);
+}
+
+/// OB-090 (hud rev 3 §5): C-0069 is E1 flight 19 started directly, so `g_Weapon` is 0 from
+/// setup to the end (weapons rev 4 §3.2), the vehicle switch to class 8 included. Every
+/// captured flight frame that shows the HUD has the icon cell (x 179..214, y 7..24) in colour
+/// B2h, as the port draws it.
+#[test]
+fn weapon_0_icon_matches_c0069() {
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let s = setup(&data);
+    let mut hud = Hud::new(&s.assets);
+    let cap = oracle.join("C-0069");
+    let tick = fs::read(cap.join("mem").join("tick_4467-0000_9DF0_ds.bin")).unwrap();
+    let ds = Ds {
+        bytes: &tick[16..16 + 0x9DF0],
+        base: 0,
+    };
+    assert_eq!(ds.b(0x1CB8), 0, "g_Weapon after setup");
+    hud.step(&s.assets, &s.map, &state(&ds, [(0xFF, 0); 51]));
+    let mut fb = Framebuffer::new();
+    hud.draw(&mut fb);
+    let mut frames = 0;
+    for f in (540..=1800).step_by(70) {
+        // The V.C.I. screen (frames 1231..1510) hides the HUD in these three dumps.
+        if [1310, 1380, 1450].contains(&f) {
+            continue;
+        }
+        let (_, px) = frame(&cap.join("fb").join(format!("f{f:08}_320x192.vga")));
+        let cell = ELEMENTS.iter().find(|e| e.0 == "weapon").unwrap();
+        let d = element_diff(&fb, &px, cell.1, cell.2);
+        assert!(
+            d.is_empty(),
+            "f{f}: {} icon pixels differ, {:?}",
+            d.len(),
+            &d[..d.len().min(4)]
+        );
+        assert!((7..25).all(|y| px[(160 + y) * 320 + 179] == 0xB2));
+        frames += 1;
+    }
+    assert!(frames >= 15, "{frames} frames");
 }

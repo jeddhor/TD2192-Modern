@@ -33,7 +33,8 @@ use crate::dialogue::{DialogueAssets, DialogueScene, ScriptChoice};
 use crate::main_menu::{MainMenu, MenuGraphics, NEXT_MISSION, QUIT, Reentry, SAVE};
 use crate::save_screens::{E1_FILES, SaveKind, SaveOutcome, SaveScreen, SaveSet};
 use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
-use crate::story::{self, Hold, StoryAssets, StoryError, StoryScreen, TextItem};
+use crate::story::{self, Hold, ScenePalette, StoryAssets, StoryError, StoryScreen, TextItem};
+use td_sim::flight::front_end::FrontEnd;
 
 const EXE: &str = "file0001.exe";
 /// Ink of the port's own notices ("not available yet").
@@ -60,6 +61,10 @@ pub struct Program {
     pub cues: MusicCues,
     songs: BTreeMap<&'static str, Arc<Cmf>>,
     pub launcher: Box<dyn FlightLauncher>,
+    /// What the front-end screens of this program run left in DGROUP for the flights: the
+    /// scene palette, the lit flag and the dialogue reader's last line (weapons rev 4 §3.3,
+    /// OB-017). The port's program is always started through the launcher flow.
+    pub front_end: FrontEnd,
 }
 
 impl fmt::Debug for Program {
@@ -102,6 +107,7 @@ impl Program {
             cues: MusicCues::with_table(CueRestart::Always, table),
             songs: BTreeMap::new(),
             launcher,
+            front_end: FrontEnd::launcher(),
         })
     }
 
@@ -665,6 +671,11 @@ impl Episode1 {
                     .map(|s| (s, Reentry::Story))
             }
             SAVE | 2 => {
+                // Both screens load the menu's palette buffer into g_Palette (save-screens
+                // §3, weapons rev 4 §3.3 item 5) and end with a fade-out.
+                let menu = self.menu.palette_buffer().to_bytes();
+                self.prog.front_end.scene_palette.copy_from_slice(&menu);
+                self.prog.front_end.lit = false;
                 // Both screens flush the BIOS buffer at entry (save-screens §4.1).
                 let kind = if item == SAVE {
                     SaveKind::Save {
@@ -677,9 +688,12 @@ impl Episode1 {
                 self.stage = Stage::Saves(Box::new(self.save_screen(kind)));
                 return;
             }
-            // In-process pictures with intro.cmf, as E2/E3 (launcher §4.10).
+            // In-process pictures with intro.cmf, as E2/E3 (launcher §4.10). The original
+            // halts for the launcher, which runs the extra and then a new program; the port's
+            // run goes on, its front-end state included.
             crate::extras::ABOUT | crate::extras::ORDER => {
-                crate::extras::about_or_order(&mut self.prog, ctx, item).map(|s| (s, loader))
+                crate::extras::about_or_order(&mut self.prog, ctx, item)
+                    .map(|s| (s.with_scene_palette(ScenePalette::Untouched), loader))
             }
             _ => Ok((self.notice("this program is not available yet"), loader)),
         };
@@ -761,6 +775,7 @@ impl Screen for Episode1 {
                     pad: input.pad,
                 });
                 if s.finished() {
+                    s.apply_front_end(&mut self.prog.front_end);
                     self.prog.choice = if s.last_key() == Key::digit(2) {
                         ScriptChoice::Edited
                     } else {
@@ -773,12 +788,14 @@ impl Screen for Episode1 {
             Stage::Notice(s) => {
                 s.step(input);
                 if s.finished() {
+                    s.apply_front_end(&mut self.prog.front_end);
                     self.enter_menu(ctx, 0, Reentry::Loader { first: true });
                 }
             }
             Stage::Sub(s, how) => {
                 s.step(input);
                 if s.finished() {
+                    s.apply_front_end(&mut self.prog.front_end);
                     let how = *how;
                     self.enter_menu(ctx, self.menu.cursor(), how);
                 }

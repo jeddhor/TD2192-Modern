@@ -91,8 +91,9 @@ pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
     })
 }
 
-/// Runs the inputs in the installation's world and in `alt` (other muzzle bytes, U-160) and
-/// prints the first tick where the two flights differ, with what changed in each.
+/// Runs the inputs in the installation's world (a direct start's muzzle bytes, weapons rev 4
+/// §3.3) and in `alt` (other muzzle bytes, U-160) and prints the first tick where the two
+/// flights differ, with what changed in each.
 pub fn compare_muzzles(root: &Path, r: &Replay, alt: Vec<u8>) -> Result<()> {
     let base = setup_of(root, r)?;
     let other = base.with_muzzles(alt);
@@ -104,11 +105,11 @@ pub fn compare_muzzles(root: &Path, r: &Replay, alt: Vec<u8>) -> Result<()> {
         if plan::core_hash(&a) != plan::core_hash(&b) {
             let t = i as u32 + 1;
             println!("first difference after tick {t}");
-            println!("  342-byte table: {:?}", plan::describe(t, &pa, &a));
+            println!("  direct start:   {:?}", plan::describe(t, &pa, &a));
             println!("  other bytes:    {:?}", plan::describe(t, &pb, &b));
             for (k, (x, y)) in a.shots.0.iter().zip(&b.shots.0).enumerate() {
                 if x != y {
-                    println!("  shot {k}: table {x:?}\n          other {y:?}");
+                    println!("  shot {k}: direct {x:?}\n          other  {y:?}");
                 }
             }
             for (k, (x, y)) in pa.shots.0.iter().zip(&pb.shots.0).enumerate() {
