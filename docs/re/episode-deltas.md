@@ -312,11 +312,11 @@ Other changes in this routine:
 - E2: n = 1..7, unit `2555`: `01D4`, `0525`, `0774`, `0B7E`, `0F93`, `1325`, `158D`.
 - E3: n = 1, 2, 3 and 5 only, unit `2215`: `0135`, `042A`, `0680`, `093D`. There is no comm 4.
 
-The comm portraits come from `td2.ccm` / `td3.ccm` (E1 `td1.ccm`; `UI_DrawCommPortraitA/B` differ only in this file name).
+The comm portraits come from `td2.ccm` / `td3.ccm` (E1 `td1.ccm`; `UI_DrawCommPortraitA/B` differ only in this file name). The per-transmission tables (portraits, lines, markers, speakers) of all eleven loaders: [flow/e2-flight-screens §3.1–3.2](../spec/flow/e2-flight-screens.md) (RE-12).
 
 **Ship switch screen** (`UI_ShipSwitchScreen`: E2 `0E96:9BEC`, E3 `0C5D:9A99`). The per-slot "selectable" flag and the map dots need only class ≠ FFh; E1 also required a guidance marker. Every live ship is shown, marked or not. CONFIRMED for the code, LIKELY that this flag is what limits the cursor.
 
-**Ship library** (`UI_ShipLibrary`: E2 `0E96:7653`, E3 `0C5D:7337`). It draws the same nine `td.shp` sprites in the same places; only which entries are hidden changes (LIKELY for the left/right reading):
+**Ship library** (`UI_ShipLibrary`: E2 `0E96:7653`, E3 `0C5D:7337`). It draws the same nine `td.shp` sprites in the same places; only which entries are hidden changes (CONFIRMED, RE-12: the full text tables and the flight tests are in [flow/e2-flight-screens §3.3](../spec/flow/e2-flight-screens.md); C-0044):
 
 | | E1 | E2 | E3 |
 |---|---|---|---|
