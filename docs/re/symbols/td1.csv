@@ -1,0 +1,20 @@
+address,kind,name,signature,comment,confidence,source_task
+0000:01FE,func,Launcher_Main,,"main program: help, nuffmem, intro, intro.cmf preload, tdstatus.dat, file0001 and the status loop, order2.com (flow/launcher.md 4.1)",CONFIRMED,M1-10
+006B:021F,func,Crt_GotoXY,"void far pascal(X: Byte; Y: Byte)",Crt; used once at exit (1; 25),CONFIRMED,M1-10
+006B:0263,func,Crt_TextColor,"void far pascal(Color: Byte)",Crt; used once at exit (7),CONFIRMED,M1-10
+00CD:0055,func,WORX_Shutdown,,removes INT 08h/63h and stops the music (smart-linked copy of file0001 2C37:0055),CONFIRMED,M1-10
+00CD:010A,func,WORX_SetFmVolume,"word far pascal(Left: Byte; Right: Byte)",driver fn 22h; (10; 10) before intro.cmf,CONFIRMED,M1-10
+00CD:0141,func,WORX_DetectAdLib,word far pascal(void),driver fn 23h; 1 = AdLib present,CONFIRMED,M1-10
+00CD:0160,func,WORX_LoadMusic,"pointer far pascal(Name: String)",driver fns 17h/18h; loads intro.cmf once,CONFIRMED,M1-10
+00CD:020B,func,WORX_PlayCmf,"word far pascal(P: Pointer)",driver fn 1Eh; intro.cmf under the extras,CONFIRMED,M1-10
+00CD:0238,func,WORX_Init,word far pascal(void),driver fn 26h; installs INT 63h and INT 08h,CONFIRMED,M1-10
+070D:0000,func,Dos_Exec,"void far pascal(Path: String; CmdLine: String)",BP7 Dos.Exec; seven call sites,CONFIRMED,M1-10
+070D:0094,func,Dos_DosExitCode,word far pascal(void),checked after nuffmem.exe only,CONFIRMED,M1-10
+0717:0116,func,BP_Halt,,,CONFIRMED,M1-10
+0817:0052,data,g_StatusFile,T[128],FileRec of tdstatus.dat (record size 1),CONFIRMED,M1-10
+0817:00D2,data,g_CfgFile,T[128],FileRec of td.cfg (record size 1),CONFIRMED,M1-10
+0817:0152,data,g_IntroCmf,farptr,intro.cmf in memory; nil with /nosound or /pc,CONFIRMED,M1-10
+0817:0156,data,g_Status,u8,tdstatus.dat byte 0 (0 quit; 1 order.exe; 2 aboutus.exe),CONFIRMED,M1-10
+0817:015A,data,g_ChildParam,string[255],ParamStr(1) passed to file0000 and file0001,CONFIRMED,M1-10
+0817:025C,data,g_NoSound,u8,1 for /nosound /NOSOUND /PC /pc,CONFIRMED,M1-10
+0817:025D,data,g_CfgMusic,u8,td.cfg byte 0 (default 1),CONFIRMED,M1-10
