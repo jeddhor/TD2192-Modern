@@ -277,9 +277,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
 | M12-06 | Replay soak, fuzzing, profiling | VE | M12-01 | TODO | | |
 | M12-07 | Accessibility review | VE | M12-04 | TODO | | |
-| M12-08 | Enhanced presentation pipeline + `[enhanced]` settings (ADR-0006) | IM | M6-05 | TODO | | Requested by the user 2026-11-05; spec/enhanced/presentation.md §2-3 |
-| M12-09 | Widescreen viewport (16:10, 16:9, 21:9, auto) | IM | M12-08 | TODO | | spec/enhanced/presentation.md §4; marked "affects gameplay (visibility)" |
-| M12-10 | Pixel-art upscaling (Scale2x/3x/4x, xBR 2x/3x/4x) | IM | M12-08 | TODO | | spec/enhanced/presentation.md §5 |
+| M12-08 | Enhanced presentation pipeline + `[enhanced]` settings (ADR-0006) | IM | M6-05 | IN PROGRESS | IM-12 | Requested by the user 2026-11-05; spec/enhanced/presentation.md §2-3 |
+| M12-09 | Widescreen viewport (16:10, 16:9, 21:9, auto) | IM | M12-08 | IN PROGRESS | IM-12 | spec/enhanced/presentation.md §4; marked "affects gameplay (visibility)" |
+| M12-10 | Pixel-art upscaling (Scale2x/3x/4x, xBR 2x/3x/4x) | IM | M12-08 | IN PROGRESS | IM-12 | spec/enhanced/presentation.md §5 |
 | M12-11 | Dynamic lighting (light sources, soft shadows from solid tiles, night ambient) | IM | M12-08 | TODO | | spec/enhanced/presentation.md §6 |
 | M12-12 | Bloom, performance budget, enhanced tests | IM/VE | M12-10, M12-11 | TODO | | spec/enhanced/presentation.md §6.3, §7, §8 |
 

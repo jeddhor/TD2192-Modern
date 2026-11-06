@@ -20,6 +20,13 @@
 //!
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
 //! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8.
+//!
+//! Enhanced presentation (`docs/spec/enhanced/presentation.md` rev 1): `draw_frame` draws into a
+//! framebuffer of any width W ≥ 320, a widescreen frame when W > 320 (`td_render::flight`
+//! viewport rules). When the run loop asks for it through the shared [`EnhancedView`], the
+//! arena also composes that frame and its light inputs (`lights`) each time it is drawn.
+
+mod lights;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -43,7 +50,8 @@ use td_formats::palette::Palette;
 use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::Tileset;
 use td_input::{Key, TickInput};
-use td_render::flight::{self, ShotLook, ViewPos};
+use td_render::enhanced::widescreen;
+use td_render::flight::{self, ShotLook, ViewPos, Viewport};
 use td_render::flight_palette::FlightDac;
 use td_render::hud::{Hud, HudAssets, HudState, TickerFont};
 use td_render::{Framebuffer, HeadingSprites};
@@ -53,6 +61,8 @@ use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
 use td_sim::flight::heading::Heading;
 use td_sim::flight::player::Event;
 use td_sim::{Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
+
+use crate::enhanced::{EnhancedView, SharedView};
 
 /// Typematic delay and repeat period of an AT keyboard at its power-on defaults (500 ms,
 /// 10.9 characters per second). The original's key bytes are re-set by every repeated make
@@ -166,6 +176,8 @@ pub struct FlightArena {
     binds: Vec<(Key, FlightKey)>,
     typematic: Typematic,
     events: Vec<Event>,
+    /// The Enhanced frame shared with the run loop.
+    enhanced: Option<SharedView>,
 }
 
 /// What one program run keeps across its flights.
@@ -339,7 +351,15 @@ impl FlightArena {
             binds: bindings(),
             typematic: Typematic::default(),
             events: Vec::new(),
+            enhanced: None,
         })
+    }
+
+    /// Composes Enhanced frames into `view` when the run loop asks for them.
+    #[must_use]
+    pub fn with_enhanced(mut self, view: Option<SharedView>) -> Self {
+        self.enhanced = view;
+        self
     }
 }
 
@@ -431,10 +451,41 @@ impl Screen for FlightArena {
     }
 
     fn draw(&self, fb: &mut Framebuffer) {
+        self.draw_frame(fb);
+        self.compose_enhanced();
+    }
+}
+
+impl FlightArena {
+    /// Composes the Enhanced frame when the run loop asked for one (module docs). The modal
+    /// screens keep their Classic picture, which the pipeline centres.
+    fn compose_enhanced(&self) {
+        let Some(view) = &self.enhanced else {
+            return;
+        };
+        if self.screen.is_some() {
+            return;
+        }
+        // A draw from inside `compose` (none today) would find the view borrowed: skip it.
+        let Ok(mut view) = view.try_borrow_mut() else {
+            return;
+        };
+        let view: &mut EnhancedView = &mut view;
+        view.compose(
+            |fb| self.draw_frame(fb),
+            |margin, mode| self.light_scene(margin, mode),
+            self.emissive(),
+        );
+    }
+
+    /// The picture: the modal screen, or the flight frame in `fb`'s width (Classic at 320,
+    /// widescreen when wider).
+    fn draw_frame(&self, fb: &mut Framebuffer) {
         if let Some(screen) = &self.screen {
             screen.draw(fb);
             return;
         }
+        let vp = Viewport::of(fb);
         fb.clear(0);
         fb.palette = self.dac.current().clone();
         let f = &self.flight.frame;
@@ -465,19 +516,18 @@ impl Screen for FlightArena {
         }
         // 6. Shots (flight-screens §4.8), where they were drawn: before their move.
         for s in drawn.shots.0.iter().filter(|s| s.alive()) {
-            let look = flight::shot_look(
+            let look = flight::shot_look_in(
                 view,
                 s.kind,
                 s.heading,
                 drawn_shot_tile(s),
                 (s.off_x, s.off_y),
+                vp,
             );
             match look {
                 Some(ShotLook::Pixels(pixels)) => {
                     for (x, y, c) in pixels {
-                        if (0..flight::PLAYFIELD.h).contains(&y) {
-                            fb.put(x, y, c);
-                        }
+                        flight::put_playfield(fb, x, y, c);
                     }
                 }
                 Some(ShotLook::Sprite { slot, heading, at }) => {
@@ -516,7 +566,8 @@ impl Screen for FlightArena {
         // 13. Explosions: bank slot 19 + frame (flight-screens §4.7).
         let page = self.drawn_page();
         for e in drawn.explosions.0.iter().filter(|e| e.frame < IDLE) {
-            let at = flight::explosion_sprite(view, page, (e.tile_x, e.tile_y), (e.sub_x, e.sub_y));
+            let (tile, off) = ((e.tile_x, e.tile_y), (e.sub_x, e.sub_y));
+            let at = flight::explosion_sprite_in(view, page, tile, off, vp);
             if let (Some(at), Some(frame)) =
                 (at, self.bank.frame(usize::from(FIRST_SPRITE + e.frame)))
             {
@@ -564,7 +615,7 @@ impl Screen for FlightArena {
             display.hud.step(&self.hud_assets, &self.world.map, &state);
             display.tick = Some(f.ticks);
         }
-        display.hud.draw(fb);
+        widescreen::draw_hud(fb, &display.hud);
         drop(display);
         self.draw_overlays(fb);
     }
@@ -658,7 +709,7 @@ impl FlightArena {
                 sub_y: s.sub_y,
                 marker: s.marker,
             };
-            let Some(pos) = flight::mission_ship_pos(view, page, &mark) else {
+            let Some(pos) = flight::mission_ship_pos_in(view, page, &mark, Viewport::of(fb)) else {
                 continue;
             };
             let heading = Heading::from_code(s.heading).unwrap_or(Heading::N);
@@ -673,7 +724,7 @@ impl FlightArena {
     /// Text the tick draws over the finished picture: the infra-red notice (step 21).
     fn draw_overlays(&self, fb: &mut Framebuffer) {
         if shows_ir_notice(self.flight.palette_mode, self.flight.ticks) {
-            draw_ir_notice(fb, &self.screens);
+            widescreen::overlay_centred(fb, |fb| draw_ir_notice(fb, &self.screens));
         }
     }
 
@@ -681,7 +732,7 @@ impl FlightArena {
     /// to show.
     fn open_screen(&self, m: Modal) -> Option<FlightModal> {
         let mut shown = Framebuffer::new();
-        self.draw(&mut shown);
+        self.draw_frame(&mut shown);
         let f = &self.flight;
         Some(match m {
             Modal::Pause => FlightModal::Pause(Box::new(Pause::new(shown, &self.screens))),
@@ -743,6 +794,8 @@ impl FlightScreen for FlightArena {
 pub struct ArenaLauncher {
     run: Rc<RefCell<RunState>>,
     fallback: PlaceholderLauncher,
+    /// The Enhanced frame shared with the run loop.
+    enhanced: Option<SharedView>,
 }
 
 impl ArenaLauncher {
@@ -755,14 +808,22 @@ impl ArenaLauncher {
         Self {
             run: Rc::new(RefCell::new(run)),
             fallback: PlaceholderLauncher::default(),
+            enhanced: None,
         }
+    }
+
+    /// Flights compose Enhanced frames into `view` (see [`FlightArena::with_enhanced`]).
+    #[must_use]
+    pub fn with_enhanced(mut self, view: SharedView) -> Self {
+        self.enhanced = Some(view);
+        self
     }
 }
 
 impl td_flow::FlightLauncher for ArenaLauncher {
     fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
         match FlightArena::start(ctx.data, ctx.resources, flight, Some(self.run.clone())) {
-            Ok(arena) => Box::new(arena),
+            Ok(arena) => Box::new(arena.with_enhanced(self.enhanced.clone())),
             Err(e) => {
                 tracing::error!("flight {flight} could not start: {e:#}");
                 self.fallback.launch(ctx, flight)

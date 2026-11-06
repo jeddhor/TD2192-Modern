@@ -169,6 +169,10 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 - [ ] Q1: tune the light table in §6.1 by eye in the arena. The values above are starting points, and changing them needs no spec revision beyond this table.
 - [ ] Q2: should widescreen widen the radar or the F5 map? Proposal: no, they stay original.
 - [ ] Q3: should a GPU backend (SDL3 GPU) follow once the CPU reference is done (ADR-0006 alternatives)?
+- [ ] Q4 (IM-12, M12-09): §4.2's relaxed visibility and its centre invariant conflict at the Classic window's edges. The Classic tests leave out some objects that already overlap the 320-wide window: a mission ship whose tile is one column left of the view, or one in the right column with offset ≥ view offset; explosions likewise. In a wide frame those objects are drawn, so their pixels inside columns *m* .. *m* + 319 differ from Classic until Classic draws them too. The implementation draws them, which avoids objects popping in at the old window edge. It holds the invariant for the tile window, the player ship and the overpass redraw (tested at C-0002 f3500/f3543). Proposal: state the invariant for the static playfield (tiles, player, overpasses) only.
+- [ ] Q5 (IM-12): §4.3 "mirroring … repeated" is implemented as a mirrored repeat (bar columns 0, 1, .., 15, 15, .., 0, 0, 1, ..), which is continuous at every seam.
+- [ ] Q6 (IM-12): §5 leaves the xBR sub-pixel blend weights open. They are implemented as the exact area of each output sub-pixel beyond the edge line, which reproduces the published 2× and 3× weights for diagonal and single-slope edges. For an edge that is both shallow and steep, each sub-pixel takes the larger of the two weights.
+- [ ] Q7 (IM-12): §2 "the Classic profile forces every key off" needs a profile setting. It is implemented as a top-level `profile = "classic" | "enhanced"` key, default `classic` (MDG §6.2), so a user sets `profile = "enhanced"` as well as the `[enhanced]` keys. It governs only `[enhanced]` for now; `audio.sfx_mode` is unchanged.
 
 ## 10. Revision history
 

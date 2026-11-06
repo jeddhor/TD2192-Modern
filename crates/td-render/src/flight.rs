@@ -5,6 +5,17 @@
 //! §13, T0 against C-0002 f3500/f3543). The original draws an 11 × 6 tile window into a page
 //! and scrolls with the CRTC start address: horizontally in 4-pixel steps, vertically per
 //! pixel. The ship stays at a fixed screen position; the world moves.
+//!
+//! **Widescreen** (Enhanced, `docs/spec/enhanced/presentation.md` rev 1 §4.2): every position
+//! these functions take or return is a *Classic* screen position (the 320 × 160 playfield). A
+//! framebuffer wider than 320 is a widescreen frame of width W whose Classic column 0 is at
+//! frame column m = (W − 320) / 2 (its [`Viewport`]). The drawing functions move everything right
+//! by m and clip to the W × 160 playfield, and the tile window and overpass redraw cover the
+//! extra tile columns. The `*_in` functions apply the Classic visibility tests, relaxed by m on
+//! each side when the viewport is wide. On a 320-wide framebuffer and with
+//! [`Viewport::CLASSIC`] everything behaves exactly as in the Classic profile.
+
+use std::ops::RangeInclusive;
 
 use td_formats::map::TileMap;
 use td_formats::tileset::{TILE_SIZE, Tileset};
@@ -27,6 +38,85 @@ pub const HUD_H: usize = 32;
 pub const SHIP_POS: (i32, i32) = (144, 68);
 /// Map tiles redrawn over the ships each tick (overpasses).
 pub const OVERPASS_TILES: [u8; 4] = [0x42, 0x44, 0x45, 0x46];
+
+/// The horizontal extent of the flight picture (Enhanced widescreen, spec
+/// enhanced/presentation rev 1 §4): a playfield W × 160 with the Classic picture in its centre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Viewport {
+    width: i32,
+}
+
+impl Viewport {
+    /// The Classic 320-wide picture.
+    pub const CLASSIC: Viewport = Viewport {
+        width: WIDTH as i32,
+    };
+
+    /// A picture `width` pixels wide (at least 320).
+    pub fn new(width: usize) -> Self {
+        Self {
+            width: width.max(WIDTH) as i32,
+        }
+    }
+
+    /// The viewport of a framebuffer: its width.
+    pub fn of(fb: &Framebuffer) -> Self {
+        Self::new(fb.width())
+    }
+
+    /// W.
+    pub fn width(self) -> i32 {
+        self.width
+    }
+
+    /// m = (W − 320) / 2: the frame column of Classic column 0.
+    pub fn margin(self) -> i32 {
+        (self.width - WIDTH as i32) / 2
+    }
+
+    /// True for the Classic 320-wide picture.
+    pub fn is_classic(self) -> bool {
+        self.width == WIDTH as i32
+    }
+
+    /// The playfield in frame coordinates: W × 160.
+    pub fn playfield(self) -> Rect {
+        Rect {
+            w: self.width,
+            ..PLAYFIELD
+        }
+    }
+
+    /// True if an object covering Classic columns `x .. x + w` shows in the window.
+    pub fn spans(self, x: i32, w: i32) -> bool {
+        let m = self.margin();
+        x + w > -m && x < WIDTH as i32 + m
+    }
+
+    /// The tile window columns drawn: 0..=10 in Classic; widescreen adds the columns needed to
+    /// fill the margins (from view tile X − ⌈m / 32⌉ at most).
+    fn columns(self, view: ViewPos) -> RangeInclusive<i32> {
+        if self.is_classic() {
+            return 0..=10;
+        }
+        let (ox, m) = (view.page_origin().0, self.margin());
+        let size = TILE_SIZE as i32;
+        (ox - m).div_euclid(size)..=(WIDTH as i32 + m + ox - 1).div_euclid(size)
+    }
+
+    /// The margin strips of the playfield in frame coordinates (empty in Classic).
+    fn margins(self) -> [Rect; 2] {
+        let m = self.margin();
+        [
+            Rect { w: m, ..PLAYFIELD },
+            Rect {
+                x: m + WIDTH as i32,
+                w: m,
+                ..PLAYFIELD
+            },
+        ]
+    }
+}
 
 /// The view as the simulation stores it: a map tile plus a pixel offset per axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,33 +150,69 @@ fn draw_window_tile(
     i: i32,
     j: i32,
 ) {
+    let clip = Viewport::of(fb).playfield();
+    draw_window_tile_clipped(fb, map, tiles, view, (i, j), clip);
+}
+
+/// [`draw_window_tile`] clipped to `clip` (frame coordinates).
+fn draw_window_tile_clipped(
+    fb: &mut Framebuffer,
+    map: &TileMap,
+    tiles: &Tileset,
+    view: ViewPos,
+    (i, j): (i32, i32),
+    clip: Rect,
+) {
     let Some(tile) = tile_at(map, view, i, j).and_then(|t| tiles.tiles.get(usize::from(t))) else {
         return;
     };
     let (ox, oy) = view.page_origin();
+    let m = Viewport::of(fb).margin();
     let size = TILE_SIZE as i32;
     let img = Image::new(tile, TILE_SIZE, TILE_SIZE);
-    fb.blit(img, i * size - ox, j * size - oy, PLAYFIELD, None);
+    fb.blit(img, i * size - ox + m, j * size - oy, clip, None);
 }
 
-/// Draws the tile window for `view` into the playfield.
+/// Draws the tile window for `view` into the playfield (with the extra columns of a widescreen
+/// frame).
 pub fn draw_tile_window(fb: &mut Framebuffer, map: &TileMap, tiles: &Tileset, view: ViewPos) {
-    for i in 0..11 {
+    for i in Viewport::of(fb).columns(view) {
         for j in 0..6 {
             draw_window_tile(fb, map, tiles, view, i, j);
         }
     }
 }
 
+/// True if window cell (i, j) is redrawn over the ships in Episode 1: tiles 42h, 44h, 45h,
+/// 46h, and every cell with map x 7Ah..=7Fh at map y 47h.
+fn is_overpass(map: &TileMap, view: ViewPos, i: i32, j: i32) -> bool {
+    let special = (0x7A..=0x7F).contains(&(view.tile_x + i)) && view.tile_y + j == 0x47;
+    special || tile_at(map, view, i, j).is_some_and(|t| OVERPASS_TILES.contains(&t))
+}
+
 /// Redraws the overpass tiles of window columns 3..=6, rows 1..=4 over the ships (tick-order
 /// step 12): tiles 42h, 44h, 45h, 46h, and every cell with map x 7Ah..=7Fh at map y 47h.
+///
+/// In a widescreen frame the redraw also covers the margins: every overpass cell of the wider
+/// window, clipped to the margin strips so that the Classic centre stays as it is.
 pub fn redraw_overpasses(fb: &mut Framebuffer, map: &TileMap, tiles: &Tileset, view: ViewPos) {
     for i in 3..=6 {
         for j in 1..=4 {
-            let special = (0x7A..=0x7F).contains(&(view.tile_x + i)) && view.tile_y + j == 0x47;
-            let overpass = tile_at(map, view, i, j).is_some_and(|t| OVERPASS_TILES.contains(&t));
-            if special || overpass {
+            if is_overpass(map, view, i, j) {
                 draw_window_tile(fb, map, tiles, view, i, j);
+            }
+        }
+    }
+    let vp = Viewport::of(fb);
+    if vp.is_classic() {
+        return;
+    }
+    for i in vp.columns(view) {
+        for j in 0..6 {
+            if is_overpass(map, view, i, j) {
+                for clip in vp.margins() {
+                    draw_window_tile_clipped(fb, map, tiles, view, (i, j), clip);
+                }
             }
         }
     }
@@ -95,7 +221,8 @@ pub fn redraw_overpasses(fb: &mut Framebuffer, map: &TileMap, tiles: &Tileset, v
 /// Episode 2's overlay tiles (tick-order step 12, `docs/spec/sim/e2-mission-setup.md` rev 1
 /// §3.6): every cell of the 11 × 6 window. Map set 1 (`td.map`): E1's tiles 42h, 44h, 45h,
 /// 46h and the cells x 7Ah..=7Fh at y 47h; map set 2 (`td2.map`): tiles 33h..=3Bh, 1Eh, 1Fh,
-/// 20h. The caller skips it while late draw is set.
+/// 20h. The caller skips it while late draw is set. A widescreen frame covers its extra
+/// columns too.
 pub fn redraw_overlays_e2(
     fb: &mut Framebuffer,
     map: &TileMap,
@@ -103,7 +230,7 @@ pub fn redraw_overlays_e2(
     view: ViewPos,
     map_set: u8,
 ) {
-    for i in 0..11 {
+    for i in Viewport::of(fb).columns(view) {
         for j in 0..6 {
             let tile = tile_at(map, view, i, j);
             let overlay = if map_set == 2 {
@@ -124,11 +251,12 @@ pub fn redraw_overlays_e2(
 /// have the base frame at offset (4, 4)).
 pub fn draw_player_ship(fb: &mut Framebuffer, frame: &[u8], size: usize) {
     let inset = (size as i32 - 32) / 2;
+    let vp = Viewport::of(fb);
     fb.blit(
         Image::new(frame, size, size),
-        SHIP_POS.0 - inset,
+        SHIP_POS.0 - inset + vp.margin(),
         SHIP_POS.1 - inset,
-        PLAYFIELD,
+        vp.playfield(),
         Some(0),
     );
 }
@@ -204,6 +332,27 @@ pub fn mission_ship_pos(view: ViewPos, page: i32, s: &ShipMark) -> Option<(i32, 
     inside.then_some((x - ox, row - 32 - oy))
 }
 
+/// [`mission_ship_pos`] for viewport `vp`: in a widescreen frame a ship also shows whenever its
+/// frame (40 × 40 at most) overlaps the wider window, with the Classic row tests.
+pub fn mission_ship_pos_in(
+    view: ViewPos,
+    page: i32,
+    s: &ShipMark,
+    vp: Viewport,
+) -> Option<(i32, i32)> {
+    let classic = mission_ship_pos(view, page, s);
+    if classic.is_some() || vp.is_classic() {
+        return classic;
+    }
+    let (tx, ty) = (i32::from(s.tile_x), i32::from(s.tile_y));
+    let (sx, sy) = (i32::from(s.sub_x), i32::from(s.sub_y));
+    let (x, row) = ((tx - view.tile_x) * 32 + sx, (ty - view.tile_y) * 32 + sy);
+    let (ox, oy) = view.page_origin();
+    let pos = (x - ox, row - 32 - oy);
+    let rows_ok = (view.tile_y..=view.tile_y + 5).contains(&ty) && row + 232 * page > 32;
+    (rows_ok && vp.spans((pos.0 & !3) - 4, 40)).then_some(pos)
+}
+
 /// Draws a mission ship at `pos` (from [`mission_ship_pos`]): its heading frame (colour 0
 /// transparent; `size` 32, or 40 with the 32 × 32 base frame at (4, 4)) with x rounded down to
 /// a multiple of 4 like every planar sprite blit (`flight-screens.md` §2), then the target
@@ -224,10 +373,17 @@ pub fn draw_mission_ship(
             _ => return,
         };
         for &(dx, dy) in pixels {
-            if (PLAYFIELD.y..PLAYFIELD.h).contains(&(y + dy)) {
-                fb.put(x + dx, y + dy, c);
-            }
+            put_playfield(fb, x + dx, y + dy, c);
         }
+    }
+}
+
+/// Plots one pixel at Classic screen position (x, y) if it lies in the playfield rows (shots,
+/// brackets).
+pub fn put_playfield(fb: &mut Framebuffer, x: i32, y: i32, color: u8) {
+    if (PLAYFIELD.y..PLAYFIELD.h).contains(&y) {
+        let m = Viewport::of(fb).margin();
+        fb.put(x + m, y, color);
     }
 }
 
@@ -235,11 +391,12 @@ pub fn draw_mission_ship(
 /// screen `pos`; `size` 40 frames have the base frame at (4, 4).
 pub fn draw_sprite(fb: &mut Framebuffer, frame: &[u8], size: usize, (x, y): (i32, i32)) {
     let inset = (size as i32 - 32) / 2;
+    let vp = Viewport::of(fb);
     fb.blit(
         Image::new(frame, size, size),
-        x - inset,
+        x - inset + vp.margin(),
         y - inset,
-        PLAYFIELD,
+        vp.playfield(),
         Some(0),
     );
 }
@@ -269,6 +426,27 @@ pub fn explosion_sprite(
         && (page == 1 || row > 32);
     // The code passes x + 352, one VGA row further down.
     visible.then_some(((tx - view.tile_x) * 32 + dx, row + 1))
+}
+
+/// [`explosion_sprite`] for viewport `vp`: in a widescreen frame an explosion also shows
+/// whenever its sprite overlaps the wider window, with the Classic row and page tests.
+pub fn explosion_sprite_in(
+    view: ViewPos,
+    page: i32,
+    tile: (u8, u8),
+    off: (u8, u8),
+    vp: Viewport,
+) -> Option<(i32, i32)> {
+    let classic = explosion_sprite(view, page, tile, off);
+    if classic.is_some() || vp.is_classic() {
+        return classic;
+    }
+    let (tx, ty) = (i32::from(tile.0), i32::from(tile.1));
+    let (dx, dy) = (i32::from(off.0), i32::from(off.1));
+    let row = (ty - view.tile_y) * 32 + dy;
+    let at = ((tx - view.tile_x) * 32 + dx, row + 1);
+    let rows_ok = (view.tile_y..=view.tile_y + 5).contains(&ty) && (page == 1 || row > 32);
+    (rows_ok && vp.spans(sprite_screen(view, at).0, 32)).then_some(at)
 }
 
 /// How a projectile looks (`flight-screens.md` rev 1 §4.8).
@@ -399,26 +577,70 @@ pub fn shot_look(
             if !visible {
                 return None;
             }
-            let r = view.page_origin().0 + 16;
-            let (sx, sy) = (x + 32 - r, y - view.sub_y);
-            let pixels = shot_pattern(kind, heading)?;
-            Some(ShotLook::Pixels(
-                pixels
-                    .into_iter()
-                    .map(|(dx, dy, c)| (sx + dx, sy + dy, c))
-                    .collect(),
-            ))
+            shot_pixels(view, kind, heading, (x, y))
         }
         4..=6 => {
             let visible = (view.tile_x..=view.tile_x + 8).contains(&tx)
                 && (view.tile_y + 2..=view.tile_y + 5).contains(&ty)
                 && matches!(heading, 1..=4 | 6..=9);
-            let slot = [16, 15, 9][usize::from(kind - 4)];
-            visible.then_some(ShotLook::Sprite {
-                slot,
-                heading,
-                at: (x, y),
-            })
+            visible.then(|| missile_look(kind, heading, (x, y)))
+        }
+        _ => None,
+    }
+}
+
+/// The pixels of a kind 0..2 shot at window pixel (x, y).
+fn shot_pixels(view: ViewPos, kind: u8, heading: u8, (x, y): (i32, i32)) -> Option<ShotLook> {
+    let r = view.page_origin().0 + 16;
+    let (sx, sy) = (x + 32 - r, y - view.sub_y);
+    let pixels = shot_pattern(kind, heading)?;
+    Some(ShotLook::Pixels(
+        pixels
+            .into_iter()
+            .map(|(dx, dy, c)| (sx + dx, sy + dy, c))
+            .collect(),
+    ))
+}
+
+/// The sprite of a kind 4..6 missile at window pixel `at`.
+fn missile_look(kind: u8, heading: u8, at: (i32, i32)) -> ShotLook {
+    let slot = [16, 15, 9][usize::from(kind - 4)];
+    ShotLook::Sprite { slot, heading, at }
+}
+
+/// [`shot_look`] for viewport `vp`: in a widescreen frame a shot also shows whenever it lies in
+/// the wider window, with the Classic row tests (kinds 0..2: the centre within the playfield
+/// rows; kinds 4..6: tile rows 2..5 and a principal heading).
+pub fn shot_look_in(
+    view: ViewPos,
+    kind: u8,
+    heading: u8,
+    tile: (u8, u8),
+    off: (i16, i16),
+    vp: Viewport,
+) -> Option<ShotLook> {
+    let classic = shot_look(view, kind, heading, tile, off);
+    if classic.is_some() || vp.is_classic() {
+        return classic;
+    }
+    let (tx, ty) = (i32::from(tile.0), i32::from(tile.1));
+    let x = (tx - view.tile_x) * 32 + i32::from(off.0);
+    let y = (ty - view.tile_y) * 32 + i32::from(off.1);
+    match kind {
+        0..=2 => {
+            let centre = x + 16 - view.page_origin().0;
+            let visible = (34..192).contains(&(y + 16)) && vp.spans(centre - 3, 6);
+            if visible {
+                shot_pixels(view, kind, heading, (x, y))
+            } else {
+                None
+            }
+        }
+        4..=6 => {
+            let visible = (view.tile_y + 2..=view.tile_y + 5).contains(&ty)
+                && matches!(heading, 1..=4 | 6..=9)
+                && vp.spans(sprite_screen(view, (x, y)).0 - 4, 40);
+            visible.then(|| missile_look(kind, heading, (x, y)))
         }
         _ => None,
     }
@@ -440,14 +662,17 @@ pub fn flame_pos(heading: u8) -> Option<(i32, i32)> {
     })
 }
 
-/// Copies the 320 × 32 HUD bar (`td.win`) to rows 160..192.
+/// Copies the 320 × 32 HUD bar (`td.win`) to rows 160..192 (at x = m in a widescreen frame).
 ///
 /// # Panics
 /// If `win` is not 320 × 32 bytes.
 pub fn draw_hud_bar(fb: &mut Framebuffer, win: &[u8]) {
     assert_eq!(win.len(), HUD_W * HUD_H, "td.win is 320x32");
-    let start = HUD_Y as usize * WIDTH;
-    fb.pixels[start..start + win.len()].copy_from_slice(win);
+    let (w, m) = (fb.width(), Viewport::of(fb).margin() as usize);
+    for (r, src) in win.chunks_exact(HUD_W).enumerate() {
+        let start = (HUD_Y as usize + r) * w + m;
+        fb.pixels[start..start + HUD_W].copy_from_slice(src);
+    }
 }
 
 #[cfg(test)]
@@ -610,5 +835,133 @@ mod tests {
         );
         assert_eq!(flame_pos(8), Some((144, 100)));
         assert_eq!(flame_pos(0x24), None);
+    }
+
+    /// A tileset where tile t is filled with colour t, and a map of tile 1 + (x + y) % 7 with
+    /// an overpass (42h) at window cell (`ox`, 2) for each `ox`.
+    fn striped_world(overpass_cols: &[i32]) -> (TileMap, Tileset) {
+        let mut blk = vec![0u8; 80 * 1024];
+        for t in 0..80 {
+            blk[t * 1024..(t + 1) * 1024].fill(t as u8);
+        }
+        let mut cells: Vec<u8> = (0..201 * 201)
+            .map(|i| 1 + ((i % 201 + i / 201) % 7) as u8)
+            .collect();
+        for &i in overpass_cols {
+            let x = (VIEW.tile_x + i) as usize;
+            cells[(VIEW.tile_y as usize + 2) * 201 + x] = 0x42;
+        }
+        (
+            TileMap::parse_episode(&cells).unwrap(),
+            Tileset::parse(&blk).unwrap(),
+        )
+    }
+
+    #[test]
+    fn widescreen_centre_equals_classic_and_margins_are_filled() {
+        let (map, tiles) = striped_world(&[-2, 5, 12]);
+        let ship = vec![9u8; 32 * 32];
+        let draw = |width: usize, view: ViewPos| {
+            let mut fb = Framebuffer::with_width(width);
+            draw_tile_window(&mut fb, &map, &tiles, view);
+            draw_player_ship(&mut fb, &ship, 32);
+            // A mission ship in the left margin, under the overpass of column −2.
+            let mark = ShipMark {
+                tile_x: (view.tile_x - 2) as u8,
+                tile_y: (view.tile_y + 2) as u8,
+                sub_x: 0,
+                sub_y: 32,
+                marker: 0x32,
+            };
+            if let Some(pos) = mission_ship_pos_in(view, 1, &mark, Viewport::of(&fb)) {
+                draw_mission_ship(&mut fb, Some((&ship, 32)), pos, mark.marker);
+            }
+            redraw_overpasses(&mut fb, &map, &tiles, view);
+            fb
+        };
+        for sub_x in [16, 18, 32, 47] {
+            let view = ViewPos { sub_x, ..VIEW };
+            let classic = draw(320, view);
+            for width in [384, 428, 560] {
+                let wide = draw(width, view);
+                let m = (width - 320) / 2;
+                for y in 0..160 {
+                    assert_eq!(
+                        &wide.pixels[y * width + m..y * width + m + 320],
+                        &classic.pixels[y * 320..(y + 1) * 320],
+                        "{width}/{sub_x}: row {y}"
+                    );
+                    let row = &wide.pixels[y * width..(y + 1) * width];
+                    assert!(
+                        row.iter().all(|&p| p != 0),
+                        "{width}/{sub_x}: row {y} has gaps"
+                    );
+                }
+                assert!(
+                    wide.pixels[160 * width..].iter().all(|&p| p == 0),
+                    "nothing below the playfield"
+                );
+            }
+        }
+        // The margin overpass covers the mission ship drawn under it.
+        let wide = draw(560, VIEW);
+        let (ox, oy) = VIEW.page_origin();
+        let (x, y) = (-2 * 32 - ox + 120 + 8, 2 * 32 - oy + 8);
+        assert_eq!(wide.get(x, y), Some(0x42), "overpass over the ship");
+        assert_eq!(
+            mission_ship_pos(
+                VIEW,
+                1,
+                &ShipMark {
+                    tile_x: (VIEW.tile_x - 2) as u8,
+                    tile_y: (VIEW.tile_y + 2) as u8,
+                    sub_x: 0,
+                    sub_y: 32,
+                    marker: 0x32,
+                }
+            ),
+            None,
+            "Classic leaves the ship out"
+        );
+    }
+
+    #[test]
+    fn widescreen_relaxes_visibility_by_the_margin() {
+        let vp = Viewport::new(428);
+        assert_eq!((vp.margin(), vp.playfield().w), (54, 428));
+        assert!(Viewport::CLASSIC.is_classic() && !vp.is_classic());
+        assert!(vp.spans(-54 - 31, 32) && !vp.spans(-54 - 32, 32));
+        assert!(vp.spans(320 + 53, 32) && !vp.spans(320 + 54, 32));
+        // An explosion two columns right of the Classic window.
+        assert_eq!(explosion_sprite(VIEW, 1, (113, 105), (0, 16)), None);
+        let at = explosion_sprite_in(VIEW, 1, (113, 105), (0, 16), vp).unwrap();
+        assert_eq!(sprite_screen(VIEW, at), (11 * 32 - 16, 17));
+        assert_eq!(
+            explosion_sprite_in(VIEW, 1, (113, 105), (0, 16), Viewport::CLASSIC),
+            None
+        );
+        // A shot left of the window; kind 3 stays invisible.
+        let look = shot_look_in(VIEW, 0, 8, (100, 106), (16, 16), vp);
+        assert_eq!(
+            look,
+            Some(ShotLook::Pixels(vec![
+                (-48, 63, 0x3C),
+                (-48, 64, 0x3D),
+                (-48, 65, 0x3C)
+            ]))
+        );
+        assert_eq!(shot_look(VIEW, 0, 8, (100, 106), (16, 16)), None);
+        assert_eq!(shot_look_in(VIEW, 3, 8, (100, 106), (16, 16), vp), None);
+        // Inside the Classic window the Classic answer stands.
+        assert_eq!(
+            shot_look_in(VIEW, 0, 8, (107, 106), (16, 16), vp),
+            shot_look(VIEW, 0, 8, (107, 106), (16, 16))
+        );
+        // Single pixels move by the margin.
+        let mut fb = Framebuffer::with_width(428);
+        put_playfield(&mut fb, -54, 0, 5);
+        put_playfield(&mut fb, 0, 160, 5);
+        assert_eq!(fb.get(0, 0), Some(5));
+        assert_eq!(fb.pixels.iter().filter(|&&p| p == 5).count(), 1);
     }
 }
