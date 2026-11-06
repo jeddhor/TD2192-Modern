@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/music-cues` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for which song plays when (it also sets the game tick rate, [timing](../core/timing.md)); T2 for the sound |
 | **Confidence** | Song table, call sites and order: CONFIRMED (static, every call site). Scene labels: LIKELY (from the location strings each scene routine is given). Triggers of the game-over paths: HYPOTHESIS |
@@ -111,7 +111,8 @@ Songs in the order they are requested, with the scene that follows each request.
 
 - "→ `hangar` … → `hangar`": consecutive requests for the same song restart it.
 - Before mission 6 the dialogue is 156 or 157 depending on DS:12CF (a result flag of the previous flight, HYPOTHESIS). Before mission 13 the music is stopped outright (`0000:1E3F`) for one title card.
-- Flight 21 is a short extra flight between the story parts before mission 20. It uses the `td02` flight song and has no debrief (DS flags not traced, U-081).
+- Flight 21 is a scripted 25-tick flight in the mission-19 block, after D89 (no mission file, helicopter player). It uses the `td02` flight song, has no retry, no `low` (M8) and no debrief; only an abort is tested after it ([episode-program-flow](../flow/episode-program-flow.md) §4.4, U-081 resolved).
+- Mission 20 has no debrief and so no `low` after flight 20: the post-flight story starts with `mood3` at once (row "end" above; U-207).
 
 ## 5. Edge cases and original bugs
 
@@ -139,7 +140,7 @@ Songs in the order they are requested, with the scene that follows each request.
 ## 8. Open questions
 
 - [ ] Q1 (U-080): which condition selects each of the three game-over paths (`0000:2DA6`, `2DE3`, `2E26`)? Mission failure without retry is the likely one for the first.
-- [ ] Q2 (U-081): what flight 21 is (a scripted or bonus mission between the story parts before mission 20) and how its outcome is handled.
+- [x] Q2 (U-081): resolved: a scripted 25-tick flight; after it only the abort flag is tested ([episode-program-flow](../flow/episode-program-flow.md) §4.4).
 - [x] Q3 (M1-09): E2 and E3 cue tables (same routine in `td2`/`td3`, different song files). **Resolved (RE-7):** same behaviour; `td03` is index 45 in E2 and 44 in E3, `intro.cmf` is 69 (and 45 in E3); the flight song gains a fallback request; per-mission cues in [episode-deltas §7, §8.2](../../re/episode-deltas.md#7-audio).
 
 ## 9. Provenance
@@ -158,3 +159,4 @@ Songs in the order they are requested, with the scene that follows each request.
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | Initial: song table, program-level cues, full E1 campaign sequence |
+| 2 | 2026-11-06 | RE-14 (Spec author) | Flight 21 described (U-081 resolved); mission 20 has no `low`/debrief (U-207); no cue changes |

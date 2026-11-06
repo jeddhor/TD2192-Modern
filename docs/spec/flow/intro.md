@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/intro` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for every drawn frame (layout, glyphs, tile grid, sprite blit, captions, palette values); T1 for the flyover state per step (scroll, hoverskid path, `Random` stream); T2 for wall-clock timing (fade speed, delays, step rate) and audio |
-| **Confidence** | CONFIRMED for the drawn frames and the flyover state: 1,792 framebuffer dumps of C-0047 match a model of this spec pixel for pixel (every date, narration, flyover, `intro1` and `intro2` frame that is not a loading frame), and 903 per-frame RAM dumps match the state rules of §4.6. LIKELY for the sound-effect schedule (static only) |
+| **Confidence** | CONFIRMED for the drawn frames and the flyover state: 1,792 framebuffer dumps of C-0047 match a model of this spec pixel for pixel (every date, narration, flyover, `intro1` and `intro2` frame that is not a loading frame), and 903 per-frame RAM dumps match the state rules of §4.6. CONFIRMED at P1 for the sound-effect schedule and the song restart (C-0081 RAM) |
 | **Tasks** | M1-10 (RE/SP), M5-08 (IM), M11-05 (credits text) |
-| **Unknowns** | U-036 (the five intro effects), U-370 |
+| **Unknowns** | U-036 (the five intro effects); U-370 and U-380 resolved; U-410 (why WORX's flag outlasts a sample) |
 
 ## 1. Summary
 
@@ -138,7 +138,25 @@ All effects need: sound not overridden and effects setting 2 (Sound Blaster). Ru
 | 7 | 265 < s < 330, no effect playing, flag clear | set flag; play `scratch` (card present); volume 12 |
 | 8 | any step, no effect playing | volume 10; play `pulse` |
 
-Starting an effect stops the one playing ([voc-and-adpcm](../audio/voc-and-adpcm.md) §2.1). So `pulse` fills every silence and is cut by the others. The flag (`DS:0069`) starts clear. Rule 4 fires once, on the first step after `ric3` (or the `scratch` of rule 2) has finished. Rule 7 fires once, on the first silent step after s = 265. Rule 8 runs on the same step after rules 4 and 7, so on that step the new `scratch` is already playing and `pulse` waits.
+Starting an effect stops the one playing ([voc-and-adpcm](../audio/voc-and-adpcm.md) §2.1). So `pulse` fills every silence and is cut by the others. The flag (`DS:0069`) starts clear. Rule 4 fires once, on the first step after `ric3` (or the `scratch` of rule 2) has finished. Rule 7 would fire once, on the first silent step in 266..329. Rule 8 runs on the same step after rules 4 and 7, so on that step the new `scratch` is already playing and `pulse` waits.
+
+**"No effect playing" is WORX's own flag, and it outlasts the sample (U-380).** The test is WORX function 08h, which returns the driver's "digital sound playing" byte (file0000 `CS:3211`, §9). WORX streams the sample through its DMA buffer and clears the byte only when its streaming code next finds the end of the data, so the flag stays set for a while after the last sample has played. Measured at preset P1 (C-0081, per-frame RAM of `CS:3211`; frames at 70.086 Hz, steps at the 19.2 Hz BIOS tick):
+
+| Effect | Sample length | Flag set for | Steps (start → first step that sees it clear) |
+|---|---:|---:|---|
+| `whoosh` | 4.422 s | 317 frames (4.523 s) | 1 → 88 |
+| `pulse` | 0.224 s | 25 or 26 frames (0.36 s) | about 7 steps; restarts at 88, 96, 103, 111, 119, 126, 134, 142 |
+| `scratch` | 0.149 s | 25 or 26 frames (0.36 s) | rule 4: 213 → 220 |
+| `ric3` | 2.783 s | 211 frames (3.011 s) | 155 → 213 |
+| `home` | 4.029 s | 309 frames (4.409 s) | 245 → 330 |
+
+Consequences, all seen in C-0081 and consistent with C-0047:
+
+- Rule 4 fires at step 213 (sets the flag, `scratch`); rule 5 clears the flag at step 240.
+- **Rule 7 never fires at P1.** `home` (from step 245) is still flagged during step 329's checks (step 329 starts at frame 2814, the flag clears in frame 2816); at step 330 the window has closed and rule 8 plays `pulse`. The flag therefore stays 0 from step 240 to the end of the flyover, as every C-0047 RAM dump shows. The margin is under one step, so a faster or slower machine (or DSP) can make rule 7 fire; the rule itself is as written above.
+- `pulse` restarts every 7 or 8 steps, not every 5 (its own length).
+
+Port policy (Classic, T2): treat an effect as playing for the measured time of the table (25.5 frames for `pulse` and `scratch`), not for its sample length. That reproduces C-0081's effect onsets (no rule-7 `scratch`, flag 0 after step 240). The mechanism behind the extra time is U-410.
 
 ### 3.7 Constants
 
@@ -255,7 +273,7 @@ T_prev := DOS time
 Each step:
 
 ```text
-1. if not override and no music is playing (WORX fn 0Eh = 0) and music = 2:
+1. if not override and no music is playing (WORX fn 0Eh = 0, file0000 CS:3189) and music = 2:
        WORX_StopMusic; play intro2.cmf; musicState := 3
 2. s := s + 1
 3. draw the grid on page `page`: c = 0..10, r = 0..7, tile = map[c + 5, r + v194]
@@ -283,6 +301,8 @@ Each step:
 11. if no key is waiting and s ≠ 10000: next step
     otherwise: key check (Esc -> exit, §4.9); leave the loop
 ```
+
+**When step 1 restarts a song (U-370).** WORX's "music playing" byte (function 0Eh) is set when a song starts and cleared only by a stop or by an end of track with looping off; with looping on, the end-of-track tick restarts the song inside the same timer interrupt, so the program never reads 0 at a loop ([audio/cmf](../audio/cmf.md) §4.8). The flyover setup turns looping off, so `intro.cmf` ends once and the byte reads 0 from its end-of-track tick until the top of the next step, where step 1 starts `intro2.cmf`: at most one step (about 5 music ticks). In C-0081 `intro.cmf` ends between frames 7437 and 7438, the byte reads 0 in frames 7438 and 7439, and step 1596 starts `intro2.cmf` in frame 7439 (PIT reprogrammed): 2 music ticks, as [cmf](../audio/cmf.md) §6.2 C1 measured in C-0001. `intro2.cmf` also plays with looping off, so the same restart repeats whenever it ends during the flyover (only after the flyover is it left to end).
 
 `Random` is the BP7 generator of [bp7-runtime-semantics](../core/bp7-runtime-semantics.md) §4.1. The intro never calls `Randomize`, so `RandSeed` starts at 0 and the hoverskid's path is the same on every run. The 1,567 calls (steps 38..1604) are the only use of the generator.
 
@@ -389,7 +409,8 @@ There are no key checks inside the `intro1` and `intro2` fades. A key pressed th
 | 6 | Frame content | every flyover frame in f1600..2050, f3200..3300, f7300..7593 equals the page of step s − 1 (s = value at that frame), 0 differing pixels; f7495..7498 also include step 1612's wrapped sprite | C-0047 fb |
 | 7 | Cards | date f135..281, `intro0` lines f282..1546, `intro1` lines f7681..8371, `intro2` lines f8526..9281: 0 differing pixels against §4.4/§4.7..4.9 | C-0047 fb |
 | 8 | Esc, Esc at file0000 +300/+400 (P1) | the first Esc ends the first narration hold; exit at f426; the second Esc is swallowed by the exit's key read | C-0049, C-0050 `int21.tsv` |
-
+| 9 | No input, P1: WORX digital-sound byte (file0000 CS:3211) per frame | set f1618..1934 (`whoosh`), clear at step 88; `pulse` from steps 88, 96, 103, 111, 119, 126, 134, 142; set f2162..2389 (`scratch`, `ric3`); rule 4 at step 213 (DS:0069 := 1 in frame 2392); DS:0069 := 0 at step 240; set f2476..2816 (`pulse`, `scratch`, `home`), never clear at the checks of steps 266..329; `pulse` from step 330; DS:0069 = 0 to the end | C-0081 RAM |
+| 10 | No input, P1: WORX music byte (file0000 CS:3189) | 1 through the flyover except frames 7438..7439 (end of `intro.cmf`); `intro2.cmf` started in frame 7439 (3 PIT writes); DS:0068 = 3 from step 1596 | C-0081 RAM, `frames.tsv` |
 ## 7. Presentation and audio hooks
 
 | When | Music | Effects |
@@ -404,7 +425,8 @@ The CMF playback itself is [audio/cmf](../audio/cmf.md) (§6.2 C1 checks this ex
 
 ## 8. Open questions
 
-- [ ] Q1 (U-370): the WORX "music playing" function (fn 0Eh, CS:316A) is used only here. Does it read 0 for the step or two between the end of `intro.cmf` and the restart, so that `intro2` starts on the next step (cmf §6.2 C1 says 2 ticks)? The port can poll its own sequencer.
+- [x] Q1 (U-370): resolved in §4.6 ("When step 1 restarts a song"): the byte reads 0 from the end-of-track tick until the next step (2 music ticks in C-0081) and never at a loop. The port can poll its own sequencer once per step.
+- [x] Q3 (U-380): resolved in §3.6: rule 7 is as written but never fires at P1, because WORX reports `home` as playing until after step 329's checks.
 - [ ] Q2: sound effects were not checked against a recording (the effect schedule is static). A VE pass with C-0001's WAV should confirm the onsets at steps 1, 150, 155, 240, 245 (s/19.2 s after the flyover start).
 
 ## 9. Provenance
@@ -418,7 +440,9 @@ The CMF playback itself is [audio/cmf](../audio/cmf.md) (§6.2 C1 checks this ex
 | Text A / B, glyphs | `0000:0302`, `06BC`, `0149` | static + C-0047 frames | CONFIRMED |
 | Sprite blit, tile blit | `0957:0000`, `0957:01D5` | static + C-0047 frames | CONFIRMED |
 | Flyover loop, motion, captions, limiter | `0000:1C91..28F5` | static + C-0047 RAM and frames | CONFIRMED |
-| Sound-effect schedule | `0000:1D43..1F6D` | static | LIKELY |
+| Sound-effect schedule | `0000:1D43..1F6D` | static; C-0081 RAM (flag DS:0069 and the WORX busy byte, every frame) | CONFIRMED (rules 4, 5, 7, 8, the flag, onsets at P1) |
+| WORX in file0000 is file0001's driver code placed 1Fh bytes later (every CS-relative driver address = file0001's + 1Fh): function table `02FA:2447`, fn 08h `02FA:4A0C` (reads CS:3211), fn 0Eh `02FA:4A04` (reads CS:3189); INT 63h entry `02FA:350D`, INT 08h handler `02FA:4577` | byte comparison of the two exes; C-0081 `int21.tsv` (vectors) | static + capture | CONFIRMED |
+| Effect busy times, song restart gap | C-0081 RAM (`16A2:3189`, `16A2:3211`; file0000 PSP 1398) | capture | CONFIRMED at P1 |
 | `intro1`, `intro2`, exit | `0000:2964..2F8E` | static + C-0047 frames | CONFIRMED |
 | Esc handling | inline key checks; `0000:2F36..2F8E` | static + C-0049, C-0050 | CONFIRMED |
 
@@ -428,3 +452,4 @@ The CMF playback itself is [audio/cmf](../audio/cmf.md) (§6.2 C1 checks this ex
 |---|---|---|---|
 | 1 | 2026-11-05 | RE-13 (Archaeologist + Spec author + Verifier) | Initial: whole intro, verified against C-0047 (1,792 frames, 903 RAM dumps) |
 | 2 | 2026-11-06 | main session | §4.5 tile destination: `r × 0B00h`, not `(r + p) × 0B00h`, which matches the stated row 32 + 264p + 32r and the frames (found by IM-15) |
+| 3 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.6: "no effect playing" is WORX function 08h, which stays set 0.1..0.38 s past each sample (measured table); rule 7 never fires at P1 (U-380); port policy. §4.6: when the music byte reads 0 and step 1 restarts a song (U-370); file0000 WORX addresses (+1Fh). Test vectors 9, 10 (C-0081) |

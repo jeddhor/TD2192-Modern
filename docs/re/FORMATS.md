@@ -105,8 +105,8 @@ Slot contents as seen in the render (class mapping is U-008):
 | Confidence | **CONFIRMED** (measured overlap + visual check of the assembled 16-heading sheet, 2026-11-02) |
 | Size | 38,400 bytes each = **24 cells × 40×40** |
 | Content | Cells 0..19 are the same 20 sprites as `td.shp`, pre-rotated **counter-clockwise** by **22.5° (`td.sc3`)**, **45° (`td.shr`)** and **67.5° (`td.sc2`)**. Best overlap with the base sprites rotated CCW is at 20° / 40° / 65° in 5° steps; CW rotation matches much worse. **Cells 20..23 are blank** (all zero). |
-| Heading construction | 16 headings, 0 = nose up, increasing counter-clockwise in 22.5° steps: `h % 4` picks `[shp, sc3, shr, sc2]`, and the result is rotated CCW by `90° × (h / 4)` with exact pixel transforms. The 32×32 base is centred in a 40×40 frame (offset 4,4). Implemented in `td-render::headings`; the result is continuous through all 16 steps. |
-| Still open | How the engine maps its internal angle to a frame index (U-003). |
+| Heading construction | 16 headings, 0 = nose up, increasing counter-clockwise in 22.5° steps; `h % 4` picks `[shp, sc3, shr, sc2]`. **How the original turns or mirrors each cell is not "rotate by 90° × (h / 4)"**: E, S, NE, SE and four of the eight 22.5°/67.5° headings are mirror images, ten of the sixteen blits shift the image by one pixel, and the 40×40 cells are drawn with their top-left at the 32×32 sprite's corner (not centred). The exact per-heading rule is [flow/flight-screens §4.9](../spec/flow/flight-screens.md) (rev 3, U-360, CONFIRMED by C-0080). |
+| Engine headings | Resolved (U-003): 16 discrete heading codes, one blit routine each ([structures §7](structures.md)). |
 
 ### 6.3 Other sprite files (LIKELY, from the loader `file0001:0E8B:B880`, M1-05)
 

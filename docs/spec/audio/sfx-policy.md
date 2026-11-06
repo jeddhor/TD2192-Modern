@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/sfx-policy` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for the `Random` calls of the PC-speaker path (they advance the shared RNG, [bp7 §4.1](../core/bp7-runtime-semantics.md#41-random-number-generator)) and for the Real48 distance; T2 for what is heard |
 | **Confidence** | Algorithm, tables, call sites: CONFIRMED (static, full read of `file0001:1E2A:006A..064F`). Which game event each call site stands for: HYPOTHESIS |
@@ -49,23 +49,29 @@ All in-game sound effects go through one routine, `Snd_PlayEffect(Id, SrcX, SrcY
 
 i counts from 0 within a sequence. The VOC files not listed (`home`, `poink`, `pulse`, `ric2`, `ric3`, `scratch`, `whoosh`) are not referenced by `file0001`.
 
-### 3.2 Call sites (all in unit `0E8B`; event meaning HYPOTHESIS, U-083)
+### 3.2 Call sites (all in unit `0E8B`; event meanings CONFIRMED static, U-083)
 
-| Site | Routine | Id | Position | Likely event |
+All 17 calls of `Snd_PlayEffect` in `file0001` are in unit `0E8B` (no other segment calls it). "Ship i" passes the slot's tile (DS:3B2D+i, DS:3B41+i), so the sound is attenuated and panned by distance (§4.1, §4.3); "none" passes FFh, FFh: full volume, centre.
+
+| Site | Routine | Id | Position | Event |
 |---|---|---|---|---|
-| `0E8B:106B` | `0E8B:0984` | 9 | ship i (DS:3B2D+i, DS:3B41+i) | hit on ship i |
-| `0E8B:11C4`, `122D` | `0E8B:0984` | 100 | ship i | ship i destroyed |
-| `0E8B:164E` | `0E8B:0984` | 9 | none | hit (player) |
-| `0E8B:5719`, `5908`, `596A`, `59CF` | `0E8B:56ED` | 9 | none | player hit |
-| `0E8B:578D` | `0E8B:56ED` | 100 | none | player destroyed |
-| `0E8B:8073` | `0E8B:7FDF` | 200 | none | reward/income |
-| `0E8B:9F19` | `0E8B:9860` | 9 | ship i | hit on ship i |
-| `0E8B:9F9B` | `0E8B:9860` | 100 | none | big explosion |
-| `0E8B:B54A` | `0E8B:B1EC` | 10 | none | missile launch |
-| `0E8B:B6D1` | `0E8B:B1EC` | DS:1A57 | none | player's gun (per ship type) |
-| `0E8B:B6EA` | `0E8B:B1EC` | 2 | none | player's gun (default) |
-| `0E8B:CDE0` | `Sim_FlyMission` | 0 | none | afterburner |
-| `0E8B:F413` | `Sim_FlyMission` | DS:3A79+i | ship i | ship i firing (per ship type) |
+| `0E8B:106B` | `Sim_ProjectilesAndHits` `0E8B:0984` | 9 | ship i | a shot (any owner other than ship i) hits live mission ship i: [weapons](../sim/weapons.md) §4.3 step 4, before the damage |
+| `0E8B:11C4` | same | 100 | ship i | that hit brings ship i's armour below 1 (destroyed), before the distance flash |
+| `0E8B:122D` | same | 100 | ship i | the hitting shot was a homing missile (kind 6): destroyed outright. When the damage had already destroyed the ship, 100 is requested twice in the same tick (the second restarts the first: no audible difference) |
+| `0E8B:164E` | same | 9 | none | a mission ship's shot hits the player (step 5; never while `g_PlayerDrawLate` is set, so not in flights 12, 15, 21) |
+| `0E8B:5719` | `Sim_EndSequenceStep` `0E8B:56ED` | 9 | none | player destruction sequence: small blast at the player whenever `g_EndTicks` (DS:32B8) is a multiple of 3 below 12 |
+| `0E8B:578D` | same | 100 | none | player destruction sequence: the big explosion at `g_EndTicks` = 12 (after the distance flash) |
+| `0E8B:596A`, `5908`, `59CF` | same | 9 | none | player destruction sequence: further blasts at `g_EndTicks` = 17, 19 and 25 |
+| `0E8B:8073` | `UI_HudTickerAndIndicator` `0E8B:7FDF` | 200 | none | a transmission is pending and the F6 lamp has not started (comm pending ≠ 0, indicator phase 0): the "incoming transmission" chime ([render/hud](../render/hud.md) §4.8); not a reward |
+| `0E8B:9F19` | `Msn_UpdateEvents` `0E8B:9860` | 9 | lander piece s | flight 20: slot 5's armour fell below 50; one blast per piece s = 1..5, each only if an explosion slot 1..20 is idle ([mission-logic](../sim/mission-logic.md) §5.20) |
+| `0E8B:9F9B` | same | 100 | none | flight 20: the counter passed 149, the lander is destroyed (succeeded) |
+| `0E8B:B54A` | `Sim_PlayerSpecials` `0E8B:B1EC` | 10 | none | player missile launch (weapons §4.2) |
+| `0E8B:B6D1` | same | player class (DS:1A57) | none | player volley, once per shot spawned (restarts within the tick sound as one start); classes 2, 4, 8 give `stiletto`, `hornet`, `vii` |
+| `0E8B:B6EA` | same | 2 | none | player volley while `g_PlayerDrawLate` is set (helicopter flights 12, 15, 21): `stiletto.voc` instead of the class-3 sound |
+| `0E8B:CDE0` | `Sim_FlyMission` | 0 | none | afterburner burst starts (classes 2 and 5, principal heading, not over; flight-model §4.7) |
+| `0E8B:F413` | `Sim_FlyMission` (fire requests, tick-order step 30) | class of ship i (DS:3A79+i) | ship i | mission ship i's volley, once per shot spawned |
+
+There is no sound for a shot hitting a wall, for a ship leaving the map, or for the player's shot expiring.
 
 ## 4. Behaviour
 
@@ -176,7 +182,7 @@ The port's audio layer needs: one "digital effect" voice with stop-and-replace s
 ## 8. Open questions
 
 - [ ] Q1 (U-082): can a call site pass a source 181–256 tiles from the view (RunError 207 in the original)? Check the callers' range tests (M6/M8).
-- [ ] Q2 (U-083): confirm the event meaning of each call site (§3.2) when the flight loop is mapped (M6-01, M8).
+- [x] Q2 (U-083): resolved (§3.2, RE-14): every call site read in context; the hypotheses held except `0E8B:8073` (the incoming-transmission chime, not income) and the end-sequence sites (the player's destruction sequence, not player hits).
 - [x] Q3: E2/E3 effect tables (same unit, `td2:1D51`, `td3:1B1E`). **Resolved (RE-7, M1-09):** the unit is identical (DGROUP offsets only), with the same files, ids, priorities and PC-speaker sequences ([episode-deltas §3.1, §7](../../re/episode-deltas.md#7-audio)).
 
 ## 9. Provenance
@@ -189,10 +195,11 @@ The port's audio layer needs: one "digital effect" voice with stop-and-replace s
 | VOC load list | `1E2A:0724..0807` (names at `1E2A:0655..06BA`) | static | CONFIRMED |
 | Priority reset in flight; wait at mission end | `0E8B:B88E`, `0E8B:E526..E536`, `0E8B:F990..F99E` | static | CONFIRMED |
 | Device setting from switches/config | `0000:4AA9..4C75`; WORX skipped for `/nosound`, `/pc`: `0000:4585..45DC` | static | CONFIRMED |
-| Call-site events | §3.2 | inference from context | HYPOTHESIS |
+| Call-site events | §3.2: `0E8B:0F12..1250`, `15D4..1653`, `56ED..59D4`, `7FDF..8073`, `9EC2..9F9B`, `B538..B54A`, `B6B6..B6EA`, `CDA0..CDE0`, `F3C4..F413` | static (each site read in context) | CONFIRMED |
 
 ## 10. Revision history
 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | Initial |
+| 2 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.2 event of every call site confirmed or corrected (U-083): 200 is the incoming-transmission chime; the `56ED` sites are the player destruction sequence; the helicopter volley uses id 2; kind-6 kills request 100 twice |

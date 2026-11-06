@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-ships` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (positions, waypoints, AI state, fire requests and RNG use per tick) · T2 for drawing |
 | **Confidence** | **CONFIRMED** for §4.1–§4.6: a model written from this text reproduces 3,342 of 3,343 slot-ticks of capture C-0009 byte for byte (slot arrays and the whole 1,065-byte ship record), the one exception being a ship destroyed by a projectile (step 6, [weapons](weapons.md)); shot spawns match in 49 of 51 events (§6). LIKELY for the paths the capture does not exercise (mode +422h, flights 7 and 20 specials, map edges) |
@@ -400,6 +400,8 @@ Mode `fixedMode` (+422h) is never set by any code in `file0001` (only cleared), 
 
 The only way into attack mode. Called by the mission logic (`2404`, 389 call sites; RE-6's mission-logic spec, in progress): `targetSel := target; attackMode := 1; directMode := 1`. It does not move the waypoint; the attack starts at the ship's next waypoint arrival. The scripts call it repeatedly, so `directMode` is often reset to 1 in the middle of a detour (C-0009: slot 19 ticks 34, 42, 49, 112, 116; the mission logic, not the AI, decides when). Mission logic also activates and removes ships by writing `g_SlotClass` directly, including `2404:05DC(slot, x, y)`: class := FFh when the ship's tile is (x, y) (in flight 1, slots 9–11 are removed at tick 1).
 
+**When the target dies, hides or leaves the range (U-181).** Nothing in the AI ends an attack early. `TargetPosition` (`34E6:0396`) reads the target's record waypoint (or the player's tile for target 0) without looking at the target's class, and `AI_UpdateShips` no longer updates a ship whose class is FFh, so after the target is destroyed or hidden the attacker keeps flying to, holding at and firing toward the target's last waypoint. The mission rules that re-apply the order (`engage a → b, r` = `if Msn_NearLive(a, b, r) then AI_SetTarget(a, b)`, [mission-logic](mission-logic.md) §3.1) stop calling it once the target is dead or out of range, but stopping the calls does not cancel the attack. The attack ends only through the budget (§4.3.3: after 15 × aggression attack steps the ship switches to return mode, flies back to the point where it left its path and resumes the path at the same cursor, §4.3.8) or the hold schedule (§4.3.6). `AI_SetTarget` writes only `targetSel`, `attackMode` and `directMode`; it does not reset `attackCounter`, so re-applying the order every tick does not extend the budget. If the rule still holds when the budget has sent the ship home, the next order sets `attackMode` and `targetSel` again while `returnMode` is still 1: the next `ChooseWaypoint` then runs the attack step and the return step in the same call (§4.3), and the return step steps toward the attack target (`targetSel` is no longer FFh) until the waypoint reaches it. Static (`34E6:0396..04EB` has no class test; `34E6:3232`); the attack and return machinery is CONFIRMED by C-0009, the dead-target case is not captured.
+
 ### 4.4 Firing
 
 #### 4.4.1 Fire decision (`34E6:0A5D`, inside the attack step)
@@ -536,3 +538,4 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Partial draft |
 | 2 | 2026-11-02 | RE-5 (Archaeologist + Spec author + Verifier) | Complete: setup, AI state machine (U-045), detour followers, firing, removal, drawing (U-042), DS:3A32 nil pointer, test vectors from C-0009 |
 | 3 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: `34E6:3232` is named `AI_SetTarget` (as in mission-logic; was `AI_OrderAttack`); volley spawning is tick-order step 30 and clearing step 31 (were 31/32) |
+| 4 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.3.10: what an attacker does when its target dies, hides or leaves the range (U-181): it keeps attacking the last waypoint until its budget runs out; re-applied orders do not reset the budget |
