@@ -28,6 +28,7 @@ clap = { version = "4", features = ["derive"] }
 hound = "3"
 png = "0.18"
 proptest = "1"
+rayon = "1"
 sdl3 = { version = "0.22", features = ["build-from-source-static"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
