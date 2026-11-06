@@ -11,6 +11,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use td_assets::{DataDir, ExeResources};
 use td_audio::{AudioCommand, Mixer, SfxPolicy};
+use td_flow::front::{OptionsScreen, SettingsPort, UiAssets};
 use td_flow::settings::{Scale, SfxMode};
 use td_flow::{FixedStep, Flow, FlowContext, Settings};
 use td_input::TickInput;
@@ -45,11 +46,21 @@ pub struct RunOptions {
 pub struct RunData<'a> {
     pub data: &'a DataDir,
     pub resources: &'a ExeResources,
+    /// The session's settings: the file's, with the command-line overrides.
     pub settings: &'a Settings,
+    /// The settings as in the file (what the options screen's changes are saved onto).
+    pub saved: Settings,
     pub user_dir: &'a Path,
     /// The Enhanced frame the flight screens compose.
     pub enhanced: SharedView,
+    /// Changes from the options screens (M11-03).
+    pub port: SettingsPort,
 }
+
+/// The host key that opens the options screen during play (M11-03). The original reads no
+/// F1..F4; F7/F8 are the debug Enhanced hotkeys, F9 the debug mission complete, F10..F12 the
+/// other host keys.
+pub const OPTIONS_KEY: Key = Key(59); // F2
 
 /// Runs `flow` until it ends or the window closes.
 pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()> {
@@ -60,11 +71,7 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         ..WindowConfig::default()
     })?;
 
-    let policy = match settings.audio.sfx_mode {
-        SfxMode::Classic => SfxPolicy::Classic,
-        SfxMode::Polyphonic => SfxPolicy::Polyphonic(8),
-    };
-    let mut mixer = Mixer::new(AUDIO_RATE, policy);
+    let mut mixer = Mixer::new(AUDIO_RATE, sfx_policy(settings));
     mixer.command(AudioCommand::SetVolumes {
         music: settings.audio.music_volume,
         sfx: settings.audio.sfx_volume,
@@ -89,14 +96,33 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
     let mut pending = TickInput::default();
     let mut commands = Vec::new();
     let mut last = Instant::now();
+    let mut session = settings.clone();
+    let mut saved = rd.saved.clone();
+    let mut pad_buttons = 0;
     while flow.running() {
         let mut snap: InputSnapshot = platform.poll();
         if snap.quit {
             break;
         }
         handle_host_keys(&snap, &mut platform, &fb, rd.user_dir)?;
+        // F10/F11 change the session only; the options screen shows them.
+        session.video.fullscreen = platform.is_fullscreen();
+        session.video.scale = scale_of(platform.scale_mode());
         enhanced.hotkeys(&mut snap);
         enhanced.poll_settings();
+        // Bound controller buttons stand for their flight keys' keyboard keys (M11-04).
+        let pad_keys = session.controls.pad_keys(snap.pad, pad_buttons);
+        pad_buttons = snap.pad.map_or(0, |p| p.buttons);
+        snap.held.extend(pad_keys.held);
+        snap.pressed.extend(pad_keys.pressed);
+        if snap.was_pressed(OPTIONS_KEY) && !rd.port.is_open() {
+            flow.push(Box::new(OptionsScreen::new(
+                UiAssets::load(rd.data),
+                session.clone(),
+                rd.port.clone(),
+            )));
+        }
+        snap.pressed.retain(|&k| k != OPTIONS_KEY);
         pending.held = snap.held.clone();
         pending.pad = snap.pad;
         pending.pressed.extend(snap.pressed);
@@ -116,12 +142,23 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
             let mut ctx = FlowContext {
                 data: rd.data,
                 resources: rd.resources,
-                settings,
+                settings: &session,
                 audio: &mut commands,
             };
             flow.tick(&mut ctx, &input);
             for c in commands.drain(..) {
                 mixer.command(c);
+            }
+            if let Some(new) = rd.port.take() {
+                // The options screen changed something: apply it live, save it (M11-03).
+                apply_settings(&session, &new, &mut platform, &mut mixer)?;
+                saved = saved.with_changes(&session, &new);
+                let path = rd.user_dir.join("settings.toml");
+                if let Err(e) = saved.save(&path) {
+                    tracing::warn!("settings not saved: {e}");
+                }
+                enhanced.apply(&new);
+                session = new;
             }
             total_ticks += 1;
             if options.exit_after_ticks == Some(total_ticks) {
@@ -151,7 +188,50 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
     Ok(())
 }
 
-/// Keys handled by the host rather than the game: F10 scale mode, F11 fullscreen, F12 shot.
+/// The SFX policy of `s` (polyphonic only under the Enhanced profile).
+fn sfx_policy(s: &Settings) -> SfxPolicy {
+    match s.effective_sfx_mode() {
+        SfxMode::Classic => SfxPolicy::Classic,
+        SfxMode::Polyphonic => SfxPolicy::Polyphonic(8),
+    }
+}
+
+fn scale_of(m: ScaleMode) -> Scale {
+    match m {
+        ScaleMode::Aspect4x3 => Scale::Aspect,
+        ScaleMode::IntegerSquare => Scale::Integer,
+        ScaleMode::Stretch => Scale::Stretch,
+    }
+}
+
+/// Applies what changed from `old` to `new` to the window and the mixer. The Enhanced
+/// presentation takes `new` separately; the flight reads its bindings every tick.
+fn apply_settings(
+    old: &Settings,
+    new: &Settings,
+    platform: &mut Platform,
+    mixer: &mut Mixer,
+) -> Result<()> {
+    platform.set_fullscreen(new.video.fullscreen)?;
+    if new.video.scale != old.video.scale {
+        platform.set_scale_mode(scale_mode(new.video.scale));
+    }
+    if (new.audio.music_volume, new.audio.sfx_volume)
+        != (old.audio.music_volume, old.audio.sfx_volume)
+    {
+        mixer.command(AudioCommand::SetVolumes {
+            music: new.audio.music_volume,
+            sfx: new.audio.sfx_volume,
+        });
+    }
+    if new.effective_sfx_mode() != old.effective_sfx_mode() {
+        mixer.set_policy(sfx_policy(new));
+    }
+    Ok(())
+}
+
+/// Keys handled by the host rather than the game: F2 options (in the run loop), F10 scale
+/// mode, F11 fullscreen, F12 shot.
 fn handle_host_keys(
     snap: &InputSnapshot,
     platform: &mut Platform,
