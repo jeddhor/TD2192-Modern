@@ -5,7 +5,9 @@
 //!
 //! The frame is the C-0002 playfield at 21:9 (560 × 200) when TD2192_DATA is set, otherwise a
 //! synthetic frame of the same size. In release builds the test fails if the upscalers exceed
-//! their part of the 6 ms budget.
+//! their part of the 6 ms budget. The budget assumes rayon's default pool on a multi-core
+//! desktop: xBR 4× needs about 7 ms on one thread, about 1.7 ms on six (measured 2026-11-05 on
+//! the development machine while other builds were running).
 
 use std::fs;
 use std::time::{Duration, Instant};
@@ -94,8 +96,8 @@ fn stage_timings() {
         }),
     };
     println!(
-        "Enhanced pipeline, {source}, {WIDTH} x 200, {} threads:",
-        std::thread::available_parallelism().map_or(1, |n| n.get())
+        "Enhanced pipeline, {source}, {WIDTH} x 200, {} threads (RAYON_NUM_THREADS):",
+        rayon::current_num_threads()
     );
     let mut pipe = Pipeline::default();
     let base = time(|| {
