@@ -272,7 +272,7 @@ The default target is T1 for gameplay and T0 for presentation. Falling back to a
 ### 6.2 Profiles
 
 - **Classic** (default): original resolution and aspect, original timing, original controls (remappable), original audio behaviour including monophonic SFX preemption if that is what the original does, original rules.
-- **Enhanced** (opt-in, per feature): polyphonic SFX, quick-save, skippable intro, colour-blind-safe guidance line palette, widescreen viewport (M14), hold/toggle afterburner, and so on. Each Enhanced feature is a separate setting that defaults to off and has its own entry in the settings spec.
+- **Enhanced** (opt-in, per feature): widescreen viewport, pixel-art upscaling and dynamic lighting with bloom (requested by the user 2026-11-05; [ADR-0006](adr/0006-enhanced-presentation-pipeline.md), [spec/enhanced/presentation.md](spec/enhanced/presentation.md), M12-08..M12-12), polyphonic SFX, quick-save, skippable intro, colour-blind-safe guidance line palette, hold/toggle afterburner, and so on. Each Enhanced feature is a separate setting that defaults to off and has its own entry in the settings spec.
 
 Gameplay-affecting Enhanced features (widescreen, quick-save) are marked as such in the UI.
 
@@ -560,6 +560,7 @@ Format knowledge lives in [re/FORMATS.md](re/FORMATS.md). The module doc comment
 **9.3.8 Presentation (`td-platform`).**
 - Palette LUT: the indexed framebuffer becomes RGBA8 on the CPU (64000 pixels, trivial), uploaded to a streaming texture.
 - Scaling modes: **Aspect-correct 4:3** (default; pixel aspect 5:6, so each source pixel is 1.2× taller than wide), **integer square pixels**, **stretch**. Aspect-correct uses sharp-bilinear: nearest-neighbour up to the largest integer factor, then linear for the remaining fraction. Letterboxing is black.
+- Enhanced presentation (ADR-0006): an optional pipeline after composition (widescreen width *W* × 200, palette → RGBA, light map, pixel-art upscaling ×2..×4, lighting modulation and bloom), then the same scale modes. Classic never uses it.
 - An optional CRT/scanline shader is Enhanced, M14.
 - Screenshot (`F12`) saves the *framebuffer* (indexed → PNG) to the user's screenshot directory, never to the repo.
 
@@ -1099,7 +1100,7 @@ These need the project owner's decision. Agents MUST NOT decide them; they are l
 | D2 | Project licence for our code | **DECIDED 2026-11-02: MIT** |
 | D3 | Import original save files? | Nice-to-have in M11 if the original saves turn out to hold real progress |
 | D4 | Include the TFP "about"/"order" extras? | No for 1.0 (historical curiosities) |
-| D5 | Which Enhanced features ship in 1.0? | Polyphonic SFX, colour-blind guidance palette, skip intro, analog steering. Widescreen post-1.0 |
+| D5 | Which Enhanced features ship in 1.0? | Polyphonic SFX, colour-blind guidance palette, skip intro, analog steering. The user asked for widescreen, upscaling and dynamic lighting to be planned and implemented (2026-11-05, M12-08..M12-12); whether they are on by default in an Enhanced preset stays open |
 | D6 | Target platforms and signing for 1.0 | Windows + Linux; macOS if a signing identity is available |
 | D7 | Repository hosting and visibility | Private GitHub repository until the rights review (R5) is done |
 | D8 | Default script variant on first run | Ask, exactly like the original |
