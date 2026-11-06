@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Document** | RE knowledge base, cross-episode deltas |
-| **Revision** | 3 (2026-11-05) |
+| **Revision** | 4 (2026-11-06) |
 | **Task** | M1-09 (RE-7, Archaeologist + Spec author) |
 | **Read with** | The E1 specs under [docs/spec/](../spec/), [EXECUTABLES.md §1.1](EXECUTABLES.md#11-ghidra-image-base-segments-and-dgroup-m0-08-2026-11-02), symbol tables [td2.csv](symbols/td2.csv), [td3.csv](symbols/td3.csv) |
 | **Confidence** | Unit and function identity: CONFIRMED (instruction-level comparison of every function, §2). Behavioural deltas: CONFIRMED where a row says so (static reading of the instruction stream), otherwise as stated |
@@ -260,8 +260,8 @@ Changes against [weapons.md](../spec/sim/weapons.md) §4.3:
 | P2 | `0E8B:1653..16C6` | `0E96:1637..16A1` | `0C5D:1644..16AE` | Player hit: damage is always 2 × (kind + 1). There is no difficulty multiplier and no "difficulty 0: no damage" case. This equals E1 at difficulty 1. Shields-then-armour order, clamps and the explosion are unchanged | CONFIRMED |
 | P3 | `0E8B:12C4..12CB` | removed | removed | On a kill in step 4, class := FFh is **no longer written**. The kill count, the projectile-kind := 1 quirk and the five explosions stay. The wreck is removed later in the same tick by the AI pass (armour < 1) | CONFIRMED |
 | P3a | — | — | — | Consequence of P3: until step 10 the wreck still counts as live, so a later projectile in the same tick can hit it again. That repeats the sound, distance flash and explosions, and counts another kill for the player (OB-026) | LIKELY |
-| P4 | `0E8B:0CFB..0D2D` | `0E96:0D20..0D46` | as E1 | **E2 only:** a homing kill (step 3) plays destruction sound 100 at the ship's tile first, and the projectile-kind := 1 store is gone | CONFIRMED |
-| P5 | `0E8B:1207..122D` | removed | kept | **E2 only:** the second sound 100 of the kind-6 branch in step 4 is gone | CONFIRMED |
+| P4 | `0E8B:0CFB..0D2D` | `0E96:0D20..0D46` | as E1 | **E2 only:** a homing kill (step 3) plays destruction sound 100 at the ship's tile first, and the projectile-kind := 1 store is gone. E1 and E3 play nothing in step 3 and keep the store (`td3:0C5D:0D45..0D50`). Step 3 kills at most one ship in every episode (the freed shot is at tile X FFh for the remaining slots) | CONFIRMED |
+| P5 | `0E8B:1207..122D` | removed | kept | **E2 only:** the kind-6 branch of step 4 lost its sound 100. The branch is **unreachable** in every episode: step 4 re-reads the shot's tile, which step 3 has set to FFh when it used the missile, and a missile step 3 did not use has no ship within 40 px, so none within 20 px (U-421, [weapons](../spec/sim/weapons.md) rev 5 §4.3). So an E1 or E3 homing kill is silent and an E2 one plays 100 once; no episode counts a second kill or starts five more explosions | CONFIRMED |
 | P6 | `0E8B:119E..11EF` | reordered | reordered | Order of sound, flash and armour := 0 when armour < 1. E1: sound, flash, armour. E2: flash, sound, armour. E3: armour, flash, sound. The flash uses no RNG, so there is no simulation effect | CONFIRMED |
 
 ### 5.2 Mission-ship movement (`AI_UpdateShips`)
@@ -809,3 +809,4 @@ This table lists every routine that is not IDENT in E2 or E3, plus the new routi
 | 1 | 2026-11-02 | RE-7 (Archaeologist + Spec author) | Initial: matcher, unit identity, DS map, flight/weapons/AI/HUD/audio/front-end/narrative/mission-framework deltas, data tables |
 | 2 | 2026-11-02 | RE-9 (M10-01) | §10 message-table row is `Msn_LoadTargetInfo` `1E0B:0DCC`; `Msn_UpdateB` completed; OB-018 E2 instance; U-200, U-201, U-205 resolved; corrections §13.1. E2 per-flight content now lives in sim/e2-mission-setup, sim/e2-mission-logic, sim/e2-mission-ships and flow/e2-program-flow |
 | 3 | 2026-11-05 | RE-10 (M10-02) | E3 corrections (§13.2): flight-12 patch, hazard tiles on `td4.map` only (C-0041), U-202 and U-203 resolved, U-205 confirmed for E3 (C-0036, C-0041), comm viewer order, `Msn_LoadTargetInfo` `1BD8:0DCF`, OB-028 corrected, campaign details. E3 per-flight content now lives in sim/e3-mission-setup, sim/e3-mission-logic, sim/e3-mission-ships and flow/e3-program-flow |
+| 4 | 2026-11-06 | RE-17 | §5.1 P4, P5: step 4's kind-6 branch is unreachable in all three episodes (U-421); E1/E3 step 3 keeps the projectile-kind store and plays no sound. The E2/E3 two-digit muzzle bytes (U-441) are in [weapons](../spec/sim/weapons.md) rev 5 §3.3.2, §3.3.3 |
