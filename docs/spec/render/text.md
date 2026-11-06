@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `render/text` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 (pixel-exact glyph shapes, advances and positions) |
 | **Confidence** | CONFIRMED (static analysis of every text routine in `file0001`; three oracle frames matched with 0 pixel differences, §6) |
@@ -152,7 +152,7 @@ No routine wraps text. Callers place lines explicitly:
 | Use | Font | Position | Ink / effect | Provenance |
 |---|---|---|---|---|
 | Mission title card | title | x = 160 − Round(width / 2), y = 90 | palette entry 85, RGB passed by the caller | `051A:5852` |
-| Scene captions (`.scr` scenes) | small | lines at (10, 170), (10, 180), (10, 190); each first drawn at (9, y + 1) in colour 0 as a shadow | entry 210 = (14, 63, 63) | `051A:1E5A` and its 13 siblings |
+| Scene captions (`.scr` scenes) | small | per card: §4.5.1 (the hangar layout, lines at (10, 170/180/190) with a black copy at (9, y + 1), belongs to `hangar.scr` only) | per card | `051A:1E5A` and its 13 siblings |
 | Still-image captions | small | x = 160 − Round(5 × length / 2) (Real48 `Round`, halves away from zero), y = 170, 180, 190 | `td1-16`/`td1-20`: entry 74 = (14, 38, 63); `td1-18`: entry 174 = (63, 4, 63) | `051A:4113`, `051A:471B` |
 | `td1-14` captions | small | (160, 30), (160, 40), (160, 50) | entry 255 = (63, 10, 10) | `051A:4113` |
 | `td1-13` captions | small | x = 170 − Round(5 × length / 2), y = 140, 147, 154 | entry 255 = (63, 63, 10) | `051A:4113` |
@@ -163,6 +163,40 @@ No routine wraps text. Callers place lines explicitly:
 | Hint screens | small, typed | x = 10, y from 40 down | entry 240 = (63, 10, 10) | `051A:2B26` |
 
 "Entry *n* = (r, g, b)" means the screen writes that 6-bit RGB into its palette buffer before the fade-in, so the ink colour is independent of the image's palette.
+
+#### 4.5.1 Episode 1 scene cards
+
+Each card routine takes three caption strings A, B, C, plots its `.scr` image (320 × 200 at x + 1, OB-003; `marauder` also 15 rows down, see below), draws the captions (transparent small font), sets one palette entry, fades in, waits, fades out. Captions are three lines at y0, y0 + 10, y0 + 20 with the same x, except where noted. Before the ink copy, black (colour 0) copies are drawn at these offsets from each line's pen:
+
+| Style | Black copies at |
+|---|---|
+| s1 | (−1, +1) |
+| s3 | (−1, +1), (−1, 0), (0, +1) |
+| o6 | s3 plus (+1, −1), (+1, 0), (0, −1) |
+| o4 | (+1, 0), (−1, 0), (0, −1), (0, +1) |
+| l | (−1, 0) |
+| p | none |
+
+| Routine `051A:` | Background | Line 1 pen | Style | Ink entry = RGB | Wait (s) |
+|---|---|---|---|---|---:|
+| `1E5A` | `hangar.scr` | (10, 170) | s1 | 210 = (14, 63, 63) | 10 |
+| `2055` | `vlab.scr` | (180, 170) | s3 | 32 = (14, 38, 63) | 10 |
+| `22BE` | `intro2.scr` | (50, 90) | p | 140 = (0, 0, 0) | 10 |
+| `248A` | `shooting.scr` | (10, 170) | p | 28 = (14, 14, 63) | 10 |
+| `3109` | `vhang.scr` | (20, 170) | s3 | 165 = (14, 38, 63) | 10 |
+| `3371` | `marauder.scr` | one joined line at (10, 10) (below) | l | 255 = (63, 5, 5) | 10 |
+| `35B0` | `briefing.scr` | (10, 170) | s3 | 250 = (10, 10, 63) | 10 |
+| `380C` | `tdlab.scr` | (10, 170) | s3 | 109 = (10, 10, 63) | 10 |
+| `3A6B` | `velsroom.scr` | (10, 20) | s3 | 12 = (40, 40, 63) | 10 |
+| `3CC0` | `helihang.scr` (opened as `helihangar.scr`) | (180, 20) | p | 255 = (10, 0, 0) | 10 |
+| `3E8E` | `eggbase.scr` | (10, 170) | s3 | 255 = (15, 63, 15) | 15 |
+| `4A66` | `soffice.scr` | (180, 170) | o6 | 74 = (14, 50, 63) | 10 |
+| `4D66` | `sbar.scr` | (10, 10) | s1 | 90 = (48, 38, 63) | 10 |
+| `596F` | `voffice.scr` | x = 160 − Round(5 × length / 2) per line, y = 10, 20, 30 (below) | o4 | 216 = (63, 63, 63) | 10 |
+
+- **`marauder`.** The background is plotted 15 rows down as well as one column right: file pixel (column c, row r) goes to (c + 1, r + 15), so file rows 0..184 are visible at screen rows 15..199 and rows 0..14 stay black (rows 185..199 land in page memory below the display; a port clips them). The captions are joined into **one** string, A + 4 spaces + B + 3 spaces + C + 3 spaces (Pascal concatenation), drawn at (9, 10) in colour 0 and then at (10, 10) in ink 255. So B starts at pen 10 + width(A) + 16 and C at that pen + width(B) + 12, where width is the sum of the §3.2 advances: the caption positions follow the caption lengths and are not fixed.
+- **`voffice`.** Each line is centred on its own length in characters: x = 160 − Round(5 × length / 2), Real48 `Round` of an exact half (halves away from zero), so a 23-character line gets x = 160 − 58 = 102. Black copies at (x ± 1, y) and (x, y ± 1), then the ink copy at (x, y).
+- Episode 2 and 3 cards with the same background use the same layout unless [episode-deltas §9.2](../../re/episode-deltas.md#92-scene-cards) gives another.
 
 ### 4.6 Colour model
 
@@ -209,6 +243,7 @@ None. Typed text paces itself on vertical retrace (§4.3); it makes no sound.
 | Title font map, mask F7h, advance, measure | `051A:042A`, `051A:02D7`, `051A:5852` | static + capture | CONFIRMED |
 | 39 title glyphs loaded | `051A:5852`, `051A:527F`; C-0002 int21 (2,496 bytes) | static + dynamic | CONFIRMED |
 | Caption positions and colours | `051A:1E5A`, `051A:4113`, `051A:471B`, `051A:4F5A`, `051A:2B26` | static | LIKELY (only the dialogue and title screens were compared with captures) |
+| E1 scene-card layouts (§4.5.1): pens, black copies, inks, waits, `marauder` offset and joined line, `voffice` centring | all 14 routines `051A:1E5A..3E8E`, `4A66`, `4D66`, `596F` read from RE-12's listing (draw calls, palette writes, plot loops) | static | CONFIRMED (static); `marauder` also matches C-0015 f542 through its E2 copy (`td2:04EC:23AF`, same code) |
 | `td.ltr` unused | byte scan of all exes | static | CONFIRMED |
 
 ## 10. Revision history
@@ -216,3 +251,4 @@ None. Typed text paces itself on vertical retrace (§4.3); it makes no sound.
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-3 | Initial, from static analysis of `file0001` and C-0002 frames |
+| 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author) | §4.5.1: the 14 E1 scene cards do not share one caption layout: per-card pens, shadow styles, inks and waits; `marauder` (15 rows down, one joined caption line) and `voffice` (centred, outlined, entry 216). The rev-1 row applied the hangar layout to all of them (U-311) |

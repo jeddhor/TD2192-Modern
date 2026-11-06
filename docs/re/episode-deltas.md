@@ -549,7 +549,7 @@ E3 notes:
 
 E2/E3 scene routines are named after their background in [td2.csv](symbols/td2.csv) / [td3.csv](symbols/td3.csv). The matcher paired them with E1 routines by position, which was wrong for most of them.
 
-Captions use the `td.lt2` small font in three lines at y0, y0 + 10 and y0 + 20 ([text.md](../spec/render/text.md)). Shadow styles (black copies drawn before the ink):
+Captions use the `td.lt2` small font in three lines at y0, y0 + 10 and y0 + 20 ([text.md](../spec/render/text.md); the E1 cards are in text.md §4.5.1, RE-12). Every card plots its picture at x + 1 (OB-003). Shadow styles (black copies drawn before the ink; style l = (−1, 0) only):
 
 | Style | Offsets |
 |---|---|
@@ -566,7 +566,7 @@ Captions use the `td.lt2` small font in three lines at y0, y0 + 10 and y0 + 20 (
 | 1D4A | hangar | (10,170) s1 | 210 = (14,63,63) | 10 |
 | 1F49 | hangar2 | (10,170) s1 | 97 = (14,38,63) | 10 |
 | 2146 | tdlab | (10,170) s3 | 109 = (10,10,63) | 10 |
-| 23AF | marauder | one joined line, as E1 | 255 = (63,5,5) | 10 |
+| 23AF | marauder | as E1 ([text.md §4.5.1](../spec/render/text.md)): background 15 rows down; captions joined into one line (A + 4 spaces + B + 3 spaces + C + 3 spaces) at (10,10), style l | 255 = (63,5,5) | 10 |
 | 25EF | briefing | (10,170) s3 | 250 = (10,10,63) | 10 |
 | 2851 | helihangar | (180,20) p | 255 = (10,0,0) | 10 |
 | 2A23 | intro2 | (50,90) p | 140 = (0,0,0) | 10 |
@@ -588,8 +588,8 @@ Captions use the `td.lt2` small font in three lines at y0, y0 + 10 and y0 + 20 (
 | 5358 | tdoffic2 | (10,170) o6 | 4 = (14,50,63) | 10 |
 | 5644 | sbar | (10,10) s1 | 90 = (48,38,63) | 10 |
 | 583E | velsroom | (10,20) s3 | 12 = (40,40,63) | 10 |
-| 5BA3 | hyde | centred x, y 5/15/25, outline (E1 voffice style) | 3 = (63,63,63) | 10 |
-| 6127 | velvswlf | as hyde; ink 3, RGB not set | — | 15 |
+| 5BA3 | hyde | x = 160 − Round(5 × length / 2) per line, y 5/15/25, o4 (E1 voffice layout 5 rows higher) | 3 = (63,63,63) | 10 |
+| 6127 | velvswlf | as hyde | 3, RGB not set (the picture's own entry 3) | 15 |
 
 `velvswlf.scr` was missing from the E2 scene list in [EXECUTABLES.md §6](EXECUTABLES.md#6-episode-2-td2exe).
 
