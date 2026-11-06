@@ -240,6 +240,9 @@ fn flight_21_death_is_ignored() {
     let (r, frames, flights) = play(19, key);
     assert_eq!(flights, [19, 21]);
     assert!(r.advance && !r.game_over, "{r:?}");
+    // U-420 (episode-program-flow rev 6): the block hands back flight 21's kills (0 here),
+    // not flight 19's (3).
+    assert_eq!(r.mission_kills, 0, "{r:?}");
     let after21 = after_flight(&frames, 2);
     let tail = &frames[after21..];
     assert!(tail.iter().all(|f| !f.retry && !f.debrief));

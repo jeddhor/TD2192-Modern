@@ -1000,9 +1000,12 @@ impl Campaign {
                 // Flight 21 (episode-program-flow rev 5 §4.4, U-081): only the abort flag is
                 // tested. Died (always set: the flight ends through the end sequence) is
                 // ignored; no retry, no `M8`, no debrief; abort → the mission does not advance.
-                // ASSUMPTION(U-420): the block hands back flight 19's kills, not flight 21's.
+                // U-420 (episode-program-flow rev 6): flight 21 zeroes `g_MissionKills` at its
+                // start like every flight, so the block hands back flight 21's kills (normally
+                // 0); flight 19's appear only in its debrief.
                 prog.cues.stop(ctx.audio);
                 let r = f.result();
+                self.result.mission_kills = r.kills;
                 if r.aborted {
                     self.result.advance = false;
                     self.pos = Pos::Return;

@@ -332,6 +332,12 @@ impl Shots {
                     }
                     *c.kills += 1;
                     *c.white_flash = 4;
+                    if c.episode != Episode::E2 {
+                        // U-421 (weapons rev 5 §4.3 step 3): E1 and E3 also write the
+                        // projectile kind array at the ship's index, as step 4's kill does (P4:
+                        // E2 removed it). Original bug, preserved.
+                        self.0[s + 1].kind = 1;
+                    }
                     let ship = &mut c.ships.0[s];
                     ship.armour = 0;
                     ship.shields = 0;
