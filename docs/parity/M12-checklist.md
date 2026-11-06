@@ -175,7 +175,12 @@ Counts per test binary. The two runs give the same counts; the time is from the 
 
 ### 3.1 Skip check
 
-SKIPCHECK_PLACEHOLDER
+A data-gated test passes silently when it returns early, so a green run with the variables set does not prove that the L5 comparisons ran. A third run therefore used `cargo test --workspace --no-fail-fast -- --nocapture --test-threads 4` with both variables set (12:24–13:08):
+
+- **Counts:** the same 789 passed, 0 failed, 4 ignored.
+- **Skips:** no `SKIPPED` line. That message is what `require_data!`, `require_oracle!` and the capture lookups print, for example "no ve1-e1f… capture under the oracle root".
+- **What the oracle tests compared:** their summary lines name 92 captures, from C-0001 to C-0159. Each E2 full flight, for example, prints its tick count, slot-ticks and event list (`cargo test -p td-sim --test oracle_e2_full -- --nocapture`).
+- **Captures read without a printed ID:** C-0007/8, C-0011..C-0014, C-0042..C-0047, C-0071/72, C-0080, C-0081, C-0160 and C-0170 are read by tests that do not print the capture ID at the start of a line. Those tests assert pixel or state equality.
 
 ## 4. Per-spec detail
 
