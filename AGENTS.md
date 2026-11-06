@@ -36,6 +36,6 @@ Claim in STATUS → read spec/docs/handoff → plan → small green commits → 
 ## Quick facts
 
 - Original: Borland Pascal 7 + WORX Toolkit 2.1, real-mode MZ, unpacked, no overlays. Episodes: `file0001.exe` (E1), `td2.exe`, `td3.exe`; intro `file0000.exe`; launcher `td1.exe`.
-- Screens: 768-byte 6-bit palette + 320×200. Tiles: 80 × 32×32. Maps: 201×201 (intro 200×200). Sprites: 20 × 32×32 + 40×40 rotation sets. Missions: 20,080 bytes. Music: CMF/OPL2. SFX: VOC, mostly Creative ADPCM.
+- Screens: 768-byte 6-bit palette + 320×200. Tiles: 80 × 32×32. Maps: 201×201 (intro 20×2000). Sprites: 20 × 32×32 + 40×40 rotation sets. Missions: 20,080 bytes. Music: CMF/OPL2. SFX: VOC, mostly Creative ADPCM.
 - DOS 8.3 names matter (`helihangar.scr` → `helihang.scr`). Text is lowercase, and `"` stands in for the apostrophe.
 - Address notation: `<exe>:<image-relative seg>:<off>` (ADG §7.8).

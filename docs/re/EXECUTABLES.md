@@ -119,7 +119,7 @@ String anchors:
 | 0x3F7 | `td.cfg` |
 | 0x3FE | `order.exe`, `aboutus.exe`, `order2.com` |
 
-Questions: does it chain to `td2.exe`/`td3.exe` (U-005)? What does `tdstatus.dat` carry (U-004)? Note that `file0001.exe` also contains the config menu and the `/m` memory-override message ("td1.exe /m"), so the switches may be forwarded.
+Answered by M1-10 (RE-13, 2026-11-05; [spec/flow/launcher.md](../spec/flow/launcher.md)): the launcher runs `nuffmem.exe`, the intro, then Episode 1, and re-runs Episode 1 after `order.exe` (status 1) or `aboutus.exe` (status 2) for as long as `tdstatus.dat` holds a non-zero status. It ends with `order2.com`. It never starts `td2.exe`/`td3.exe` (U-005). The first parameter is forwarded unchanged to the intro and Episode 1, which own the sound switches, `/config` and `/m`. The configuration screen is Episode 1's. `td1` reads only byte 0 of `td.cfg` (music), to decide whether to play `intro.cmf` under the extras. Symbols: [symbols/td1.csv](symbols/td1.csv).
 
 ## 4. Intro `file0000.exe`
 
@@ -135,6 +135,8 @@ Questions: does it chain to `td2.exe`/`td3.exe` (U-005)? What does `tdstatus.dat
 | 0x13B6 | Credits block (programming, graphics, music, storyline, special thanks, directed by) |
 | 0x1506 | `intro1.scr` + narration |
 | 0x1579 | `intro2.scr` + narration |
+
+The whole program is specified in [spec/flow/intro.md](../spec/flow/intro.md) (M1-10, RE-13): main program `0000:0FC0`, helpers `0000:0000..0A6D`, an unchained-VGA unit `0957` (sprite, tile, pixel, DAC, start address), the DOS-time unit `09F5`. Symbols: [symbols/file0000.csv](symbols/file0000.csv).
 
 ## 5. Episode 1 `file0001.exe` (primary target)
 
