@@ -63,8 +63,24 @@ struct Node {
 struct Goals {
     /// Distances to the cells that count as home (the base test's view tiles + (5, 3)).
     home_field: Field,
+    /// Flight 19: distances to the V.C.I. (`Msn_UpdateEvents`: phase 1, viewY = 70,
+    /// 117 < viewX < 124; mission-logic §5.19), the goal while the phase is 1.
+    vci_field: Option<Field>,
     /// Player armour + shields at the start.
     start_hp: i32,
+}
+
+/// Flight 19's V.C.I. view tiles.
+fn vci_views() -> Vec<(i16, i16)> {
+    (118..=123).map(|x| (x, 70)).collect()
+}
+
+/// The same as player cells.
+fn vci_cells() -> Vec<(i16, i16)> {
+    vci_views()
+        .into_iter()
+        .map(|(x, y)| (x + 5, y + 3))
+        .collect()
 }
 
 fn home_views(flight: u8) -> Vec<(i16, i16)> {
@@ -113,22 +129,22 @@ fn on_line(o: (i32, i32), d: (i32, i32), w: (i32, i32), slack: i32) -> Option<i3
     None
 }
 
-/// True when the volley path from `o` along `d` stays in open cells for `n` steps.
+/// True when the volley path from `o` along `d` stays in open cells for `n` steps (the spawn
+/// cell included: a shot spawned in a solid cell dies at once, weapons §4.3 step 2).
 fn clear_path(world: &World, o: (i32, i32), d: (i32, i32), n: i32) -> bool {
-    (1..=n).all(|k| {
+    (0..=n).all(|k| {
         let p = (o.0 + 32 * k * d.0, o.1 + 32 * k * d.1);
         !world.solid((p.0.div_euclid(32)) as i16, (p.1.div_euclid(32)) as i16)
     })
 }
 
-/// The fire rule: hold Space when a hostile ship is in the line of fire, closer than any friend.
-fn want_fire(f: &Flight, world: &World) -> bool {
+/// What the current heading's line of fire reaches first: `Some(marker)` of the nearest live
+/// ship on a clear line (friends shadow the ships behind them), `None` when nothing.
+fn line_of_fire(f: &Flight, world: &World) -> Option<u8> {
     if f.mission_over {
-        return false;
+        return None;
     }
-    let Some(d) = heading_dir(f.player.heading.code()) else {
-        return false;
-    };
+    let d = heading_dir(f.player.heading.code())?;
     let v = f.player.view;
     // Volley origin (weapons §4.2): tile (viewX + 4, viewY + 3), offsets ≈ (subX − 16 + 16,
     // subY − 28 + 11) for the middle muzzles.
@@ -136,22 +152,79 @@ fn want_fire(f: &Flight, world: &World) -> bool {
         (i32::from(v.tile_x) + 4) * 32 + i32::from(v.sub_x),
         (i32::from(v.tile_y) + 3) * 32 + i32::from(v.sub_y) - 17,
     );
-    let mut hostile = i32::MAX;
-    let mut friend = i32::MAX;
-    for s in f.ships.0.iter().filter(|s| s.alive()) {
-        let Some(n) = on_line(o, d, s.world(), 6) else {
-            continue;
-        };
-        if !clear_path(world, o, d, n) {
-            continue;
-        }
-        if s.marker == MARK_FRIEND {
-            friend = friend.min(n);
-        } else {
-            hostile = hostile.min(n);
+    f.ships
+        .0
+        .iter()
+        .filter(|s| s.alive())
+        .filter_map(|s| {
+            let n = on_line(o, d, s.world(), 6)?;
+            clear_path(world, o, d, n).then_some((n, s.marker))
+        })
+        .min_by_key(|&(n, m)| (n, m != MARK_FRIEND))
+        .map(|(_, m)| m)
+}
+
+/// The fire rule: hold Space when a hostile ship is in the line of fire, closer than any friend.
+fn want_fire(f: &Flight, world: &World) -> bool {
+    line_of_fire(f, world).is_some_and(|m| m != MARK_FRIEND)
+}
+
+/// Cells from which a volley can reach a ship on cell `t`: along each principal direction,
+/// 2..=9 cells away while the cells stay open.
+fn firing_cells(world: &World, t: (i16, i16), out: &mut Vec<(i16, i16)>) {
+    for d in [
+        (0, 1),
+        (0, -1),
+        (1, 0),
+        (-1, 0),
+        (1, 1),
+        (1, -1),
+        (-1, 1),
+        (-1, -1),
+    ] {
+        for k in 1..=9 {
+            let c = (t.0 + d.0 * k, t.1 + d.1 * k);
+            if world.solid(c.0, c.1) {
+                break;
+            }
+            if k >= 2 {
+                out.push(c);
+            }
         }
     }
-    hostile < friend
+}
+
+/// Distance to the goal of `field` in pixels: 32 per cell, less the player's progress inside
+/// its cell toward the best neighbour, less a little for stored speed toward it (speeds up to
+/// 16 do not move the ship yet, flight-model §4.2, but they will).
+fn fine_distance(f: &Flight, field: &Field) -> i64 {
+    let v = f.player.view;
+    let fx = (i64::from(v.tile_x) + 4) * 32 + i64::from(v.sub_x) + 16;
+    let fy = (i64::from(v.tile_y) + 2) * 32 + i64::from(v.sub_y) + 4;
+    let (cx, cy) = (fx.div_euclid(32) as i16, fy.div_euclid(32) as i16);
+    let (ox, oy) = (fx.rem_euclid(32), fy.rem_euclid(32));
+    let here = field.at(cx, cy);
+    if here == FAR {
+        return 400 * 32;
+    }
+    let sp = f.player.speed;
+    let mut best = i64::from(here) * 32;
+    for (dx, dy) in [(1i16, 0i16), (-1, 0), (0, 1), (0, -1)] {
+        let n = field.at(cx + dx, cy + dy);
+        if n == FAR || n >= here {
+            continue;
+        }
+        // Offset toward that neighbour (0..31) and the speed pointing at it.
+        let (progress, speed) = match (dx, dy) {
+            (1, _) => (ox, sp.right),
+            (-1, _) => (31 - ox, sp.left),
+            (_, 1) => (oy, sp.down),
+            _ => (31 - oy, sp.up),
+        };
+        let d = i64::from(here) * 32 - progress - i64::from(speed) / 2;
+        best = best.min(d);
+    }
+    best.min(400 * 32)
 }
 
 /// Scores a flight (higher is better). Phase progress dominates, then the hit points of live
@@ -180,22 +253,43 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
     s -= targets.len() as i64 * 20_000;
     s -= target_hp * 300;
     s += friend_hp * 2_000;
-    let cell = player_cell(f);
-    let dist = if phase >= 100 || targets.is_empty() {
-        i64::from(g.home_field.at(cell.0, cell.1).min(400))
-    } else {
-        let here = Field::new(world, cell);
-        targets
+    let fire_field;
+    // Goals defined by view tiles (the base test, the V.C.I.): near them, steer to the exact
+    // view tile, which the cell distance alone does not resolve.
+    let v = f.player.view;
+    let view_term = |views: &[(i16, i16)]| {
+        views
             .iter()
-            .map(|&i| {
-                let sh = &f.ships.0[i];
-                let d = here.at(i16::from(sh.tile_x), i16::from(sh.tile_y));
-                if d == FAR { 400 } else { i64::from(d) }
-            })
+            .map(|&(x, y)| i64::from((v.tile_x - x).abs() + (v.tile_y - y).abs()))
             .min()
-            .unwrap_or(400)
+            .unwrap_or(0)
+            .min(4)
+            * 32
     };
-    s -= dist * 400;
+    let field = if let (Some(vci), 1) = (&g.vci_field, phase) {
+        s -= view_term(&vci_views()) * 400 / 32;
+        vci
+    } else if phase >= 100 || targets.is_empty() {
+        s -= view_term(&home_views(f.number)) * 400 / 32;
+        &g.home_field
+    } else {
+        // Distance to the nearest cell with a line of fire on a target.
+        let mut cells = vec![];
+        for &i in &targets {
+            let sh = &f.ships.0[i];
+            firing_cells(
+                world,
+                (i16::from(sh.tile_x), i16::from(sh.tile_y)),
+                &mut cells,
+            );
+        }
+        fire_field = Field::from_cells(world, &cells);
+        &fire_field
+    };
+    s -= fine_distance(f, field) * 400 / 32;
+    if line_of_fire(f, world) == Some(MARK_TARGET) {
+        s += 30_000;
+    }
     let hp = i32::from(f.player.armour) * 4 + i32::from(f.player.shields);
     s -= i64::from(g.start_hp - hp) * 1_500;
     s
@@ -285,6 +379,7 @@ pub fn plan(setup: &E1Flight, max_ticks: u32, verbose: bool) -> Option<Plan> {
         .collect::<Vec<_>>();
     let g = Goals {
         home_field: Field::from_cells(world, &home),
+        vci_field: (setup.number == 19).then(|| Field::from_cells(world, &vci_cells())),
         start_hp: i32::from(start.player.armour) * 4 + i32::from(start.player.shields),
     };
     let mut arena: Vec<(usize, Vec<u64>)> = vec![(usize::MAX, vec![])];
@@ -363,15 +458,34 @@ pub fn plan(setup: &E1Flight, max_ticks: u32, verbose: bool) -> Option<Plan> {
         ticks += STEP as u32;
         if verbose && ticks.is_multiple_of(150) {
             let b = &new_beam[0].flight;
+            let cell = player_cell(b);
+            let here = Field::new(world, cell);
+            let targets: Vec<String> = b
+                .ships
+                .0
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.alive() && s.marker == MARK_TARGET)
+                .map(|(i, s)| {
+                    format!(
+                        "{}@({},{})a{}d{}",
+                        i + 1,
+                        s.tile_x,
+                        s.tile_y,
+                        s.armour,
+                        here.at(i16::from(s.tile_x), i16::from(s.tile_y))
+                    )
+                })
+                .collect();
             eprintln!(
-                "tick {ticks}: score {} phase {} view ({},{}) armour {} kills {} live {}",
+                "tick {ticks}: score {} phase {} cell ({},{}) armour {} kills {} targets {}",
                 new_beam[0].score,
                 b.mission.phase,
-                b.player.view.tile_x,
-                b.player.view.tile_y,
+                cell.0,
+                cell.1,
                 b.player.armour,
                 b.kills,
-                b.ships.0.iter().filter(|s| s.alive()).count()
+                targets.join(" ")
             );
         }
         beam = new_beam;

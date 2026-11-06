@@ -444,7 +444,10 @@ fn check(flight: u8) {
     let end = fs::read_dir(cap.join("mem"))
         .unwrap()
         .map(|e| e.unwrap().path())
-        .find(|p| p.to_string_lossy().ends_with("_end240.bin"))
+        .find(|p| {
+            let n = p.file_name().unwrap().to_string_lossy();
+            n.starts_with('f') && n.ends_with("_end240.bin")
+        })
         .expect("the end240 dump");
     let end = fs::read(end).unwrap();
     assert_eq!(
