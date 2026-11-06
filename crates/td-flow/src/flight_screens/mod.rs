@@ -76,6 +76,8 @@ pub enum FlightScreensError {
 /// What the screens read from the data files and from `file0001.exe`.
 #[derive(Debug, Clone)]
 pub struct FlightScreenAssets {
+    /// The program the screens belong to (transmission tables, ship-library rules).
+    pub episode: Episode,
     /// `td.lt2`.
     pub font: Font,
     /// `td.lt2` byte 650: the flight's opaque-text background (178 in the shipped file).
@@ -90,9 +92,9 @@ pub struct FlightScreenAssets {
     pub panel: Vec<u8>,
     /// `td1.ccm` (E2: `td2.ccm`, E3: `td3.ccm`): comm portraits, 32 × 32 each.
     pub portraits: Vec<u8>,
-    /// Transmissions 1.. as the comm loaders fill them (E1: §3.3; E2: [`comm::e2_transmission`];
-    /// E3: [`comm::e3_transmission`], 1, 2, 3, 5 with an empty 4).
-    pub transmissions: Vec<comm::Transmission>,
+    /// Transmission screens 1.. as the comm loaders fill them ([`comm::transmission_for`]; E2
+    /// provisionally [`comm::e2_transmission`]); `None` for a screen the episode lacks (E3 4).
+    pub transmissions: Vec<Option<comm::Transmission>>,
     /// `ship_library`.
     pub ship_library: Vec<String>,
     /// `comm.prompts`: [0] the "press Space" prompt, [1] the closing line.
@@ -160,9 +162,8 @@ const E2_IDS: Ids = Ids {
     ],
 };
 
-/// E3. ASSUMPTION(U-313, as E2): E1's ship-library line table with the E3 strings. Comm
-/// screens 1, 2, 3 and 5 (there is no 4, episode-deltas rev 3 §6): comm 5 is `e3.comms.04`
-/// (§10); ASSUMPTION(U-351): comms 1..3 are `e3.comms.01`..`.03`.
+/// E3 (e2-flight-screens rev 1 §3.2, §3.3): comm screens 1, 2, 3 and 5 on the runs
+/// `e3.comms.01`, `.02`, `.03` and `.04` (there is no screen 4).
 const E3_IDS: Ids = Ids {
     ship_library: "e3.ship_library",
     comm_prompts: "e3.comm.prompts",
@@ -252,22 +253,19 @@ impl FlightScreenAssets {
             })
             .collect::<Result<_, _>>()?;
         let comm_prompts = texts(res, ids.comm_prompts)?;
-        let transmissions = match episode {
-            Episode::E1 => (1..=comm::TRANSMISSIONS)
-                .filter_map(comm::transmission)
-                .collect(),
-            Episode::E2 => comms
-                .iter()
-                .enumerate()
-                .map(|(i, run)| comm::e2_transmission(i + 1, run, &comm_prompts))
-                .collect(),
-            Episode::E3 => comms
-                .iter()
-                .enumerate()
-                .map(|(i, run)| comm::e3_transmission(i + 1, run, &comm_prompts))
-                .collect(),
-        };
+        let transmissions = comms
+            .iter()
+            .enumerate()
+            .map(|(i, run)| {
+                comm::transmission_for(episode, i + 1).or_else(|| {
+                    // E2 until its table is filled in (e2-flight-screens §3.1).
+                    (episode == Episode::E2)
+                        .then(|| comm::e2_transmission(i + 1, run, &comm_prompts))
+                })
+            })
+            .collect();
         Ok(Self {
+            episode,
             font: Font::parse(&font_bytes, FontKind::Small)?,
             font_background,
             menu,

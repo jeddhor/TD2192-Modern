@@ -6,7 +6,12 @@
 //!
 //! Which transmission opens, and the mission-phase advance, belong to the mission logic
 //! (`mission-logic.md` §4.6, `td_sim`): this screen only shows transmission `n`.
+//!
+//! Episodes 2 and 3 (`docs/spec/flow/e2-flight-screens.md` rev 1 §3.1, §3.2, §4.1): the same
+//! screen; only the loaders' tables differ. Every episode's table is data in E1's notation
+//! ([`transmission_for`]).
 
+use td_assets::Episode;
 use td_input::{Key, TickInput};
 use td_render::small_text::{self, Typewriter};
 use td_render::{Framebuffer, Image, Rect, WIDTH};
@@ -35,62 +40,63 @@ pub const SCROLL_X: (usize, usize) = (92, 271);
 pub const SCROLLS_PER_LINE: usize = 6;
 
 /// A transmission as the loaders fill it (§3.3), in the spec's notation: portraits (A, B)
-/// as `td1.ccm` records; the lines as indices into `e1.comms.0n` with `P` and `E` for the
-/// prompt and end markers; the speaker of each line (A = box A, B = box B).
+/// as `td1.ccm` (E2 `td2.ccm`, E3 `td3.ccm`) records; the lines as indices `j` into the
+/// transmission's string run with `P` and `E` for the prompt and end markers; the speaker of
+/// each line (A = box A, B = box B; a line no range names is B, as a stale speaker byte).
 struct Spec {
     portraits: (usize, usize),
     lines: &'static str,
     speakers: &'static str,
 }
 
-const SPECS: [Spec; TRANSMISSIONS] = [
-    Spec {
+const E1_SPECS: [Option<Spec>; TRANSMISSIONS] = [
+    Some(Spec {
         portraits: (1, 0),
         lines: "2 3 4 5 6 P 8 9 10 11 12 P 13 14 14 15 14 E",
         speakers: "A 1..15, B 16..18",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (2, 0),
         lines: "2 3 4 5 P 7 8 9 P 10 11 12 13 14 15 15 E",
         // Line 17 (the end marker) is not written; its speaker does not matter. U-230: §5
         // says line 16 is not written either.
         speakers: "A 1..6, B 7..10, A 11..13, B 14..15, A 16",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (3, 0),
         lines: "2 P 4 5 6 7 P 8 9 10 11 12 P 13 14 15 13 P 13 16 17 18 19 P 4 20 21 E",
         speakers: "A 1..3, B 4..8, A 9..19, B 20..25, A 26..28",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (3, 0),
         lines: "2 3 4 P 6 7 8 8 9 10 11 12 P 13 14 15 16 17 P 13 E",
         speakers: "A 1..5, B 6..8, A 9..14, B 15..21",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (4, 0),
         lines: "2 3 4 5 P 7 8 9 10 11 P 12 E",
         speakers: "A 1..6, B 7..13",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (5, 0),
         lines: "2 3 4 5 P 7 8 9 10 11 P 12 13 14 15 E",
         speakers: "A 1..6, B 7..12, A 13..16",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (6, 0),
         lines: "2 3 P 5 6 P 7 8 9 10 P 11 12 10 P 13 14 15 E",
         speakers: "A 1..3, B 4..6, A 7..11, B 12..15, A 16..19",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (7, 0),
         lines: "2 3 4 5 P 7 8 9 10 P 11 12 13 14 15 P 16 17 18 19 20 21 22 23 E",
         speakers: "A 1..21, B 21..25",
-    },
-    Spec {
+    }),
+    Some(Spec {
         portraits: (0, 8),
         lines: "2 3 4 5 P 7 8 9 10 E",
         speakers: "B 1..6, A 7..10",
-    },
+    }),
 ];
 
 /// One line slot of a transmission.
@@ -111,9 +117,54 @@ pub struct Transmission {
     pub lines: Vec<(Line, usize)>,
 }
 
-/// Transmission `n` (1..=9) from the §3.3 table.
+/// Episode 2 (e2-flight-screens rev 1 §3.1, screens 1..=7, runs `e2.comms.*`): not filled in
+/// yet (IM-11); until then [`e2_transmission`] reads the runs provisionally.
+const E2_SPECS: &[Option<Spec>] = &[];
+
+/// Episode 3 (e2-flight-screens rev 1 §3.2): screens 1, 2, 3 and 5 (there is no 4), runs
+/// `e3.comms.01`, `.02`, `.03` and `.04`. Static only (no E3 capture of a transmission).
+const E3_SPECS: [Option<Spec>; 5] = [
+    Some(Spec {
+        portraits: (1, 0),
+        lines: "2 P 4 5 6 7 8 P 9 10 11 E",
+        speakers: "A 1..3, B 4..9, A 10..12",
+    }),
+    Some(Spec {
+        portraits: (2, 0),
+        lines: "2 3 4 5 P 7 8 9 10 P 7 11 12 13 14 E",
+        speakers: "A 1..6, B 7..11, A 12..16",
+    }),
+    Some(Spec {
+        portraits: (3, 0),
+        lines: "2 3 4 5 E",
+        speakers: "A 1..5",
+    }),
+    None,
+    Some(Spec {
+        portraits: (4, 0),
+        lines: "2 3 4 P 6 7 8 9 4 P 10 11 4 P 6 12 13 14 15 P 16 17 18 P 16 19 18 E",
+        speakers: "A 1..5, B 6..10, A 11..15, B 16..21, A 22..25, B 26..28",
+    }),
+];
+
+/// The screens of `episode`, by n − 1.
+fn specs(episode: Episode) -> &'static [Option<Spec>] {
+    match episode {
+        Episode::E1 => &E1_SPECS,
+        Episode::E2 => E2_SPECS,
+        Episode::E3 => &E3_SPECS,
+    }
+}
+
+/// Episode 1 transmission `n` (1..=9) from the §3.3 table.
 pub fn transmission(n: usize) -> Option<Transmission> {
-    let spec = SPECS.get(n.checked_sub(1)?)?;
+    transmission_for(Episode::E1, n)
+}
+
+/// Transmission screen `n` of `episode` as its loader fills the table; `None` where the
+/// episode has no such screen (E3 4) or its table is not filled in (E2, see [`E2_SPECS`]).
+pub fn transmission_for(episode: Episode, n: usize) -> Option<Transmission> {
+    let spec = specs(episode).get(n.checked_sub(1)?)?.as_ref()?;
     let lines: Vec<Line> = spec
         .lines
         .split_whitespace()
@@ -162,22 +213,7 @@ pub fn e2_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmis
     later_transmission(a, run, prompts)
 }
 
-/// `td3.ccm` record of box A for E3 transmissions 1..=5 (there is no 4). ASSUMPTION(U-351):
-/// the file holds five records; record 0 is the player (box B) as in E1/E2 and records 1..=4
-/// are the four callers in the order of their comms (1 the Vulture lieutenant, 2 Kreel,
-/// 3 Striker, 5 Osyluth).
-const E3_PORTRAIT_A: [usize; 5] = [1, 2, 3, 0, 4];
-
-/// An Episode 3 transmission `n` (1, 2, 3 or 5) from its string run (`e3.comms.01`..`.03`,
-/// `.04` for comm 5, episode-deltas rev 3 §10). The comm loaders `td3:2215:0135, 042A, 0680,
-/// 093D` are not specified (U-351); read as [`e2_transmission`] (U-310). `e3.comms.02` holds
-/// only four strings and no end marker: the screen then waits for F6 or Esc after them.
-pub fn e3_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmission {
-    let a = E3_PORTRAIT_A.get(n.wrapping_sub(1)).copied().unwrap_or(1);
-    later_transmission(a, run, prompts)
-}
-
-/// The provisional E2/E3 reading with box A showing `td2.ccm`/`td3.ccm` record `portrait_a`.
+/// The provisional E2 reading with box A showing `td2.ccm` record `portrait_a`.
 fn later_transmission(portrait_a: usize, run: &[String], prompts: &[String]) -> Transmission {
     let blank = |s: &str| s.trim().is_empty();
     let mut lines = Vec::new();
@@ -249,11 +285,11 @@ pub fn scroll_box(fb: &mut Framebuffer, side: usize, bg: u8) {
 }
 
 impl CommScreen {
-    /// Opens transmission `n` (E1 1..=9, E2 1..=7) over `shown`, the frame on screen (page 0
-    /// with this tick's world; the DAC stays the flight's). `None` if `n` is not a
-    /// transmission.
+    /// Opens transmission `n` (E1 1..=9, E2 1..=7, E3 1, 2, 3, 5) over `shown`, the frame on
+    /// screen (page 0 with this tick's world; the DAC stays the flight's). `None` if `n` is not
+    /// a transmission.
     pub fn new(mut shown: Framebuffer, assets: &FlightScreenAssets, n: usize) -> Option<Self> {
-        let tx = assets.transmissions.get(n.checked_sub(1)?)?.clone();
+        let tx = assets.transmissions.get(n.checked_sub(1)?)?.clone()?;
         for (cell, pixels) in assets.panel.chunks_exact(1024).enumerate() {
             let (col, row) = ((cell % 8) as i32, (cell / 8) as i32);
             let pos = (PANEL_ORIGIN.0 + 32 * col, PANEL_ORIGIN.1 + 32 * row);
@@ -420,6 +456,33 @@ mod tests {
         assert_eq!(transmission(3).unwrap().lines.len(), 28);
         assert_eq!(transmission(8).unwrap().lines.len(), 25);
         assert!(transmission(0).is_none() && transmission(10).is_none());
+    }
+
+    #[test]
+    fn e3_table_shapes() {
+        // e2-flight-screens §3.2 and §6 vector 2: run sizes 13, 16, 7, 21; highest j 12, 15, 6,
+        // 20 are the end markers; there is no screen 4.
+        let counts = [(1, 13), (2, 16), (3, 7), (5, 21)];
+        for (n, count) in counts {
+            let t = transmission_for(Episode::E3, n).unwrap();
+            assert_eq!(t.lines.last().map(|l| l.0), Some(Line::End), "n = {n}");
+            assert_eq!(t.portraits.1, 0);
+            for &(line, _) in &t.lines {
+                if let Line::Text(j) = line {
+                    assert!((2..count - 1).contains(&j), "n = {n}, j = {j}");
+                }
+            }
+        }
+        assert!(transmission_for(Episode::E3, 4).is_none());
+        assert!(transmission_for(Episode::E3, 6).is_none());
+        let t = transmission_for(Episode::E3, 5).unwrap();
+        assert_eq!(t.lines.len(), 28);
+        assert_eq!(t.portraits, (4, 0));
+        let side = |k: usize| t.lines[k - 1].1;
+        assert_eq!((side(5), side(6), side(10), side(11)), (0, 1, 1, 0));
+        assert_eq!((side(21), side(22), side(25), side(26)), (1, 0, 0, 1));
+        let three = transmission_for(Episode::E3, 3).unwrap();
+        assert!(three.lines.iter().all(|l| l.1 == 0), "screen 3: box A only");
     }
 
     #[test]
