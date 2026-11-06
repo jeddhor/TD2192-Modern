@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
-| **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014) |
+| **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014), the 16 heading blits (C-0080) |
 | **Tasks** | E1 screens (RE-8); feeds M6-07, M7, M8, M9 |
-| **Unknowns** | U-220..U-226 (new); U-122, U-124 answered in [screens.md](screens.md) |
+| **Unknowns** | U-220..U-226 (new); U-122, U-124 answered in [screens.md](screens.md); U-360 resolved (§4.9) |
 
 Related specs, not repeated here: tick order [sim/tick-order](../sim/tick-order.md) (where each screen is called), comm phases [sim/mission-logic](../sim/mission-logic.md) §4.5–4.6, HUD [render/hud](../render/hud.md), text drawing [render/text](../render/text.md), weapons [sim/weapons](../sim/weapons.md), afterburner [sim/flight-model](../sim/flight-model.md) §4.7, camera [sim/camera-viewport](../sim/camera-viewport.md).
 
@@ -431,6 +431,31 @@ Kind 3 is never drawn (no class fires it). Shots on a two-digit heading (U-160) 
 
 So a file that replaces only bank slots changes sprite n on the four headings N, E, S, W only, while `td.hel` plus `td.h2` replace sprites 2 and 3 on all 16 headings.
 
+**Pixel transform of each blit (U-360).** Every heading blit draws a w × w box (w = 32 for the bank, 40 for the three rotation buffers) with its top-left corner at the sprite position: x rounded down to a multiple of 4, sprite y as in §2. **The 40 × 40 boxes are not centred on the 32 × 32 position**: they start at the same corner and reach 8 pixels further right and down. The art in the rotation cells is centred near (20, 20) of the cell and the bank art near (16, 16), so a ship or the player drawn on a rotated heading appears about 4 pixels right of and below where it appears on N, E, S or W. Box pixel (c, r), c and r = 0..w − 1, takes source byte L of the sprite's source cell (cell n of the buffer, w × w bytes, row-major) and is written unless that byte is 0:
+
+| Heading (code) | Blit `386E:` | Source | Transform of the cell | Source byte L for box pixel (c, r) |
+|---|---|---|---|---|
+| N (8) | `024A` | bank | none | `r·w + c` |
+| E (6) | `07BC` | bank | anti-transpose (mirror about the anti-diagonal), one row down | `(w−1−c)·w + (w−r)` |
+| S (2) | `0C02` | bank | top-bottom mirror, one column left | `(w−1−r)·w + c + 1` |
+| W (4) | `0926` | bank | quarter turn anticlockwise, one row down | `c·w + (w−r)` |
+| NW (7) | `0391` | `td.shr` | none | `r·40 + c` |
+| NE (9) | `04E9` | `td.shr` | left-right mirror | `r·40 + (39−c)` |
+| SW (1) | `0A93` | `td.shr` | quarter turn anticlockwise, one row down | `c·40 + (40−r)` |
+| SE (3) | `0650` | `td.shr` | anti-transpose, one row down | `(39−c)·40 + (40−r)` |
+| NNW (4E) | `0D68` | `td.sc3` | none | `r·40 + c` |
+| NNE (62) | `0EC0` | `td.sc3` | left-right mirror | `r·40 + (39−c)` |
+| ESE (24) | `1027` | `td.sc3` | anti-transpose, one row down | `(39−c)·40 + (40−r)` |
+| WSW (0E) | `1193` | `td.sc3` | quarter turn anticlockwise, one row down | `c·40 + (40−r)` |
+| WNW (4A) | `1302` | `td.sc2` | none | `r·40 + c` |
+| ENE (60) | `145A` | `td.sc2` | left-right mirror | `r·40 + (39−c)` |
+| SSE (20) | `15C1` | `td.sc2` | anti-transpose, one row down | `(39−c)·40 + (40−r)` |
+| SSW (0C) | `172D` | `td.sc2` | quarter turn anticlockwise, one row down | `c·40 + (40−r)` |
+
+- **Mirrors, not turns.** E, S, NE, SE, NNE, ESE, ENE and SSE are reflections of the cell, not rotations. For the 22.5° and 67.5° cells this is the only transform that points the right way, but for the bank and `td.shr` a rotation would point the same way and give a different image. Every sprite's shading is asymmetric, so the difference shows on screen (the right-hand side of a ship stays on the right on S, where a half turn would move it to the left).
+- **One-pixel shift.** Ten blits read one byte further on than the plain transform: L is the plain transform's index + 1. The visible result is the transformed image moved one pixel down (E, W, SW, SE, ESE, WSW, SSE, SSW) or one pixel left (S). The row or column that comes in at the edge takes source column 0 one row further on (box row 0 for the "down" blits, box column w − 1 for S), and its last pixel is byte w·w: the first byte of the next cell (for sprite 8 of `td.sc3` or `td.sc2`, the first byte of the next buffer, since only cells 0..8 are loaded). Column 0 of every rotation cell, row 0 of cells 1..9 and the first byte of every buffer are 0, so for those buffers the shift is all that shows. Bank sprites with art in column 0 (the truck, `td.shp` 0; `mine.td`; `lander.td` 0..3; `td.exp` 2, 3) show that column again, moved, at the edge of E, S and W.
+- **The same routines draw everything** that uses a heading: the player (`0E8B:D199..D624`, every blit with x = 4·Round(viewSubX / 4) + 128 and y = viewSubY + 84 whatever the heading), mission ships (`3292:1352..185D`, every blit with the same (x, y)), and shots of kinds 4..6 (§4.8).
+
 **Flight 7 (mines).** Sprite 3 is the mine on headings N, E, S, W. The class-3 ships are slots 9..12 from the start and slots 2..8 once slot 1 has armed them ([mission-logic §5.7](../sim/mission-logic.md)); every tick the flight-7 rule sets their heading to 8 before they are drawn ([mission-ships §4.2](../sim/mission-ships.md) steps (h), (i)), so they are always drawn with the plain blit of bank slot 3, the mine. No other ship is class 3 and the player is class 2, so the stock rotation cells of sprite 3 are never shown in flight 7.
 
 **Flight 20 (lander).** The five lander pieces are slots 1..5, classes 0, 1, 4, 5, 6 after setup (mission-setup §3.2): slot 1 shows `lander.td` record 0 (bank 0), slot 2 record 1 (bank 1), slot 3 record 2 (bank 4), slot 4 record 3 (bank 5), slot 5 record 4 (bank 6). They start at tiles (49, 3), (50, 3), (51, 3), (50, 4), (50, 5) (path step 1 of `m20.td`), all at offset (16, 16): three pieces in a row with two below the middle one. Their heading is set to 8 every tick before they are drawn (mission-ships §4.2 step (e)), so the plain blit always applies, and they sink together. Slots 7, 8 (class 8) and the player (class 2) use unchanged sprites.
@@ -487,6 +512,7 @@ So a file that replaces only bank slots changes sprite n on the four headings N,
 | 17 | E1 flight 12, no input (player class 3, heading 8, late draw) | The 32 × 32 player cell at screen (144, 68) equals `td.hel` record 1 (0 of 384 non-zero pixels differ) on frames that show page 0 and record 0 (0 of 412) on frames that show page 1, alternating with the page; never `td.shp` 2 or 3 | C-0027, all 40 flight fb frames 525..1890 |
 | 18 | E1 flights 7, 12, 20 setup | Reads of 1,024 / 2,048 + 3 × 3,200 / 2,048 + 3,072 bytes into the destinations of §4.9 | C-0022, C-0027, C-0035 `int21.tsv` |
 | 19 | E1 flight 20: Esc, ship library, return | Bank slots 0..6 before: `lander.td` 0, 1, `td.shp` 2, 3, `lander.td` 2, 3, 4; after: slot 0 = `td.shp` record 0, the rest unchanged (OB-057) | C-0045 f541, f1771 |
+| 20 | E1 flight 2 started directly, the player steers kp4, kp2, kp6, kp8 in turn (heading runs anticlockwise through all 16 ring entries), class 4 | In every frame where nothing covers the player, the w × w box at screen (144, 68) equals the table above for the shown heading: 0 differing pixels for all 16 headings (8: 86 frames, 4E: 3, 07: 4, 4A: 4, 04: 14, 0E: 4, 01: 3, 0C: 4, 02: 18, 20: 7, 03: 4, 24: 3, 06: 15, 60: 4, 09: 6, 62: 4); every other heading's model differs in at least 256 pixels. The transforms of `td_render::headings` before this revision, drawn with the 40 × 40 frame centred, differ in 267..310 pixels on every heading but N | C-0080, fb f658..899 |
 
 ## 7. Presentation and audio hooks
 
@@ -515,6 +541,7 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | Afterburner flame | `0E8B:CD78..D160` | static | LIKELY |
 | Mission-specific sprite loads (§4.9) | `0E8B:BF1D..C0D9`; int21 rows of C-0022 (`mine.td` → 7215:0C00), C-0027 (`td.hel` → 7215:0800, `td.h2` → 66C1:0C80, 6A45:0C80, 633D:0C80), C-0035 (`lander.td` → 7215:0000 and 7215:1000), bank at 7215:0000, `td.sc3`/`td.sc2`/`td.shr` buffers at 633D/66C1/6A45 | static + capture | CONFIRMED |
 | Source buffer of each heading blit | `386E:024A..172D` (the `LDS SI` of each of the 16 routines) | static | CONFIRMED |
+| Pixel transform, one-pixel shifts and box placement of each heading blit (U-360) | `386E:024A..1A00` (each routine's source and destination stepping, interpreted for all 16 routines); callers `0E8B:D199..D624`, `3292:1352..185D`; C-0080 | static + capture | CONFIRMED |
 | Late-draw player sprite 3 / 2 by draw page | `0E8B:D165..D183`, late path `0E8B:E030..E03E`; E2 `td2:0E96:C192..C1AA`; C-0027 | static + capture | CONFIRMED |
 | Mines and lander drawn with the plain blit | mission-ships §4.2 (e), (h); `m7.td`, `m20.td` classes and path step 1 | static | LIKELY (not on screen in C-0022/C-0035, which have no input) |
 | OB-057 (library reloads slot 0) | §4.1.2 (`0E8B:7374..78FF`) with the flight-20 loads; C-0045 | static + capture (RAM) | CONFIRMED |
@@ -527,3 +554,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-8 (Archaeologist + Spec author) | Initial |
 | 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author + Verifier) | §4.9 mission-specific sprites (flights 7, 12, 15, 20, 21): loads, heading-to-buffer map, which ships use them, helicopter rotor frames by draw page; OB-057; test vector 17 (C-0027). E2/E3 transmissions and library: [e2-flight-screens](e2-flight-screens.md) |
+| 3 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.9 pixel transform of all 16 heading blits (U-360): mirrors on E, S, NE, SE and the four mirrored 22.5°/67.5° headings; one-pixel shift on ten blits; 40 × 40 boxes drawn at the 32 × 32 corner, not centred. Test vector 20 (C-0080, every heading of the player) |

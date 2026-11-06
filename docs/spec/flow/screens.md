@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/screens` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for layouts, fonts, colours and resource ids; T1 for the `Random` call of the retry prompt and the skip rule; T2 for wait and fade timing |
 | **Confidence** | LIKELY (static analysis of each routine); main-menu pixels CONFIRMED against C-0002 f997 |
@@ -182,7 +182,7 @@ Every scene, card, dossier, hint and dialogue routine clears `g_SkipStory` when 
 | 19 | C:soffice[0C45/04A1/0898], D87 |
 | 20 | D95 |
 
-So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialogue 1, no `low.cmf`, no hint), while Esc during dialogue 1 still shows hint 1 with `low` (C-0002 f2603 → f2788). Post-flight steps without a test: the last step of each block, and block 3 D13 (outcome branch), block 5 D3 / D156 branch, block 16 D72 / D105, block 18 P15, block 19 D89 (then flight 21; abort → return), block 20 P2 stills onwards (the episode-end card and endings have no tests). Block-by-block source: `0000:0F06..2E76`.
+So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialogue 1, no `low.cmf`, no hint), while Esc during dialogue 1 still shows hint 1 with `low` (C-0002 f2603 → f2788). Post-flight steps without a test: the last step of each block, and block 3 D13 (outcome branch), block 5 D3 / D156 branch, block 16 D72 / D105, block 18 P15, block 19 D89 (then flight 21; abort → return), block 20 P2 stills onwards (the episode-end card and endings have no tests). **Exception, block 19:** the tests after the post-flight steps that come before flight 21 (C:voffice, D88 and the `M3` C:hangar card, `0000:2A59..2A94`) do not end the block: a set flag jumps to the flight 21 call (`0000:2A9D`), skipping what is left before it. After flight 21 the tests end the block as usual. There is no debrief in block 20 ([episode-program-flow](episode-program-flow.md) §4.4). Block-by-block source: `0000:0F06..2E76`.
 
 ## 4. Edge cases and original bugs
 
@@ -228,3 +228,4 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-8 (Archaeologist + Spec author) | Initial: U-120..U-125 |
+| 2 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.12: in block 19 a skip before flight 21 jumps to flight 21, not to the block end (`0000:2A59..2A9D`; U-081) |
