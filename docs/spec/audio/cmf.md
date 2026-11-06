@@ -284,6 +284,7 @@ Our own test songs (two made-up instruments: I0 = `01 11 4F 00 F1 F2 53 74 00 00
 - [x] U-034: velocity. Resolved: ignored; level = f(carrier TL, channel volume).
 - [x] Loop behaviour. Resolved: §4.8.
 - [x] Transpose units. Resolved: §4.7 (22 units per semitone, applied at the next output).
+- [ ] U-401 (VE-3, C-0073): §4.4 "the first event runs at tick d0 + 1" disagrees with the capture. `menu.cmf` looping twice: song start → first restart and restart → restart are both 4,841.94 PIT periods (4,841 ticks + 9.8 ms to the restart's PIT write), and the first note sounds 8.8 ms after the song-start PIT write. So the first event runs in the start call, as after a loop restart. The loop restart itself (§4.8) matches write for write ([M3-audio](../../parity/M3-audio.md) rows 12, 12a).
 
 ## 8. Provenance
 

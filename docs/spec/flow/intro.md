@@ -427,7 +427,19 @@ The CMF playback itself is [audio/cmf](../audio/cmf.md) (§6.2 C1 checks this ex
 
 - [x] Q1 (U-370): resolved in §4.6 ("When step 1 restarts a song"): the byte reads 0 from the end-of-track tick until the next step (2 music ticks in C-0081) and never at a loop. The port can poll its own sequencer once per step.
 - [x] Q3 (U-380): resolved in §3.6: rule 7 is as written but never fires at P1, because WORX reports `home` as playing until after step 329's checks.
-- [ ] Q2: sound effects were not checked against a recording (the effect schedule is static). A VE pass with C-0001's WAV should confirm the onsets at steps 1, 150, 155, 240, 245 (s/19.2 s after the flyover start).
+- [x] Q2: checked against the WAV (VE-3, 2026-11-06; C-0001, C-0070 and C-0081 have bit-identical WAVs, step frames from C-0070's per-frame `DS:0190`). Onset of each effect by correlation with the decoded sample, relative to the start of the frame whose RAM first shows the step:
+
+  | Step | Effect | Step frame starts | Onset | Δ |
+  |---:|---|---:|---:|---:|
+  | 88, 96, 103, 111, 119, 126, 134, 142 | `pulse` | 27,600.3 … 30,411.1 ms | | +1.1 … +1.6 ms |
+  | 150 | `scratch` | 30,824.9 ms | 30,826.0 ms | +1.1 ms |
+  | 155 | `ric3` | 31,081.7 ms | 31,083.0 ms | +1.3 ms |
+  | 213 | `scratch` (rule 4) | 34,106.5 ms | 34,107.6 ms | +1.1 ms |
+  | 240 | `scratch` | 35,519.1 ms | 35,520.2 ms | +1.1 ms |
+  | 245 | `home` | 35,775.9 ms | 35,777.2 ms | +1.3 ms |
+  | 330 | `pulse` | 40,199.0 ms | 40,200.5 ms | +1.5 ms |
+
+  No `scratch` plays in steps 266..329 (best correlation 0.23, against 0.97..0.99 at the real `scratch` onsets). `whoosh` at step 1 is masked by the music (C-0071, music off, has it at 23.665 s). With music off (C-0071, flyover at the 18.52 Hz WORX-idle tick) rule 7 fires at step 327 (`DS:0069` set, `scratch` at 41.213 s): the busy times are the same in seconds, so the step at which `home` ends depends on the tick rate. Effect levels (rule volumes 10, 12, 13) measured in [M3-audio](../../parity/M3-audio.md) rows 16 and 18.
 
 ## 9. Provenance
 
