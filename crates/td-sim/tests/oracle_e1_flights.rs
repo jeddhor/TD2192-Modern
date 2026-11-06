@@ -278,6 +278,9 @@ fn logic_fields(f: &Flight, d: &Dump) -> Fields {
         field("home marker", m.home_marker, d.u8(0x396C)),
         field("ticker", m.ticker.pos, d.i16(0x32BC) as u16),
         field("comm indicator", m.comm_phase, d.u8(0x1705)),
+        // g_HitFlash after step 14 (sim/hit-flash rev 2): kills near the player flash in
+        // C-0023 (ticks 344, 352; palette mode 1) and C-0033 (tick 370).
+        field("hit flash", f.hit_flash, d.i16(0x12C4) as u16),
     ];
     for (i, s) in f.ships.0.iter().enumerate() {
         v.push(field(

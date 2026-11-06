@@ -28,7 +28,7 @@ use td_render::small_text::{self, Typewriter};
 use td_render::{Framebuffer, WIDTH, fade, title_text};
 use thiserror::Error;
 
-use crate::dialogue::FADE_FRAMES_PER_LEVEL;
+use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
 use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
 
 /// Errors while preparing a story screen.
@@ -222,10 +222,27 @@ impl StoryScreen {
         self
     }
 
+    /// Keys already in the BIOS buffer when the screen starts (typed during the previous
+    /// screen, screens §2.2): they end this screen's wait at once.
+    pub fn type_ahead(&mut self, keys: Vec<Key>) {
+        let mut all = keys;
+        all.append(&mut self.keys);
+        all.truncate(KEY_BUFFER);
+        self.keys = all;
+    }
+
+    /// The keys left in the buffer (for the next screen).
+    pub fn take_keys(&mut self) -> Vec<Key> {
+        std::mem::take(&mut self.keys)
+    }
+
     /// Advances one frame.
     pub fn step(&mut self, input: &TickInput) {
-        self.keys
-            .extend(input.pressed.iter().copied().filter(|&k| is_keystroke(k)));
+        for &k in &input.pressed {
+            if is_keystroke(k) && self.keys.len() < KEY_BUFFER {
+                self.keys.push(k);
+            }
+        }
         self.wait = self.wait.saturating_sub(1);
         while self.wait == 0 {
             match &mut self.phase {
@@ -809,6 +826,30 @@ mod tests {
         }
         assert_eq!(s.screen().get(12, 48), Some(0), "line 1 not typed");
         assert!(matches!(s.phase, Phase::FadeOut(_)));
+    }
+
+    #[test]
+    fn leftover_keys_end_the_next_wait() {
+        // Two keys in one frame: the first ends this wait, the second is left for the next
+        // screen, whose wait ends right after its fade-in (screens §2.2).
+        let mut a = StoryScreen::blank(Hold::Seconds(5));
+        a.step(&TickInput {
+            pressed: vec![Key::SPACE, Key::ESCAPE],
+            ..TickInput::default()
+        });
+        let n = 1 + run(&mut a, &TickInput::default());
+        assert_eq!(n, 34 + 34, "the first key ended the hold");
+        assert!(!a.skipped());
+        let left = a.take_keys();
+        assert_eq!(left, [Key::ESCAPE]);
+        let mut b = StoryScreen::blank(Hold::Seconds(5));
+        b.type_ahead(left);
+        assert_eq!(run(&mut b, &TickInput::default()), 34 + 34);
+        assert!(b.skipped(), "the carried Esc sets the skip flag");
+        // The buffer holds 15 keystrokes.
+        let mut c = StoryScreen::blank(Hold::Key);
+        c.type_ahead(vec![Key::SPACE; 20]);
+        assert_eq!(c.take_keys().len(), KEY_BUFFER);
     }
 
     #[test]

@@ -29,6 +29,7 @@
 pub mod episode;
 pub mod explosions;
 pub mod heading;
+pub mod hit_flash;
 pub mod logic;
 pub mod player;
 pub mod setup;
@@ -109,6 +110,9 @@ pub struct DrawnFrame {
     pub flame: Option<u8>,
     /// White flash frame shown (4 white .. 1 restore), 0 = none.
     pub white_flash: u8,
+    /// `g_HitFlash` as step 14 found it, before its decay (the palette step decays it and
+    /// draws the result, `hit-flash.md` §4.3).
+    pub hit_flash: u16,
     /// What the instruments showed (step 19).
     pub hud: HudSnapshot,
 }
@@ -227,6 +231,9 @@ pub struct Flight {
     pub kills: i16,
     /// Full-palette white flash countdown (`g_FlashFrames`).
     pub white_flash: u8,
+    /// Red hit-flash level (`g_HitFlash` DS:12C4, [`hit_flash`]); presentation only, not
+    /// hashed. The host zeroes it when a flight fade runs (`hit-flash.md` §4.2).
+    pub hit_flash: u16,
     /// Damage multiplier for hits on the player (DS:13DE).
     pub difficulty: u8,
     /// Selected weapon: 1..=3 fire the class volley, 4..=6 a missile (`g_Weapon`).
@@ -393,6 +400,7 @@ impl Flight {
                 player_visible: true,
                 flame: None,
                 white_flash: 0,
+                hit_flash: 0,
                 hud: HudSnapshot::default(),
             },
             drawn: DrawnObjects::default(),
@@ -406,6 +414,7 @@ impl Flight {
             radar_set2: false,
             kills: 0,
             white_flash: 0,
+            hit_flash: 0,
             difficulty: 1,
             weapon,
             missiles,
@@ -480,6 +489,7 @@ impl Flight {
                 events,
                 kills: &mut self.kills,
                 white_flash: &mut self.white_flash,
+                hit_flash: &mut self.hit_flash,
                 late_draw: self.late_draw,
                 flight: self.number,
                 // E2/E3 have no difficulty multiplier: always 2 × (kind + 1) (P2).
@@ -522,15 +532,27 @@ impl Flight {
             // (mission-ships §4.2.4; removed in E2/E3).
             self.flight_19_pin();
             self.drawn.ships.clone_from(&self.ships);
-            // 11. End sequence (provisional: counts the end ticks; its other effects are not
-            // specified yet).
+            // 11. End sequence (provisional: counts the end ticks; of its other effects only
+            // the distance flash of end tick 12 is ported, at (viewX + 5, viewY + 2):
+            // hit-flash.md §4.2 caller 2, v = 19).
             if self.mission_over {
+                if self.end_ticks == 12 {
+                    let v = self.player.view;
+                    let at = ((v.tile_x + 5) as u8, (v.tile_y + 2) as u8);
+                    hit_flash::distance_flash(&mut self.hit_flash, v, at);
+                }
                 self.end_ticks = self.end_ticks.saturating_add(1);
             }
             // 12 is presentation. 13. Explosions advance after being drawn.
             self.drawn.explosions.clone_from(&self.explosions);
             self.explosions.step();
-            // 14. Palette effects: the white flash counts down.
+            // 14. Palette effects (hit-flash.md §4.3): the hit flash decays (the host draws
+            // it from `frame.hit_flash`), a white flash cancels it and counts down.
+            self.frame.hit_flash = self.hit_flash;
+            hit_flash::decay(&mut self.hit_flash, self.palette_mode);
+            if self.white_flash > 0 {
+                self.hit_flash = 0;
+            }
             self.frame.white_flash = self.white_flash;
             self.white_flash = self.white_flash.saturating_sub(1);
             // 15. Comm viewer on an even back page: a transmission only when the table has
@@ -662,6 +684,8 @@ impl Flight {
             && matches!(self.palette_mode, 1 | 2)
         {
             self.palette_mode = 3 - self.palette_mode;
+            // Alt ends any hit flash (hit-flash.md §4.2).
+            self.hit_flash = 0;
             self.keys.clear(Alt);
             self.keys.clear(RightAlt);
         }

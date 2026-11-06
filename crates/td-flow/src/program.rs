@@ -8,28 +8,29 @@
 //!
 //! Not ported (T3 or decided elsewhere): the text-mode configuration screen and command-line
 //! switches (the port has its own settings), joystick calibration, `tdstatus.dat` (menu items
-//! 6 and 7 show a "not yet" notice instead of halting for the launcher), save and restore
-//! (stubs until D3, M2-12/M11-06).
+//! 6 and 7 show a "not yet" notice instead of halting for the launcher).
 //!
-//! Provisional (ASSUMPTION(U-120)): how the menu shows the cursor. From C-0002 frame 997
-//! (cursor on item 0, no game): item k is drawn in palette entry 224 + k; the selected item is
-//! (63, 0, 0), the others (16, 0, 0), and "next mission" is black while no game is in progress.
-//! The menu is shown without its fades.
+//! The menu screen itself (fades, pulses, keys, boxes) is [`crate::main_menu`]; the save and
+//! restore screens (items 1 and 2) are [`crate::save_screens`], with the port's own files in
+//! the directory given to [`Episode1::with_save_dir`] (none: saving is not possible).
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use td_assets::{DataDir, Episode, ExeResources};
 use td_audio::{AudioCommand, CueRestart, CueTable, MusicCues};
 use td_formats::cmf::Cmf;
-use td_formats::palette::{Palette, Rgb6};
+use td_formats::palette::Rgb6;
 use td_input::{Key, TickInput};
 use td_render::dialogue::Side;
 use td_render::{Framebuffer, WIDTH, title_text};
 
 use crate::campaign::{Bg, BlockResult, Campaign, FlightLauncher, Rating, Step, rating};
 use crate::dialogue::{DialogueAssets, DialogueScene, ScriptChoice};
+use crate::main_menu::{MainMenu, MenuGraphics, NEXT_MISSION, QUIT, Reentry, SAVE};
+use crate::save_screens::{E1_FILES, SaveKind, SaveOutcome, SaveScreen, SaveSet};
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::story::{self, Hold, StoryAssets, StoryError, StoryScreen, TextItem};
 
@@ -425,22 +426,17 @@ const DEBRIEF_GREEN: Rgb6 = Rgb6 {
 };
 const DEBRIEF_DIM: Rgb6 = Rgb6 { r: 0, g: 40, b: 0 };
 
-/// Menu items (§4.2).
-const ITEMS: u8 = 9;
-const NEXT_MISSION: u8 = 3;
-const SAVE: u8 = 1;
-/// First palette entry of the item colours (FORMATS §12.1).
-const ITEM_ENTRY: usize = 224;
-
 enum Stage {
     Start,
     ScriptChoice(StoryScreen),
     Notice(StoryScreen),
+    /// The main menu ([`MainMenu`] animates it).
     Menu,
     Campaign(Box<Campaign>),
-    Sub(StoryScreen),
-    /// A confirmation box (1 = quit, 2 = current game lost) for an item.
-    Confirm(u8, u8),
+    /// A screen started from the menu, and how the menu comes back after it.
+    Sub(StoryScreen, Reentry),
+    /// The save or restore screen.
+    Saves(Box<SaveScreen>),
     Quit,
 }
 
@@ -448,19 +444,17 @@ enum Stage {
 pub struct Episode1 {
     prog: Program,
     stage: Stage,
-    cursor: u8,
+    menu: MainMenu,
     mission: u8,
     kills_to_date: i16,
-    menu: Option<MenuGraphics>,
+    /// Where the port keeps `td.sav` and `td.stt` (never the game folder).
+    save_dir: Option<PathBuf>,
 }
-
-/// The menu image, the four confirmation boxes (320x32 each) and `tdmen.pal`.
-type MenuGraphics = (Box<[u8]>, Box<[u8]>, Palette);
 
 impl fmt::Debug for Episode1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Episode1")
-            .field("cursor", &self.cursor)
+            .field("cursor", &self.menu.cursor())
             .field("mission", &self.mission)
             .finish_non_exhaustive()
     }
@@ -472,26 +466,82 @@ impl Episode1 {
         res: &ExeResources,
         launcher: Box<dyn FlightLauncher>,
     ) -> Result<Self, StoryError> {
-        let menu = (|| {
-            let men = data.read("td.men").ok()?;
-            let pal = Palette::parse(&data.read("tdmen.pal").ok()?).ok()?;
-            Some((
-                men.get(16_000..80_000)?.into(),
-                men.get(80_000..120_960)?.into(),
-                pal,
-            ))
-        })();
-        if menu.is_none() {
+        let gfx = MenuGraphics::load(data);
+        if gfx.is_none() {
             tracing::warn!("td.men or tdmen.pal unavailable; the menu is drawn black");
         }
         Ok(Self {
             prog: Program::new(data, res, launcher)?,
             stage: Stage::Start,
-            cursor: 0,
+            menu: MainMenu::new(gfx),
             mission: 0,
             kills_to_date: 0,
-            menu,
+            save_dir: None,
         })
+    }
+
+    /// Keeps the saved games in `dir` (the user data directory's `saves`), in the original
+    /// `td.sav`/`td.stt` format. Without it the restore screen shows empty slots and saving
+    /// writes nothing.
+    #[must_use]
+    pub fn with_save_dir(mut self, dir: PathBuf) -> Self {
+        self.save_dir = Some(dir);
+        self
+    }
+
+    /// The main menu (cursor, palette buffer and screen).
+    pub fn menu(&self) -> &MainMenu {
+        &self.menu
+    }
+
+    /// The campaign state the menu keeps: the next mission (0 = no game) and the kills to date.
+    pub fn game(&self) -> (u8, i16) {
+        (self.mission, self.kills_to_date)
+    }
+
+    /// The save (item 1) or restore (item 2) screen with the files as they are now.
+    fn save_screen(&self, kind: SaveKind) -> SaveScreen {
+        let id = match kind {
+            SaveKind::Save { .. } => "saves.save",
+            SaveKind::Restore => "saves.restore",
+        };
+        let set = SaveSet::load(self.save_dir.as_deref(), E1_FILES);
+        SaveScreen::open(
+            kind,
+            &self.prog.data,
+            &self.prog.assets.small,
+            &self.prog.texts(id),
+            self.menu.palette_buffer(),
+            set,
+        )
+    }
+
+    /// The menu after the save or restore screen (save-screens §4.3–§4.4): a restore sets the
+    /// game; a save writes the files; the cursor goes to 3 whenever a game is in progress
+    /// after the restore screen, Esc included.
+    fn saves_done(&mut self, ctx: &mut FlowContext<'_>, outcome: SaveOutcome) {
+        let restore = !matches!(outcome, SaveOutcome::Saved(_));
+        match outcome {
+            SaveOutcome::Left => {}
+            SaveOutcome::Restored { mission, kills } => {
+                self.mission = mission;
+                self.kills_to_date = kills;
+            }
+            SaveOutcome::Saved(set) => match &self.save_dir {
+                Some(dir) => {
+                    if let Err(e) = set.store(dir, E1_FILES) {
+                        tracing::warn!("saving to {} failed: {e}", dir.display());
+                    }
+                }
+                None => tracing::warn!("no save directory; the game was not saved"),
+            },
+        }
+        let cursor = if restore && self.in_game() {
+            NEXT_MISSION
+        } else {
+            self.menu.cursor()
+        };
+        self.enter_menu(ctx, cursor, Reentry::Loader { first: false });
     }
 
     /// The palette of the script choice and the missing-dialogue notice (screens §3.2): all
@@ -561,8 +611,12 @@ impl Episode1 {
         s
     }
 
-    fn enter_menu(&mut self, ctx: &mut FlowContext<'_>) {
-        self.prog.play_cue(ctx, td_audio::music_cues::MENU);
+    /// Shows the menu again (episode-program-flow §4.2): the loader plays the menu song.
+    fn enter_menu(&mut self, ctx: &mut FlowContext<'_>, cursor: u8, how: Reentry) {
+        if matches!(how, Reentry::Loader { .. }) {
+            self.prog.play_cue(ctx, td_audio::music_cues::MENU);
+        }
+        self.menu.enter(cursor, self.in_game(), how);
         self.stage = Stage::Menu;
     }
 
@@ -574,77 +628,82 @@ impl Episode1 {
         self.prog.page(&[text.to_owned()], Hold::Key)
     }
 
-    fn select(&mut self, ctx: &mut FlowContext<'_>) {
-        match self.cursor {
-            0 if self.in_game() => self.stage = Stage::Confirm(0, 2),
-            0 => self.start_block(1, 0),
-            NEXT_MISSION => self.start_block(self.mission, self.kills_to_date),
-            4 => match story::help(&self.prog.data) {
-                Ok(s) => self.stage = Stage::Sub(s),
-                Err(e) => tracing::warn!("help unavailable: {e}"),
-            },
+    /// The action of `item` once the menu has faded out (episode-program-flow §4.2).
+    fn select(&mut self, ctx: &mut FlowContext<'_>, item: u8) {
+        let loader = Reentry::Loader { first: false };
+        // Keys typed during the fade-out are still in the BIOS buffer (screens §2.2).
+        let keys = self.menu.take_keys();
+        let sub = match item {
+            0 => {
+                self.start_block(1, 0, keys);
+                return;
+            }
+            NEXT_MISSION => {
+                self.start_block(self.mission, self.kills_to_date, keys);
+                return;
+            }
+            QUIT => {
+                self.stage = Stage::Quit;
+                return;
+            }
+            4 => story::help(&self.prog.data).map(|s| (s, Reentry::Refade)),
             5 => {
+                // ASSUMPTION(U-302): the menu comes back as from the loader, without the song.
                 let t = self.prog.texts("e1.background_story");
-                match story::story_so_far(&self.prog.data, &self.prog.assets, &t) {
-                    Ok(s) => self.stage = Stage::Sub(s),
-                    Err(e) => tracing::warn!("story so far unavailable: {e}"),
-                }
+                story::story_so_far(&self.prog.data, &self.prog.assets, &t)
+                    .map(|s| (s, Reentry::Story))
             }
-            8 => self.stage = Stage::Confirm(8, 1),
             SAVE | 2 => {
-                self.stage = Stage::Sub(self.notice("save and restore are not available yet"))
+                // Both screens flush the BIOS buffer at entry (save-screens §4.1).
+                let kind = if item == SAVE {
+                    SaveKind::Save {
+                        mission: self.mission,
+                        kills: self.kills_to_date,
+                    }
+                } else {
+                    SaveKind::Restore
+                };
+                self.stage = Stage::Saves(Box::new(self.save_screen(kind)));
+                return;
             }
-            _ => self.stage = Stage::Sub(self.notice("this program is not available yet")),
+            _ => Ok((self.notice("this program is not available yet"), loader)),
+        };
+        match sub {
+            Ok((mut s, how)) => {
+                s.type_ahead(keys);
+                self.stage = Stage::Sub(s, how);
+            }
+            Err(e) => {
+                tracing::warn!("menu item {item} unavailable: {e}");
+                self.enter_menu(ctx, item, loader);
+            }
         }
-        let _ = ctx;
     }
 
-    fn start_block(&mut self, mission: u8, kills: i16) {
+    fn start_block(&mut self, mission: u8, kills: i16, keys: Vec<Key>) {
         self.mission = mission;
         self.kills_to_date = kills;
-        self.stage = Stage::Campaign(Box::new(Campaign::new(mission, kills)));
+        let c = Campaign::new(mission, kills).with_type_ahead(keys);
+        self.stage = Stage::Campaign(Box::new(c));
     }
 
-    fn block_done(&mut self, r: BlockResult) {
+    /// The menu bookkeeping after a block (§4.2); returns the new cursor.
+    fn block_done(&mut self, r: BlockResult) -> u8 {
         if r.game_over {
             self.mission = 0;
-            self.cursor = 0;
-        } else if r.advance {
-            self.kills_to_date = self.kills_to_date.saturating_add(r.mission_kills);
-            self.mission += 1;
-            self.cursor = NEXT_MISSION;
-            if self.mission == 21 {
-                // Episode finished (§4.2 item 3; §5: the cursor jump to item 7 is kept).
-                self.mission = 0;
-                self.cursor = 7;
-            }
+            return 0;
         }
-    }
-
-    fn menu_keys(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) {
-        for &k in &input.pressed {
-            let step = match k {
-                Key::UP => ITEMS - 1,
-                Key::DOWN => 1,
-                Key::ENTER | Key::KP_ENTER | Key::SPACE => {
-                    self.select(ctx);
-                    return;
-                }
-                Key::ESCAPE => {
-                    self.stage = Stage::Confirm(8, 1);
-                    return;
-                }
-                _ => continue,
-            };
-            loop {
-                self.cursor = (self.cursor + step) % ITEMS;
-                let hidden =
-                    !self.in_game() && (self.cursor == SAVE || self.cursor == NEXT_MISSION);
-                if !hidden {
-                    break;
-                }
-            }
+        if !r.advance {
+            return self.menu.cursor();
         }
+        self.kills_to_date = self.kills_to_date.saturating_add(r.mission_kills);
+        self.mission += 1;
+        if self.mission == 21 {
+            // Episode finished (§4.2 item 3; §5: the cursor jump to item 7 is kept).
+            self.mission = 0;
+            return 7;
+        }
+        NEXT_MISSION
     }
 }
 
@@ -679,34 +738,41 @@ impl Screen for Episode1 {
                     } else {
                         ScriptChoice::Original
                     };
-                    self.enter_menu(ctx);
+                    // §4.1 step 9: the key buffer is flushed, then the menu starts.
+                    self.enter_menu(ctx, 0, Reentry::Loader { first: true });
                 }
             }
-            Stage::Notice(s) | Stage::Sub(s) => {
+            Stage::Notice(s) => {
                 s.step(input);
                 if s.finished() {
-                    self.enter_menu(ctx);
+                    self.enter_menu(ctx, 0, Reentry::Loader { first: true });
+                }
+            }
+            Stage::Sub(s, how) => {
+                s.step(input);
+                if s.finished() {
+                    let how = *how;
+                    self.enter_menu(ctx, self.menu.cursor(), how);
                 }
             }
             Stage::Campaign(c) => {
                 if let Some(r) = c.step(&mut self.prog, ctx, input) {
-                    self.block_done(r);
-                    self.enter_menu(ctx);
+                    let cursor = self.block_done(r);
+                    self.enter_menu(ctx, cursor, Reentry::Loader { first: false });
                 }
             }
-            Stage::Confirm(item, _) => {
-                let item = *item;
-                if let Some(&k) = input.pressed.iter().find(|&&k| story::is_keystroke(k)) {
-                    self.stage = Stage::Menu;
-                    if Some(k) == Key::letter('y') {
-                        match item {
-                            8 => self.stage = Stage::Quit,
-                            _ => self.start_block(1, 0),
-                        }
-                    }
+            Stage::Menu => {
+                if let Some(item) = self.menu.step(input) {
+                    self.select(ctx, item);
                 }
             }
-            Stage::Menu => self.menu_keys(ctx, input),
+            Stage::Saves(s) => {
+                s.step(input);
+                if let Some(o) = s.outcome() {
+                    let o = o.clone();
+                    self.saves_done(ctx, o);
+                }
+            }
             Stage::Quit => return Transition::Quit,
         }
         Transition::None
@@ -714,34 +780,10 @@ impl Screen for Episode1 {
 
     fn draw(&self, fb: &mut Framebuffer) {
         match &self.stage {
-            Stage::ScriptChoice(s) | Stage::Notice(s) | Stage::Sub(s) => s.draw(fb),
+            Stage::ScriptChoice(s) | Stage::Notice(s) | Stage::Sub(s, _) => s.draw(fb),
             Stage::Campaign(c) => c.draw(fb),
-            Stage::Menu | Stage::Confirm(..) | Stage::Start | Stage::Quit => {
-                let Some((image, boxes, pal)) = &self.menu else {
-                    fb.clear(0);
-                    return;
-                };
-                fb.pixels.copy_from_slice(image);
-                fb.palette = pal.clone();
-                for k in 0..ITEMS {
-                    let c = if k == self.cursor {
-                        Rgb6 { r: 63, g: 0, b: 0 }
-                    } else if k == NEXT_MISSION && !self.in_game() {
-                        Rgb6::default()
-                    } else {
-                        Rgb6 { r: 16, g: 0, b: 0 }
-                    };
-                    fb.palette.colors[ITEM_ENTRY + usize::from(k)] = c;
-                }
-                fb.palette.colors[ITEM_ENTRY + 9] = Rgb6 { r: 16, g: 0, b: 0 };
-                if let Stage::Confirm(_, b) = self.stage {
-                    // Box b of td.men over menu rows 84..115 (0000:330E).
-                    let src = usize::from(b - 1) * 32 * WIDTH;
-                    if let Some(rows) = boxes.get(src..src + 32 * WIDTH) {
-                        fb.pixels[84 * WIDTH..116 * WIDTH].copy_from_slice(rows);
-                    }
-                }
-            }
+            Stage::Saves(s) => s.draw(fb),
+            Stage::Menu | Stage::Start | Stage::Quit => self.menu.draw(fb),
         }
     }
 }

@@ -1442,6 +1442,7 @@ impl Flight {
             19 => self.flight_19_events(),
             // The flight-18 bomb.
             18 if self.mission.bomb => {
+                self.hit_flash = 0;
                 self.mission.white_out = true;
                 self.lost = true;
             }
@@ -1476,6 +1477,9 @@ impl Flight {
                         (x, y)
                     });
                 }
+            }
+            if c > 40 {
+                self.hit_flash = 0;
             }
             if c == 45 {
                 for _ in 0..16 {
@@ -1558,6 +1562,7 @@ impl Flight {
                 source: None,
             });
             self.succeeded = true;
+            self.hit_flash = 0;
             self.mission.white_out = true;
         }
         let ty = self.ships.0[4].tile_y;

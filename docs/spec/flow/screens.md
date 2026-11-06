@@ -208,6 +208,7 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 - U-227: what the stray byte DS:0AE7 holds (it is the first column of `td1-15` and of the `.scr` scenes; observed 0).
 - U-228: hint screens: does the line-skip test see keys typed during the fade-in (the buffer is flushed only after the fade)? Static answer: no, the flush comes after the fade-in, so earlier keys are lost.
 - U-229: the menu's `MemAvail` print and DAC 255 := white look like a leftover debug feature; is anything else drawn in ink 255 on the menu? (no other call found)
+- U-302 (IM-7, M9-19): details the port had to assume: the box colour of the cursor entry on item 3, the pulse after a cancelled quit box, what item 5 reloads, the joystick delay after Down, and whether keys typed before a flight survive it. Also: §3.1 says "one per retrace start" for the pulse, but C-0002 f868..872 show 11 steps per frame at P1 (the wait returns at once while the retrace bit is set); the port uses 11.
 
 ## 7. Provenance
 
