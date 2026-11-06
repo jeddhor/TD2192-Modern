@@ -86,12 +86,15 @@ enum Command {
         #[arg(long)]
         data: Option<PathBuf>,
     },
-    /// Find inputs that complete an Episode 1 flight with success in td-sim and write them as a
-    /// TDR replay (VE-2, M9-21).
+    /// Find inputs that complete a flight with success in td-sim and write them as a TDR replay
+    /// (VE-2, M9-21; E2 and E3: VE-4, M10-45).
     Plan {
-        /// Flight number 1..=20.
+        /// Flight number (E1 and E2 1..=20, E3 1..=21 without 20).
         flight: u8,
-        /// Directory for `e1f<NN>.tdr` (normally tests/replays).
+        /// Episode 1, 2 or 3.
+        #[arg(long, default_value_t = 1)]
+        episode: u8,
+        /// Directory for `e<E>f<NN>.tdr` (normally tests/replays).
         #[arg(long, default_value = "tests/replays")]
         out: PathBuf,
         /// Give up after this many ticks.
@@ -110,11 +113,16 @@ enum Command {
         /// Flights kept per decision of the beam search.
         #[arg(long, default_value_t = plan::BEAM)]
         beam: usize,
+        /// With --alt-muzzles: tolerate a difference between the two worlds (an enemy's volley
+        /// on a two-digit heading the player cannot avoid), as long as both flights stay alive,
+        /// open the comm viewer in the same ticks and succeed on the same tick.
+        #[arg(long)]
+        dual: bool,
         /// Original game directory (defaults to $TD2192_DATA).
         #[arg(long)]
         data: Option<PathBuf>,
     },
-    /// Run a TDR replay of an Episode 1 flight: check its state-hash checkpoints (--verify)
+    /// Run a TDR replay of a flight: check its state-hash checkpoints (--verify)
     /// and/or write its tick-keyed oracle scenario lines (--oracle-schedule).
     Replay {
         /// The replay file.
@@ -154,26 +162,31 @@ fn main() -> Result<()> {
         Command::GenManifest { inventory, out } => gen_manifest::run(&inventory, &out),
         Command::Plan {
             flight,
+            episode,
             out,
             max_ticks,
             probe,
             verbose,
             alt_muzzles,
             beam,
+            dual,
             data,
         } => {
             let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
                 .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            let episode = flight_setup::episode_of(episode)?;
             match probe {
-                Some(ticks) => plan::probe(&root, flight, ticks),
+                Some(ticks) => plan::probe(&root, episode, flight, ticks),
                 None => plan::run(
                     &root,
+                    episode,
                     flight,
                     &out,
                     max_ticks,
                     verbose,
                     alt_muzzles.as_deref(),
                     beam,
+                    dual,
                 ),
             }
         }

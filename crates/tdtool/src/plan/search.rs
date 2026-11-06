@@ -8,19 +8,21 @@
 //! the search.
 
 use rayon::prelude::*;
-use td_sim::flight::TickResult;
-use td_sim::flight::logic::transmission;
+use td_sim::flight::{Episode, TickResult};
 use td_sim::{Flight, FlightKey, World};
 
-use super::Plan;
 use super::nav::{FAR, Field};
-use super::schedule;
-use crate::flight_setup::E1Flight;
+use super::{Plan, schedule};
+use crate::flight_setup::FlightSetup;
 
 /// Ticks per decision.
 pub const STEP: usize = 3;
 /// Flights kept per decision (default; `tdtool plan --beam`).
 pub const BEAM: usize = 24;
+/// Beams kept for backing off when every branch fails.
+const HISTORY: usize = 40;
+/// Back-offs before the search gives up.
+const MAX_BACKTRACKS: u32 = 60;
 
 /// Guidance markers (mission-logic §2).
 const MARK_TARGET: u8 = 0x32;
@@ -58,6 +60,8 @@ struct Node {
     score: i64,
     /// The flight succeeded in this decision.
     won: bool,
+    /// `alt` no longer matches `flight` (dual mode: both must still succeed on the same tick).
+    diverged: bool,
 }
 
 /// Per-flight constants for scoring.
@@ -70,6 +74,8 @@ struct Goals {
     vci_field: Option<Field>,
     /// Player armour + shields at the start.
     start_hp: i32,
+    /// The base test has no phase condition: steer home from the start.
+    home_any_phase: bool,
 }
 
 /// Flight 19's V.C.I. view tiles.
@@ -85,14 +91,42 @@ fn vci_cells() -> Vec<(i16, i16)> {
         .collect()
 }
 
-fn home_views(flight: u8) -> Vec<(i16, i16)> {
-    match flight {
-        12 | 15 => vec![(102, 99), (102, 100)],
-        13 => (175..=177)
-            .flat_map(|x| (152..=154).map(move |y| (x, y)))
-            .collect(),
-        _ => vec![(102, 104)],
+/// The view tiles that pass a flight's base test (E1 mission-logic §4.4; E2 e2-mission-logic
+/// §4.4 and §5; E3 e3-mission-logic §4.3 and §5). The sub-tile limits of some tests
+/// (`viewSubY <= 31..36`) always hold for a view at rest.
+pub fn home_views(ep: Episode, flight: u8) -> Vec<(i16, i16)> {
+    let all = |pred: &dyn Fn(i16, i16) -> bool| -> Vec<(i16, i16)> {
+        (0..201i16)
+            .flat_map(|x| (0..201i16).map(move |y| (x, y)))
+            .filter(|&(x, y)| pred(x, y))
+            .collect()
+    };
+    match (ep, flight) {
+        (Episode::E1, 12 | 15) => vec![(102, 99), (102, 100)],
+        (Episode::E1, 13) => all(&|x, y| (175..=177).contains(&x) && (152..=154).contains(&y)),
+        (Episode::E1, _) => vec![(102, 104)],
+        (Episode::E2, 5) => all(&|x, y| (178..=183).contains(&x) && y == 35),
+        (Episode::E2, 6) => all(&|x, y| (118..=123).contains(&x) && y == 70),
+        (Episode::E2, 8) => all(&|x, _| x == 7),
+        (Episode::E2, 9..=19) => vec![(87, 28)],
+        (Episode::E2, 20) => all(&|_, y| y <= 7),
+        (Episode::E2, _) => vec![(102, 104)],
+        (Episode::E3, 1..=5) => vec![(167, 66)],
+        (Episode::E3, 6) => all(&|x, y| x == 6 && (101..=114).contains(&y)),
+        (Episode::E3, 11) => all(&|x, y| (160..=161).contains(&x) && (75..=76).contains(&y)),
+        (Episode::E3, 13) => all(&|x, y| (36..=37).contains(&x) && (44..=45).contains(&y)),
+        (Episode::E3, 18) => vec![(23, 31)],
+        (Episode::E3, _) => vec![(17, 164)],
     }
+}
+
+/// Flights whose base test has no phase condition (E2 §5.6, §5.7; E3 §5.11, §5.13, §5.14,
+/// §5.21).
+fn home_any_phase(ep: Episode, flight: u8) -> bool {
+    matches!(
+        (ep, flight),
+        (Episode::E2, 6 | 7) | (Episode::E3, 11 | 13 | 14 | 21)
+    )
 }
 
 /// The player's cell on the map (the ship at rest sits on view + (5, 3)).
@@ -280,8 +314,8 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
     let field = if let (Some(vci), 1) = (&g.vci_field, phase) {
         s -= view_term(&vci_views()) * 400 / 32;
         vci
-    } else if phase >= 100 || targets.is_empty() {
-        s -= view_term(&home_views(f.number)) * 400 / 32;
+    } else if phase >= 100 || targets.is_empty() || g.home_any_phase {
+        s -= view_term(&home_views(f.episode, f.number)) * 400 / 32;
         &g.home_field
     } else {
         // Distance to the nearest cell with a line of fire on a target.
@@ -306,16 +340,36 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
     s
 }
 
-/// Runs one decision from `node`: [`STEP`] ticks of `action`.
+/// One replay tick ([`td_sim::replay::step`]) that also tells whether the comm viewer opened.
+fn step(f: &mut Flight, world: &World, w: u64) -> (TickResult, bool) {
+    let c = td_sim::TickControls::from_word(w);
+    let mut r = f.tick(world, &c, &mut vec![]);
+    let mut comm = false;
+    while let TickResult::Modal(m) = r {
+        comm |= m == td_sim::Modal::CommViewer;
+        r = f.resume(world, &td_sim::TickControls::default(), &mut vec![]);
+    }
+    (r, comm)
+}
+
+/// Score handicap of a diverged node (dual mode), so that matching nodes are preferred.
+const DIVERGED: i64 = 50_000;
+
+/// Runs one decision from `node`: [`STEP`] ticks of `action`. With `alt_world`, the same inputs
+/// also fly the flight with the capture's muzzle bytes (U-160): the candidate is dropped when
+/// the two differ, unless `dual`; then both must stay alive, open the comm viewer in the same
+/// ticks, and end with success on the same tick.
 fn expand(
     node: &Node,
     action: Action,
     world: &World,
     alt_world: Option<&World>,
     g: &Goals,
+    dual: bool,
 ) -> Option<Node> {
     let mut f = node.flight.clone();
     let mut alt = node.alt.clone();
+    let mut diverged = node.diverged;
     let mut prev = node.keys.clone();
     let mut inputs = Vec::with_capacity(STEP);
     for t in 0..STEP {
@@ -331,11 +385,22 @@ fn expand(
         }
         let w = schedule::word(&prev, &down);
         inputs.push(w);
-        let r = td_sim::replay::step(&mut f, world, w);
+        let (r, comm) = step(&mut f, world, w);
         if let (Some(a), Some(aw)) = (alt.as_mut(), alt_world) {
-            td_sim::replay::step(a, aw, w);
-            if super::core_hash(a) != super::core_hash(&f) {
-                // The muzzle bytes past the table (U-160) changed the flight: avoid it.
+            let (ra, comm_a) = step(a, aw, w);
+            if !diverged && super::core_hash(a) != super::core_hash(&f) {
+                // The muzzle bytes past the table (U-160) changed the flight.
+                if !dual {
+                    return None;
+                }
+                diverged = true;
+            }
+            if comm_a != comm
+                || (ra == TickResult::Finished) != (r == TickResult::Finished)
+                || a.lost
+                || (a.mission_over && !a.succeeded)
+                || (ra == TickResult::Finished && !a.succeeded)
+            {
                 return None;
             }
         }
@@ -353,6 +418,7 @@ fn expand(
                     inputs,
                     score: i64::MAX,
                     won: true,
+                    diverged,
                 };
                 n.score = i64::MAX - n.inputs.len() as i64;
                 return Some(n);
@@ -360,7 +426,10 @@ fn expand(
             return None;
         }
     }
-    let score = score(&f, world, g);
+    let mut score = score(&f, world, g);
+    if diverged && let (Some(a), Some(aw)) = (alt.as_ref(), alt_world) {
+        score = score.min(self::score(a, aw, g)) - DIVERGED;
+    }
     Some(Node {
         flight: f,
         alt,
@@ -369,6 +438,7 @@ fn expand(
         inputs,
         score,
         won: false,
+        diverged,
     })
 }
 
@@ -398,42 +468,53 @@ fn diversity_key(f: &Flight) -> (i16, i16, i16, i16, u8, u8, u32, [u8; 4]) {
 
 /// Searches for a winning plan.
 pub fn plan(
-    setup: &E1Flight,
-    alt: Option<&E1Flight>,
+    setup: &FlightSetup,
+    alt: Option<&FlightSetup>,
     max_ticks: u32,
     verbose: bool,
     beam_width: usize,
+    dual: bool,
 ) -> Option<Plan> {
     let world = &setup.world;
     let alt_world = alt.map(|a| &a.world);
     let start = setup.start();
-    let home = home_views(setup.number)
+    let home = home_views(setup.episode, setup.number)
         .into_iter()
         .map(|(x, y)| (x + 5, y + 3))
         .collect::<Vec<_>>();
     let g = Goals {
         home_field: Field::from_cells(world, &home),
-        vci_field: (setup.number == 19).then(|| Field::from_cells(world, &vci_cells())),
+        vci_field: (setup.episode == Episode::E1 && setup.number == 19)
+            .then(|| Field::from_cells(world, &vci_cells())),
         start_hp: i32::from(start.player.armour) * 4 + i32::from(start.player.shields),
+        home_any_phase: home_any_phase(setup.episode, setup.number),
     };
     let mut arena: Vec<(usize, Vec<u64>)> = vec![(usize::MAX, vec![])];
     let mut beam = vec![Node {
         score: score(&start, world, &g),
         flight: start,
-        alt: alt.map(E1Flight::start),
+        alt: alt.map(FlightSetup::start),
         keys: vec![],
         parent: 0,
         inputs: vec![],
         won: false,
+        diverged: false,
     }];
     let mut ticks = 0u32;
+    // Recent beams (with the arena length and tick count after them) to back off to when every
+    // branch fails, and the diversity keys of the nodes abandoned that way (taboo).
+    let mut history: Vec<(Vec<Node>, usize, u32)> = vec![(beam.clone(), arena.len(), 0)];
+    let mut taboo = std::collections::BTreeSet::new();
+    let mut backtracks = 0u32;
+    let mut streak = 0u32;
+    let mut furthest = 0u32;
     while ticks < max_ticks {
         let children: Vec<Node> = beam
             .par_iter()
             .enumerate()
             .flat_map_iter(|(i, node)| {
                 let comm = node.flight.mission.comm_pending
-                    && transmission(node.flight.number, node.flight.mission.phase).is_some()
+                    && super::transmission_waits(&node.flight)
                     && !node.flight.comm_request;
                 let mut actions: Vec<Action> = DIRS.iter().map(|&d| Action::Keys(d)).collect();
                 if comm {
@@ -442,7 +523,7 @@ pub fn plan(
                 actions
                     .into_iter()
                     .filter_map(|a| {
-                        expand(node, a, world, alt_world, &g).map(|mut n| {
+                        expand(node, a, world, alt_world, &g, dual).map(|mut n| {
                             n.parent = i;
                             n
                         })
@@ -450,12 +531,7 @@ pub fn plan(
                     .collect::<Vec<_>>()
             })
             .collect();
-        if children.is_empty() {
-            if verbose {
-                eprintln!("tick {ticks}: every branch failed");
-            }
-            return None;
-        }
+        // Keep the best distinct children that were not abandoned before.
         let mut children = children;
         children.sort_by_key(|n| std::cmp::Reverse(n.score));
         if let Some(w) = children.iter().find(|n| n.won) {
@@ -471,16 +547,45 @@ pub fn plan(
             let comm_ticks = schedule::comm_ticks(setup, &inputs);
             return Some(Plan { inputs, comm_ticks });
         }
-        // Keep the best distinct children.
         let mut keys = std::collections::BTreeSet::new();
         let mut next = vec![];
         for c in children {
-            if keys.insert(diversity_key(&c.flight)) {
+            let k = diversity_key(&c.flight);
+            if !taboo.contains(&k) && keys.insert(k) {
                 next.push(c);
                 if next.len() == beam_width {
                     break;
                 }
             }
+        }
+        if next.is_empty() {
+            // Every branch failed (destroyed, lost, or changed by the muzzle bytes past the
+            // table, U-160, often by an enemy's volley the player cannot prevent in 3 ticks):
+            // back off 2, 4, ... 32 decisions and take other branches there.
+            if verbose {
+                eprintln!("tick {ticks}: every branch failed (backtrack {backtracks})");
+            }
+            if history.len() < 2 || backtracks >= MAX_BACKTRACKS {
+                return None;
+            }
+            backtracks += 1;
+            let k = (2usize << streak.min(4)).min(history.len() - 1);
+            streak += 1;
+            for (b, _, _) in history.iter().rev().take(k) {
+                for n in b {
+                    taboo.insert(diversity_key(&n.flight));
+                }
+            }
+            history.truncate(history.len() - k);
+            let (b, alen, t) = history.last().cloned().expect("a beam");
+            beam = b;
+            arena.truncate(alen);
+            ticks = t;
+            continue;
+        }
+        if ticks + STEP as u32 > furthest {
+            furthest = ticks + STEP as u32;
+            streak = 0;
         }
         // Record the kept nodes in the arena.
         let base = arena.len() - beam.len();
@@ -524,6 +629,10 @@ pub fn plan(
             );
         }
         beam = new_beam;
+        history.push((beam.clone(), arena.len(), ticks));
+        if history.len() > HISTORY {
+            history.remove(0);
+        }
     }
     None
 }

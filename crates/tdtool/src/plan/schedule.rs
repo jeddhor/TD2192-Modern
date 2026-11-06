@@ -20,7 +20,7 @@ use td_sim::flight::TickResult;
 use td_sim::replay::Replay;
 use td_sim::{FlightKey, TickControls, state_hash};
 
-use crate::flight_setup::E1Flight;
+use crate::flight_setup::{FlightSetup, episode_number};
 
 /// A plan: one input word per tick.
 #[derive(Debug, Clone, Default)]
@@ -113,9 +113,9 @@ pub fn word(prev: &[FlightKey], down: &[FlightKey]) -> u64 {
     c.to_word()
 }
 
-/// The replay of a plan: E1, its flight, the session seed at program start, checkpoints every
-/// [`super::CHECKPOINT_INTERVAL`] ticks.
-pub fn replay(setup: &E1Flight, plan: &Plan) -> Replay {
+/// The replay of a plan: its episode and flight, the session seed at program start,
+/// checkpoints every [`super::CHECKPOINT_INTERVAL`] ticks.
+pub fn replay(setup: &FlightSetup, plan: &Plan) -> Replay {
     let mut f = setup.start();
     let mut checkpoints = vec![];
     for (i, &w) in plan.inputs.iter().enumerate() {
@@ -125,9 +125,9 @@ pub fn replay(setup: &E1Flight, plan: &Plan) -> Replay {
         }
     }
     Replay {
-        episode: 1,
+        episode: episode_number(setup.episode),
         mission: setup.number,
-        seed: td_sim::flight::Session::new().rng.seed(),
+        seed: setup.session().rng.seed(),
         inputs: plan.inputs.clone(),
         interval: super::CHECKPOINT_INTERVAL,
         checkpoints,
@@ -135,7 +135,7 @@ pub fn replay(setup: &E1Flight, plan: &Plan) -> Replay {
 }
 
 /// Ticks whose comm viewer opened, found by running the inputs.
-pub fn comm_ticks(setup: &E1Flight, inputs: &[u64]) -> Vec<u32> {
+pub fn comm_ticks(setup: &FlightSetup, inputs: &[u64]) -> Vec<u32> {
     let mut f = setup.start();
     let mut out = vec![];
     for (i, &w) in inputs.iter().enumerate() {
@@ -190,11 +190,11 @@ pub fn oracle_lines(inputs: &[u64], comm: &[u32]) -> Vec<String> {
     out
 }
 
-/// Writes `<out>/e1f<NN>.tdr`.
-pub fn write_outputs(setup: &E1Flight, plan: &Plan, out: &Path) -> Result<()> {
+/// Writes `<out>/e<E>f<NN>.tdr`.
+pub fn write_outputs(setup: &FlightSetup, plan: &Plan, out: &Path) -> Result<()> {
     check(&plan.inputs)?;
     std::fs::create_dir_all(out).with_context(|| format!("create {}", out.display()))?;
-    let path = out.join(format!("e1f{:02}.tdr", setup.number));
+    let path = out.join(format!("{}.tdr", setup.stem()));
     std::fs::write(&path, replay(setup, plan).to_bytes())
         .with_context(|| format!("write {}", path.display()))?;
     println!("wrote {}", path.display());
