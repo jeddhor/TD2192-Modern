@@ -29,14 +29,14 @@ The handler (`2C37:34EE`) increments a busy counter (CS:42DC), saves the registe
 
 | fn | Handler | Used | Meaning |
 |---:|---|:---:|---|
-| 01h | `4B95` | yes | SB init: set up the DMA buffer inside the driver segment, reset/detect the DSP, hook the SB IRQ, speaker on (`D1h`), SB Pro mixer master/voice/FM to FFh when the mixer answers. Returns the IRQ number, or FFFFh if there is no card |
+| 01h | `4B95` | yes | SB init: set up the 4 KB DMA ring at `CS:0416` (physical 16 × CS + 416h, moved up 1000h if it would cross a 64 KB page; file0000 `CS:0435`), reset/detect the DSP, hook the SB IRQ, speaker on (`D1h`), SB Pro mixer master/voice/FM to FFh when the mixer answers. Returns the IRQ number, or FFFFh if there is no card |
 | 02h | `4C62` | | set SB base port (BX) and IRQ |
 | 03h | `3496` | | — |
 | 04h | `5DD0` | yes | SB shutdown: stop digital sound, restore the IRQ vector and mask |
 | 05h | `6221` | | — |
 | 06h | `62D5` | yes | **Play VOC from memory** (DX:DI). Stops the digital sound that is playing first, then starts the new one ([voc §2.1](../spec/audio/voc-and-adpcm.md#21-how-worx-plays-a-voc-for-reference)). CONFIRMED |
 | 07h | `4B49` | | stop digital sound (DSP `D0h`, DMA mask) |
-| 08h | `49ED` | yes | digital sound playing? (bit 0 of CS:31F2; file0000 CS:3211). Set when a VOC starts, cleared by a stop or when the streaming code next finds the end of the data, so it stays set 0.1..0.38 s after the last sample at preset P1 (measured: [flow/intro](../spec/flow/intro.md) §3.6, C-0081; U-410) |
+| 08h | `49ED` | yes | digital sound playing? (bit 0 of CS:31F2; file0000 CS:3211). Set when a VOC starts, cleared by a stop or by the refill after the one that finds the data used up; refills happen only at DMA positions 400h + r + 256 j of the ring, so the status outlasts the sound by an exact, sample-dependent time ([voc §2.3](../spec/audio/voc-and-adpcm.md#23-the-playing-status-worx-function-08h-u-410); U-410 resolved) |
 | 09h–0Bh | `34A2`, `34C9`, `34E3` | | — |
 | 0Ch | `466D` | | start a song of another format (the loop restart calls it when the song type is not CMF; HYPOTHESIS: Standard MIDI File) |
 | 0Dh | `427F` | yes | **Stop music** ([cmf §4.9](../spec/audio/cmf.md#49-stop-worx-function-0dh-and-loop-control)). CONFIRMED |
@@ -51,7 +51,7 @@ The handler (`2C37:34EE`) increments a busy counter (CS:42DC), saves the registe
 | 19h | `3763` | | close the file |
 | 1Ah–1Ch | `3783`, `38C9`, `37B7` | | — |
 | 1Dh | `4263` | yes | **set music loop flag** (BL → CS:3069). CONFIRMED |
-| 1Eh | `4791` | yes | **Play CMF from memory** (DX:DI) ([cmf §4.3](../spec/audio/cmf.md#43-song-start-worx-function-1eh-also-used-for-the-loop-restart)). CONFIRMED |
+| 1Eh | `4791` | yes | **Play CMF from memory** (DX:DI) ([cmf §4.3](../spec/audio/cmf.md#43-song-start-worx-function-1eh-also-used-for-the-loop-restart)). Runs no event itself; the first tick comes from a timer interrupt latched during the call (interrupts stay off for the whole INT 63h call), right after it returns (U-401). CONFIRMED |
 | 1Fh | `49FA` | | resume music (CS:316A := 1) |
 | 20h | `3B37` | | SB Pro mixer register 22h (master) := BL |
 | 21h | `3B79` | yes | SB Pro mixer register 04h (voice volume) := BL (high nibble left, low nibble right). Needs an SB Pro mixer (CS:31FA ≥ 1). CONFIRMED |
@@ -122,12 +122,19 @@ Game-side sound routines (our names):
 | 31D1, 2F55 | BDh shadow, GM-drum flag |
 | 31F2 | Digital sound active |
 | 31F8, 31FA | SB base port; SB Pro mixer present |
-| 4CEB, 4CEC, 4CED | VOC block state, codec/DSP-command index, time constant |
+| 31E6, 31E7 | DMA page and the low 16 bits of the ring's physical address |
+| 4B48 | DSP transfer running (bit 0) |
+| 4CE3 / 4CE5 / 4DC2 | refill length / DMA position at the last refill (offset in the ring, 0 after a wrap) / refill start offset |
+| 4CE7..4CE9 | data bytes of the block not yet copied (24-bit) |
+| 4CF6 | data bytes copied but not yet passed by the DMA (as WORX accounts it); 0 with nothing left = data used up |
+| 4CEB, 4CEC, 4CED | VOC block state (1 = new block, 2 = streaming data, 0Ch = after silence), codec/DSP-command index, time constant |
 | 42DE | Timer streaming enabled |
 
 ## 4. Timer interrupt
 
 `WORX_TimerIsr` (`2C37:4558`) runs at the PIT rate. In order: if `flags and 16h ≠ 0` it runs the music tick (`2C37:487E`, [cmf §4.4](../spec/audio/cmf.md#44-each-tick)). Then it counts fast ticks and chains to the BIOS handler every N ticks. On the other ticks it sends EOI and runs the second-level work (`2C37:44EF`) unless the driver is busy. The second-level work does mixer streaming (flag 20h; not used) and, when timer streaming is on, refills the VOC DMA buffer (`2C37:61FA`). Rates are in [timing §4.2](../spec/core/timing.md#42-where-the-bios-tick-comes-from).
+
+The refill (`61FA`) runs only while the playing byte is set. In the streaming state it asks `4DC4` how far the DMA has moved: `4DC4` reads channel 1's current address but keeps only the high byte, subtracts the ring's address, and answers 0 when the result is below 400h or above 1000h, or when it has not moved since the last refill; when it is below the last position (the DMA wrapped) it accounts to the end of the ring and starts again at 0. A non-zero answer makes `631F` fill that region with silence and then with the next data (`6514`). When nothing is left to copy and the copied data has all been passed, the next refill sends `D0h`, masks DMA, reads the next block and, at the terminator, stops (`4B49`: playing byte := 0). The consequences (exact busy times, the dependence on the ring's address) are in [voc §2.1, §2.3](../spec/audio/voc-and-adpcm.md#21-how-worx-plays-a-voc).
 
 ## 5. Quirks found
 
@@ -151,4 +158,6 @@ Static reading of the listing, made in a private Ghidra copy (`re-work\ghidra-re
 | Wrapper → fn mapping | `2C37:0055..040F` | CONFIRMED |
 | Music functions 0Dh, 1Dh, 1Eh | see cmf.md | CONFIRMED (emulated + capture) |
 | VOC functions 06h, 08h, 3Eh; DSP command table | `2C37:62D5`, `49ED`, `42DF`, `31DC` | CONFIRMED (static) |
+| VOC streaming: ring at `CS:0416`, DSP length E0E0h, refill points, data-used-up test, status clear | `2C37:4B95..4BCA`, `4CF9..4D65`, `4DC4..4E19`, `61FA..6220`, `631F..6551`, `4B49` | CONFIRMED (static, RE-16, from RE-4's listing) + C-0081/C-0071/C-0072 busy times |
+| Song start runs with interrupts off; first tick from a latched interrupt | `2C37:34EE..3530`, `4791..4877`, `3CAF` (no `STI`); C-0073 | CONFIRMED |
 | Other rows of §1.1 | handler entry code only | LIKELY or unknown, as marked |
