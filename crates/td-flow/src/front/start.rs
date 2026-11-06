@@ -287,7 +287,8 @@ impl Screen for StartScreen {
             };
             let end = ui.text(fb, &label, (ITEM_X, y), ink);
             if !self.enabled(i) {
-                ui.text(fb, "- not installed", (end + 6, y), INK_DISABLED);
+                // The pen after the label is ITEM_X + end - 1; leave a 6-pixel gap.
+                ui.text(fb, "- not installed", (ITEM_X + end + 5, y), INK_DISABLED);
             }
         }
         if let Some(e) = &self.error {
@@ -623,7 +624,7 @@ mod tests {
         assert_ne!(all, missing);
         assert_eq!(
             (all, missing),
-            (0x95f9_1d46_48c2_9a27, 0x4c9d_a0c2_16c8_f9f7),
+            (0x95f9_1d46_48c2_9a27, 0x59b6_a512_a432_98d7),
             "start screen snapshot hashes ({all:#018x}, {missing:#018x})"
         );
     }
