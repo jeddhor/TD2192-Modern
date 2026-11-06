@@ -11,8 +11,8 @@ Builds a portable release folder and zip of TD2192-Modern for Windows x64 (M13-0
 3. Zips the folder next to it.
 
 The package contains no game data: players supply their own copy of Traffic Department 2192
-(ADR-0003). The output folder must be outside the repository. Code signing and the other
-platforms wait for decision D6.
+(ADR-0003). The output folder must be outside the repository. Decision D6: Windows x64 and
+Linux x64, unsigned; the Linux package is tools/scripts/package.sh.
 
 .EXAMPLE
 pwsh tools/scripts/package.ps1 -Out P:\msdos\TD2192\dist

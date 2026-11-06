@@ -1,5 +1,7 @@
 # Parity: M6 flight core and M7 weapons (2026-11-02, in progress)
 
+> VE-6 2026-11-06: this report is from M6. Its weapons and HUD rows predate C-0011 (`oracle_weapons.rs`), `hud_parity.rs` and the whole-flight comparisons. See [M9-playthrough](M9-playthrough.md), [M10-playthrough](M10-playthrough.md) and the master checklist [M12-checklist](M12-checklist.md).
+
 ## Player flight model (L5, automated)
 
 Method: `crates/td-sim/tests/oracle_flight.rs` (needs `TD2192_DATA` and `TD2192_ORACLE`) replays the oracle runs **C-0007** and **C-0008** (E1 mission 1, preset P1, cycles 20000; DGROUP DS:1700..3A3F dumped every video frame). For every tick it feeds `td_sim::Flight` the eight arrow-key bytes the original's key table held, then compares our player state with the original's. The original's state after tick *t*'s physics is read from the first frame whose tick counter (DS:1718) is *t* + 1, and the key bytes are taken from that same frame. The frame before can still show a key that physics already saw released. Both captures switch class 4 → 0 with a cheat chord the port does not implement, so the harness copies that change (class, armour, shields) from the original.

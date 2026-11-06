@@ -38,6 +38,7 @@ use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, Pad, PadButton, TickInput};
 use td_render::{Framebuffer, WIDTH, fade};
 
+use crate::bios_key;
 use crate::dialogue::KEY_BUFFER;
 use crate::story::is_keystroke;
 
@@ -204,6 +205,10 @@ pub struct MainMenu {
     pulses: VecDeque<Pulse>,
     /// The BIOS keyboard buffer as the loop sees it.
     keys: Vec<Key>,
+    /// A Shift key was held at the last frame (for the bytes of discarded keys).
+    shift: bool,
+    /// The last byte the loop's poll read and discarded, not yet taken ([`Self::take_discarded`]).
+    discarded: Option<u8>,
     pad: Option<Pad>,
     /// A palette-buffer entry the program changes after the loader's fade-in (the E2/E3
     /// restore bookkeeping, e2-program-flow §4.2 item 2).
@@ -264,6 +269,8 @@ impl MainMenu {
             wait: 0,
             pulses: VecDeque::new(),
             keys: Vec::new(),
+            shift: false,
+            discarded: None,
             pad: None,
             after_loader: None,
         }
@@ -288,6 +295,15 @@ impl MainMenu {
     /// finds them in the BIOS buffer (screens §2.2).
     pub fn take_keys(&mut self) -> Vec<Key> {
         std::mem::take(&mut self.keys)
+    }
+
+    /// The last byte the loop read from the BIOS buffer and discarded since the last call, if
+    /// any: when a poll finds several keystrokes it handles the first and reads and discards the
+    /// rest, the last byte `ReadKey` returned staying in E2/E3 `g_MenuDrainKey` (DS:0660;
+    /// e2-program-flow rev 3 §4.2 item 5, weapons rev 5 §3.3.2 item 2; [`bios_key`]). E1 keeps
+    /// no such byte.
+    pub fn take_discarded(&mut self) -> Option<u8> {
+        self.discarded.take()
     }
 
     /// True while the loop waits for input (no fade, pulse or box in progress).
@@ -380,6 +396,7 @@ impl MainMenu {
     /// Items 0 and 2 with a game in progress, and Esc, ask first (boxes 2 and 1); a confirmed
     /// quit returns [`QUIT`].
     pub fn step(&mut self, input: &TickInput) -> Option<u8> {
+        self.shift = input.held(Key::LSHIFT) || input.held(Key::RSHIFT);
         for &k in &input.pressed {
             if is_keystroke(k) && self.keys.len() < KEY_BUFFER {
                 self.keys.push(k);
@@ -526,6 +543,13 @@ impl MainMenu {
     /// Returns true if the loop moved on (its next phase starts in the same frame).
     fn poll(&mut self) -> bool {
         if let Some(&k) = self.keys.first() {
+            let last = self.keys[1..]
+                .iter()
+                .filter_map(|&k| bios_key::last_byte(k, self.shift))
+                .next_back();
+            if last.is_some() {
+                self.discarded = last;
+            }
             self.keys.clear();
             match k {
                 Key::UP | KP_8 => self.move_by(-1),
@@ -744,6 +768,40 @@ mod tests {
         assert_eq!(move_cursor(8, 1, false), 0);
         assert_eq!(move_cursor(4, -1, false), 2);
         assert_eq!(move_cursor(2, 1, true), 3);
+    }
+
+    #[test]
+    fn discarded_keys_leave_their_last_byte() {
+        // e2-program-flow rev 3 §4.2 item 5: the poll handles the first key and reads the rest
+        // into g_MenuDrainKey; an extended key leaves its scan code.
+        let mut m = MainMenu::with_style(Some(gfx()), MenuStyle::Later);
+        m.enter(0, false, Reentry::Loader { first: false });
+        idle(&mut m, 40);
+        assert_eq!(m.take_discarded(), None);
+        m.step(&press(Key::DOWN));
+        idle(&mut m, 20);
+        assert_eq!(m.take_discarded(), None, "a key alone is not discarded");
+        m.step(&TickInput {
+            pressed: vec![Key::DOWN, Key::letter('q').unwrap(), Key::UP],
+            ..TickInput::default()
+        });
+        assert_eq!(m.cursor(), 4);
+        assert_eq!(m.take_discarded(), Some(0x48), "Up's scan code");
+        assert_eq!(m.take_discarded(), None);
+        idle(&mut m, 20);
+        // Keys typed during a pulse wait in the buffer: the next poll takes the first.
+        m.step(&press(Key::DOWN));
+        m.step(&TickInput {
+            pressed: vec![Key::letter('a').unwrap(), Key::letter('b').unwrap()],
+            ..TickInput::default()
+        });
+        idle(&mut m, 20);
+        assert_eq!(m.take_discarded(), Some(b'b'));
+        m.step(&TickInput {
+            pressed: vec![Key::ESCAPE, Key::ENTER],
+            ..TickInput::default()
+        });
+        assert_eq!(m.take_discarded(), Some(0x0D));
     }
 
     #[test]

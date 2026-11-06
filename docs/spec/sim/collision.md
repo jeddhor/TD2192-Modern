@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/collision` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 |
 | **Confidence** | per row below |

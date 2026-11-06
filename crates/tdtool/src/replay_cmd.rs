@@ -91,9 +91,9 @@ pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
     })
 }
 
-/// Runs the inputs in the installation's world (a direct start's muzzle bytes, weapons rev 4
-/// §3.3) and in `alt` (other muzzle bytes, U-160) and prints the first tick where the two
-/// flights differ, with what changed in each.
+/// Runs the inputs in the installation's world (a direct start's muzzle bytes, weapons rev 5
+/// §3.3, §3.3.2, §3.3.3) and in `alt` (other muzzle bytes, U-160) and prints the first tick
+/// where the two flights differ, with what changed in each.
 pub fn compare_muzzles(root: &Path, r: &Replay, alt: Vec<u8>) -> Result<()> {
     let base = setup_of(root, r)?;
     let other = base.with_muzzles(alt);

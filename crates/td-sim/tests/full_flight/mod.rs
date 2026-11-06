@@ -29,14 +29,14 @@
 //! 51 projectile slots. **At the end:** the original's last tick is the replay's last tick, and
 //! the outcome flag is the port's.
 //!
-//! **World.** E1: the port's own muzzle world for a direct start, the executable's table and the
-//! 272 two-digit-heading bytes built from a front end that has shown nothing
-//! (`td_sim::flight::front_end`, weapons rev 4 §3.3, OB-017 preserved), first checked against
-//! the capture's DGROUP at tick 1 (weapons §3.3 test vector (a)). E2 and E3: the capture's
-//! DGROUP from the muzzle table on (their two-digit ranges are not mapped yet, U-441). Nothing
-//! else is copied from the capture: `g_Weapon` comes from the session (BUG-2 fixed), and the
-//! hit flash ended by E1 flight 17's cut-scene is zeroed by td-sim (flight-screens §4.10,
-//! BUG-3).
+//! **World.** The port's own muzzle world for a direct start (`td_sim::flight::front_end`,
+//! weapons rev 5 §3.3, §3.3.2, §3.3.3, OB-017 preserved): the executable's table and the 272
+//! two-digit-heading bytes built from the front-end state the capture's start leaves (E1: none;
+//! E2/E3: the block's first scene card, or E3's restore screen and title card), first checked
+//! against the capture's DGROUP at tick 1 (weapons §3.3 test vector (a), §3.3.2 and §3.3.3 test
+//! vectors (a)). Nothing is copied from the capture: `g_Weapon` comes from the session (BUG-2
+//! fixed), and the hit flash ended by E1 flight 17's cut-scene is zeroed by td-sim
+//! (flight-screens §4.10, BUG-3).
 
 // Each test crate uses one layout.
 #![allow(dead_code)]
@@ -47,7 +47,9 @@ use std::path::{Path, PathBuf};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
-use td_sim::flight::front_end::{FrontEnd, MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, muzzle_world};
+use td_sim::flight::front_end::{
+    MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, direct_start_world, muzzle_base,
+};
 use td_sim::flight::player::Turn;
 use td_sim::flight::ships::{NO_SHIP, RECORD_LEN, SHIP_SLOTS, Ship};
 use td_sim::flight::shots::{SHOT_SLOTS, Shot};
@@ -59,30 +61,82 @@ use td_sim::{Flight, FlightKey};
 const MUZZLE_LEN: usize = 34 * 99 + 36;
 const STALL: u32 = 0x8000_0000;
 
-/// The E1 direct-start muzzle world (weapons rev 4 §3.3), checked against `captured` (the
-/// capture's DGROUP from DS:035C at tick 1): the table and the eight two-digit ranges.
-fn direct_start_muzzles(dir: &DataDir, captured: &[u8], name: &str) -> Vec<u8> {
+/// The direct-start muzzle world of flight `flight` of `ep` (weapons rev 5 §3.3, §3.3.2,
+/// §3.3.3), checked against `captured` (the capture's DGROUP from the muzzle table on, at
+/// tick 1): the table and the eight two-digit ranges.
+fn direct_start_muzzles(
+    dir: &DataDir,
+    ep: Episode,
+    flight: u8,
+    captured: &[u8],
+    name: &str,
+) -> Vec<u8> {
     let res = ExeResources::load(dir).unwrap();
     let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
         panic!("muzzle table");
     };
-    let menu = dir.read("tdmen.pal").unwrap();
-    let world = muzzle_world(&table, &menu, &FrontEnd::direct_start());
+    let world = direct_start_world(ep, flight, &table, |f| dir.read(f)).unwrap();
     assert_eq!(
         world[..MUZZLE_TABLE_LEN],
         captured[..MUZZLE_TABLE_LEN],
         "{name}: table"
     );
+    let base = usize::from(muzzle_base(ep));
     for h in TWO_DIGIT_HEADINGS {
         let at = 34 * usize::from(h) + 2;
         assert_eq!(
             world[at..at + 34],
             captured[at..at + 34],
             "{name}: heading {h:02X}h bytes (DS:{:04X})",
-            0x035C + at
+            base + at
         );
     }
     world
+}
+
+/// Checks the direct-start muzzle world of flight `flight` of `l`'s episode against the
+/// DGROUP of its capture (the success replay's oracle run) at tick 1, and that the 272 bytes
+/// stay constant in every record of the flight; skips without a capture. Returns whether it
+/// compared.
+pub fn check_world(l: &Layout, data: &Path, oracle: &Path, flight: u8) -> bool {
+    let tag = format!("{}{flight}-plan", l.tag);
+    let Some(cap) = find_capture(oracle, &tag) else {
+        eprintln!("SKIPPED: no {tag} capture under the oracle root");
+        return false;
+    };
+    let name = cap.file_name().unwrap().to_string_lossy().into_owned();
+    let ds = load_packed(
+        &cap.join(format!("mem/tick_{}-0000_{:X}_ds.bin", l.dgroup, l.ds_len)),
+        l.ds_len,
+    );
+    let first = ds
+        .iter()
+        .find(|r| r.value == 1)
+        .expect("a record of tick 1");
+    let dir = DataDir::open(data).unwrap();
+    let world = direct_start_muzzles(
+        &dir,
+        l.episode,
+        flight,
+        &first.bytes[l.muzzles..l.muzzles + MUZZLE_LEN],
+        &name,
+    );
+    for r in &ds {
+        for h in TWO_DIGIT_HEADINGS {
+            let at = 34 * usize::from(h) + 2;
+            assert_eq!(
+                world[at..at + 34],
+                r.bytes[l.muzzles + at..l.muzzles + at + 34],
+                "{name}: heading {h:02X}h bytes in the record of {:X}",
+                r.value
+            );
+        }
+    }
+    eprintln!(
+        "{name} flight {flight}: muzzle world matches in {} records",
+        ds.len()
+    );
+    true
 }
 
 /// Where an episode keeps the compared state (DGROUP offsets; E1 `docs/re/symbols/file0001.csv`,
@@ -634,11 +688,7 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
     let first = dump(*by_tick.get(&1).expect("a record of tick 1"));
     let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, flight)).unwrap()).unwrap();
     let captured = &first.ds[l.muzzles..l.muzzles + MUZZLE_LEN];
-    let muzzles = if ep == Episode::E1 {
-        direct_start_muzzles(&dir, captured, &name)
-    } else {
-        captured.to_vec()
-    };
+    let muzzles = direct_start_muzzles(&dir, ep, flight, captured, &name);
     let world = episode::world(ep, flight, map, muzzles);
     let mission = episode::mission_file(ep, flight)
         .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());

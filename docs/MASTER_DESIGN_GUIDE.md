@@ -1098,10 +1098,10 @@ These need the project owner's decision. Agents MUST NOT decide them; they are l
 |---|---|---|
 | D1 | Implementation language and stack (ADR-0001) | **DECIDED 2026-11-02: Rust + SDL3** (Bevy considered and not chosen; see ADR-0001) |
 | D2 | Project licence for our code | **DECIDED 2026-11-02: MIT** |
-| D3 | Import original save files? | Nice-to-have in M11 if the original saves turn out to hold real progress |
-| D4 | Include the TFP "about"/"order" extras? | No for 1.0 (historical curiosities) |
-| D5 | Which Enhanced features ship in 1.0? | Polyphonic SFX, colour-blind guidance palette, skip intro, analog steering. The user asked for widescreen, upscaling and dynamic lighting to be planned and implemented (2026-11-05, M12-08..M12-12); whether they are on by default in an Enhanced preset stays open |
-| D6 | Target platforms and signing for 1.0 | Windows + Linux; macOS if a signing identity is available |
+| D3 | Import original save files? | **DECIDED 2026-11-06 (user): no.** The port keeps its own saves (original byte format) and never reads the game folder's saves |
+| D4 | Include the TFP "about"/"order" extras? | **DECIDED 2026-11-06 (user): no for 1.0.** Menu items 6 and 7 show the about/order pictures in-process |
+| D5 | Which Enhanced features ship in 1.0? | **DECIDED 2026-11-06 (user):** choosing the Enhanced profile turns on a visual preset: 16:9 widescreen, xBR 3x upscaling, subtle lighting, bloom off, polyphonic sound effects and every fix-enhanced original-bug fix; each stays individually adjustable. Colour-blind guidance, skip intro and analog steering are options, off by default |
+| D6 | Target platforms and signing for 1.0 | **DECIDED 2026-11-06 (user): Windows x64 and Linux x64, unsigned;** macOS later if a signing identity becomes available |
 | D7 | Repository hosting and visibility | Private GitHub repository until the rights review (R5) is done |
 | D8 | Default script variant on first run | Ask, exactly like the original |
 | D9 | Reproduce the original's in-game "cheater" judgement (text only)? | Yes, text only; host-modifying behaviour never |
