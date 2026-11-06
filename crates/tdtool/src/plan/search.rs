@@ -341,7 +341,24 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
         None
     } else if phase >= 100 || targets.is_empty() || g.home_any_phase {
         s -= view_term(&home_views(f.episode, f.number)) * 400 / 32;
-        if let Some(max) = home_sub_y_max(f.episode, f.number) {
+        // Near the goal, the distance in pixels to the nearest goal view at rest (offsets
+        // (32, 16), mission-setup §3.1), so that walls around a narrow goal are worked round;
+        // on the goal tile, the base test's viewSubY limit.
+        let px = |t: i16, s: i16| i64::from(t) * 32 + i64::from(s);
+        let near = home_views(f.episode, f.number)
+            .iter()
+            .map(|&(x, y)| {
+                (px(v.tile_x, v.sub_x) - px(x, 32)).abs()
+                    + (px(v.tile_y, v.sub_y) - px(y, 16)).abs()
+            })
+            .min()
+            .unwrap_or(0);
+        if near < 96 {
+            s -= near * 20;
+        }
+        if let Some(max) = home_sub_y_max(f.episode, f.number)
+            && home_views(f.episode, f.number).contains(&(v.tile_x, v.tile_y))
+        {
             s -= i64::from((v.sub_y - max).max(0)) * 400;
         }
         Some(&g.home_field)
@@ -649,6 +666,21 @@ pub fn plan(
                 })
                 .collect();
             let v = b.player.view;
+            let near: Vec<String> = b
+                .ships
+                .0
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| {
+                    s.alive()
+                        && (i16::from(s.tile_x) - cell.0).abs() <= 4
+                        && (i16::from(s.tile_y) - cell.1).abs() <= 4
+                })
+                .map(|(i, s)| format!("{}:c{}@({},{})", i + 1, s.class, s.tile_x, s.tile_y))
+                .collect();
+            if !near.is_empty() {
+                eprintln!("  near the player: {}", near.join(" "));
+            }
             eprintln!(
                 "tick {ticks}: score {} phase {} cell ({},{}) view ({},{})+({},{}) armour {} kills {} targets {}",
                 new_beam[0].score,

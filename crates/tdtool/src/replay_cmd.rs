@@ -31,6 +31,8 @@ pub struct Verified {
     pub died: bool,
     pub kills: i16,
     pub outcome: bool,
+    /// The view at the end: tile X, tile Y, sub X, sub Y.
+    pub view: (i16, i16, i16, i16),
 }
 
 /// Re-runs `r` and checks its checkpoints.
@@ -80,6 +82,12 @@ pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
         died: f.died(),
         kills: f.kills,
         outcome: f.outcome(),
+        view: (
+            f.player.view.tile_x,
+            f.player.view.tile_y,
+            f.player.view.sub_x,
+            f.player.view.sub_y,
+        ),
     })
 }
 
@@ -141,8 +149,8 @@ pub fn run(
     if verify_it {
         let v = verify(root, &r)?;
         println!(
-            "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {}",
-            v.checkpoints, v.finished_at, v.succeeded, v.lost, v.died, v.kills, v.outcome
+            "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {} view {:?}",
+            v.checkpoints, v.finished_at, v.succeeded, v.lost, v.died, v.kills, v.outcome, v.view
         );
     }
     if let Some(out) = rewrite {
@@ -164,8 +172,9 @@ pub fn run(
     if let Some(out) = schedule {
         let setup = setup_of(root, &r)?;
         plan::check_inputs(&r.inputs)?;
+        let modals = plan::modal_ticks(&setup, &r.inputs);
         let comm = plan::comm_ticks(&setup, &r.inputs);
-        let lines = plan::oracle_lines(&r.inputs, &comm);
+        let lines = plan::oracle_lines(&r.inputs, &modals);
         std::fs::write(out, lines.join("\n") + "\n")
             .with_context(|| format!("write {}", out.display()))?;
         println!(

@@ -632,10 +632,14 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
         let c = td_sim::TickControls::from_word(r.inputs[t as usize - 1]);
         let mut ev = vec![];
         let mut result = f.tick(&world, &c, &mut ev);
-        while let TickResult::Modal(_) = result {
+        while let TickResult::Modal(m) = result {
             cov.comm_viewers.push(t);
             // The transmission screen does not fade, so g_HitFlash survives it (C-0058 tick
-            // 318: 10 after the screen), and td2192 leaves it alone too.
+            // 318: 10 after the screen), and td2192 leaves it alone too. The flight menu fades
+            // out and back, which zeroes it (hit-flash §4.2; the host's part).
+            if m == td_sim::Modal::FlightMenu {
+                f.hit_flash = 0;
+            }
             result = f.resume(&world, &td_sim::TickControls::default(), &mut ev);
         }
         // The host's part for the real-time interlude of step 18 (mission-logic §5.17): the

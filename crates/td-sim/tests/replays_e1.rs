@@ -110,3 +110,15 @@ fn flight_19_success_replay() {
 fn flight_20_success_replay() {
     check(20);
 }
+
+#[test]
+fn flight_01_idle_death_replay() {
+    let data = require_data!();
+    success_replay::check_ending(&data, Episode::E1, 1, "-idle", true);
+}
+
+#[test]
+fn flight_01_modal_screens_replay() {
+    let data = require_data!();
+    success_replay::check_ending(&data, Episode::E1, 1, "-modals", true);
+}

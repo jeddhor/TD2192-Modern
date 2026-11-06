@@ -20,7 +20,8 @@ use td_sim::{Flight, TickControls};
 
 use crate::flight_setup::FlightSetup;
 pub use schedule::{
-    Plan, check as check_inputs, comm_ticks, oracle_lines, replay as replay_of, write_outputs,
+    Plan, check as check_inputs, comm_ticks, modal_ticks, oracle_lines, replay as replay_of,
+    write_outputs,
 };
 pub use search::BEAM;
 
@@ -141,8 +142,18 @@ pub fn probe(root: &Path, episode: Episode, number: u8, ticks: u32) -> Result<()
 
 /// Writes `<out>/e<E>f<NN>-idle.tdr`: no input at all until the flight ends (in the flights
 /// where the enemies destroy the parked ship: the death and the end sequence, which no success
-/// plan covers), at most `max_ticks` ticks.
-pub fn idle(root: &Path, episode: Episode, number: u8, out: &Path, max_ticks: u32) -> Result<()> {
+/// plan covers), at most `max_ticks` ticks. With `modals`, `e<E>f<NN>-modals.tdr`: the same with
+/// one tap each of P (pause) in tick 100, F5 (tactical map) in tick 200 and Esc (flight menu)
+/// in tick 300, which open their screens with no other key held (the oracle schedule closes
+/// them, [`schedule::oracle_lines`]).
+pub fn idle(
+    root: &Path,
+    episode: Episode,
+    number: u8,
+    out: &Path,
+    max_ticks: u32,
+    modals: bool,
+) -> Result<()> {
     let setup = FlightSetup::load(root, episode, number)?;
     let mut f = setup.start();
     let mut inputs = vec![];
@@ -150,8 +161,19 @@ pub fn idle(root: &Path, episode: Episode, number: u8, out: &Path, max_ticks: u3
         if inputs.len() as u32 == max_ticks {
             bail!("flight {number}: still flying after {max_ticks} idle ticks");
         }
-        inputs.push(0);
-        if td_sim::replay::step(&mut f, &setup.world, 0) == TickResult::Finished {
+        let t = inputs.len() + 1;
+        let key = match t {
+            100 => Some(td_sim::FlightKey::P),
+            200 => Some(td_sim::FlightKey::F5),
+            300 => Some(td_sim::FlightKey::Esc),
+            _ => None,
+        };
+        let w = match key {
+            Some(k) if modals => schedule::word(&[], &[k]),
+            _ => 0,
+        };
+        inputs.push(w);
+        if td_sim::replay::step(&mut f, &setup.world, w) == TickResult::Finished {
             break;
         }
     }
@@ -159,7 +181,7 @@ pub fn idle(root: &Path, episode: Episode, number: u8, out: &Path, max_ticks: u3
         comm_ticks: comm_ticks(&setup, &inputs),
         inputs,
     };
-    write_outputs(&setup, &plan, out, "-idle")?;
+    write_outputs(&setup, &plan, out, if modals { "-modals" } else { "-idle" })?;
     println!(
         "flight {number}: {} idle ticks; succeeded {} lost {} died {} outcome {}",
         plan.inputs.len(),

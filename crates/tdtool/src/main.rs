@@ -106,6 +106,9 @@ enum Command {
         /// Write `e<E>f<NN>-idle.tdr`: no input until the flight ends (a death).
         #[arg(long)]
         idle: bool,
+        /// With --idle: `e<E>f<NN>-modals.tdr`, with P, F5 and Esc taps in ticks 100, 200, 300.
+        #[arg(long)]
+        modals: bool,
         /// Print the search's progress.
         #[arg(long)]
         verbose: bool,
@@ -170,6 +173,7 @@ fn main() -> Result<()> {
             max_ticks,
             probe,
             idle,
+            modals,
             verbose,
             alt_muzzles,
             beam,
@@ -181,7 +185,7 @@ fn main() -> Result<()> {
             let episode = flight_setup::episode_of(episode)?;
             match probe {
                 Some(ticks) => plan::probe(&root, episode, flight, ticks),
-                None if idle => plan::idle(&root, episode, flight, &out, max_ticks),
+                None if idle => plan::idle(&root, episode, flight, &out, max_ticks, modals),
                 None => plan::run(
                     &root,
                     episode,

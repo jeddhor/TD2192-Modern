@@ -116,3 +116,33 @@ fn flight_19_full_matches_oracle() {
 fn flight_20_full_matches_oracle() {
     check(20);
 }
+
+/// The player's death and the end sequence: no input, the enemies destroy the parked ship
+/// (VE-4, M10-45; `docs/parity/M10-playthrough.md`).
+#[test]
+fn flight_01_idle_death_matches_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        1,
+        "-idle",
+        "ve4-e1f1-idle",
+    );
+}
+
+/// The idle death with the pause (tick 100), the tactical map (200) and the flight menu (300)
+/// opened and closed during the flight (VE-4, M10-45).
+#[test]
+fn flight_01_modal_screens_match_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        1,
+        "-modals",
+        "ve4-e1f1-modals",
+    );
+}
