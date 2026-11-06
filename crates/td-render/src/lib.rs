@@ -11,10 +11,12 @@ pub mod flight_palette;
 pub mod framebuffer;
 pub mod headings;
 pub mod hud;
+pub mod intro;
 pub mod small_text;
 pub mod text;
 pub mod tilemap;
 pub mod title_text;
+pub mod vga;
 
 pub use fade::Fade;
 pub use framebuffer::{Framebuffer, HEIGHT, Image, Rect, WIDTH};

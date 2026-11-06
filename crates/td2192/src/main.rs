@@ -3,6 +3,7 @@
 mod flight;
 mod mapview;
 mod run;
+mod shell;
 
 use std::path::PathBuf;
 
@@ -35,6 +36,15 @@ struct Cli {
     /// Developer: play one dialogue scene: ID (episode 1), eN:ID, or eN-safe:ID (edited script).
     #[arg(long, value_name = "SCENE")]
     dev_dialogue: Option<String>,
+    /// Start Episode 1 without the intro.
+    #[arg(long)]
+    no_intro: bool,
+    /// Developer: play the intro alone.
+    #[arg(long)]
+    dev_intro: bool,
+    /// Developer: show the credits, as the intro flyover (a, the default) or as pages (b).
+    #[arg(long, value_name = "MODE", num_args = 0..=1, default_missing_value = "a")]
+    dev_credits: Option<String>,
     /// Start in fullscreen (overrides settings).
     #[arg(long)]
     fullscreen: bool,
@@ -169,6 +179,11 @@ fn real_main() -> Result<()> {
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
+        _ if cli.dev_intro => shell::dev_intro(&dir, &resources, &settings)?,
+        _ if cli.dev_credits.is_some() => {
+            let mode = cli.dev_credits.as_deref().unwrap_or("a");
+            shell::dev_credits(&dir, &resources, &settings, mode)?
+        }
         (Some(spec), _) => {
             let (episode, n) = parse_flight_spec(&spec)?;
             Box::new(flight::FlightArena::new(&dir, &resources, episode, n)?)
@@ -200,15 +215,23 @@ fn real_main() -> Result<()> {
                 .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
             ),
             // The Episode 1 program: script choice, menu, campaign, flights. Saved games live
-            // in the user data directory, never in the game folder.
-            None => Box::new(
-                td_flow::Episode1::new(
-                    &dir,
-                    &resources,
-                    Box::new(flight::ArenaLauncher::default()),
-                )?
-                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
-            ),
+            // in the user data directory, never in the game folder. The intro plays first
+            // (launcher §4.10).
+            None => shell::episode1_start(
+                &dir,
+                &resources,
+                &mut settings,
+                &settings_path,
+                cli.no_intro,
+                Box::new(
+                    td_flow::Episode1::new(
+                        &dir,
+                        &resources,
+                        Box::new(flight::ArenaLauncher::default()),
+                    )?
+                    .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+                ),
+            )?,
         },
     };
     let options = run::RunOptions {
