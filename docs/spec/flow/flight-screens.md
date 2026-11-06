@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
 | **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014) |
@@ -406,6 +406,39 @@ Kind 3 is never drawn (no class fires it). Shots on a two-digit heading (U-160) 
 
 **Kinds 4..6** (sprites): drawn when viewX ≤ tileX ≤ viewX + 8 and viewY + 2 ≤ tileY ≤ viewY + 5, with the heading's blit (8 plain, 2 `386E:0C02`, 4 `0926`, 6 `07BC`, 7 `0391`, 9 `04E9`, 1 `0A93`, 3 `0650`) at sprite (x, y) = (X, Y). Sprite slot: kind 4 → 16, kind 5 → 15, kind 6 → 9 (`td.shp` 16, 15, 9). Kind 6 is drawn after its heading update (weapons §4.3 step 6).
 
+### 4.9 Mission-specific sprites (flights 7, 12, 15, 20, 21)
+
+**Loads.** At every flight start the sprite bank (27 slots of 32 × 32, `td.shp` 0..19 then `td.exp`) and the three rotation buffers (`td.sc3` and `td.sc2` cells 0..8, `td.shr` cells 0..19, 40 × 40 each; [FORMATS §6.2–6.3](../../re/FORMATS.md)) are read fresh. Then `Sim_FlyMission` (`0E8B:BF1D..C0D9`) overwrites parts of them, so nothing carries over into a later flight:
+
+| Flight | File | Bytes | Destination | Replaces |
+|---:|---|---:|---|---|
+| 7 | `mine.td` | 1,024 | bank + C00h | slot 3 |
+| 20 | `lander.td` (records 0, 1) | 2,048 | bank + 0 | slots 0, 1 |
+| 20 | `lander.td` (records 2..4) | 3,072 | bank + 1000h | slots 4, 5, 6 |
+| 12, 15, 21 | `td.hel` | 2,048 | bank + 800h | slots 2, 3 |
+| 12, 15, 21 | `td.h2` bytes 0..3199 | 3,200 | `td.sc2` buffer + C80h | rotation cells 2, 3 (67.5°) |
+| 12, 15, 21 | `td.h2` bytes 3200..6399 | 3,200 | `td.shr` buffer + C80h | rotation cells 2, 3 (45°) |
+| 12, 15, 21 | `td.h2` bytes 6400..9599 | 3,200 | `td.sc3` buffer + C80h | rotation cells 2, 3 (22.5°) |
+
+**Which buffer a heading reads.** Every ship and the player are drawn with sprite number = class (mission-ships §4.7) through the blit of their heading ([structures §7](../../re/structures.md)). The blit takes sprite n from:
+
+| Headings (code) | Blits `386E:` | Source |
+|---|---|---|
+| 8, 6, 2, 4 (N, E, S, W) | `024A`, `07BC`, `0C02`, `0926` | bank slot n (plain, and the 90° transforms) |
+| 9, 7, 1, 3 (NE, NW, SW, SE) | `04E9`, `0391`, `0A93`, `0650` | `td.shr` cell n |
+| 4E, 62, 24, 0E (NNW, NNE, ESE, WSW) | `0D68`, `0EC0`, `1027`, `1193` | `td.sc3` cell n |
+| 4A, 60, 20, 0C (WNW, ENE, SSE, SSW) | `1302`, `145A`, `15C1`, `172D` | `td.sc2` cell n |
+
+So a file that replaces only bank slots changes sprite n on the four headings N, E, S, W only, while `td.hel` plus `td.h2` replace sprites 2 and 3 on all 16 headings.
+
+**Flight 7 (mines).** Sprite 3 is the mine on headings N, E, S, W. The class-3 ships are slots 9..12 from the start and slots 2..8 once slot 1 has armed them ([mission-logic §5.7](../sim/mission-logic.md)); every tick the flight-7 rule sets their heading to 8 before they are drawn ([mission-ships §4.2](../sim/mission-ships.md) steps (h), (i)), so they are always drawn with the plain blit of bank slot 3, the mine. No other ship is class 3 and the player is class 2, so the stock rotation cells of sprite 3 are never shown in flight 7.
+
+**Flight 20 (lander).** The five lander pieces are slots 1..5, classes 0, 1, 4, 5, 6 after setup (mission-setup §3.2): slot 1 shows `lander.td` record 0 (bank 0), slot 2 record 1 (bank 1), slot 3 record 2 (bank 4), slot 4 record 3 (bank 5), slot 5 record 4 (bank 6). They start at tiles (49, 3), (50, 3), (51, 3), (50, 4), (50, 5) (path step 1 of `m20.td`), all at offset (16, 16): three pieces in a row with two below the middle one. Their heading is set to 8 every tick before they are drawn (mission-ships §4.2 step (e)), so the plain blit always applies, and they sink together. Slots 7, 8 (class 8) and the player (class 2) use unchanged sprites.
+
+**Flights 12, 15, 21 (helicopter).** Sprites 2 and 3 are the two `td.hel` bodies on every heading. The player is class 3 and drawn late. Right after `Sim_ProjectilesAndHits` (tick-order step 6, `0E8B:D165..D183`) `g_PlayerSprite` := player class, and then, **whenever `g_PlayerDrawLate` ≠ 0**, := 3 if `g_DrawPage` = 0 else 2. The late draw at step 16 uses that value. So the player shows `td.hel` record 1 on page-0 ticks and record 0 on page-1 ticks: the rotor alternates every tick. (In E1 only flights 12, 15 and 21 set late draw, all with player class 3; E2 flight 8 uses the same rule, `td2:0E96:C192..C1AA`.) `m12.td` and `m15.td` contain no class-2 or class-3 ship; flight 21 keeps the ship records of the flight before it (flight 19: classes 7 and 8 only).
+
+**Sprite slot 0 is reloaded by two screens.** The ship library (§4.1.2) and the comm screen (§4.2) leave `td.shp` record 0 in bank slot 0. In flight 20 this replaces lander piece 0 (OB-057): after the player has opened the ship library, slot 1 is drawn with the stock record 0 for the rest of the flight. E1 flight 20 has no transmission. Flights 7, 12, 15 and 21 replace only slots 2 and 3, so they are not affected.
+
 ## 5. Edge cases and original bugs
 
 | Quirk | Original behaviour | Port policy (proposal) |
@@ -419,6 +452,7 @@ Kind 3 is never drawn (no class fires it). Shots on a two-digit heading (U-160) 
 | F5 info lines not rewritten | Entries a flight does not write keep an earlier flight's lines; entry 0 in flight 21 shows flight 19's lines | Preserve |
 | Menu Esc + select in one poll | Opens the ship library | Preserve |
 | Pause resume key | Acts in the same tick (Esc opens the menu) | Preserve |
+| Ship library in flight 20 (OB-057) | Reloads `td.shp` record 0 into bank slot 0, so lander piece 0 (slot 1) shows the stock sprite until the flight ends (§4.9) | Preserve (Classic); fix-enhanced may restore `lander.td` record 0 |
 
 ## 6. Test vectors
 
@@ -446,6 +480,13 @@ Kind 3 is never drawn (no class fires it). Shots on a two-digit heading (U-160) 
 | 15 | P in mode 1 | pause ink 37 rows 77..81, x 102..242, DAC 37 = P[255] | C-0014 f1522 |
 | 16 | Esc menu in mode 1, then "return to game" | menu in mode 0 (normal palette); after the return DAC = (Round(R/8), Round(G/8), Round(B/8)), DAC 37 = (8, 6, 8) (not P[255]): OB-029 | C-0014 f1822, f1982 |
 
+### 6.2 Mission-specific sprites (§4.9)
+
+| # | Setup | Expected | Evidence |
+|---|---|---|---|
+| 17 | E1 flight 12, no input (player class 3, heading 8, late draw) | The 32 × 32 player cell at screen (144, 68) equals `td.hel` record 1 (0 of 384 non-zero pixels differ) on frames that show page 0 and record 0 (0 of 412) on frames that show page 1, alternating with the page; never `td.shp` 2 or 3 | C-0027, all 40 flight fb frames 525..1890 |
+| 18 | E1 flights 7, 12, 20 setup | Reads of 1,024 / 2,048 + 3 × 3,200 / 2,048 + 3,072 bytes into the destinations of §4.9 | C-0022, C-0027, C-0035 `int21.tsv` |
+
 ## 7. Presentation and audio hooks
 
 No sounds are started by these screens. Music keeps playing (WORX is interrupt-driven) during all of them. Typing in the comm screen paces itself on vertical retrace like the front-end typing ([render/text](../render/text.md) §4.3).
@@ -471,6 +512,11 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | Pause, IR notice | `0E8B:E12F..E4FD` | static; C-0012, C-0014 | CONFIRMED (pause) |
 | Palette modes | `0E8B:01F6`, `0426`, `B1EC..B39A`, `CAD2..CBAA`, `DA6B..E019` | static; C-0014 | CONFIRMED (start, toggle, menu fade) / LIKELY (flash formulas) |
 | Afterburner flame | `0E8B:CD78..D160` | static | LIKELY |
+| Mission-specific sprite loads (§4.9) | `0E8B:BF1D..C0D9`; int21 rows of C-0022 (`mine.td` → 7215:0C00), C-0027 (`td.hel` → 7215:0800, `td.h2` → 66C1:0C80, 6A45:0C80, 633D:0C80), C-0035 (`lander.td` → 7215:0000 and 7215:1000), bank at 7215:0000, `td.sc3`/`td.sc2`/`td.shr` buffers at 633D/66C1/6A45 | static + capture | CONFIRMED |
+| Source buffer of each heading blit | `386E:024A..172D` (the `LDS SI` of each of the 16 routines) | static | CONFIRMED |
+| Late-draw player sprite 3 / 2 by draw page | `0E8B:D165..D183`, late path `0E8B:E030..E03E`; E2 `td2:0E96:C192..C1AA`; C-0027 | static + capture | CONFIRMED |
+| Mines and lander drawn with the plain blit | mission-ships §4.2 (e), (h); `m7.td`, `m20.td` classes and path step 1 | static | LIKELY (not on screen in C-0022/C-0035, which have no input) |
+| OB-057 (library reloads slot 0) | §4.1.2 (`0E8B:7374..78FF`) with the flight-20 loads | static | LIKELY |
 | Explosions | `0E8B:0D31..0F42`, `12xx..14D4`, `14E4..1580`, `16F9..177B`, `D872..DA66` | static | LIKELY |
 | Shots | `0E8B:1785..3F9C` (bytes `1948..197F` read directly) | static | LIKELY |
 
@@ -479,3 +525,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-8 (Archaeologist + Spec author) | Initial |
+| 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author + Verifier) | §4.9 mission-specific sprites (flights 7, 12, 15, 20, 21): loads, heading-to-buffer map, which ships use them, helicopter rotor frames by draw page; OB-057; test vector 17 (C-0027). E2/E3 transmissions and library: [e2-flight-screens](e2-flight-screens.md) |
