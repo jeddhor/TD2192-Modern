@@ -353,8 +353,8 @@ note = "F6 transmission lines"
 id = "e3.comms.02"
 kind = "pstring_seq"
 offset = 0x25CC9
-count = 4
-note = "F6 transmission lines"
+count = 16
+note = "F6 transmission 2 (RE-12: count was 4; loader td3:2215:042A uses all 16 strings up to 2215:0429)"
 
 [[resource]]
 id = "e3.comms.03"

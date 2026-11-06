@@ -498,3 +498,13 @@ address,kind,name,signature,comment,confidence,source_task
 32C5:9ABA,data,g_CrtDelayCnt,u16,"= E1 file0001:3C43:9B96, DS offset by refs 2/2. E1: Delay loop iterations per millisecond (calibrated at init)",LIKELY,M1-09
 32C5:9ABF,data,g_CrtPendingScan,u8,"= E1 file0001:3C43:9B9B, DS offset by refs 6/6. E1: scan code held back by ReadKey for an extended key",CONFIRMED,M1-09
 32C5:9AC0,data,g_CrtBreakFlag,u8,"= E1 file0001:3C43:9B9C, DS offset by refs 4/4. E1: set by the Ctrl-Break handler",CONFIRMED,M1-09
+2215:0135,func,Comm_LoadTransmission1,,"E3 comm screen 1 (e3.comms.01), portraits 1/0 (flow/e2-flight-screens 3.2)",CONFIRMED,RE-12
+2215:042A,func,Comm_LoadTransmission2,,"E3 comm screen 2 (e3.comms.02, 16 strings), portraits 2/0; Ghidra had stopped at 047B, body to 05CD (flow/e2-flight-screens 3.2)",CONFIRMED,RE-12
+2215:0680,func,Comm_LoadTransmission3,,"E3 comm screen 3 (e3.comms.03), portraits 3/0 (flow/e2-flight-screens 3.2)",CONFIRMED,RE-12
+2215:093D,func,Comm_LoadTransmission5,,"E3 comm screen 5 (e3.comms.04), portraits 4/0 (flow/e2-flight-screens 3.2)",CONFIRMED,RE-12
+32C5:31E8,data,g_CommHeaderA,string[50],"= E1 file0001:3C43:32C4. Transmission header A",CONFIRMED,RE-12
+32C5:321B,data,g_CommLines,u8[1580],"= E1 file0001:3C43:32F7. string[50] per slot; slot 0 = header B",CONFIRMED,RE-12
+32C5:3847,data,g_CommSpeaker,u8[31],"= E1 file0001:3C43:3923. Speaker byte per line k",CONFIRMED,RE-12
+32C5:3866,data,g_CommPortraitA,u8,"= E1 file0001:3C43:3942. td3.ccm record for box A",CONFIRMED,RE-12
+32C5:3867,data,g_CommPortraitB,u8,"= E1 file0001:3C43:3943. td3.ccm record for box B",CONFIRMED,RE-12
+32C5:3868,data,g_CommI,u16,"= E1 file0001:3C43:3944. Loop counter of the transmission loaders",CONFIRMED,RE-12
