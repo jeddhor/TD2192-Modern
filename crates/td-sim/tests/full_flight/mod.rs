@@ -47,9 +47,7 @@ use std::path::{Path, PathBuf};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
-use td_sim::flight::front_end::{
-    FrontEnd, MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, muzzle_world,
-};
+use td_sim::flight::front_end::{FrontEnd, MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, muzzle_world};
 use td_sim::flight::player::Turn;
 use td_sim::flight::ships::{NO_SHIP, RECORD_LEN, SHIP_SLOTS, Ship};
 use td_sim::flight::shots::{SHOT_SLOTS, Shot};
@@ -70,7 +68,11 @@ fn direct_start_muzzles(dir: &DataDir, captured: &[u8], name: &str) -> Vec<u8> {
     };
     let menu = dir.read("tdmen.pal").unwrap();
     let world = muzzle_world(&table, &menu, &FrontEnd::direct_start());
-    assert_eq!(world[..MUZZLE_TABLE_LEN], captured[..MUZZLE_TABLE_LEN], "{name}: table");
+    assert_eq!(
+        world[..MUZZLE_TABLE_LEN],
+        captured[..MUZZLE_TABLE_LEN],
+        "{name}: table"
+    );
     for h in TWO_DIGIT_HEADINGS {
         let at = 34 * usize::from(h) + 2;
         assert_eq!(
