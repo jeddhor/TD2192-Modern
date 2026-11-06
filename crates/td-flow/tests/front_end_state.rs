@@ -432,3 +432,90 @@ fn direct_start_table_agrees_with_the_blocks() {
         assert_eq!(direct_start(Episode::E3, n), want, "E3 block {n}");
     }
 }
+
+/// A scratch save directory holding the shipped `tdN.sav` with slot 1 := `mission` 00 00 and
+/// `tdN.stt`.
+fn saves_with(data: &Path, ep: Episode, mission: u8) -> std::path::PathBuf {
+    let n = if ep == Episode::E2 { 2 } else { 3 };
+    let dir = std::env::temp_dir().join(format!("td2192-fe-e{n}m{mission}-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut sav = fs::read(data.join(format!("td{n}.sav"))).unwrap();
+    sav[..3].copy_from_slice(&[mission, 0, 0]);
+    fs::write(dir.join(format!("td{n}.sav")), sav).unwrap();
+    fs::copy(
+        data.join(format!("td{n}.stt")),
+        dir.join(format!("td{n}.stt")),
+    )
+    .unwrap();
+    dir
+}
+
+/// The tick-1 DGROUP of a whole-flight capture (`tick_<DGROUP>-0000_9800_ds.bin`).
+fn tick_1(oracle: &Path, capture: &str, dgroup: &str) -> Vec<u8> {
+    let b = fs::read(
+        oracle
+            .join(capture)
+            .join("mem")
+            .join(format!("tick_{dgroup}-0000_9800_ds.bin")),
+    )
+    .unwrap();
+    b.chunks(16 + 0x9800)
+        .find(|r| u32::from_le_bytes(r[..4].try_into().unwrap()) == 1)
+        .expect("a record of tick 1")[16..]
+        .to_vec()
+}
+
+/// VE-4's restore path (M10-playthrough "Direct starts"): script 2; Down, Enter (restore);
+/// Enter (slot 1); Enter (next mission); then `after(frames since 300)`.
+fn restore_then(after: impl Fn(u32) -> Vec<Key>) -> impl Fn(u32) -> Vec<Key> {
+    move |f| match f {
+        10 => vec![Key::digit(2).unwrap()],
+        100 => vec![Key::DOWN],
+        101 => vec![Key::ENTER],
+        160 => vec![Key::ENTER],
+        260 => vec![Key::ENTER],
+        f if f >= 300 => after(f - 300),
+        _ => Vec::new(),
+    }
+}
+
+#[test]
+fn e2_restored_flight_2_matches_c0121() {
+    // Block 2: the title card's 5 s, then Esc at the velsroom card (E2 cards do not flush).
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let saves = saves_with(&data, Episode::E2, 2);
+    let esc = |f: u32| {
+        if f >= 600 && f.is_multiple_of(100) {
+            vec![Key::ESCAPE]
+        } else {
+            Vec::new()
+        }
+    };
+    let fe = later_front_end_at_flight(&data, Episode::E2, Some(&saves), restore_then(esc));
+    fs::remove_dir_all(&saves).unwrap();
+    assert_eq!(fe.scene_file_name(), b"td.lt2");
+    let ds = tick_1(&oracle, "C-0121", "3EDA");
+    assert_matches_later(Episode::E2, &fe, &ds, &menu_bytes(&data), "C-0121");
+}
+
+#[test]
+fn e3_restored_flight_4_matches_c0128() {
+    // Block 4: Esc at the title card, so g_Palette is the menu's palette buffer that the
+    // restore screen copied, with the title card's entry 85 (weapons §3.3.3 test vector (a)).
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let saves = saves_with(&data, Episode::E3, 4);
+    let esc = |f: u32| {
+        if f >= 40 && f.is_multiple_of(20) {
+            vec![Key::ESCAPE]
+        } else {
+            Vec::new()
+        }
+    };
+    let fe = later_front_end_at_flight(&data, Episode::E3, Some(&saves), restore_then(esc));
+    fs::remove_dir_all(&saves).unwrap();
+    assert_eq!(fe.scene_file_name(), b"td.sss");
+    let ds = tick_1(&oracle, "C-0128", "3AE9");
+    assert_matches_later(Episode::E3, &fe, &ds, &menu_bytes(&data), "C-0128");
+}
