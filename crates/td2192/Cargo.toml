@@ -22,5 +22,8 @@ td-sim.workspace = true
 td-audio.workspace = true
 png.workspace = true
 
+[dev-dependencies]
+td-test-support.workspace = true
+
 [lints]
 workspace = true

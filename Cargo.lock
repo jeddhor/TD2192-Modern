@@ -1054,6 +1054,7 @@ dependencies = [
  "td-platform",
  "td-render",
  "td-sim",
+ "td-test-support",
  "tracing",
  "tracing-subscriber",
 ]

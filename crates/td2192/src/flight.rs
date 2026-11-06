@@ -19,7 +19,9 @@
 //! flight-8 `td.hel`/`td.h2` sprites (§4.1 step 6).
 //!
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
-//! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8.
+//! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8; the
+//! mission-specific sprites (mines, lander, helicopter and its rotor, the slot-0 reload of
+//! OB-057) follow `flight-screens.md` rev 2 §4.9.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -141,6 +143,9 @@ pub struct FlightArena {
     world: World,
     tiles: Tileset,
     palette: Palette,
+    /// Where `ships` and `bank` come from: the sprite bank and rotation buffers after the
+    /// mission-specific loads (flight-screens rev 2 §4.9).
+    sprites: SpriteSources,
     ships: HeadingSprites,
     /// The 27-sprite bank: `td.shp` frames 0..20, then `td.exp` frames 0..7.
     bank: SpriteSheet,
@@ -166,6 +171,108 @@ pub struct FlightArena {
     binds: Vec<(Key, FlightKey)>,
     typematic: Typematic,
     events: Vec<Event>,
+}
+
+/// The flight's sprite data as `Sim_FlyMission` leaves it (flight-screens rev 2 §4.9): the
+/// 20-slot `td.shp` part of the sprite bank, the rotation buffers `td.sc3`, `td.shr`,
+/// `td.sc2`, `td.exp` (bank slots 20..26) and the stock `td.shp` record 0 that the ship
+/// library and the comm screen reload into slot 0.
+#[derive(Debug)]
+struct SpriteSources {
+    shp: Vec<u8>,
+    rot: [Vec<u8>; 3],
+    exp: Vec<u8>,
+    stock_record0: Vec<u8>,
+}
+
+/// One 32 × 32 sprite record.
+const RECORD: usize = 1024;
+
+impl SpriteSources {
+    /// Reads the files fresh and applies the mission-specific loads of flight `number`
+    /// (flight-screens rev 2 §4.9; E2 flight 8: e2-mission-setup rev 1 §4.1 step 6):
+    ///
+    /// - E1 flight 7: `mine.td` into bank + C00h (slot 3);
+    /// - E1 flight 20: `lander.td` records 0, 1 into bank + 0 (slots 0, 1) and records 2..4
+    ///   into bank + 1000h (slots 4..6);
+    /// - E1 flights 12, 15, 21 and E2 flight 8: `td.hel` into bank + 800h (slots 2, 3) and
+    ///   `td.h2`'s three 3,200-byte parts into + C80h (cells 2, 3) of `td.sc2`, `td.shr` and
+    ///   `td.sc3`, in that order.
+    fn load(dir: &DataDir, ep: Episode, number: u8) -> Result<Self> {
+        let mut shp = dir.read("td.shp")?;
+        let stock_record0 = shp.get(..RECORD).unwrap_or_default().to_vec();
+        let (mut sc3, mut shr, mut sc2) = (
+            dir.read("td.sc3")?,
+            dir.read("td.shr")?,
+            dir.read("td.sc2")?,
+        );
+        match (ep, number) {
+            (Episode::E1, 7) => overwrite(&mut shp, 3 * RECORD, &dir.read("mine.td")?)?,
+            (Episode::E1, 20) => {
+                let lander = dir.read("lander.td")?;
+                overwrite(&mut shp, 0, lander.get(..2 * RECORD).unwrap_or_default())?;
+                let rest = lander.get(2 * RECORD..5 * RECORD).unwrap_or_default();
+                overwrite(&mut shp, 4 * RECORD, rest)?;
+            }
+            (Episode::E1, 12 | 15 | 21) | (Episode::E2, 8) => {
+                overwrite(&mut shp, 2 * RECORD, &dir.read("td.hel")?)?;
+                let h2 = dir.read("td.h2")?;
+                for (k, set) in [&mut sc2, &mut shr, &mut sc3].into_iter().enumerate() {
+                    let part = h2.get(k * 0xC80..(k + 1) * 0xC80);
+                    overwrite(set, 0xC80, part.unwrap_or_default())?;
+                }
+            }
+            _ => {}
+        }
+        Ok(Self {
+            shp,
+            rot: [sc3, shr, sc2],
+            exp: dir.read("td.exp")?,
+            stock_record0,
+        })
+    }
+
+    /// Every ship sprite at every heading, and the 27-slot bank. Headings N, E, S, W draw the
+    /// bank slot, the others the rotation cells (flight-screens rev 2 §4.9), so a file that
+    /// replaces only bank slots changes those four headings only.
+    fn build(&self) -> Result<(HeadingSprites, SpriteSheet)> {
+        let base = SpriteSheet::parse_base(&self.shp)?;
+        let rot = [
+            SpriteSheet::parse_rotation_set(&self.rot[0])?,
+            SpriteSheet::parse_rotation_set(&self.rot[1])?,
+            SpriteSheet::parse_rotation_set(&self.rot[2])?,
+        ];
+        let Some(ships) = HeadingSprites::build(&base, [&rot[0], &rot[1], &rot[2]], 20) else {
+            bail!("sprite sheets are inconsistent");
+        };
+        let mut bank_bytes = self.shp.clone();
+        bank_bytes.extend_from_slice(&self.exp);
+        Ok((ships, SpriteSheet::parse(&bank_bytes, 32)?))
+    }
+
+    /// The ship library and the comm screen re-read `td.shp` record 0 into bank slot 0
+    /// (flight-screens rev 2 §4.9). True if that changed the slot: in E1 flight 20 it replaces
+    /// lander piece 0 for the rest of the flight (OB-057, preserved).
+    fn reload_record0(&mut self) -> bool {
+        let slot0 = &mut self.shp[..RECORD];
+        if slot0 == self.stock_record0.as_slice() {
+            return false;
+        }
+        slot0.copy_from_slice(&self.stock_record0);
+        true
+    }
+}
+
+/// `g_PlayerSprite` (flight-screens rev 2 §4.9, tick-order step 6): the player's class, but
+/// while the player is drawn late sprite 3 if the back page at step 6 is 0, else sprite 2.
+/// In the helicopter flights (E1 12, 15, 21; E2 8) these are the two `td.hel` bodies, so the
+/// rotor alternates every tick.
+fn player_sprite(class: u8, late: bool, page: i32) -> usize {
+    match (late, page) {
+        (false, _) => usize::from(class),
+        (true, 0) => 3,
+        (true, _) => 2,
+    }
 }
 
 /// What one program run keeps across its flights.
@@ -230,35 +337,8 @@ impl FlightArena {
             None => None,
             Some(file) => Some(Mission::parse(&dir.read(&file)?)?),
         };
-        let mut shp = dir.read("td.shp")?;
-        let (mut sc3, mut shr, mut sc2) = (
-            dir.read("td.sc3")?,
-            dir.read("td.shr")?,
-            dir.read("td.sc2")?,
-        );
-        if ep == Episode::E2 && number == 8 {
-            // E2 flight 8 (e2-mission-setup rev 1 §4.1 step 6): td.hel into the sprite bank at
-            // +800h (slots 2..3), td.h2 into +C80h of the rotation buffers td.sc2, td.shr,
-            // td.sc3 (cells 2..3, C80h bytes each; FORMATS §6.3).
-            overwrite(&mut shp, 0x800, &dir.read("td.hel")?)?;
-            let h2 = dir.read("td.h2")?;
-            for (k, set) in [&mut sc2, &mut shr, &mut sc3].into_iter().enumerate() {
-                let part = h2.get(k * 0xC80..(k + 1) * 0xC80);
-                overwrite(set, 0xC80, part.unwrap_or_default())?;
-            }
-        }
-        let base = SpriteSheet::parse_base(&shp)?;
-        let rot = [
-            SpriteSheet::parse_rotation_set(&sc3)?,
-            SpriteSheet::parse_rotation_set(&shr)?,
-            SpriteSheet::parse_rotation_set(&sc2)?,
-        ];
-        let Some(ships) = HeadingSprites::build(&base, [&rot[0], &rot[1], &rot[2]], 20) else {
-            bail!("sprite sheets are inconsistent");
-        };
-        let mut bank_bytes = shp;
-        bank_bytes.extend(dir.read("td.exp")?);
-        let bank = SpriteSheet::parse(&bank_bytes, 32)?;
+        let sprites = SpriteSources::load(dir, ep, number)?;
+        let (ships, bank) = sprites.build()?;
         let mut effects = BTreeMap::new();
         for &(id, voc) in td_audio::sfx::EFFECTS.iter() {
             if let Some(voc) = voc {
@@ -320,6 +400,7 @@ impl FlightArena {
             tiles: Tileset::parse(&dir.read(episode::tileset_file(ep, number))?)?,
             dac: FlightDac::start(&palette, flight.palette_mode),
             palette,
+            sprites,
             ships,
             bank,
             effects,
@@ -364,8 +445,21 @@ impl Screen for FlightArena {
                 ModalStep::Continue => return Transition::None,
                 ModalStep::Close { abort } => {
                     let menu = matches!(screen, FlightModal::Menu(_));
+                    // The ship library and the comm screen leave td.shp record 0 in bank slot
+                    // 0 (flight-screens rev 2 §4.9; OB-057, preserved).
+                    let record0 = match screen {
+                        FlightModal::Menu(m) => m.library_shown(),
+                        FlightModal::Comm(_) => true,
+                        _ => false,
+                    };
                     self.screen = None;
                     self.modal = None;
+                    if record0 && self.sprites.reload_record0() {
+                        match self.sprites.build() {
+                            Ok((ships, bank)) => (self.ships, self.bank) = (ships, bank),
+                            Err(e) => tracing::warn!("sprite slot 0 reload: {e}"),
+                        }
+                    }
                     if abort {
                         // Quit: g_MissionAborted := 1; the tick then leaves the loop.
                         self.flight.aborted = true;
@@ -489,8 +583,8 @@ impl Screen for FlightArena {
             }
         }
         // 7. Player ship.
-        let class = usize::from(self.flight.player.class);
         let late = self.flight.late_draw;
+        let class = player_sprite(self.flight.player.class, late, self.drawn_page());
         let draw_player = |fb: &mut Framebuffer| {
             if f.player_visible
                 && let Some(frame) = self.ships.frame(class, f.heading.sprite_index())
@@ -779,6 +873,138 @@ impl td_flow::FlightLauncher for ArenaLauncher {
 mod tests {
     use super::*;
     use td_flow::FlightLauncher;
+    use td_render::flight::SHIP_POS;
+    use td_test_support::{require_data, require_oracle};
+
+    #[test]
+    fn player_sprite_follows_the_page_only_when_drawn_late() {
+        // flight-screens rev 2 §4.9: 3 on page 0, 2 on page 1; otherwise the class.
+        assert_eq!(player_sprite(3, true, 0), 3);
+        assert_eq!(player_sprite(3, true, 1), 2);
+        assert_eq!(player_sprite(4, false, 0), 4);
+        assert_eq!(player_sprite(4, false, 1), 4);
+    }
+
+    #[test]
+    fn mission_sprites_land_where_flight_screens_says() {
+        // flight-screens rev 2 §4.9 loads; a bank-only file changes headings N, E, S, W only.
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let read = |name: &str| dir.read(name).unwrap();
+        let stock = SpriteSources::load(&dir, Episode::E1, 1).unwrap();
+        assert_eq!(stock.shp, read("td.shp"));
+        let slot = |s: &SpriteSources, n: usize| s.shp[n * RECORD..(n + 1) * RECORD].to_vec();
+        // Flight 7: the mine in slot 3; the rotation cells stay stock.
+        let mines = SpriteSources::load(&dir, Episode::E1, 7).unwrap();
+        assert_eq!(slot(&mines, 3), read("mine.td"));
+        assert_eq!(mines.rot, stock.rot);
+        let (ships, _) = mines.build().unwrap();
+        let (stock_ships, _) = stock.build().unwrap();
+        for h in 0..16 {
+            let same = ships.frame(3, h) == stock_ships.frame(3, h);
+            assert_eq!(same, h % 4 != 0, "sprite 3, heading index {h}");
+        }
+        // Flight 20: lander records 0, 1 in slots 0, 1 and 2..4 in slots 4..6.
+        let lander = read("lander.td");
+        let l = SpriteSources::load(&dir, Episode::E1, 20).unwrap();
+        for (rec, s) in [(0, 0), (1, 1), (2, 4), (3, 5), (4, 6)] {
+            assert_eq!(slot(&l, s), lander[rec * RECORD..(rec + 1) * RECORD]);
+        }
+        assert_eq!(
+            (slot(&l, 2), slot(&l, 3)),
+            (slot(&stock, 2), slot(&stock, 3))
+        );
+        // Helicopter flights: td.hel in slots 2, 3 and td.h2 in cells 2, 3 of every set.
+        let (hel, h2) = (read("td.hel"), read("td.h2"));
+        for (ep, n) in [
+            (Episode::E1, 12),
+            (Episode::E1, 15),
+            (Episode::E1, 21),
+            (Episode::E2, 8),
+        ] {
+            let s = SpriteSources::load(&dir, ep, n).unwrap();
+            assert_eq!(s.shp[2 * RECORD..4 * RECORD], hel[..], "{ep} {n}");
+            // h2 parts go to td.sc2, td.shr, td.sc3; `rot` is [sc3, shr, sc2].
+            for (k, set) in [2, 1, 0].into_iter().enumerate() {
+                let part = &h2[k * 0xC80..(k + 1) * 0xC80];
+                assert_eq!(&s.rot[set][0xC80..0x1900], part, "{ep} {n} part {k}");
+            }
+        }
+        assert_eq!(
+            SpriteSources::load(&dir, Episode::E2, 7).unwrap().shp,
+            stock.shp
+        );
+    }
+
+    #[test]
+    fn lander_bank_and_library_reload_match_c0045() {
+        // flight-screens rev 2 §6.2 vector 19 / OB-057: bank slots 0..6 (7215:0000, 1C00h
+        // bytes) before the ship library (f541) and after it (f1771: slot 0 = td.shp 0).
+        let data = require_data!();
+        let oracle = require_oracle!();
+        let dir = DataDir::open(&data).unwrap();
+        let mem = |name: &str| std::fs::read(oracle.join("C-0045").join("mem").join(name)).unwrap();
+        let mut s = SpriteSources::load(&dir, Episode::E1, 20).unwrap();
+        let before = mem("f00000541_7215-0000_1C00_bank-before.bin");
+        assert_eq!(s.shp[..0x1C00], before[..]);
+        assert!(s.reload_record0());
+        let after = mem("f00001771_7215-0000_1C00_bank-after.bin");
+        assert_eq!(s.shp[..0x1C00], after[..]);
+        assert!(!s.reload_record0(), "a second reload changes nothing");
+        // Flights without a slot-0 load are unaffected.
+        let mut heli = SpriteSources::load(&dir, Episode::E1, 12).unwrap();
+        assert!(!heli.reload_record0());
+    }
+
+    #[test]
+    fn helicopter_rotor_matches_c0027() {
+        // flight-screens rev 2 §6.2 vector 17: E1 flight 12, player class 3 at heading 8
+        // drawn late. Every flight frame f525..f1890 shows at (144, 68) the cell the port
+        // draws for page 1 − DS:3A30 (the back page flips at step 24, after the draw).
+        let data = require_data!();
+        let oracle = require_oracle!();
+        let dir = DataDir::open(&data).unwrap();
+        let (ships, _) = SpriteSources::load(&dir, Episode::E1, 12)
+            .unwrap()
+            .build()
+            .unwrap();
+        let north = Heading::N.sprite_index();
+        let cell = |page: i32| {
+            let mut fb = Framebuffer::new();
+            let frame = ships.frame(player_sprite(3, true, page), north).unwrap();
+            flight::draw_player_ship(&mut fb, frame, td_render::headings::CELL);
+            fb.pixels
+        };
+        let cells = [cell(0), cell(1)];
+        assert_ne!(cells[0], cells[1]);
+        let c27 = oracle.join("C-0027");
+        let mut seen = [0; 2];
+        for f in (525..=1890).step_by(35) {
+            let fb = std::fs::read(c27.join("fb").join(format!("f{f:08}_320x192_fl.vga"))).unwrap()
+                [768..]
+                .to_vec();
+            let ds = std::fs::read(
+                c27.join("mem")
+                    .join(format!("f{f:08}_4467-0000_9DF0_ds.bin")),
+            )
+            .unwrap();
+            let page = usize::from(ds[0x3A30] ^ 1);
+            let (x0, y0) = (SHIP_POS.0 as usize, SHIP_POS.1 as usize);
+            let mut inked = 0;
+            for y in y0..y0 + 32 {
+                for x in x0..x0 + 32 {
+                    let p = cells[page][y * 320 + x];
+                    if p != 0 {
+                        assert_eq!(fb[y * 320 + x], p, "f{f} page {page} ({x}, {y})");
+                        inked += 1;
+                    }
+                }
+            }
+            assert!(inked > 300, "f{f}");
+            seen[page] += 1;
+        }
+        assert!(seen[0] > 0 && seen[1] > 0, "both rotor frames: {seen:?}");
+    }
 
     #[test]
     fn launcher_random_continues_the_program_stream() {

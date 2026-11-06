@@ -318,6 +318,9 @@ pub struct ComputerMenu {
     shown: u8,
     done: bool,
     aborted: bool,
+    /// The ship library was drawn: it ends by re-reading `td.shp` record 0 into sprite-bank
+    /// slot 0 (flight-screens rev 2 §4.9, OB-057).
+    library_shown: bool,
     keys: KeyBytes,
     ops: VecDeque<Op>,
 }
@@ -370,11 +373,19 @@ impl ComputerMenu {
             shown: 0,
             done: false,
             aborted: false,
+            library_shown: false,
             keys: KeyBytes::default(),
             ops,
         };
         menu.start_outer_iteration();
         menu
+    }
+
+    /// True once the ship library has been shown: the flight's sprite-bank slot 0 then holds
+    /// `td.shp` record 0 (flight-screens rev 2 §4.9; in E1 flight 20 that replaces lander
+    /// piece 0, OB-057).
+    pub fn library_shown(&self) -> bool {
+        self.library_shown
     }
 
     /// True while the ship library or a help page waits for a key.
@@ -488,7 +499,10 @@ impl ComputerMenu {
     fn show(&mut self, assets: &FlightScreenAssets, page: Page) {
         match page {
             Page::Menu => draw_menu_page(&mut self.canvas, assets),
-            Page::Library => draw_ship_library(&mut self.canvas, assets, self.flight),
+            Page::Library => {
+                draw_ship_library(&mut self.canvas, assets, self.flight);
+                self.library_shown = true;
+            }
             Page::Help(n) => self.canvas.copy_full(assets.help_page(n)),
             Page::Flight => self.canvas.pixels.clone_from(&self.flight_picture.pixels),
         }
