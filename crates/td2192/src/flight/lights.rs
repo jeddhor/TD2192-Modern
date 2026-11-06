@@ -1,7 +1,7 @@
 //! The flight screen's lighting inputs (M12-11): the light scene of the frame the last tick
 //! drew, and the flight's emissive colours.
 //!
-//! Spec: `docs/spec/enhanced/presentation.md` rev 2 §6.1 and §6.4. The scene is built by
+//! Spec: `docs/spec/enhanced/presentation.md` rev 3 §6.1 and §6.4. The scene is built by
 //! `td_render::enhanced::lights::flight_scene` from `Flight::frame` and `Flight::drawn`. It is
 //! presentation only and never feeds back into the simulation.
 

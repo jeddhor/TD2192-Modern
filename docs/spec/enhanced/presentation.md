@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `enhanced/presentation` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, intentional deviation, Enhanced profile only. The Classic profile is unaffected |
 | **Decision** | [ADR-0006](../../adr/0006-enhanced-presentation-pipeline.md); requested by the user, 2026-11-05 |
@@ -20,9 +20,11 @@ None of them changes the simulation, the tick order, RNG use or any Classic outp
 
 ## 2. Settings
 
-A new section in the settings file (`td_flow::Settings`). Every key defaults to off, and the Classic profile forces every key off.
+A new section in the settings file (`td_flow::Settings`), governed by the top-level profile key. Every key defaults to off, and the Classic profile forces every key off.
 
 ```toml
+profile = "classic"       # classic | enhanced; default classic (MDG §6.2)
+
 [enhanced]
 widescreen = "off"        # off | "16:10" | "16:9" | "21:9" | "auto" (from the window's aspect)
 upscaler   = "none"       # none | scale2x | scale3x | scale4x | xbr2 | xbr3 | xbr4
@@ -30,7 +32,8 @@ lighting   = "off"        # off | subtle | full
 bloom      = false
 ```
 
-- `auto` picks the widest preset whose display aspect does not exceed the window's.
+- `profile = "enhanced"` is needed for any `[enhanced]` key to take effect. The profile governs only `[enhanced]` for now; `audio.sfx_mode` is separate.
+- `auto` picks the widest preset whose display aspect does not exceed the window's (1 % tolerance, so 428 is picked on a 16:9 window).
 - Settings apply live; no restart is needed.
 - The options screen (M11) lists widescreen under "affects gameplay (visibility)".
 
@@ -67,12 +70,12 @@ compose (indexed, W x 200)        <- flight screen / front-end screens, as today
 - Every screen position is the Classic position plus *m*. This applies to the player ship at (144 + *m*, 68), tiles, ships, shots, explosions, the flame and the guidance dots.
 - The view limits (tiles X 6..183, Y 7..190) keep every drawn column inside the 201-wide map for all presets.
 - Ships, shots and explosions are drawn whenever they fall inside the wider window. The Classic visibility tests are relaxed by *m* on each side. The overpass redraw (tick-order step 12) also covers the wider window.
-- Invariant (test): columns *m* .. *m* + 319 of the widescreen playfield equal the Classic playfield pixel for pixel.
+- Invariant (test): columns *m* .. *m* + 319 of the widescreen playfield equal the Classic playfield pixel for pixel for the static playfield: the tile window, the player ship and the overpass redraw. Objects that the Classic tests leave out although they already overlap the 320-wide window (a mission ship or explosion one tile column outside the view) are drawn in a wide frame, so they do not pop in at the old window edge.
 
 ### 4.3 HUD and screens
 
 - The 320 × 32 HUD bar is drawn at x = *m*.
-- The side panels of the HUD band are filled by mirroring the bar's outermost 16 columns outward, repeated, darkened by half (palette index blend at RGBA stage), so the frame looks continuous.
+- The side panels of the HUD band are filled with a mirrored repeat of the bar's outermost 16 columns (columns 0, 1, .., 15, 15, .., 0, 0, 1, .. outward), darkened by half at the RGBA stage, so the frame is continuous at every seam.
 - All 320 × 200 front-end screens (menus, story, dialogue, comm screens, Esc menu, F5 map) are centred, with black side panels.
 
 ## 5. Upscaling (M12-10)
@@ -85,7 +88,7 @@ Upscaling works on the composed RGBA image. The factor *k* is the scale in the f
   - E2 = (D = H ∧ D ≠ B ∧ H ≠ F) ? D : E
   - E3 = (H = F ∧ D ≠ H ∧ B ≠ F) ? F : E
 - **scale3x** is the AdvMAME3x rule set; **scale4x** is scale2x applied twice.
-- **xbr2/3/4**: the public xBR "level 2" algorithm (Hyllian), implemented from its published description. It uses a YUV distance with the standard weights and edge blending at the 2×/3×/4× sub-pixel positions.
+- **xbr2/3/4**: the public xBR "level 2" algorithm (Hyllian), implemented from its published description. It uses a YUV distance with the standard weights and edge blending at the 2×/3×/4× sub-pixel positions. Each output sub-pixel's blend weight is the exact area of the sub-pixel beyond the edge line, which reproduces the published 2× and 3× weights; for an edge that is both shallow and steep, a sub-pixel takes the larger of the two weights.
 - **Edges:** pixels outside the image repeat the nearest edge pixel. HUD and playfield are filtered together; the boundary at row 160 is a hard edge (no blending across rows 159/160).
 
 ## 6. Dynamic lighting (M12-11)
@@ -171,7 +174,7 @@ vis_l(p)   = 1 if l does not cast shadows, else the fraction of the segment pos_
 Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release build) for the heaviest setting: 21:9, xbr4, `full` lighting and bloom. That is 560 × 200 → 2240 × 800.
 
 - Work may be parallelised by rows with `rayon` (MIT/Apache-2.0). Add it to THIRD_PARTY.md if used.
-- **Split of the budget** (rev 2):
+- **Split of the budget** (rev 3):
   - xbr4 at 560 × 200 takes about 1.3 ms on 16 threads and 1.7 ms on 6;
   - lighting and bloom get at most 4 ms (`tests/enhanced_lighting_timing.rs`, a busy synthetic night).
 - **Measured 2026-11-05** on an i7-10700F that other builds kept fully loaded, lighting and bloom together:
@@ -201,14 +204,15 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 - [ ] Q1: tune the light table in §6.1 by eye in the arena. The values above are starting points, and changing them needs no spec revision beyond this table.
 - [ ] Q2: should widescreen widen the radar or the F5 map? Proposal: no, they stay original.
 - [ ] Q3: should a GPU backend (SDL3 GPU) follow once the CPU reference is done (ADR-0006 alternatives)?
-- [ ] Q4 (IM-12, M12-09): §4.2's relaxed visibility and its centre invariant conflict at the Classic window's edges. The Classic tests leave out some objects that already overlap the 320-wide window: a mission ship whose tile is one column left of the view, or one in the right column with offset ≥ view offset; explosions likewise. In a wide frame those objects are drawn, so their pixels inside columns *m* .. *m* + 319 differ from Classic until Classic draws them too. The implementation draws them, which avoids objects popping in at the old window edge. It holds the invariant for the tile window, the player ship and the overpass redraw (tested at C-0002 f3500/f3543). Proposal: state the invariant for the static playfield (tiles, player, overpasses) only.
-- [ ] Q5 (IM-12): §4.3 "mirroring … repeated" is implemented as a mirrored repeat (bar columns 0, 1, .., 15, 15, .., 0, 0, 1, ..), which is continuous at every seam.
-- [ ] Q6 (IM-12): §5 leaves the xBR sub-pixel blend weights open. They are implemented as the exact area of each output sub-pixel beyond the edge line, which reproduces the published 2× and 3× weights for diagonal and single-slope edges. For an edge that is both shallow and steep, each sub-pixel takes the larger of the two weights.
-- [ ] Q7 (IM-12): §2 "the Classic profile forces every key off" needs a profile setting. It is implemented as a top-level `profile = "classic" | "enhanced"` key, default `classic` (MDG §6.2), so a user sets `profile = "enhanced"` as well as the `[enhanced]` keys. It governs only `[enhanced]` for now; `audio.sfx_mode` is unchanged.
+- [x] Q4 (IM-12): relaxed visibility vs the centre invariant. Resolved in rev 2: the invariant covers the static playfield (§4.2).
+- [x] Q5 (IM-12): side panels are a mirrored repeat (§4.3, rev 2).
+- [x] Q6 (IM-12): xBR blend weights are exact sub-pixel coverage (§5, rev 2).
+- [x] Q7 (IM-12): top-level `profile` key, default classic (§2, rev 2).
 
 ## 10. Revision history
 
 | Rev | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-11-05 | main session | Initial design from the user's request (ADR-0006) |
-| 2 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |
+| 2 | 2026-11-05 | main session | Q4-Q7 from IM-12 resolved: `profile` key, static-playfield invariant, mirrored-repeat panels, xBR coverage weights, auto tolerance |
+| 3 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |

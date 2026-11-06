@@ -1,7 +1,7 @@
 //! The light list of a flight frame (M12-11): the §6.1 sources taken from what the tick drew,
 //! and the occluder grid of solid map cells.
 //!
-//! Spec: `docs/spec/enhanced/presentation.md` rev 2 §6.1. Positions use the flight screen's
+//! Spec: `docs/spec/enhanced/presentation.md` rev 3 §6.1. Positions use the flight screen's
 //! mapping (`crate::flight`; `camera-viewport.md`, `flight-screens.md` rev 1 §4.6–§4.8,
 //! `mission-ships.md` rev 2 §4.7) shifted right by the widescreen margin m: screen = world −
 //! view origin, origin = (viewX·32 + 4·Round(subX / 4) − 16, viewY·32 + subY − 16).

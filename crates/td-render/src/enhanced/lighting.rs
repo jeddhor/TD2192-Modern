@@ -1,7 +1,7 @@
 //! Dynamic lighting (M12-11): the light map with soft shadows from solid map cells, emissive
 //! colours, and the modulation of the upscaled RGBA image.
 //!
-//! Spec: `docs/spec/enhanced/presentation.md` rev 2 §6 (design, T3, Enhanced profile only;
+//! Spec: `docs/spec/enhanced/presentation.md` rev 3 §6 (design, T3, Enhanced profile only;
 //! ADR-0006). Presentation only: the scene is built from what the flight drew, and nothing
 //! here feeds back into the simulation. Deterministic: per-frame work uses only IEEE `+ − × ÷`,
 //! `sqrt` and `floor` (no fused or transcendental operations), and the row split changes no

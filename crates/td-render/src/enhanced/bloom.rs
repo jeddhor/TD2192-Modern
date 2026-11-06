@@ -1,7 +1,7 @@
 //! Bloom (M12-12): the glow of emissive and bright pixels, added at output resolution after
 //! the upscale and the light map.
 //!
-//! Spec: `docs/spec/enhanced/presentation.md` rev 2 §6.3 (design, T3, Enhanced profile only;
+//! Spec: `docs/spec/enhanced/presentation.md` rev 3 §6.3 (design, T3, Enhanced profile only;
 //! ADR-0006). Steps: bright pass (emissive colours and pixels whose linear luminance is above
 //! 0.9), 4 × 4 box downsample, a separable 9-tap Gaussian (σ = 2 quarter-resolution pixels,
 //! horizontal then vertical), bilinear upsample, added in linear light at strength 0.6.

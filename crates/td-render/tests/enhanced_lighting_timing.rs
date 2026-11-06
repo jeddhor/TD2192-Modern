@@ -1,5 +1,5 @@
 //! Timing of the lighting and bloom stages at the heaviest setting of
-//! `docs/spec/enhanced/presentation.md` rev 2 §7: 21:9 (W = 560), 4× output (2240 × 800),
+//! `docs/spec/enhanced/presentation.md` rev 3 §7: 21:9 (W = 560), 4× output (2240 × 800),
 //! `full` lighting and bloom, on a busy synthetic night (25 explosions, 20 shots, flashes, the
 //! flame and engines, a street grid of solid blocks).
 //!
