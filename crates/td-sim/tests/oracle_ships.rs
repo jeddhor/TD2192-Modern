@@ -153,6 +153,7 @@ fn mission_ships_match_c0009_tick_by_tick() {
 
     let last = *ticks.keys().last().unwrap();
     let mut compared = 0usize;
+    let mut flashed = 0usize;
     let mut mismatches = Vec::new();
     for t in 1..=last {
         let d = &ticks[&t];
@@ -165,6 +166,16 @@ fn mission_ships_match_c0009_tick_by_tick() {
         if ours != orig {
             mismatches.push(format!(
                 "tick {t}: (phase, ticker) ours {ours:?} orig {orig:?}"
+            ));
+        }
+        // g_HitFlash (DS:12C4) after step 14 (hit-flash.md rev 1): slot 1 dies at tick 254,
+        // five tiles from the player, so 15 decays to 13, 11, ..., 1, 0.
+        let flash = d.i16(0x12C4) as u16;
+        flashed += usize::from(flash > 0);
+        if f.hit_flash != flash {
+            mismatches.push(format!(
+                "tick {t}: hit flash ours {} orig {flash}",
+                f.hit_flash
             ));
         }
         for i in 0..SHIP_SLOTS {
@@ -188,4 +199,5 @@ fn mission_ships_match_c0009_tick_by_tick() {
         mismatches.len(),
         mismatches.join("\n")
     );
+    assert_eq!(flashed, 7, "ticks with a hit flash (13, 11, ..., 1)");
 }

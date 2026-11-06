@@ -17,6 +17,7 @@ pub mod mz;
 pub mod palette;
 pub mod picture;
 pub mod portraits;
+pub mod saves;
 pub mod screen;
 pub mod sprites;
 pub mod tileset;

@@ -148,6 +148,13 @@ impl FlightDac {
         self.hit_flash = self.hit_flash.max(v);
     }
 
+    /// Sets the hit-flash level to the simulation's `g_HitFlash` as tick-order step 14 found
+    /// it (`td_sim::flight::DrawnFrame::hit_flash`), before [`FlightDac::step`] decays and
+    /// draws it (sim/hit-flash.md §4.3).
+    pub fn set_hit_flash(&mut self, v: u16) {
+        self.hit_flash = v;
+    }
+
     /// Tick-order step 14 (§4.5.4) in palette `mode`, with the white-flash counter
     /// `flash_frames` (`g_FlashFrames`) as the step read it (4 = first white frame .. 1 =
     /// restore, 0 = none).

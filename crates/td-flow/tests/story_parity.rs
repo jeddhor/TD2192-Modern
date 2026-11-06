@@ -11,6 +11,7 @@ use std::rc::Rc;
 use td_assets::{DataDir, ExeResources};
 use td_audio::AudioCommand;
 use td_flow::campaign::{Campaign, E1_BLOCKS, Step};
+use td_flow::main_menu::{MainMenu, MenuGraphics, Reentry};
 use td_flow::program::Program;
 use td_flow::settings::Settings;
 use td_flow::story::{self, StoryAssets, StoryScreen};
@@ -135,20 +136,114 @@ fn hint_1_matches_the_original() {
 
 #[test]
 fn main_menu_matches_the_original() {
-    // ASSUMPTION(U-120): cursor colours from this frame; 5 pixels of the frame are not in
-    // td.men (unexplained) and are tolerated.
+    // screens §3.1, test vector 1: C-0002 f997, 162 frames after the menu's fade-in began
+    // (f835), after the start-up pulse of cursor 0. The whole DAC must match, DAC 255 = white
+    // included. The only pixels that differ are the 5 ink-0 MemAvail digits (not ported, T3).
     let _data = require_data!();
     let oracle = require_oracle!();
     let (dir, res) = load().unwrap();
-    let ep = td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
+    let mut ep =
+        td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
+    let settings = Settings::default();
+    let mut audio = Vec::new();
+    let mut ctx = FlowContext {
+        data: &dir,
+        resources: &res,
+        settings: &settings,
+        audio: &mut audio,
+    };
+    // Script choice: `1` once it is shown, then wait until the menu has faded in.
+    let one = Key::digit(1).unwrap();
+    let mut frames_in_menu = 0;
+    for f in 0..2_000 {
+        let pressed = if f == 40 { vec![one] } else { Vec::new() };
+        let input = TickInput {
+            pressed,
+            ..TickInput::default()
+        };
+        td_flow::Screen::tick(&mut ep, &mut ctx, &input);
+        if ep.menu().screen().pixels.iter().any(|&p| p != 0) {
+            frames_in_menu += 1;
+        }
+        if frames_in_menu == 162 {
+            break;
+        }
+    }
+    assert!(ep.menu().waiting(), "fade-in and pulse over");
     let mut fb = td_render::Framebuffer::new();
     td_flow::Screen::draw(&ep, &mut fb);
     let (dac, frame) = oracle_frame(&oracle, "f00000997_320x200_main-menu.vga");
-    let n = (0..64_000).filter(|&i| fb.pixels[i] != frame[i]).count();
-    assert!(n <= 5, "{n} pixels differ");
-    for e in 0..255 {
+    let d: Vec<(usize, usize)> = (0..64_000)
+        .filter(|&i| fb.pixels[i] != frame[i])
+        .map(|i| (i % 320, i / 320))
+        .collect();
+    assert_eq!(d, [(24, 11), (40, 11), (40, 13), (24, 15), (40, 15)]);
+    for e in 0..256 {
         assert_eq!(fb.palette.colors[e], dac.colors[e], "entry {e}");
     }
+}
+
+#[test]
+fn main_menu_boxes_and_fades() {
+    // screens §3.1: the quit box over rows 84..115 at half brightness, the menu rows restored
+    // on a cancel; a selection fades the menu out before its action (C-0002: Enter at f1027,
+    // the next screen's mode X initialisation at f1060).
+    let _data = require_data!();
+    let (dir, _) = load().unwrap();
+    let gfx = MenuGraphics::load(&dir).unwrap();
+    let mut m = MainMenu::new(Some(gfx));
+    m.enter(0, false, Reentry::Loader { first: true });
+    let idle = TickInput::default();
+    let press = |k| TickInput {
+        pressed: vec![k],
+        ..TickInput::default()
+    };
+    while !m.waiting() {
+        m.step(&idle);
+    }
+    let menu_rows = m.screen().pixels[84 * 320..116 * 320].to_vec();
+    let full = m.screen().palette.clone();
+    m.step(&press(Key::ESCAPE));
+    for _ in 0..16 {
+        m.step(&idle);
+    }
+    assert_ne!(
+        m.screen().pixels[84 * 320..116 * 320],
+        menu_rows[..],
+        "box 1 shown"
+    );
+    for e in 0..256 {
+        let b = m.palette_buffer().colors[e];
+        let expect = if (192..=209).contains(&e) {
+            b
+        } else {
+            td_formats::palette::Rgb6 {
+                r: b.r / 2,
+                g: b.g / 2,
+                b: b.b / 2,
+            }
+        };
+        assert_eq!(m.screen().palette.colors[e], expect, "entry {e}");
+    }
+    m.step(&press(Key::SPACE));
+    assert_eq!(m.screen().pixels[84 * 320..116 * 320], menu_rows[..]);
+    while !m.waiting() {
+        m.step(&idle);
+    }
+    assert_eq!(m.screen().palette.colors[1..224], full.colors[1..224]);
+    assert_eq!(m.cursor(), 0);
+    m.step(&press(Key::ENTER));
+    let mut n = 0;
+    while m.step(&idle).is_none() {
+        n += 1;
+        assert!(n < 100);
+    }
+    assert_eq!(n + 1, 34, "frames from Enter to the action");
+    assert!(
+        m.screen().palette.colors[1..]
+            .iter()
+            .all(|c| c.r == 0 && c.g == 0 && c.b == 0)
+    );
 }
 
 /// Plays one block, pressing `key(campaign)` every 40 frames; returns the result and the
@@ -373,4 +468,28 @@ fn esc_on_the_title_card_goes_straight_to_the_flight() {
         .filter(|a| matches!(a, AudioCommand::PlayMusic { .. }))
         .count();
     assert_eq!(songs, 1);
+}
+
+#[test]
+fn keys_typed_ahead_carry_into_the_next_screen() {
+    // screens §2.2 (U-123): Space ends the title card's wait; Esc, typed while the card fades
+    // out, stays in the BIOS buffer, ends the hangar card's wait as soon as it starts and sets
+    // the skip flag, so flight 1 starts without dialogue 1 or the hint.
+    let _data = require_data!();
+    let (dir, res) = load().unwrap();
+    let (l, _, launches) = counting(0);
+    let mut prog = Program::new(&dir, &res, Box::new(l)).unwrap();
+    let mut c = Campaign::new(1, 0);
+    let keys = |_: &Campaign, f: u32| match f {
+        40 => Some(Key::SPACE),
+        41 => Some(Key::ESCAPE),
+        _ => None,
+    };
+    let launched = || launches.get() > 0;
+    let frame = drive(&mut prog, &mut c, keys, launched, &mut Vec::new());
+    // Title fade-out, then the hangar card's fade-in and fade-out: about 40 + 3 × 34 frames.
+    assert!(
+        launched() && frame < 200,
+        "flight launched at frame {frame}"
+    );
 }
