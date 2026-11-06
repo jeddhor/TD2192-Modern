@@ -10,3 +10,4 @@ One file per decision: `NNNN-short-title.md`, using the template in ADG §17.7. 
 | [0004](0004-indexed-framebuffer-and-fixed-timestep.md) | 320×200 indexed framebuffer and deterministic fixed-timestep simulation | Accepted |
 | [0005](0005-opl-emulation.md) | OPL2 emulation via ymfm | Accepted |
 | [0006](0006-enhanced-presentation-pipeline.md) | Enhanced presentation pipeline (widescreen, upscaling, dynamic lighting) | Proposed |
+| [0007](0007-classic-tick-rate.md) | Canonical Classic tick rate (19.2015 Hz) | Accepted |
