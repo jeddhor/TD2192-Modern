@@ -529,3 +529,16 @@ address,kind,name,signature,comment,confidence,source_task
 36B6:9ABE,data,g_CrtDelayCnt,u16,"= E1 file0001:3C43:9B96, DS offset by refs 2/2. E1: Delay loop iterations per millisecond (calibrated at init)",LIKELY,M1-09
 36B6:9AC3,data,g_CrtPendingScan,u8,"= E1 file0001:3C43:9B9B, DS offset by refs 6/6. E1: scan code held back by ReadKey for an extended key",CONFIRMED,M1-09
 36B6:9AC4,data,g_CrtBreakFlag,u8,"= E1 file0001:3C43:9B9C, DS offset by refs 4/4. E1: set by the Ctrl-Break handler",CONFIRMED,M1-09
+2555:01D4,func,Comm_LoadTransmission1,,"E2 F6 transmission 1: headers, lines (e2.comms.01), speaker bytes, portraits 1/0 (flow/e2-flight-screens 3.1)",CONFIRMED,RE-12
+2555:0525,func,Comm_LoadTransmission2,,"E2 F6 transmission 2 (e2.comms.02), portraits 2/0 (flow/e2-flight-screens 3.1)",CONFIRMED,RE-12
+2555:0774,func,Comm_LoadTransmission3,,"E2 F6 transmission 3 (e2.comms.03), portraits 3/0 (flow/e2-flight-screens 3.1)",CONFIRMED,RE-12
+2555:0B7E,func,Comm_LoadTransmission4,,"E2 F6 transmission 4 (e2.comms.04), portraits 4/0 (flow/e2-flight-screens 3.1; C-0044)",CONFIRMED,RE-12
+2555:0F93,func,Comm_LoadTransmission5,,"E2 F6 transmission 5 (e2.comms.05), portraits 5/0 (flow/e2-flight-screens 3.1)",CONFIRMED,RE-12
+2555:1325,func,Comm_LoadTransmission6,,"E2 F6 transmission 6 (e2.comms.06 + .07, one run), portraits 6/0 (flow/e2-flight-screens 3.1)",CONFIRMED,RE-12
+2555:158D,func,Comm_LoadTransmission7,,"E2 F6 transmission 7 (e2.comms.08), portraits 5/0 (flow/e2-flight-screens 3.1)",CONFIRMED,RE-12
+36B6:31EC,data,g_CommHeaderA,string[50],"= E1 file0001:3C43:32C4. Transmission header A (slot -1 of the 51-byte table)",CONFIRMED,RE-12
+36B6:321F,data,g_CommLines,u8[1580],"= E1 file0001:3C43:32F7. string[50] per slot; slot 0 = header B, slots 1.. = lines",CONFIRMED,RE-12
+36B6:384B,data,g_CommSpeaker,u8[31],"= E1 file0001:3C43:3923. Speaker byte per line k (index k): 1 box A, other values box B",CONFIRMED,RE-12
+36B6:386A,data,g_CommPortraitA,u8,"= E1 file0001:3C43:3942. td2.ccm record for box A",CONFIRMED,RE-12
+36B6:386B,data,g_CommPortraitB,u8,"= E1 file0001:3C43:3943. td2.ccm record for box B",CONFIRMED,RE-12
+36B6:386C,data,g_CommI,u16,"= E1 file0001:3C43:3944. Loop counter of the transmission loaders",CONFIRMED,RE-12

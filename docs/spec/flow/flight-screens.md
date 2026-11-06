@@ -486,6 +486,7 @@ So a file that replaces only bank slots changes sprite n on the four headings N,
 |---|---|---|---|
 | 17 | E1 flight 12, no input (player class 3, heading 8, late draw) | The 32 × 32 player cell at screen (144, 68) equals `td.hel` record 1 (0 of 384 non-zero pixels differ) on frames that show page 0 and record 0 (0 of 412) on frames that show page 1, alternating with the page; never `td.shp` 2 or 3 | C-0027, all 40 flight fb frames 525..1890 |
 | 18 | E1 flights 7, 12, 20 setup | Reads of 1,024 / 2,048 + 3 × 3,200 / 2,048 + 3,072 bytes into the destinations of §4.9 | C-0022, C-0027, C-0035 `int21.tsv` |
+| 19 | E1 flight 20: Esc, ship library, return | Bank slots 0..6 before: `lander.td` 0, 1, `td.shp` 2, 3, `lander.td` 2, 3, 4; after: slot 0 = `td.shp` record 0, the rest unchanged (OB-057) | C-0045 f541, f1771 |
 
 ## 7. Presentation and audio hooks
 
@@ -516,7 +517,7 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | Source buffer of each heading blit | `386E:024A..172D` (the `LDS SI` of each of the 16 routines) | static | CONFIRMED |
 | Late-draw player sprite 3 / 2 by draw page | `0E8B:D165..D183`, late path `0E8B:E030..E03E`; E2 `td2:0E96:C192..C1AA`; C-0027 | static + capture | CONFIRMED |
 | Mines and lander drawn with the plain blit | mission-ships §4.2 (e), (h); `m7.td`, `m20.td` classes and path step 1 | static | LIKELY (not on screen in C-0022/C-0035, which have no input) |
-| OB-057 (library reloads slot 0) | §4.1.2 (`0E8B:7374..78FF`) with the flight-20 loads | static | LIKELY |
+| OB-057 (library reloads slot 0) | §4.1.2 (`0E8B:7374..78FF`) with the flight-20 loads; C-0045 | static + capture (RAM) | CONFIRMED |
 | Explosions | `0E8B:0D31..0F42`, `12xx..14D4`, `14E4..1580`, `16F9..177B`, `D872..DA66` | static | LIKELY |
 | Shots | `0E8B:1785..3F9C` (bytes `1948..197F` read directly) | static | LIKELY |
 
