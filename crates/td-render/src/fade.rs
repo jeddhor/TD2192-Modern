@@ -63,6 +63,40 @@ pub fn frames_per_level(pal: &Palette, first: usize) -> u32 {
     }
 }
 
+/// Retrace frames level `s` of a 17-level fade of `pal` occupies at preset P1 (entries
+/// `first..=255` written): one for level 0, whose components are all zero (the Real48 work of
+/// screens rev 3 §2.1 is cheap on zero operands), otherwise [`frames_per_level`].
+///
+/// Rule from the captures (M12-14, IM-21; screens rev 3 §2.1, flight-screens rev 5 §4.5.3):
+/// each level starts at a retrace, and the next level waits for the first retrace after the
+/// last write, so a fade of a picture palette takes 2 + 15 × 2 + 1 frames whichever way it
+/// runs: C-0002 menu in f835.92 → 868.44, out f1027.92 → 1060.1; C-0012 Esc menu out
+/// f3555.92 → 3588.1, in f3595.92 → 3628.44; C-0017 flight start f458.92 → 491.44 (the
+/// fractions are where each `frames.tsv` frame's writes start and stop: level 0 writes its
+/// 255 entries in 0.2 frame, a picture level in 1.5).
+#[must_use]
+pub fn level_frames(pal: &Palette, first: usize, s: u8) -> u32 {
+    if s == 0 {
+        1
+    } else {
+        frames_per_level(pal, first)
+    }
+}
+
+/// Frames from the frame in which a fade starts to the first frame that shows its first level
+/// `s` (16 for a fade-out, 0 for a fade-in): [`level_frames`] + 1. A level is shown from the
+/// first frame that begins after all of its writes, and the first level's writes begin at the
+/// retrace that ends the frame in which the fade was called. Every later level is shown
+/// [`level_frames`] after the one before it; what follows the fade starts in the frame of its
+/// last level. Measured (frame of the first complete DAC dump minus the frame the fade starts
+/// in, levels in fade order): picture palette in 2, 4, …, 34 (C-0002 menu, C-0017 and C-0002
+/// flight start, C-0120 menu), out 3, 5, …, 33, 34 (C-0002 and C-0120 menus, C-0012 Esc
+/// menu); nearly black palette 2, 3, …, 18 (C-0002 title card). Fidelity: T2.
+#[must_use]
+pub fn first_level_frames(pal: &Palette, first: usize, s: u8) -> u32 {
+    level_frames(pal, first, s) + 1
+}
+
 /// An in-progress palette fade.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fade {
@@ -181,6 +215,43 @@ mod tests {
         full.colors[200].b = 5;
         full.colors[201].g = 5;
         assert_eq!(frames_per_level(&full, 1), 2, "380 from entry 1");
+    }
+
+    #[test]
+    fn level_zero_takes_one_frame_and_the_first_level_one_more() {
+        let mut pal = Palette::default();
+        for c in pal.colors.iter_mut().skip(1) {
+            *c = Rgb6 { r: 1, g: 2, b: 3 };
+        }
+        assert_eq!(level_frames(&pal, 1, 0), 1);
+        assert_eq!(level_frames(&pal, 1, 1), 2);
+        assert_eq!(level_frames(&pal, 1, 16), 2);
+        assert_eq!(first_level_frames(&pal, 1, 0), 2, "fade-in");
+        assert_eq!(first_level_frames(&pal, 1, 16), 3, "fade-out");
+        // The frames each level is first shown in, counted from the fade's start: a fade-in
+        // 2, 4, …, 34 and a fade-out 3, 5, …, 33, 34, as C-0002, C-0012, C-0017 and C-0120.
+        let shown = |levels: &mut dyn Iterator<Item = u8>| {
+            let mut at = 0;
+            let mut out = Vec::new();
+            for (i, s) in levels.enumerate() {
+                at += if i == 0 {
+                    first_level_frames(&pal, 1, s)
+                } else {
+                    level_frames(&pal, 1, s)
+                };
+                out.push(at);
+            }
+            out
+        };
+        let fade_in: Vec<u32> = (1..=17).map(|k| 2 * k).collect();
+        assert_eq!(shown(&mut (0..=16)), fade_in);
+        let mut fade_out: Vec<u32> = (1..=16).map(|k| 2 * k + 1).collect();
+        fade_out.push(34);
+        assert_eq!(shown(&mut (0..=16).rev()), fade_out);
+        // A nearly black palette: 2, 3, …, 18 both ways (C-0002 f1063, f1409).
+        let black = Palette::default();
+        assert_eq!(first_level_frames(&black, 1, 16), 2);
+        assert_eq!(level_frames(&black, 1, 5), 1);
     }
 
     #[test]

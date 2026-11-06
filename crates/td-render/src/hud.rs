@@ -109,7 +109,8 @@ pub struct HudAssets {
 }
 
 impl HudAssets {
-    /// `td.win`, `td.wea`, `td.fac`, `td.lt2` and the exe table `hud.radar_tile_colours`.
+    /// `td.win`, `td.wea`, `td.fac`, `td.lt2` and the exe table `hud.radar_tile_colours` (or the
+    /// episode's: 71 entries in E1, 80 in E2 and E3).
     /// As the loader does, colour 38 becomes 39 in `td.fac` frames 0..3 (FORMATS §12).
     pub fn new(
         win: Vec<u8>,
@@ -128,7 +129,13 @@ impl HudAssets {
         check(win.len() == HUD_W * HUD_H, "td.win")?;
         check(weapons.len() == ICONS * ICON_W * ICON_H, "td.wea")?;
         check(fac.len() == FAC_FRAMES * FAC * FAC, "td.fac")?;
-        check(radar_colours.len() == 71, "hud.radar_tile_colours")?;
+        // E1's table covers tiles 0..70, E2's and E3's tiles 0..79 (`e2.hud.radar_tile_colours`,
+        // `e3.hud.radar_tile_colours`, 80 bytes each). With 71 only, no E2 or E3 flight arena
+        // could be built (IM-21, M12-14).
+        check(
+            matches!(radar_colours.len(), 71 | 80),
+            "hud.radar_tile_colours",
+        )?;
         let font = Font::parse(lt2, FontKind::Small).map_err(|_| HudError::Size("td.lt2"))?;
         for c in &mut fac[..4 * FAC * FAC] {
             if *c == 38 {
@@ -346,6 +353,26 @@ impl Hud {
             dots: Vec::new(),
             marker: None,
         }
+    }
+
+    /// Mission start (§4.1 steps 4–5), before the opening fade-in: the weapon icon of `weapon`
+    /// and the missile column for `missiles` over `td.win`; the missile lamp is stored in the
+    /// flight palette only (not the DAC): (0, 0, 0) without missiles, else
+    /// ((4 − `cooldown`) × 15, 5, 8). The bar then shows what the fade-in reveals (C-0017 f490:
+    /// `td.win`, the icon and the column, no bars, radar or lamps until tick 1).
+    pub fn start(&mut self, assets: &HudAssets, weapon: u8, missiles: u8, cooldown: u8) {
+        self.weapon_icon(assets, weapon);
+        let lamp = if missiles == 0 {
+            [0; 3]
+        } else {
+            [4u8.wrapping_sub(cooldown).wrapping_mul(15), 5, 8]
+        };
+        for (e, rgb) in &mut self.entries {
+            if *e == MISSILE_LAMP {
+                *rgb = lamp;
+            }
+        }
+        self.missile_column(missiles);
     }
 
     /// Draws a message into the ticker strip (§4.7): opaque, pen (0, 735), over whatever the

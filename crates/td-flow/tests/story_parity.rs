@@ -11,7 +11,7 @@ use std::rc::Rc;
 use td_assets::{DataDir, ExeResources};
 use td_audio::AudioCommand;
 use td_flow::campaign::{Campaign, E1_BLOCKS, Step};
-use td_flow::main_menu::{MainMenu, MenuGraphics, Reentry};
+use td_flow::main_menu::{self, MainMenu, MenuGraphics, Reentry};
 use td_flow::program::Program;
 use td_flow::settings::Settings;
 use td_flow::story::{self, StoryAssets, StoryScreen};
@@ -289,8 +289,9 @@ fn the_first_title_card_fades_at_one_frame_per_level() {
     let (fade_in, hold, fade_out) = title_card_fades(&ink[black..]);
     eprintln!("first title card: fade-in {fade_in}, hold {hold}, fade-out {fade_out} frames");
     assert_eq!((fade_in, fade_out), (16, 16));
-    // 5 s of DOS time (332 frames, BUG-7) plus the invisible level 16 of the fade-out.
-    assert_eq!(hold, 332 + 1);
+    // 5 s of DOS time (332 frames, BUG-7), then the fade-out's level 16 (invisible) is shown
+    // two frames after the wait ends (M12-14: C-0002 f1409..1426, levels shown at f1411..1427).
+    assert_eq!(hold, 332 + 2);
 }
 
 #[test]
@@ -329,9 +330,12 @@ fn a_title_card_after_the_story_so_far_fades_at_two_frames_per_level() {
         ink.push(t.screen().palette.colors[85].r);
     }
     let (fade_in, hold, fade_out) = title_card_fades(&ink);
-    assert_eq!((fade_in, fade_out), (31, 31));
-    // 332 frames, then the fade-out's first wait and its invisible level 16 (3 frames).
-    assert_eq!(hold, 332 + 3);
+    // M12-14: levels 1..16 of the fade-in shown 4, 6, …, 34 frames after it starts; of the
+    // fade-out, levels 15..0 shown 5, 7, …, 33, 34 frames after it starts (C-0170 f1364:
+    // f1369..1398).
+    assert_eq!((fade_in, fade_out), (31, 30));
+    // 332 frames, then the fade-out's level 16 (invisible) three frames and level 15 two more.
+    assert_eq!(hold, 332 + 4);
 }
 
 #[test]
@@ -389,7 +393,13 @@ fn main_menu_boxes_and_fades() {
         n += 1;
         assert!(n < 100);
     }
-    assert_eq!(n + 1, 34, "frames from Enter to the action");
+    // M12-14: the last level 34 frames after Enter (C-0002 f1027 → f1061), then the next
+    // screen's mode X initialisation (f1060..1062): its own work from f1063, 36 after Enter.
+    assert_eq!(
+        n + 1,
+        34 + main_menu::NEXT_SCREEN_INIT_FRAMES,
+        "frames from Enter to the action"
+    );
     assert!(
         m.screen().palette.colors[1..]
             .iter()

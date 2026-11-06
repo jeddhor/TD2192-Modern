@@ -80,6 +80,16 @@ mod tests {
         for n in flights.split(',').filter_map(|n| n.parse::<u8>().ok()) {
             let mut arena = FlightArena::new(&dir, &resources, Episode::E1, n).unwrap();
             let mut audio = Vec::new();
+            // The opening fade-in (its last frame runs tick 1).
+            while arena.opening.is_some() {
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &resources,
+                    settings: &settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &TickInput::default());
+            }
             let mut input = TickInput::default();
             input.held.insert(Key::SPACE);
             input.held.insert(Key::UP);

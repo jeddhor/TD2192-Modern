@@ -173,7 +173,7 @@ impl SaveScreen {
             cursor: 1,
             typed: String::new(),
             phase: Phase::FadeIn(0),
-            wait: fade::frames_per_level(pal, 1),
+            wait: fade::first_level_frames(pal, 1, 0),
             keys: Vec::new(),
             pad: None,
             outcome: None,
@@ -263,7 +263,7 @@ impl SaveScreen {
                     fade::write_level(&mut self.screen.palette, &self.pal, s);
                     if s < 16 {
                         self.phase = Phase::FadeIn(s + 1);
-                        self.wait = fade::frames_per_level(&self.pal, 1);
+                        self.wait = fade::level_frames(&self.pal, 1, s + 1);
                     } else {
                         // The first pass of the loop draws the highlight.
                         self.draw_slot(self.cursor, HIGHLIGHT_INK);
@@ -284,11 +284,12 @@ impl SaveScreen {
                 }
                 Phase::FadeOut(s) => {
                     fade::write_level(&mut self.screen.palette, &self.pal, s);
-                    self.phase = match s {
-                        0 => Phase::Done,
-                        _ => Phase::FadeOut(s - 1),
-                    };
-                    self.wait = fade::frames_per_level(&self.pal, 1);
+                    if s > 0 {
+                        self.phase = Phase::FadeOut(s - 1);
+                        self.wait = fade::level_frames(&self.pal, 1, s - 1);
+                    } else {
+                        self.phase = Phase::Done;
+                    }
                 }
                 Phase::Done => return,
             }
@@ -348,10 +349,16 @@ impl SaveScreen {
         self.draw_slot(self.cursor, HIGHLIGHT_INK);
         if leave {
             self.outcome.get_or_insert(SaveOutcome::Left);
-            self.phase = Phase::FadeOut(16);
-            self.wait = 0;
+            self.start_fade_out();
         }
         true
+    }
+
+    /// The closing fade-out, from code that ran in this frame: level 16 is shown
+    /// [`fade::first_level_frames`] later (screens rev 3 §2.1, M12-14).
+    fn start_fade_out(&mut self) {
+        self.phase = Phase::FadeOut(16);
+        self.wait = fade::first_level_frames(&self.pal, 1, 16);
     }
 
     /// The chosen slot's fields are cleared and it gets the game in progress (§4.4).
@@ -397,7 +404,7 @@ impl SaveScreen {
         if k == Key::ENTER || k == Key::KP_ENTER {
             self.draw_slot(self.cursor, HIGHLIGHT_INK);
             self.outcome = Some(SaveOutcome::Saved(Box::new(self.set.clone())));
-            self.phase = Phase::FadeOut(16);
+            self.start_fade_out();
         } else {
             self.draw_entry();
         }

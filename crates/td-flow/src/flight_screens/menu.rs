@@ -8,8 +8,11 @@
 //! The routine is a straight-line program with fades, highlight pulses and key waits. The port
 //! runs it as a queue of steps; a key poll appends the steps of its outcome. Pace at preset P1
 //! (BUG-8): each of the 17 levels of `FadeIn`/`FadeOut` takes the frames
-//! `td_render::fade::frames_per_level` gives for the palette being faded (two for every flight,
-//! menu and help palette: 33–34 frames a fade, C-0012 f3556..3588 and f3595..3628); the item
+//! `td_render::fade::level_frames` gives for the palette being faded (two for every flight,
+//! menu and help palette, one for level 0), and a level is shown from the frame after its last
+//! write (`fade::first_level_frames`; M12-14): a fade-out shows its levels 3, 5, …, 33, 34
+//! frames after Esc and the fade-in after the menu page 2, 4, …, 34 frames after it starts
+//! (C-0012 f3555..3588 and f3595..3628, the page drawing of f3589..3594 being instant here); the item
 //! highlight ramp makes [`PULSE_STEPS_PER_FRAME`] steps per frame, because its retrace wait
 //! returns at once while the retrace bit is still set (C-0012 f3628..3630: 11, 11, 10).
 
@@ -288,9 +291,9 @@ enum Page {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Op {
     /// A fade: DAC entries `first..` := `target` · s / 16, s moving from `s` to `end`. Each
-    /// level is written in the last of its frames ([`fade::frames_per_level`] of `target`;
-    /// `wait` = frames left before the level's writes, this one included); the step after the
-    /// last level starts in the same frame.
+    /// level is shown from the frame after its last write ([`fade::first_level_frames`] for
+    /// the first, [`fade::level_frames`] for the rest; `wait` = frames left before the level is
+    /// shown, this one included); the step after the last level starts in the same frame.
     Fade {
         target: Box<Palette>,
         s: u8,
@@ -340,7 +343,7 @@ pub struct ComputerMenu {
 /// `FadeOut` (flight-screens rev 5 §4.5.3): entries 0..255.
 fn fade_out(target: Palette) -> Op {
     Op::Fade {
-        wait: fade::frames_per_level(&target, 0),
+        wait: fade::first_level_frames(&target, 0, FADE_STEPS),
         target: Box::new(target),
         s: FADE_STEPS,
         end: 0,
@@ -351,7 +354,7 @@ fn fade_out(target: Palette) -> Op {
 /// `FadeIn` (flight-screens rev 5 §4.5.3): entries 1..255.
 fn fade_in(target: Palette) -> Op {
     Op::Fade {
-        wait: fade::frames_per_level(&target, 1),
+        wait: fade::first_level_frames(&target, 1, 0),
         target: Box::new(target),
         s: 0,
         end: FADE_STEPS,
@@ -464,7 +467,7 @@ impl ComputerMenu {
                     if s != end {
                         let s = if s < end { s + 1 } else { s - 1 };
                         self.ops.push_front(Op::Fade {
-                            wait: fade::frames_per_level(&target, first),
+                            wait: fade::level_frames(&target, first, s),
                             target,
                             s,
                             end,

@@ -12,9 +12,11 @@ use std::fs;
 use std::path::Path;
 
 use td_assets::{DataDir, ExeResources};
+use td_flow::main_menu;
 use td_flow::program_e2::{EpisodeCampaign, LaterEpisode};
 use td_flow::settings::Settings;
 use td_flow::{FlowContext, PlaceholderLauncher, Screen};
+use td_formats::palette::Rgb6;
 use td_input::{Key, TickInput};
 use td_test_support::{require_data, require_oracle};
 
@@ -36,7 +38,10 @@ fn dac_writes(oracle: &Path, capture: &str) -> Vec<(u64, u32, u32)> {
 }
 
 /// Frames of the capture's menu: (fade-in, ramp frames after the fade-in's last frame,
-/// fade-out), each fade counted from its first to its last frame with DAC writes.
+/// fade-out), each fade counted from its first to its last frame with DAC writes. The fade-out
+/// starts in the frame of the Enter (its first level's writes begin at that frame's retrace)
+/// and its last level is complete in its last frame with writes, so the count is also the
+/// frame, after the Enter, that first shows the DAC black (M12-14).
 fn capture_menu(oracle: &Path, capture: &str) -> (u64, u64, u64) {
     let w = dac_writes(oracle, capture);
     let writes = |i: usize| w[i].2 > 0;
@@ -66,8 +71,9 @@ fn capture_menu(oracle: &Path, capture: &str) -> (u64, u64, u64) {
 }
 
 /// Our menu: script `2`, then (frames from the menu's entry to its last fade-in level, frames
-/// from there to the end of the start cursor's ramp, frames of the fade-out: from the Enter
-/// to the frame before the action, which starts one frame after the last level's).
+/// from there to the end of the start cursor's ramp, frames from the Enter to the fade-out's
+/// last level). The action follows the last level after the next screen's mode X
+/// initialisation (`main_menu::NEXT_SCREEN_INIT_FRAMES`).
 fn our_menu<C: EpisodeCampaign>(mut ep: LaterEpisode<C>) -> (u64, u64, u64) {
     let data = td_test_support::data_dir().unwrap();
     let dir = DataDir::open(&data).unwrap();
@@ -111,14 +117,25 @@ fn our_menu<C: EpisodeCampaign>(mut ep: LaterEpisode<C>) -> (u64, u64, u64) {
     let ramp_end = f;
     assert_eq!(ep.item_colours()[0].r, 63, "start cursor ramped up");
     tick(&mut ep, vec![Key::ENTER]);
-    let enter = f;
-    f += 1;
+    // Frames after the Enter's.
+    let mut after = 0u64;
+    let mut black = None;
     while ep.state().0 == 0 {
         tick(&mut ep, Vec::new());
-        f += 1;
-        assert!(f < enter + 200);
+        after += 1;
+        let dac = &ep.menu().screen().palette;
+        if black.is_none() && dac.colors[1..].iter().all(|c| *c == Rgb6::default()) {
+            black = Some(after);
+        }
+        assert!(after < 200);
     }
-    (last_level - entered, ramp_end - last_level, f - enter - 1)
+    let black = black.unwrap();
+    assert_eq!(
+        after,
+        black + u64::from(main_menu::NEXT_SCREEN_INIT_FRAMES),
+        "the action after the next screen's mode X initialisation"
+    );
+    (last_level - entered, ramp_end - last_level, black)
 }
 
 fn program<C: EpisodeCampaign>() -> LaterEpisode<C> {

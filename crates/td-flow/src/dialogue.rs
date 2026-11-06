@@ -8,8 +8,9 @@
 //! The screen ticks once per vertical retrace ([`RETRACE_HZ`]). Every wait of the original
 //! becomes a whole number of ticks: one per typed character
 //! (`td_render::small_text::FRAMES_PER_TYPED_CHAR`) and, per fade level, the frames
-//! `td_render::fade::frames_per_level` gives for the palette buffer (two with portraits loaded,
-//! [`FADE_FRAMES_PER_LEVEL`]; `docs/spec/flow/screens.md` rev 3 §2.1). Everything between two
+//! `td_render::fade::level_frames` gives for the palette buffer (two with portraits loaded,
+//! [`FADE_FRAMES_PER_LEVEL`], one for level 0; `docs/spec/flow/screens.md` rev 3 §2.1), each
+//! level shown from the frame after its last write (`fade::first_level_frames`, M12-14). Everything between two
 //! waits happens at once inside one tick,
 //! in the original's order. A page break waits for a key; keys pressed while text is typing or
 //! fading are kept, like the BIOS type-ahead buffer, and taken by the next page break.
@@ -534,7 +535,7 @@ impl DialogueScene {
                         } else {
                             run.level - 1
                         };
-                        self.wait = fade::frames_per_level(&self.pal, 1);
+                        self.wait = fade::level_frames(&self.pal, 1, f.level);
                         continue;
                     }
                     if run.fading_in {
@@ -559,17 +560,20 @@ impl DialogueScene {
         }
     }
 
-    /// Starts a fade (§4.6): each level, the first included, is written after a wait.
+    /// Starts a fade (§4.6): each level, the first included, is shown after a wait; the first
+    /// [`fade::first_level_frames`] after this frame, the others [`fade::level_frames`] apart
+    /// (M12-14).
     fn start_fade(&mut self, fading_in: bool, then_end: bool) {
         if !fading_in {
             self.lit = false;
         }
+        let level = if fading_in { 0 } else { 16 };
         self.state = State::Fading(FadeRun {
-            level: if fading_in { 0 } else { 16 },
+            level,
             fading_in,
             then_end,
         });
-        self.wait = fade::frames_per_level(&self.pal, 1);
+        self.wait = fade::first_level_frames(&self.pal, 1, level);
     }
 
     /// Reads and performs the next script line (§4.3).
@@ -966,7 +970,8 @@ mod tests {
     #[test]
     fn a_scene_without_portraits_fades_at_one_frame_per_level() {
         // Face 200 loads nothing: the buffer is nearly black (one text entry), so each level
-        // takes one frame (screens rev 3 §2.1); a picture palette left in g_Palette counts.
+        // takes one frame (screens rev 3 §2.1), the last shown 18 frames after the fade starts
+        // (M12-14); a picture palette left in g_Palette counts (34).
         let data = script(&[
             b"\x06\x02",
             b"\x01\x01\xc8\x40a",
@@ -978,7 +983,7 @@ mod tests {
         ]);
         let mut s = DialogueScene::new(assets(data.clone()), Episode::E1, 2);
         s.step(&TickInput::default());
-        assert_eq!(run_until(&mut s, |s| s.lit), 17);
+        assert_eq!(run_until(&mut s, |s| s.lit), 18);
         let mut left = Palette::default();
         for c in &mut left.colors {
             *c = Rgb6 { r: 7, g: 7, b: 7 };
