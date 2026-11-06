@@ -24,12 +24,18 @@ use td_audio::cmf_player::PIT_CLOCK;
 use td_audio::{CmfPlayer, OplWrite};
 use td_formats::cmf::Cmf;
 use td_opl::OPL2_CLOCK;
-use td_test_support::{require_data, require_oracle};
 
 /// Largest timing difference allowed between a capture and our tick schedule, in ticks, after
 /// aligning each song's start. The captures' timestamps are whole ms and include the emulated
 /// CPU time of each write burst (cmf §6.2 C2 gives −18..+11 ms). Measured: −0.6..+1.4 ticks.
 const TIMING_TOLERANCE_TICKS: f64 = 1.5;
+
+/// The same for a run with loop restarts (C-0073). A restart writes instrument entry 0 to all
+/// nine voices, the rhythm table and the new pass's first notes in one interrupt; WORX's OPL
+/// write routine spreads that burst over about 26 ms of emulated time (DRO 50,413..50,439 ms),
+/// while our trace stamps every write of a tick with the tick's start. Measured: −1.1..+2.5
+/// ticks; the pass length itself is checked exactly from the PIT writes.
+const LOOP_TIMING_TOLERANCE_TICKS: f64 = 3.0;
 
 /// One step of a run's music schedule.
 #[derive(Debug, Clone, Copy)]
@@ -100,6 +106,12 @@ const C0002: &[Step] = &[
     Ticks(3197),
     Stop,
 ];
+
+/// C-0073: `file0001` started directly (no intro, no launcher), the main menu left alone.
+/// `menu.cmf` plays with looping on and reaches its end of track twice: the PIT song divisor is
+/// written again at both loop restarts (f3611, f7146). The run ends 11,949 ticks after the song
+/// start (exit at 125,550 ms, start at 1,092 ms), with no stop.
+const C0073: &[Step] = &[Start("menu.cmf", true), Ticks(11_949)];
 
 /// One OPL write from a DRO v2 file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,12 +268,37 @@ fn sample_ms(sample: u64) -> f64 {
     sample as f64 * 72_000.0 / f64::from(OPL2_CLOCK)
 }
 
+/// What [`check`] compared: our filtered stream (register, value, stamp; no stamp for the
+/// capture's initial register dump) and the capture's writes, index for index.
+type Compared = (Vec<(u8, u8, Option<Stamp>)>, Vec<DroWrite>);
+
 /// Compares the schedule `steps` with capture `id`; `span` is the number of writes from the
 /// first key-on to the end of the DRO.
 fn check(id: &str, steps: &[Step], span: usize) {
-    let oracle = require_oracle!();
-    let data = require_data!();
-    let dro = parse_dro(&fs::read(oracle.join(id).join("capture/file0000_000.dro")).unwrap());
+    check_dro(
+        id,
+        "capture/file0000_000.dro",
+        steps,
+        span,
+        TIMING_TOLERANCE_TICKS,
+    );
+}
+
+/// [`check`] for a capture whose DRO is `dro_file` (DOSBox names it after the program that ran
+/// when the recording started). Returns what was compared, or `None` when skipped.
+fn check_dro(
+    id: &str,
+    dro_file: &str,
+    steps: &[Step],
+    span: usize,
+    tolerance_ticks: f64,
+) -> Option<Compared> {
+    let (Some(oracle), Some(data)) = (td_test_support::oracle_dir(), td_test_support::data_dir())
+    else {
+        eprintln!("SKIPPED: TD2192_ORACLE or TD2192_DATA not set (oracle parity test {id})");
+        return None;
+    };
+    let dro = parse_dro(&fs::read(oracle.join(id).join(dro_file)).unwrap());
     let ours = capture_filter(&play(&data, steps), &dro.codemap);
     let theirs = &dro.writes;
 
@@ -325,12 +362,13 @@ fn check(id: &str, steps: &[Step], span: usize) {
             lo / tick_ms,
             hi / tick_ms
         );
-        let limit = TIMING_TOLERANCE_TICKS * tick_ms;
+        let limit = tolerance_ticks * tick_ms;
         assert!(
             lo >= -limit && hi <= limit,
             "{id} song {song}: timing off by {lo:.1}..{hi:.1} ms"
         );
     }
+    Some((ours, dro.writes))
 }
 
 /// cmf §6.2 C1: 4,364 writes from the first key-on to the intro's final stop, plus `td1`'s 6.
@@ -343,4 +381,68 @@ fn intro_music_matches_capture_c0001() {
 #[test]
 fn game_music_matches_capture_c0002() {
     check("C-0002", C0002, 3438 - 85);
+}
+
+/// Song starts in a run's `pit.tsv`: the emulated ms of every PIT write of divisor 12428 by
+/// `prog` (a WORX song start, also at a loop restart).
+fn song_start_ms(oracle: &Path, id: &str, prog: &str) -> Vec<f64> {
+    fs::read_to_string(oracle.join(id).join("pit.tsv"))
+        .unwrap()
+        .lines()
+        .skip(1)
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            (f[2] == prog && f[7].contains("count=12428")).then(|| f[1].parse().unwrap())
+        })
+        .collect()
+}
+
+/// cmf §4.8, M3 parity row 12: a looping song that reaches its end of track. The whole DRO
+/// matches write for write, including the two restart blocks (`BD=C0` and instrument entry 0 to
+/// voices 0..8) and the new pass's first events in the same burst. The pass after a restart
+/// lasts as many ticks as ours (4,841 for `menu.cmf`, the sum of its delta times): the capture's
+/// restart-to-restart interval is that many PIT periods plus the time WORX takes to reach the
+/// PIT write inside the restart (under one tick).
+#[test]
+fn looping_menu_music_matches_capture_c0073() {
+    let Some((ours, _)) = check_dro(
+        "C-0073",
+        "capture/file0001_000.dro",
+        C0073,
+        6540 - 86,
+        LOOP_TIMING_TOLERANCE_TICKS,
+    ) else {
+        return;
+    };
+    let oracle = td_test_support::oracle_dir().expect("checked above");
+    let restarts: Vec<u32> = ours
+        .iter()
+        .filter_map(|&(r, v, s)| ((r, v) == (0xBD, 0xC0)).then_some(s?.tick))
+        .collect();
+    assert_eq!(restarts.len(), 2, "two loop restarts in C-0073");
+    let starts = song_start_ms(&oracle, "C-0073", "FILE0001");
+    assert_eq!(starts.len(), 3, "song start + two restarts in pit.tsv");
+    let period_ms = 1000.0 * 12428.0 / f64::from(PIT_CLOCK);
+    let capture_pass = (starts[2] - starts[1]) / period_ms;
+    let ours_pass = restarts[1] - restarts[0];
+    eprintln!(
+        "C-0073: restarts at our ticks {restarts:?}; PIT song starts {starts:?} ms; \
+         restart-to-restart {capture_pass:.3} periods, ours {ours_pass} ticks"
+    );
+    assert_eq!(ours_pass, 4841, "menu.cmf pass after a restart");
+    assert_eq!(
+        capture_pass.floor() as u32,
+        ours_pass,
+        "pass after a restart"
+    );
+    // Finding (docs/parity/M3-audio.md row 12a, U-401): in the capture the first pass is as long
+    // as the later ones (start-to-restart equals restart-to-restart to the microsecond), so the
+    // song's first event runs in the start call, not on tick d0 + 1 as cmf §4.4 and our player
+    // have it (our first restart is on tick 4842). Reported, not asserted, until the spec decides.
+    let capture_first = (starts[1] - starts[0]) / period_ms;
+    eprintln!(
+        "C-0073: start-to-restart {capture_first:.3} periods in the capture; our first restart \
+         on tick {}",
+        restarts[0]
+    );
 }
