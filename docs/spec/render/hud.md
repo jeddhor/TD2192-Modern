@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `render/hud` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for geometry, element positions and colours; T1 for update order and for the two game rules found here (§4.3, flight 7) |
 | **Confidence** | CONFIRMED for the display geometry, both bars, the missile column, the radar (map, ship markers, player), the compass lamps and the guidance dots: a model written from this spec reproduces C-0002 frame 3543 with 0 differing pixels (§6). LIKELY for the ticker window, the F6 indicator and the weapon icon (static) |
@@ -299,6 +299,7 @@ if comm pending = 0 and phase ≠ 0:  phase := 0; draw frame 0
 | Ticker strip wrap | Text past x = 351 continues one VGA row lower at x − 352; the trailing spaces of every message write background into rows 737..741 at x ≈ 0..46 | Preserve (emulate the strip as 352-pixel rows); U-185 asks whether any visible ink is hit |
 | Dead code at the player's death | `0E8B:E555` clears a strip (x 8..131, y 12..13) when the word DS:18BA = 2; nothing writes DS:18BA, so it never runs | Not ported (U-186) |
 | Flight-7 rule in the HUD routine | The guidance routine sets phase 100 in flight 7 | Implement it in the mission runtime, called at the same point of the tick (mission-logic §5.7) |
+| OB-090: weapon icon 0 | With `g_Weapon` = 0 (a class-0/1 flight that is the first flight of the program run, [weapons](../sim/weapons.md) §3.2; in E1 only flight 19) the icon loop reads the 648 bytes **before** the `td.wea` block (heap memory, offset −648..−1). C-0069 (flight 19 started directly) shows a solid 36 × 18 block of colour B2h there from the first flight frame to the end, the vehicle switch included | Preserve as observed: fill the icon cell (x 179..214, y 7..24) with colour B2h when the weapon is 0 (LIKELY: heap contents, seen in one capture) |
 
 ## 6. Test vectors
 
@@ -343,3 +344,4 @@ The transmission indicator pairs with sound effect 200 (`income.voc`, [sfx-polic
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-3 | Draft from static analysis (M2-09) |
 | 2 | 2026-11-02 | RE-6 (Archaeologist + Spec author) | M6-07 RE part: bars, low-armour pulse, missile lamp and column, compass lamps, guidance line maths, radar markers, ticker strip and window rules, F6 indicator rule, weapon icon source corrected (`g_Weapon`, not the class), `k_TileRadarColour`, test vectors from C-0002 |
+| 3 | 2026-11-06 | RE-15 | §5: OB-090, the weapon icon for weapon 0 (flight 19 as the first flight of a run) shows colour B2h (C-0069) |
