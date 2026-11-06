@@ -32,6 +32,7 @@ use super::ui::{
     UiAssets, nav,
 };
 use crate::controls::{KeyBindings, PadBindings, flight_key_action, flight_key_name};
+use crate::intro::IntroPolicy;
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::settings::{Lighting, Profile, Scale, Settings, SfxMode, Upscaler, Widescreen};
 
@@ -61,6 +62,9 @@ pub enum Row {
     SfxVolume,
     SfxMode,
     Profile,
+    /// When the intro plays before Episode 1 (`[intro] play`; Enhanced only, Classic always
+    /// plays it, launcher spec §4.10).
+    Intro,
     ColorblindGuidance,
     Binding(FlightKey),
     ResetControls,
@@ -92,7 +96,7 @@ const VIDEO_ROWS: [Row; 7] = [
     Row::Back,
 ];
 const AUDIO_ROWS: [Row; 4] = [Row::MusicVolume, Row::SfxVolume, Row::SfxMode, Row::Back];
-const PROFILE_ROWS: [Row; 2] = [Row::Profile, Row::Back];
+const PROFILE_ROWS: [Row; 3] = [Row::Profile, Row::Intro, Row::Back];
 const ACCESSIBILITY_ROWS: [Row; 2] = [Row::ColorblindGuidance, Row::Back];
 const DATA_ROWS: [Row; 4] = [Row::PickFolder, Row::PickZip, Row::Extract, Row::Back];
 
@@ -145,9 +149,10 @@ pub fn is_enhanced(row: Row) -> bool {
     )
 }
 
-/// True if `row` can be chosen or changed with `s`.
+/// True if `row` can be chosen or changed with `s`. The intro setting is read only under the
+/// Enhanced profile (Classic always plays the intro, as `td1.exe` does).
 pub fn row_enabled(row: Row, s: &Settings) -> bool {
-    !is_enhanced(row) || s.profile == Profile::Enhanced
+    !(is_enhanced(row) || row == Row::Intro) || s.profile == Profile::Enhanced
 }
 
 fn label(row: Row) -> String {
@@ -163,6 +168,7 @@ fn label(row: Row) -> String {
         Row::SfxVolume => "sound volume".into(),
         Row::SfxMode => "sound effects".into(),
         Row::Profile => "profile".into(),
+        Row::Intro => "intro before episode 1".into(),
         Row::ColorblindGuidance => "colour-blind guidance line".into(),
         Row::Binding(k) => flight_key_action(k).into(),
         Row::ResetControls => "reset to defaults".into(),
@@ -224,6 +230,12 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
             Profile::Enhanced => "enhanced",
         }
         .into(),
+        Row::Intro => match s.intro.play {
+            IntroPolicy::Always => "always",
+            IntroPolicy::FirstLaunch => "first launch",
+            IntroPolicy::Never => "never",
+        }
+        .into(),
         Row::ColorblindGuidance => on_off(s.accessibility.colorblind_guidance),
         Row::Open(_)
         | Row::Binding(_)
@@ -243,6 +255,7 @@ fn note(row: Row) -> Option<&'static str> {
         Row::Upscaler => Some("smooths the pixel art"),
         Row::SfxMode => Some("polyphonic plays several effects at once"),
         Row::ColorblindGuidance => Some("the guidance line in colours safe for colour blindness"),
+        Row::Intro => Some("the classic profile always plays it"),
         Row::PickFolder => Some("an installed copy - used where it is"),
         Row::PickZip => Some("the original zip - read where it is"),
         Row::Extract => Some("copies the checked game files into"),
@@ -297,6 +310,17 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
         }
         Row::Profile => {
             s.profile = cycle(&[Profile::Classic, Profile::Enhanced], s.profile, dir);
+        }
+        Row::Intro => {
+            s.intro.play = cycle(
+                &[
+                    IntroPolicy::Always,
+                    IntroPolicy::FirstLaunch,
+                    IntroPolicy::Never,
+                ],
+                s.intro.play,
+                dir,
+            );
         }
         Row::ColorblindGuidance => {
             s.accessibility.colorblind_guidance = !s.accessibility.colorblind_guidance;
@@ -1196,6 +1220,24 @@ mod tests {
             let path = std::path::Path::new(&out).join(format!("{page:?}.ppm"));
             std::fs::write(path, ppm).unwrap();
         }
+    }
+
+    #[test]
+    fn the_intro_setting_needs_enhanced() {
+        let mut s = Settings::default();
+        assert!(
+            !row_enabled(Row::Intro, &s),
+            "Classic always plays the intro"
+        );
+        assert!(!change(Row::Intro, &mut s, 1));
+        s.profile = Profile::Enhanced;
+        assert!(change(Row::Intro, &mut s, 1));
+        assert_eq!(s.intro.play, IntroPolicy::FirstLaunch);
+        assert_eq!(value(Row::Intro, &s).as_deref(), Some("first launch"));
+        assert!(change(Row::Intro, &mut s, 1));
+        assert!(change(Row::Intro, &mut s, 1));
+        assert_eq!(s.intro.play, IntroPolicy::Always);
+        assert_eq!(rows(Page::Profile), [Row::Profile, Row::Intro, Row::Back]);
     }
 
     #[test]

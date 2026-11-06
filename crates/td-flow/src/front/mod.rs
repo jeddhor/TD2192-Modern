@@ -53,7 +53,9 @@ impl SettingsPort {
         self.0.borrow().open
     }
 
-    fn submit(&self, s: Settings) {
+    /// Hands changed settings to the host (also used by the launcher shell to record that the
+    /// intro was shown).
+    pub fn submit(&self, s: Settings) {
         self.0.borrow_mut().pending = Some(s);
     }
 

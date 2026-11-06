@@ -5,6 +5,7 @@ mod enhanced;
 mod flight;
 mod mapview;
 mod run;
+mod shell;
 
 use std::path::PathBuf;
 
@@ -39,6 +40,15 @@ struct Cli {
     /// Developer: play one dialogue scene: ID (episode 1), eN:ID, or eN-safe:ID (edited script).
     #[arg(long, value_name = "SCENE")]
     dev_dialogue: Option<String>,
+    /// Start Episode 1 without the intro.
+    #[arg(long)]
+    no_intro: bool,
+    /// Developer: play the intro alone.
+    #[arg(long)]
+    dev_intro: bool,
+    /// Developer: show the credits, as the intro flyover (a, the default) or as pages (b).
+    #[arg(long, value_name = "MODE", num_args = 0..=1, default_missing_value = "a")]
+    dev_credits: Option<String>,
     /// Start in fullscreen (overrides settings).
     #[arg(long)]
     fullscreen: bool,
@@ -185,6 +195,11 @@ fn real_main() -> Result<()> {
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
+        _ if cli.dev_intro => shell::dev_intro(&dir, &resources, &settings)?,
+        _ if cli.dev_credits.is_some() => {
+            let mode = cli.dev_credits.as_deref().unwrap_or("a");
+            shell::dev_credits(&dir, &resources, &settings, mode)?
+        }
         (Some(spec), _) => {
             let (episode, n) = parse_flight_spec(&spec)?;
             Box::new(
@@ -200,7 +215,15 @@ fn real_main() -> Result<()> {
         }
         (None, None) => match (cli.dev_mapview.as_deref(), episode) {
             (Some(map), _) => Box::new(mapview::MapView::new(&dir, map)?),
-            (None, Some(ep)) => episode_program(&dir, &resources, ep, &view, &user_dir)?,
+            // Episode 1 plays the intro first (launcher §4.10).
+            (None, Some(ep)) => shell::with_intro(
+                &dir,
+                &resources,
+                &settings,
+                &port,
+                cli.no_intro || ep != Episode::E1,
+                episode_program(&dir, &resources, ep, &view, &user_dir)?,
+            ),
             // The port's start screen (M11-01).
             (None, None) => Box::new(td_flow::front::StartScreen::new(
                 td_flow::front::UiAssets::load(&dir),
@@ -208,6 +231,8 @@ fn real_main() -> Result<()> {
                 Box::new(Programs {
                     view: view.clone(),
                     user_dir: user_dir.clone(),
+                    no_intro: cli.no_intro,
+                    port: port.clone(),
                 }),
                 port.clone(),
             )),
@@ -278,6 +303,9 @@ fn episode_program(
 struct Programs {
     view: enhanced::SharedView,
     user_dir: PathBuf,
+    /// `--no-intro`: Episode 1 starts without the intro.
+    no_intro: bool,
+    port: td_flow::front::SettingsPort,
 }
 
 impl td_flow::front::EpisodeLauncher for Programs {
@@ -286,8 +314,17 @@ impl td_flow::front::EpisodeLauncher for Programs {
         ctx: &mut td_flow::FlowContext<'_>,
         episode: Episode,
     ) -> std::result::Result<Box<dyn td_flow::Screen>, String> {
-        episode_program(ctx.data, ctx.resources, episode, &self.view, &self.user_dir)
-            .map_err(|e| format!("{e:#}"))
+        let program = episode_program(ctx.data, ctx.resources, episode, &self.view, &self.user_dir)
+            .map_err(|e| format!("{e:#}"))?;
+        // Episode 1 plays the intro first (launcher §4.10).
+        Ok(shell::with_intro(
+            ctx.data,
+            ctx.resources,
+            ctx.settings,
+            &self.port,
+            self.no_intro || episode != Episode::E1,
+            program,
+        ))
     }
 }
 

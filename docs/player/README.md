@@ -100,9 +100,12 @@ The original game was three separate programs, one per episode. TD2192-Modern st
 |---|---|
 | episode 1, episode 2, episode 3 | Start that episode, from the beginning, as the original program would. An episode whose files are missing is shown as `not installed` and cannot be chosen. |
 | options | The settings ([section 6](#6-options-f2)). |
+| credits | The game's credits: the intro's desert flyover with the credit captions under the classic profile, or pages of credits under enhanced. |
 | quit | Leave the game. Escape moves to quit; press it again to leave. |
 
 Use the arrow keys (or the stick or D-pad) to choose and Enter (or South / A) to start.
+
+**The intro.** Starting Episode 1 plays the original intro first, as the original launcher did. Escape skips it. Under the enhanced profile, **intro before episode 1** on the profile page chooses always, only the first time, or never. `td2192 --no-intro` skips it for one run.
 
 Inside an episode everything is the original game: its own main menu, new games, loading and saving, the story scenes, the briefings, the flights and the debriefings. When you quit from the episode's main menu, you come back to the start screen.
 
@@ -205,7 +208,10 @@ To change a binding, move to the cell and press Enter (or South), then press the
 
 ### profile
 
-**classic** or **enhanced**: see [section 7](#7-classic-and-enhanced).
+| Setting | Values | What it does |
+|---|---|---|
+| profile | classic, enhanced | See [section 7](#7-classic-and-enhanced) |
+| intro before episode 1 | always, first launch, never | Enhanced only; the classic profile always plays the intro, as the original did |
 
 ### accessibility
 
@@ -286,9 +292,10 @@ The 1994 game has bugs and quirks. TD2192-Modern records each one it knows about
   - music restarting from the top between scenes;
   - colours staying wrong after leaving the infra-red view (Episode 2);
   - a transmission screen that only a keyboard could close;
-  - no way to cancel typing a save name.
+  - no way to cancel typing a save name;
+  - a fragment of the hoverskid flashing at the bottom of the intro.
 
-  These fixes are planned. In this version the Enhanced profile covers only the video features, so these annoyances are still present under both profiles.
+  In this version only the last one is fixed (the intro under the enhanced profile). The others are planned, so for now those annoyances remain under both profiles.
 - **Left out** when it is hostile or only made sense on a 1994 PC:
   - a path in the original that could change your disk's volume label;
   - memory checks;
@@ -357,5 +364,6 @@ You do not need any of these to play, but they can help:
 | `td2192 --episode N` | Start Episode N (1, 2 or 3) directly, skipping the start screen, as the original programs started |
 | `td2192 --data <folder or zip>` | Use this game folder or ZIP file for this run (it wins over the saved choice) |
 | `td2192 --fullscreen` | Start in fullscreen |
+| `td2192 --no-intro` | Start Episode 1 without the intro |
 | `td2192 --check` | Print which game data is used, its file check and the playable episodes, then exit |
 | `td2192 --help` | List every option |
