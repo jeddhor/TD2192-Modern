@@ -27,17 +27,26 @@ This guide covers:
   - the original distribution ZIP file, as you downloaded it.
 
   The full game has 218 files and contains all three episodes. Episode 1 is needed to play at all; Episodes 2 and 3 can be played when their files are present.
-- **A computer** running Windows (64-bit). Builds for Linux and macOS are planned.
+- **A computer** running Windows (64-bit) or Linux (64-bit x86, glibc 2.35 or newer, for example Ubuntu 22.04 or later, with X11 or Wayland). A macOS build is planned.
 - **Optional:** a game controller (Xbox-style or PlayStation-style), and a mouse is not needed at all.
 
 ## 2. Installing
 
+**Windows:**
+
 1. Download the TD2192-Modern package (`TD2192-Modern-<version>-windows-x64.zip`) and unpack it into a folder of your choice, for example `C:\Games\TD2192-Modern`.
 2. Run `td2192.exe`.
 
+**Linux:**
+
+1. Download `TD2192-Modern-<version>-linux-x64.tar.gz` and unpack it, for example with `tar -xzf TD2192-Modern-<version>-linux-x64.tar.gz -C ~/Games`.
+2. Run `./td2192` in the unpacked folder. Sound and graphics use the system's usual libraries (PulseAudio, PipeWire or ALSA; X11 or Wayland); nothing else needs installing.
+
+Neither build is code-signed. Windows SmartScreen may warn about an unknown publisher the first time; choose "More info", then "Run anyway".
+
 Nothing is installed into the system, and nothing is written to your game folder. To remove TD2192-Modern, delete its folder, and also its user folder if you want your saves and settings gone (see [section 9](#9-where-your-saves-and-settings-live)).
 
-The package also holds `tdtool.exe`, a helper used by developers. You do not need it to play, but it can check a game folder for you (see [section 10](#10-troubleshooting)).
+The package also holds `tdtool.exe` (`tdtool` on Linux), a helper used by developers. You do not need it to play, but it can check a game folder for you (see [section 10](#10-troubleshooting)).
 
 ## 3. Pointing the game at your copy of TD2192
 

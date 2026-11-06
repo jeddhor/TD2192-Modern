@@ -1,7 +1,13 @@
 //! Creative Music File playback as the WORX Toolkit 2.1 driver does it, on an emulated OPL2.
 //!
-//! Spec: `docs/spec/audio/cmf.md` rev 2. Fidelity: T1 for the OPL register-write stream (the
+//! Spec: `docs/spec/audio/cmf.md` rev 3. Fidelity: T1 for the OPL register-write stream (the
 //! port reproduces it write for write, tick for tick), T2 for the audio (ymfm, not real chips).
+//!
+//! Song start timing (cmf rev 3 §4.3, §4.4, U-401): the game's start call runs with interrupts
+//! off for longer than a timer period, so a timer interrupt is latched and runs the song's
+//! first tick as the call returns; [`CmfPlayer::start`] therefore runs tick 1 at the moment of
+//! the start, and tick k comes (k − 1) periods later. A loop restart happens inside a tick and
+//! adds no tick of its own, so every pass of a looping song, the first included, lasts L ticks.
 //!
 //! [`CmfDriver`] is the music driver's state machine: song start (§4.3), the per-tick event
 //! interpreter (§4.4), notes and voice allocation (§4.5), instrument writes (§4.6), controllers
@@ -237,7 +243,8 @@ impl CmfDriver {
     }
 
     /// One PIT interrupt (cmf §4.4). Events with delta `d` after an event at tick T run at tick
-    /// T + d; the first event of a song runs at tick `d0 + 1`.
+    /// T + d; the first event of a song runs at tick `d0 + 1`, counting from tick 1 = the tick
+    /// [`CmfPlayer::start`] runs at the start itself.
     pub fn tick(&mut self, out: &mut impl OplSink) {
         if !self.playing {
             return;
@@ -572,11 +579,13 @@ impl CmfPlayer {
         self.start(song);
     }
 
-    /// Song start alone (WORX function 1Eh). Reprograms the PIT, so tick 1 of the song comes
-    /// one full tick period from now.
+    /// Song start alone (WORX function 1Eh), as the game calls it (cmf rev 3 §4.3, U-401): the
+    /// timer interrupt latched during the call runs tick 1 at once, before the next sample;
+    /// the PIT write restarts the period, so tick 2 comes one full period later.
     pub fn start(&mut self, song: Arc<Cmf>) {
         self.driver.start(song, &mut self.chip);
-        self.phase = 0;
+        // A full period has "elapsed": the next render runs the latched tick before any sample.
+        self.phase = self.tick_len();
     }
 
     /// Stops the song (WORX function 0Dh): key-offs, then silence on the next ticks. Notes

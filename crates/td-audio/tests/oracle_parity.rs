@@ -1,6 +1,10 @@
 //! L5 parity: the CMF player's OPL register writes against the DOSBox-X OPL captures (DRO) of
-//! oracle runs C-0001 and C-0002 (cmf.md rev 2 §6.2 C1, C2). Needs `TD2192_DATA` (the songs)
-//! and `TD2192_ORACLE` (the captures).
+//! oracle runs C-0001, C-0002 and C-0073 (cmf.md rev 3 §6.2 C1, C2, C4). Needs `TD2192_DATA`
+//! (the songs) and `TD2192_ORACLE` (the captures).
+//!
+//! Tick counts in the schedules count the song's ticks from tick 1, which the player runs at
+//! the moment of the start (cmf rev 3 §4.3–§4.4, U-401): `Ticks(n)` after a `Start` is the start
+//! tick plus n − 1 more.
 //!
 //! Each DRO holds every OPL write from the first key-on to the end of the run, across programs:
 //! the intro (`file0000`), the launcher (`td1`) and, in C-0002, the game (`file0001`). Song starts
@@ -43,7 +47,7 @@ enum Step {
     /// WORX song start (function 1Eh) with this file, looping off for the intro and on in the
     /// game. The first one also starts the driver.
     Start(&'static str, bool),
-    /// This many PIT ticks.
+    /// This many song ticks (the first one after a `Start` runs at the start itself).
     Ticks(u32),
     /// Ticks until a non-looping song reaches its end of track.
     UntilEnd,
@@ -162,7 +166,8 @@ fn parse_dro(d: &[u8]) -> Dro {
 struct Stamp {
     /// Song start counter (a new program also counts, so its writes form their own group).
     song: usize,
-    /// Tick of that song (0 = written by a start call, or before any tick of the song).
+    /// Tick of that song (0 = the song-start block, which the original writes before its PIT
+    /// write and so before tick 1; or before any tick of the song).
     tick: u32,
     sample: u64,
 }
@@ -435,14 +440,19 @@ fn looping_menu_music_matches_capture_c0073() {
         ours_pass,
         "pass after a restart"
     );
-    // Finding (docs/parity/M3-audio.md row 12a, U-401): in the capture the first pass is as long
-    // as the later ones (start-to-restart equals restart-to-restart to the microsecond), so the
-    // song's first event runs in the start call, not on tick d0 + 1 as cmf §4.4 and our player
-    // have it (our first restart is on tick 4842). Reported, not asserted, until the spec decides.
+    // M3 parity row 12a, cmf rev 3 §4.4 (U-401): the first pass is as long as the later ones.
+    // The start runs tick 1, so our first restart on tick 4842 comes 4841 periods after the
+    // start; in the capture start-to-restart equals restart-to-restart to the microsecond.
     let capture_first = (starts[1] - starts[0]) / period_ms;
+    let ours_first = restarts[0] - 1;
     eprintln!(
         "C-0073: start-to-restart {capture_first:.3} periods in the capture; our first restart \
-         on tick {}",
+         on tick {}: {ours_first} periods after the start",
         restarts[0]
     );
+    assert_eq!(
+        ours_first, ours_pass,
+        "first pass as long as the later ones"
+    );
+    assert_eq!(capture_first.floor() as u32, ours_first, "first pass");
 }

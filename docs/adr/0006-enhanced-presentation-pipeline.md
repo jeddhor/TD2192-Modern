@@ -1,6 +1,6 @@
 # ADR-0006: Enhanced presentation pipeline (widescreen, upscaling, dynamic lighting)
 
-- **Status:** Proposed (the user asked for upscaling, widescreen and a modern lighting engine as enhancements, 2026-11-05; this records how)
+- **Status:** Accepted (the user asked for upscaling, widescreen and a modern lighting engine as enhancements, 2026-11-05; implemented M12-08..M12-12; the user chose the Enhanced preset, D5, 2026-11-06: 16:9, xBR 3x, subtle lighting, bloom off)
 - **Date:** 2026-11-05
 
 ## Context

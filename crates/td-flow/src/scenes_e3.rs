@@ -22,7 +22,7 @@
 //! `sel-pain` and `melting` draw their third caption at y = 200, off screen (OB-027, kept).
 
 use td_assets::DataDir;
-use td_formats::palette::Rgb6;
+use td_formats::palette::{Palette, Rgb6};
 
 use crate::scene_card::{self as card, Captions, Layout, Shadow};
 use crate::scenes_e2;
@@ -158,8 +158,8 @@ pub fn scene_card(
 
 /// A title card (`Scene_MissionTitle(text, 3Fh, 0, 0)` `04A0:4663`): E1's text card; its wait
 /// flushes the keyboard first.
-pub fn title_card(assets: &StoryAssets, text: &str) -> StoryScreen {
-    crate::story::text_card(assets, text).flushing_waits(true)
+pub fn title_card(assets: &StoryAssets, text: &str, left: &Palette) -> StoryScreen {
+    crate::story::text_card(assets, text, left).flushing_waits(true)
 }
 
 #[cfg(test)]

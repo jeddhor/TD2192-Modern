@@ -107,7 +107,7 @@ fn title_and_hangar_cards_match_the_original() {
     let assets = StoryAssets::load(&dir).unwrap();
     let text = |a: usize| res.text_at("file0001.exe", a).unwrap();
     // Mission 1: T[0478], then C:hangar[0494/04A1/04C1] (episode-program-flow §4.4).
-    let mut t = story::text_card(&assets, text(0x478));
+    let mut t = story::text_card(&assets, text(0x478), &Palette::default());
     fade_in(&mut t, 34);
     compare(&t, &oracle, "f00001162_320x200_mission-title.vga", 0..200);
     let mut h = story::scene_card(
@@ -227,6 +227,111 @@ fn main_menu_matches_the_original() {
     for e in 0..256 {
         assert_eq!(fb.palette.colors[e], dac.colors[e], "entry {e}");
     }
+}
+
+/// Frames from the first to the last visible level of each title-card fade, as DAC entry 85
+/// (the ink) shows them, and the frames in between: (fade-in, hold, fade-out).
+fn title_card_fades(entry_85: &[u8]) -> (usize, usize, usize) {
+    let a = entry_85.iter().position(|&r| r > 0).unwrap();
+    let b = a + entry_85[a..].iter().position(|&r| r == 63).unwrap();
+    let c = b + entry_85[b..].iter().position(|&r| r < 63).unwrap();
+    let d = c + entry_85[c..].iter().position(|&r| r == 0).unwrap();
+    (b - a + 1, c - b - 1, d - c + 1)
+}
+
+#[test]
+fn the_first_title_card_fades_at_one_frame_per_level() {
+    // BUG-6, screens rev 3 §2.1, text rev 3 §4.5.2: the script choice leaves 7 non-zero
+    // components in g_Palette and the menu has its own buffer, so the first title card of a
+    // new game fades entry 85 over a nearly black palette: one frame per level (C-0002: DAC
+    // writes in f1063..1080 and f1409..1428). Visible levels 1..16: 16 frames each way.
+    let _data = require_data!();
+    let (dir, res) = load().unwrap();
+    let mut ep =
+        td_flow::Episode1::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
+    let settings = Settings::default();
+    let mut audio = Vec::new();
+    let mut ctx = FlowContext {
+        data: &dir,
+        resources: &res,
+        settings: &settings,
+        audio: &mut audio,
+    };
+    let one = Key::digit(1).unwrap();
+    let mut tick = |ep: &mut td_flow::Episode1, keys: Vec<Key>| {
+        td_flow::Screen::tick(
+            ep,
+            &mut ctx,
+            &TickInput {
+                pressed: keys,
+                ..TickInput::default()
+            },
+        );
+    };
+    for f in 0..400 {
+        tick(&mut ep, if f == 40 { vec![one] } else { Vec::new() });
+        if ep.menu().waiting() && ep.menu().screen().pixels.iter().any(|&p| p != 0) {
+            break;
+        }
+    }
+    assert!(ep.menu().waiting());
+    // New game: the menu fades out, block 1 starts with T[0478].
+    tick(&mut ep, vec![Key::ENTER]);
+    let mut fb = td_render::Framebuffer::new();
+    let mut ink = Vec::new();
+    for _ in 0..600 {
+        tick(&mut ep, Vec::new());
+        td_flow::Screen::draw(&ep, &mut fb);
+        ink.push(fb.palette.colors[85].r);
+    }
+    // From the end of the menu's fade-out on.
+    let black = ink.iter().position(|&r| r == 0).unwrap();
+    let (fade_in, hold, fade_out) = title_card_fades(&ink[black..]);
+    eprintln!("first title card: fade-in {fade_in}, hold {hold}, fade-out {fade_out} frames");
+    assert_eq!((fade_in, fade_out), (16, 16));
+    // 5 s of DOS time (332 frames, BUG-7) plus the invisible level 16 of the fade-out.
+    assert_eq!(hold, 332 + 1);
+}
+
+#[test]
+fn a_title_card_after_the_story_so_far_fades_at_two_frames_per_level() {
+    // BUG-6 (C-0170 f1003..1036, f1364..1397: 34 frames): the story so far leaves city.td's
+    // palette (677 non-zero components) in g_Palette, so the next title card fades at two
+    // frames per level: levels 1..16 visible over 31 frames each way.
+    let _data = require_data!();
+    let (dir, res) = load().unwrap();
+    let mut prog = Program::new(&dir, &res, Box::new(PlaceholderLauncher::default())).unwrap();
+    let first = prog.story(Step::T(0x478)).unwrap();
+    assert_eq!(first.fade_frames_per_level(), 1, "g_Palette black at start");
+    let lines = res.texts("e1.background_story").unwrap().to_vec();
+    let mut s = story::story_so_far(&dir, &prog.assets, &lines).unwrap();
+    let mut n = 0;
+    while !s.finished() {
+        let keys = if n % 50 == 49 {
+            vec![Key::ESCAPE]
+        } else {
+            Vec::new()
+        };
+        s.step(&TickInput {
+            pressed: keys,
+            ..TickInput::default()
+        });
+        n += 1;
+        assert!(n < 1_000);
+    }
+    s.apply_front_end(&mut prog.front_end);
+    assert!(td_render::fade::nonzero_components(&prog.scene_palette(), 1) >= 380);
+    let mut t = prog.story(Step::T(0x478)).unwrap();
+    assert_eq!(t.fade_frames_per_level(), 2);
+    let mut ink = Vec::new();
+    while !t.finished() {
+        t.step(&TickInput::default());
+        ink.push(t.screen().palette.colors[85].r);
+    }
+    let (fade_in, hold, fade_out) = title_card_fades(&ink);
+    assert_eq!((fade_in, fade_out), (31, 31));
+    // 332 frames, then the fade-out's first wait and its invisible level 16 (3 frames).
+    assert_eq!(hold, 332 + 3);
 }
 
 #[test]

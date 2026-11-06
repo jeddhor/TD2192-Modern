@@ -185,8 +185,10 @@ impl Screen for MapView {
             });
         }
         if Key::letter('s').is_some_and(|k| input.pressed(k)) {
+            // Mixer level 11: what an unpositioned flight effect gets (15 x 12 div 16).
             audio.push(AudioCommand::PlaySfx {
                 sound: Arc::clone(&self.sounds[self.sound]),
+                level: 11,
             });
             self.sound = (self.sound + 1) % self.sounds.len();
         }

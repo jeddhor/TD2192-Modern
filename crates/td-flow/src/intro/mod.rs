@@ -18,11 +18,11 @@
 //! - a flyover step runs once per BIOS tick (19.20 Hz, 3 or 4 frames).
 //!
 //! Port policies: OB-058 (the hoverskid's low-byte y) is kept unless
-//! [`IntroOptions::fix_ob058`] (Enhanced); an effect counts as playing for the measured busy
-//! time of intro rev 3 §3.6 ([`flyover::Effect::busy_half_frames`], U-380), not for its sample
-//! length; a song played with the loop off restarts `intro2.cmf` at the first step after its
-//! end (§4.6, U-370); the effect volumes of intro §3.6 are not applied (the mixer plays every
-//! effect at full volume, T2); keys still waiting when the intro ends are dropped.
+//! [`IntroOptions::fix_ob058`] (Enhanced); an effect counts as playing for WORX's busy time of
+//! voc-and-adpcm rev 3 §2.3 with the intro's ring offset ([`flyover::busy_half_frames`], U-380,
+//! U-410), not for its sample length; a song played with the loop off restarts `intro2.cmf` at
+//! the first step after its end (§4.6, U-370); each effect plays at its SB Pro level of intro
+//! §3.6 (10, 12 or 13 of 15); keys still waiting when the intro ends are dropped.
 
 pub mod flyover;
 
@@ -411,7 +411,7 @@ pub struct Intro {
     song_end: Option<u64>,
     music_state: u8,
     /// Half frame (2 × frame) at which the playing effect stops counting as playing: its
-    /// start plus [`Effect::busy_half_frames`] (intro §3.6).
+    /// start plus [`flyover::busy_half_frames`] (intro §3.6).
     sfx_end: u64,
     marks: Vec<(u64, Mark)>,
     done: bool,
@@ -666,7 +666,7 @@ impl Intro {
     }
 
     /// What WORX's "digital sound playing" byte (fn 08h) reads now in the port's model: an
-    /// effect started less than its measured busy time ago (intro rev 3 §3.6).
+    /// effect started less than its busy time ago (intro rev 3 §3.6, voc-and-adpcm rev 3 §2.3).
     #[must_use]
     pub fn effect_playing(&self) -> bool {
         2 * self.frame < self.sfx_end
@@ -956,8 +956,8 @@ impl Intro {
             self.fly.v194,
             draw::GRID_COLUMNS,
         );
-        // "No effect playing" (intro rev 3 §3.6, U-380): the effect counts as playing for its
-        // measured busy time from the frame it starts, in half frames.
+        // "No effect playing" (intro rev 3 §3.6, U-380): the effect counts as playing for WORX's
+        // busy time (voc §2.3, r = 171) from the frame it starts, in half frames.
         let half_frame = 2 * self.frame;
         let sfx_end = Cell::new(self.sfx_end);
         flyover::effects(
@@ -965,9 +965,10 @@ impl Intro {
             || half_frame < sfx_end.get(),
             |e| {
                 if let Some(sound) = assets.effect(e) {
-                    sfx_end.set(half_frame + e.busy_half_frames());
+                    sfx_end.set(half_frame + flyover::busy_half_frames(sound));
                     audio.push(AudioCommand::PlaySfx {
                         sound: Arc::clone(sound),
+                        level: e.volume(),
                     });
                 }
             },
@@ -1004,11 +1005,12 @@ impl Intro {
     }
 }
 
-/// How many song ticks `song` plays with the loop off: its end-of-track tick plus one (the
-/// first event runs at tick d0 + 1, cmf §4.4; music-cues C3).
+/// How many song-clock periods after its start `song` ends with the loop off: L, the sum of
+/// its delta times. Tick 1 runs at the start (cmf rev 3 §4.3–§4.4, U-401), so the
+/// end-of-track tick L + 1 runs L periods later.
 #[must_use]
 pub fn song_ticks(song: &Cmf) -> u64 {
-    u64::from(song.end_tick) + 1
+    u64::from(song.end_tick)
 }
 
 impl Screen for Intro {
