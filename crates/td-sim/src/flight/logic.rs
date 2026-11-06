@@ -12,8 +12,9 @@
 //! player, whose position is the **view tile** (§2). Messages are carried as resource ids
 //! ([`Message`]); resolving text is the renderer's job.
 //!
-//! Episode 2 (`docs/spec/sim/e2-mission-logic.md` rev 1) is in [`e2`]; the primitives here
-//! serve both, and the episode-specific parts below branch on [`Flight::episode`].
+//! Episode 2 (`docs/spec/sim/e2-mission-logic.md` rev 1) is in [`e2`], Episode 3
+//! (`docs/spec/sim/e3-mission-logic.md` rev 1) in [`e3`]; the primitives here serve all three,
+//! and the episode-specific parts below branch on [`Flight::episode`].
 
 use super::player::Event;
 use super::ships::{NO_SHIP, SHIP_SLOTS};
@@ -577,7 +578,7 @@ impl Flight {
         match self.episode {
             Episode::E1 => {}
             Episode::E2 => return self.e2_update(),
-            Episode::E3 => return,
+            Episode::E3 => return self.e3_update(),
         }
         match self.number {
             1 => self.flight_1(),
@@ -1614,7 +1615,7 @@ impl Flight {
         let (n, next) = match self.episode {
             Episode::E1 => transmission(self.number, self.phase())?,
             Episode::E2 => e2::transmission(self.number, self.phase())?,
-            Episode::E3 => return None,
+            Episode::E3 => e3::transmission(self.number, self.phase())?,
         };
         if self.episode == Episode::E1 && self.number == 14 {
             let all: Vec<usize> = (1..=20).collect();
@@ -1690,8 +1691,7 @@ impl Flight {
         match self.episode {
             Episode::E1 => {}
             Episode::E2 => return self.e2_outcome(),
-            // ASSUMPTION(M10-02): E3 outcome tests are not ported yet.
-            Episode::E3 => return true,
+            Episode::E3 => return self.e3_outcome(),
         }
         let t = |s| self.slot_tile(s);
         match self.number {

@@ -481,7 +481,7 @@ impl Flight {
             // 4. Tile window drawn from the current view.
             self.frame.view = self.player.view;
             // 5. Afterburner burst (E3 flight 16 from phase 2: no new burst, e3-mission-logic
-            // §4.7.1).
+            // §4.7.1; ASSUMPTION (U-330): the test sits inside the burst trigger test).
             let no_new_burst =
                 self.episode == Episode::E3 && self.number == 16 && self.mission.phase >= 2;
             self.frame.flame = self.player.afterburner(
@@ -551,7 +551,9 @@ impl Flight {
             // 12 is presentation. 13. Explosions advance after being drawn.
             self.drawn.explosions.clone_from(&self.explosions);
             self.explosions.step();
-            // 14. Palette effects: the white flash counts down.
+            // 14. Palette effects: the white flash counts down. Not yet here: E3 flight 16 with
+            // phase >= 5 sets the hit flash to 0 before its step (e3-mission-logic §4.7.1); it
+            // goes in with the hit-flash value (hit-flash.md, M10-39).
             self.frame.white_flash = self.white_flash;
             self.white_flash = self.white_flash.saturating_sub(1);
             // 15. Comm viewer on an even back page: a transmission only when the table has
