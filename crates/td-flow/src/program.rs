@@ -8,7 +8,8 @@
 //!
 //! Not ported (T3 or decided elsewhere): the text-mode configuration screen and command-line
 //! switches (the port has its own settings), joystick calibration, `tdstatus.dat` (menu items
-//! 6 and 7 show a "not yet" notice instead of halting for the launcher).
+//! 6 and 7 show `aboutus.scr` / `order.scr` in-process instead of halting for the launcher,
+//! [`crate::extras`]).
 //!
 //! The menu screen itself (fades, pulses, keys, boxes) is [`crate::main_menu`]; the save and
 //! restore screens (items 1 and 2) are [`crate::save_screens`], with the port's own files in
@@ -675,6 +676,10 @@ impl Episode1 {
                 };
                 self.stage = Stage::Saves(Box::new(self.save_screen(kind)));
                 return;
+            }
+            // In-process pictures with intro.cmf, as E2/E3 (launcher §4.10).
+            crate::extras::ABOUT | crate::extras::ORDER => {
+                crate::extras::about_or_order(&mut self.prog, ctx, item).map(|s| (s, loader))
             }
             _ => Ok((self.notice("this program is not available yet"), loader)),
         };

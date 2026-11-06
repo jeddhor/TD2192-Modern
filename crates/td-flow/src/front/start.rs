@@ -1,5 +1,5 @@
 //! The port's start screen (M11-01): shown when `td2192` runs without `--episode`. It offers
-//! the installed episodes, the options and quit.
+//! the installed episodes, the options, the credits and quit.
 //!
 //! The original has no such screen: each episode is its own program (`file0001.exe`,
 //! `td2.exe`, `td3.exe`), started from DOS or the launcher. This screen stands in for that
@@ -17,6 +17,8 @@ use td_render::Framebuffer;
 use super::SettingsPort;
 use super::options::OptionsScreen;
 use super::ui::{Fader, INK_CURSOR, INK_DISABLED, INK_NOTE, INK_TEXT, Nav, PadNav, UiAssets, nav};
+use crate::credits::{Credits, CreditsMode};
+use crate::intro::IntroOptions;
 use crate::screen::{FlowContext, Screen, Transition};
 
 /// Starts an episode's program for the start screen.
@@ -34,15 +36,19 @@ pub trait EpisodeLauncher: fmt::Debug {
 pub enum Item {
     Episode(Episode),
     Options,
+    /// The original's credits (`docs/spec/frontend/credits.md`): the intro flyover under the
+    /// Classic profile, the grouped pages under Enhanced.
+    Credits,
     Quit,
 }
 
 /// Every item in order.
-pub const ITEMS: [Item; 5] = [
+pub const ITEMS: [Item; 6] = [
     Item::Episode(Episode::E1),
     Item::Episode(Episode::E2),
     Item::Episode(Episode::E3),
     Item::Options,
+    Item::Credits,
     Item::Quit,
 ];
 
@@ -123,7 +129,7 @@ impl StartScreen {
     fn enabled(&self, i: usize) -> bool {
         match ITEMS[i] {
             Item::Episode(e) => self.available[episode_index(e)],
-            Item::Options | Item::Quit => true,
+            Item::Options | Item::Credits | Item::Quit => true,
         }
     }
 
@@ -157,6 +163,23 @@ impl StartScreen {
                     ctx.settings.clone(),
                     self.port.clone(),
                 )))
+            }
+            Item::Credits => {
+                let mode = CreditsMode::for_settings(ctx.settings);
+                let options = IntroOptions::for_settings(ctx.settings);
+                match Credits::load(ctx.data, ctx.resources, mode, options) {
+                    Ok(c) => {
+                        self.phase = Phase::Away;
+                        Transition::Push(Box::new(c))
+                    }
+                    Err(e) => {
+                        tracing::error!("credits unavailable: {e}");
+                        self.error = Some("the credits could not start".into());
+                        self.phase = Phase::Shown;
+                        self.fader = Fader::fading_in();
+                        Transition::None
+                    }
+                }
             }
             Item::Episode(e) => match self.launcher.launch(ctx, e) {
                 Ok(screen) => {
@@ -236,6 +259,7 @@ impl Screen for StartScreen {
             let label = match item {
                 Item::Episode(e) => format!("episode {}", episode_index(*e) + 1),
                 Item::Options => "options".to_string(),
+                Item::Credits => "credits".to_string(),
                 Item::Quit => "quit".to_string(),
             };
             let end = ui.text(fb, &label, (ITEM_X, y), ink);
@@ -445,6 +469,50 @@ mod tests {
     }
 
     #[test]
+    fn credits_without_data_stay_here() {
+        // The rig's data directory has no td.lt2: the credits cannot start.
+        let mut rig = Rig::new();
+        let (mut s, _) = screen([true, true, true]);
+        settle(&mut rig, &mut s);
+        for _ in 0..4 {
+            rig.tick(&mut s, &key(Key::DOWN));
+        }
+        assert_eq!(s.selected(), Item::Credits);
+        rig.tick(&mut s, &key(Key::ENTER));
+        assert!(settle(&mut rig, &mut s).is_none());
+        assert!(s.error.is_some());
+    }
+
+    #[test]
+    fn credits_open_on_top_in_the_profile_s_mode() {
+        let data = td_test_support::require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        for (profile, mode) in [
+            (crate::settings::Profile::Classic, CreditsMode::Flyover),
+            (crate::settings::Profile::Enhanced, CreditsMode::Pages),
+        ] {
+            let mut rig = Rig::new();
+            rig.data = dir.clone();
+            rig.res = res.clone();
+            rig.settings.profile = profile;
+            let (mut s, _) = screen([true, true, true]);
+            settle(&mut rig, &mut s);
+            for _ in 0..4 {
+                rig.tick(&mut s, &key(Key::DOWN));
+            }
+            rig.tick(&mut s, &key(Key::ENTER));
+            match settle(&mut rig, &mut s) {
+                Some(Transition::Push(c)) => {
+                    let dbg = format!("{c:?}");
+                    assert!(dbg.contains(&format!("{mode:?}")), "{profile:?}: {dbg}");
+                }
+                t => panic!("{profile:?}: {t:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn options_open_on_top() {
         let mut rig = Rig::new();
         let (mut s, _) = screen([true, false, false]);
@@ -483,7 +551,7 @@ mod tests {
         assert_ne!(all, missing);
         assert_eq!(
             (all, missing),
-            (0x54e8_8a81_ce34_44a7, 0x42f7_ee42_fa77_d9f7),
+            (0x95f9_1d46_48c2_9a27, 0x4c9d_a0c2_16c8_f9f7),
             "start screen snapshot hashes ({all:#018x}, {missing:#018x})"
         );
     }
@@ -503,7 +571,16 @@ mod tests {
         settle(&mut rig, &mut s);
         let mut fb = Framebuffer::new();
         s.draw(&mut fb);
+        if let Some(out) = std::env::var_os("TD2192_UI_DUMP") {
+            // For looking at the layout (as the options screen's dump): a PPM in that folder.
+            let mut ppm = b"P6 320 200 255\n".to_vec();
+            for &p in &fb.pixels {
+                let c = fb.palette.colors[usize::from(p)];
+                ppm.extend([c.r, c.g, c.b].map(|v| (u16::from(v) * 255 / 63) as u8));
+            }
+            std::fs::write(std::path::Path::new(&out).join("Start.ppm"), ppm).unwrap();
+        }
         let h = snapshot(&fb);
-        assert_eq!(h, 0x700d_b535_ea4d_434a, "game-font snapshot {h:#018x}");
+        assert_eq!(h, 0x3c95_25aa_1737_820a, "game-font snapshot {h:#018x}");
     }
 }
