@@ -514,11 +514,14 @@ fn start_up_to_the_menu_and_a_completed_block() {
     let _data = require_data!();
     let mut ep = program(Scripted::default());
     let two = Key::digit(2).unwrap();
+    // The script choice fades out (17 frames), the menu fades in (34) and ramps the start
+    // cursor (5): e2-program-flow rev 2 §4.2.
     run(
         &mut ep,
-        100,
+        120,
         |f| if f == 50 { vec![two] } else { Vec::new() },
     );
+    assert!(ep.menu().waiting());
     assert_eq!(ep.state(), (0, 0, 0));
     let c = ep.item_colours();
     assert_eq!(c[0], td_formats::palette::Rgb6 { r: 63, g: 0, b: 0 });
@@ -536,6 +539,9 @@ fn start_up_to_the_menu_and_a_completed_block() {
     run_until(&mut ep, 400_000, keys, |ep| ep.state().0 == 2);
     let (mission, kills, cursor) = ep.state();
     assert_eq!((mission, kills, cursor), (2, 2, 3));
+    // The menu's loader fades in (34 frames; no ramp after an action).
+    run(&mut ep, 40, |_| Vec::new());
+    assert!(ep.menu().waiting());
     assert_eq!(
         ep.item_colours()[3],
         td_formats::palette::Rgb6 { r: 63, g: 0, b: 0 },
@@ -623,6 +629,9 @@ fn menu_after_a_restore_matches_c0016() {
     let mut ep = program(Scripted::default());
     run(&mut ep, 3, |_| Vec::new());
     ep.restored(9, 0);
+    // The loader's fade-in (34 frames), no ramp after an action.
+    run(&mut ep, 40, |_| Vec::new());
+    assert!(ep.menu().waiting());
     let mut fb = Framebuffer::new();
     ep.draw(&mut fb);
     let name = "f00000750_320x200_menu2.vga";
