@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Spec ID** | `core/timing` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for simulation steps per game tick (one fixed step per tick); T2 for the wall-clock tick rate and frame pacing |
-| **Confidence** | CONFIRMED: the tick mechanism and the three rates of §4.2 by static reading and measurement (§6 vectors 3–6, C-0074, C-0010); the clocks outside flight (§4.4) by static reading and C-0002, C-0067, C-0170. The canonical Classic rate is a decision, proposed in [ADR-0007](../../adr/0007-classic-tick-rate.md) (19.2015 Hz) and pending the user's acceptance |
+| **Confidence** | CONFIRMED: the tick mechanism and the three rates of §4.2 by static reading and measurement (§6 vectors 3–6, C-0074, C-0010); the clocks outside flight (§4.4) by static reading and C-0002, C-0067, C-0170. The canonical Classic rate is a decision: [ADR-0007](../../adr/0007-classic-tick-rate.md), 19.2015 Hz, accepted by the user 2026-11-06 |
 | **Tasks** | M1-06, M12-02; feeds M4-02, M6-01 |
 | **Unknowns** | U-001, U-007, U-032 (resolved), U-033 |
 
@@ -177,7 +177,7 @@ There is one frame per tick: draw, flip and simulate all happen once per loop it
 | Quirk | Original behaviour | Port policy (proposal; MDG §6.3) |
 |---|---|---|
 | Speed depends on CPU when the CPU is too slow | Game slows down, no catch-up | Classic: fixed tick, never slows (fix-all); slowdown is not a "feel" players rely on |
-| Tick rate depends on WORX state (measured 19.21 / 18.52 / 18.21 Hz) | Slightly different game speed with music, without music, and without sound hardware; DOS-time waits scale the same way | Classic: one canonical rate for flight ticks and DOS-time waits, 1,193,182 / 62,140 = 19.2015 Hz (SB + music), **proposed in ADR-0007, pending the user**. The music-off and `/nosound` rates are not reproduced (T2 deviation). `Crt.Delay` stays in real milliseconds and retrace waits at 70.086 Hz |
+| Tick rate depends on WORX state (measured 19.21 / 18.52 / 18.21 Hz) | Slightly different game speed with music, without music, and without sound hardware; DOS-time waits scale the same way | Classic: one canonical rate for flight ticks and DOS-time waits, 1,193,182 / 62,140 = 19.2015 Hz (SB + music), **ADR-0007, accepted 2026-11-06**. The music-off and `/nosound` rates are not reproduced (T2 deviation). `Crt.Delay` stays in real milliseconds and retrace waits at 70.086 Hz |
 | 16-bit timestamp wrap every 655.36 s | One short tick about every 11 minutes | Do not reproduce (no state effect beyond one early tick) |
 | Display updates at tick rate (~19 Hz) | Visible stepping on scrolling | Classic: present at the tick rate. Enhanced: optional interpolation, presentation only |
 
@@ -239,3 +239,4 @@ Results (VE-3, 2026-11-06; method: `g_MissionTicks` and the BIOS data area dumpe
 | 3 | 2026-11-02 | RE-4 (Archaeologist) | U-007 resolved (header 0x0C); which tick rate applies in which sound configuration (U-032, static) |
 | 3 + evidence | 2026-11-06 | VE-3 (Verifier) | §6 vectors 3–6 and §8 M1–M7 measured (no rule changed). The canonical Classic rate is a proposal in parity/M12-timing.md §3, for an SP revision and ADR |
 | 4 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | Measured rates CONFIRMED (§1, §4.2); §4.4 rewritten: the three clocks outside flight, the exact DOS-time rule with the ADR-0007 clock (BUG-7), `Crt.Delay` in real ms, retrace-paced work, and every timed wait of E1 by clock; §5 policy points to ADR-0007 (proposed, pending); vectors 7–9 |
+| 5 | 2026-11-06 | main session | ADR-0007 accepted by the user: Classic flight ticks and DOS-time waits use 19.2015 Hz (§1, §5); no rule changed |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/sfx-policy` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for the `Random` calls of the PC-speaker path (they advance the shared RNG, [bp7 §4.1](../core/bp7-runtime-semantics.md#41-random-number-generator)) and for the Real48 distance; T2 for what is heard |
 | **Confidence** | Algorithm, tables, call sites: CONFIRMED (static, full read of `file0001:1E2A:006A..064F`). Which game event each call site stands for: HYPOTHESIS |
@@ -57,7 +57,7 @@ All 17 calls of `Snd_PlayEffect` in `file0001` are in unit `0E8B` (no other segm
 |---|---|---|---|---|
 | `0E8B:106B` | `Sim_ProjectilesAndHits` `0E8B:0984` | 9 | ship i | a shot (any owner other than ship i) hits live mission ship i: [weapons](../sim/weapons.md) §4.3 step 4, before the damage |
 | `0E8B:11C4` | same | 100 | ship i | that hit brings ship i's armour below 1 (destroyed), before the distance flash |
-| `0E8B:122D` | same | 100 | ship i | the hitting shot was a homing missile (kind 6): destroyed outright. When the damage had already destroyed the ship, 100 is requested twice in the same tick (the second restarts the first: no audible difference) |
+| `0E8B:122D` | same | 100 | ship i | the hitting shot was a homing missile (kind 6): destroyed outright. **Unreachable** (U-421, [weapons](../sim/weapons.md) rev 5 §4.3): step 3 uses every homing missile that comes within 40 px of a ship before step 4's 20 px test, and step 3 requests no sound in E1 and E3. An E1 homing kill is silent; E2's step 3 requests 100 once (episode-deltas P4) |
 | `0E8B:164E` | same | 9 | none | a mission ship's shot hits the player (step 5; never while `g_PlayerDrawLate` is set, so not in flights 12, 15, 21) |
 | `0E8B:5719` | `Sim_EndSequenceStep` `0E8B:56ED` | 9 | none | player destruction sequence: small blast at the player whenever `g_EndTicks` (DS:32B8) is a multiple of 3 below 12 |
 | `0E8B:578D` | same | 100 | none | player destruction sequence: the big explosion at `g_EndTicks` = 12 (after the distance flash) |
@@ -205,3 +205,4 @@ The port's audio layer needs: one "digital effect" voice with stop-and-replace s
 | 1 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | Initial |
 | 2 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.2 event of every call site confirmed or corrected (U-083): 200 is the incoming-transmission chime; the `56ED` sites are the player destruction sequence; the helicopter volley uses id 2; kind-6 kills request 100 twice |
 | 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.2: the priority reset and the mission-end wait follow WORX's playing status, whose duration is now exact (voc-and-adpcm §2.3, U-410); vector 10 (C-0072) |
+| 4 | 2026-11-06 | RE-17 (Archaeologist + Spec author) | §3.2 `0E8B:122D`: unreachable, so a homing kill requests no sound in E1/E3 and 100 once in E2 (U-421); rev 2's "kind-6 kills request 100 twice" is withdrawn |

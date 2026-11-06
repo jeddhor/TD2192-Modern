@@ -8,12 +8,17 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use td_sim::flight::{Session, TickResult};
+use td_sim::flight::TickResult;
 use td_sim::replay::Replay;
 use td_sim::state_hash;
 
-use crate::flight_setup::E1Flight;
+use crate::flight_setup::{FlightSetup, episode_of};
 use crate::plan;
+
+/// The flight a replay is of.
+pub fn setup_of(root: &Path, r: &Replay) -> Result<FlightSetup> {
+    FlightSetup::load(root, episode_of(r.episode)?, r.mission)
+}
 
 /// How a verified replay ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,24 +31,20 @@ pub struct Verified {
     pub died: bool,
     pub kills: i16,
     pub outcome: bool,
+    /// The view at the end: tile X, tile Y, sub X, sub Y.
+    pub view: (i16, i16, i16, i16),
 }
 
 /// Re-runs `r` and checks its checkpoints.
 pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
-    if r.episode != 1 {
+    let setup = setup_of(root, r)?;
+    let start = setup.session().rng.seed();
+    if r.seed != start {
         bail!(
-            "only Episode 1 replays are supported (episode {})",
-            r.episode
+            "replay seed {:08X} is not a direct start (program-start seed {start:08X})",
+            r.seed
         );
     }
-    if r.seed != Session::new().rng.seed() {
-        bail!(
-            "replay seed {:08X} is not a direct start (program-start seed {:08X})",
-            r.seed,
-            Session::new().rng.seed()
-        );
-    }
-    let setup = E1Flight::load(root, r.mission)?;
     let mut f = setup.start();
     let mut finished_at = None;
     let mut checked = 0;
@@ -81,13 +82,19 @@ pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
         died: f.died(),
         kills: f.kills,
         outcome: f.outcome(),
+        view: (
+            f.player.view.tile_x,
+            f.player.view.tile_y,
+            f.player.view.sub_x,
+            f.player.view.sub_y,
+        ),
     })
 }
 
 /// Runs the inputs in the installation's world and in `alt` (other muzzle bytes, U-160) and
 /// prints the first tick where the two flights differ, with what changed in each.
 pub fn compare_muzzles(root: &Path, r: &Replay, alt: Vec<u8>) -> Result<()> {
-    let base = E1Flight::load(root, r.mission)?;
+    let base = setup_of(root, r)?;
     let other = base.with_muzzles(alt);
     let (mut a, mut b) = (base.start(), other.start());
     for (i, &w) in r.inputs.iter().enumerate() {
@@ -108,6 +115,9 @@ pub fn compare_muzzles(root: &Path, r: &Replay, alt: Vec<u8>) -> Result<()> {
                 if x.alive() && x.heading > 9 && x == y {
                     println!("  before: shot {k} on a two-digit heading {x:?}");
                 }
+            }
+            for line in plan::debug_diff(&a, &b, 30) {
+                println!("  state: {line}");
             }
             return Ok(());
         }
@@ -139,14 +149,14 @@ pub fn run(
     if verify_it {
         let v = verify(root, &r)?;
         println!(
-            "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {}",
-            v.checkpoints, v.finished_at, v.succeeded, v.lost, v.died, v.kills, v.outcome
+            "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {} view {:?}",
+            v.checkpoints, v.finished_at, v.succeeded, v.lost, v.died, v.kills, v.outcome, v.view
         );
     }
     if let Some(out) = rewrite {
         // Same inputs, checkpoints recomputed with the current td-sim (ADG §10.5: only after a
         // Verifier confirmed the new behaviour against the original).
-        let setup = E1Flight::load(root, r.mission)?;
+        let setup = setup_of(root, &r)?;
         let plan = plan::Plan {
             inputs: r.inputs.clone(),
             comm_ticks: vec![],
@@ -160,10 +170,11 @@ pub fn run(
         compare_muzzles(root, &r, bytes)?;
     }
     if let Some(out) = schedule {
-        let setup = E1Flight::load(root, r.mission)?;
+        let setup = setup_of(root, &r)?;
         plan::check_inputs(&r.inputs)?;
+        let modals = plan::modal_ticks(&setup, &r.inputs);
         let comm = plan::comm_ticks(&setup, &r.inputs);
-        let lines = plan::oracle_lines(&r.inputs, &comm);
+        let lines = plan::oracle_lines(&r.inputs, &modals);
         std::fs::write(out, lines.join("\n") + "\n")
             .with_context(|| format!("write {}", out.display()))?;
         println!(
