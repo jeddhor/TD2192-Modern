@@ -12,11 +12,13 @@ td-formats.workspace = true
 td-assets.workspace = true
 td-render.workspace = true
 td-audio.workspace = true
+td-sim.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 png.workspace = true
 hound.workspace = true
 sha2.workspace = true
+rayon.workspace = true
 
 [lints]
 workspace = true

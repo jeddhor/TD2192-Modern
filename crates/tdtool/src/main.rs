@@ -6,9 +6,12 @@
 
 mod exe_res;
 mod export;
+mod flight_setup;
 mod gen_manifest;
 mod inventory;
 mod missions;
+mod plan;
+mod replay_cmd;
 
 use std::path::PathBuf;
 
@@ -83,6 +86,57 @@ enum Command {
         #[arg(long)]
         data: Option<PathBuf>,
     },
+    /// Find inputs that complete an Episode 1 flight with success in td-sim and write them as a
+    /// TDR replay (VE-2, M9-21).
+    Plan {
+        /// Flight number 1..=20.
+        flight: u8,
+        /// Directory for `e1f<NN>.tdr` (normally tests/replays).
+        #[arg(long, default_value = "tests/replays")]
+        out: PathBuf,
+        /// Give up after this many ticks.
+        #[arg(long, default_value_t = 12000)]
+        max_ticks: u32,
+        /// Only run the flight without input and print what happens, for this many ticks.
+        #[arg(long)]
+        probe: Option<u32>,
+        /// Print the search's progress.
+        #[arg(long)]
+        verbose: bool,
+        /// Also fly every candidate with these muzzle bytes (DGROUP from DS:035C as a capture
+        /// holds it, U-160) and keep only candidates that behave the same in both worlds.
+        #[arg(long)]
+        alt_muzzles: Option<PathBuf>,
+        /// Flights kept per decision of the beam search.
+        #[arg(long, default_value_t = plan::BEAM)]
+        beam: usize,
+        /// Original game directory (defaults to $TD2192_DATA).
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
+    /// Run a TDR replay of an Episode 1 flight: check its state-hash checkpoints (--verify)
+    /// and/or write its tick-keyed oracle scenario lines (--oracle-schedule).
+    Replay {
+        /// The replay file.
+        file: PathBuf,
+        /// Re-run the flight and check every checkpoint.
+        #[arg(long)]
+        verify: bool,
+        /// Write the oracle scenario lines (ORACLE.md 5a) to this file.
+        #[arg(long)]
+        oracle_schedule: Option<PathBuf>,
+        /// Also run the replay with these muzzle bytes (DGROUP from DS:035C, U-160) and print
+        /// the first tick where the two flights differ.
+        #[arg(long)]
+        alt_muzzles: Option<PathBuf>,
+        /// Write the replay with the same inputs and recomputed checkpoints to this file (after
+        /// an intended, Verifier-confirmed behaviour change; ADG 10.5).
+        #[arg(long)]
+        rewrite_checkpoints: Option<PathBuf>,
+        /// Original game directory (defaults to $TD2192_DATA).
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
     /// Regenerate crates/td-assets/src/manifest_data.rs from docs/re/FILE_INVENTORY.md.
     GenManifest {
         /// Inventory markdown to read.
@@ -98,6 +152,50 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Inventory { data, verbose } => inventory::run(data.as_deref(), verbose),
         Command::GenManifest { inventory, out } => gen_manifest::run(&inventory, &out),
+        Command::Plan {
+            flight,
+            out,
+            max_ticks,
+            probe,
+            verbose,
+            alt_muzzles,
+            beam,
+            data,
+        } => {
+            let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
+                .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            match probe {
+                Some(ticks) => plan::probe(&root, flight, ticks),
+                None => plan::run(
+                    &root,
+                    flight,
+                    &out,
+                    max_ticks,
+                    verbose,
+                    alt_muzzles.as_deref(),
+                    beam,
+                ),
+            }
+        }
+        Command::Replay {
+            file,
+            verify,
+            oracle_schedule,
+            alt_muzzles,
+            rewrite_checkpoints,
+            data,
+        } => {
+            let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
+                .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            replay_cmd::run(
+                &root,
+                &file,
+                verify,
+                oracle_schedule.as_deref(),
+                alt_muzzles.as_deref(),
+                rewrite_checkpoints.as_deref(),
+            )
+        }
         Command::MissionMap {
             episode,
             map,
