@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/episode-program-flow` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 for the order of screens, scenes, dialogue, music and flights (the player sees it); T1 for the state that flows between missions (mission number, kills, outcome flags); T3 for the text-mode configuration screen and the `tdstatus.dat` hand-off (replaced by the port's own shell) |
 | **Confidence** | LIKELY overall (static analysis of the complete sequencer and menu). The mission-1 path is CONFIRMED by capture C-0002 (config → script choice → menu → title card → hangar card → dialogue → hint → flight → retry) |
@@ -190,7 +190,7 @@ Notation: `T[a]` text card with string `0000:a`; `Mn` music n (§3.1); `M0` stop
 | 16 | T[0BC1] M13 C:vlab[0787/058A/05C0] D68 M5 C:voffice[056D/058A/0BDB] D69 M12 P1[0BF5/0C16/05A4] M4 C:soffice[0C45/04A1/0C64] D70 M3 C:hangar[0494/04A1/04F9] D71 | F 16 | M5 C:voffice[056D/058A/0898] then outcome=1 → D72, else D105 |
 | 17 | T[0C74] M4 C:soffice[0C45/04A1/0618] D73 M3 C:hangar[0494/04A1/0C91] D74 | F 17; retry offered when died **or outcome = 0** | outcome=0 → M5 C:voffice[056D/058A/0898] D75 then ending B; outcome=1 → M11 C:sbar[0913/0549/05A4] D76 M5 C:voffice[056D/058A/0898] D77 |
 | 18 | T[0CA5] M5 C:voffice[056D/058A/0898] D78 M3 C:hangar[0494/04A1/0CBF] D80 M4 C:soffice[0C45/04A1/0607] D81 | F 18; retry offered when died **or lost**; declined while lost → ending C | M3 C:hangar[0494/04A1/07E3] D82 M5 T[0560] C:voffice[056D/058A/05A4] D83 P15 D84 M13 C:vlab[0560/0CCD/05A4] C:td1-18[0CE7/0CFC/05A4] |
-| 19 | T[0D27] M6 C:briefing[05E3/0D47/05A4] D85 M4 C:soffice[0C45/04A1/0898] D86 M3 C:hangar[0494/04A1/0AF2] D87 | F 19 | M5 C:voffice[056D/058A/0898] D88 M3 C:hangar[0494/04A1/07E3] D89, **then F 21** (no retry, no debrief; a set skip flag after C:voffice, D88 or C:hangar jumps straight to F 21; after F 21 only the abort flag is tested: abort → return, mission not advanced), then M13 T[0D54] C:tdlab[0D69/0D89/05A4] D91 M5 T[0560] C:marauder[0D98/0DB0/0DC7] D90 |
+| 19 | T[0D27] M6 C:briefing[05E3/0D47/05A4] D85 M4 C:soffice[0C45/04A1/0898] D86 M3 C:hangar[0494/04A1/0AF2] D87 | F 19 | M5 C:voffice[056D/058A/0898] D88 M3 C:hangar[0494/04A1/07E3] D89, **then F 21** (no retry, no debrief; a set skip flag after C:voffice, D88 or C:hangar jumps straight to F 21; after F 21 only the abort flag is tested: abort → return, mission not advanced; `Sim_FlyMission(21)` zeroes `g_MissionKills` like every flight, so on completion the menu adds **flight 21's** kills, not flight 19's, U-420), then M13 T[0D54] C:tdlab[0D69/0D89/05A4] D91 M5 T[0560] C:marauder[0D98/0DB0/0DC7] D90 |
 | 20 | T[0DD3] M4 C:soffice[0C45/04A1/0DED] D92 M11 C:sbar[0913/0549/05A4] D93 M4 C:soffice[0C45/04A1/0DFE] D110 M13 C:tdlab[0E10/0E20/05A4] D94 M3 C:hangar[0494/04A1/05C0] D95 | F 20; as mission 18 | **no `M8 B`**: straight to M13 C:tdlab[0E10/0552/05A4] D96 M4 C:soffice[0C45/04A1/04D0] D97 M6 C:tdlab[0E10/0549/05A4] D98 M9 C:velsroom[0E37/07B8/05A4] D99 P2[05A4/05A4/05A4] T[0E51] (episode end card) |
 
 In mission 10 the two scene cards follow each other without a skip test between them. In mission 19 the scene `C:soffice[0C45/04A1/0898]` is followed by D86 without a skip test. String `0000:05A4` is a single space (a blank line).
@@ -272,6 +272,7 @@ flowchart TD
 | Esc in the post-flight story | Ends the block but the mission still counts as completed | Preserve |
 | Aborting a flight from the Esc menu | No debrief, mission not advanced, kills of that attempt discarded | Preserve |
 | Kills of failed attempts | `g_MissionKills` is reset at every flight start, so only the last attempt counts | Preserve |
+| Mission 19's kills | Flight 21 zeroes `g_MissionKills` (`0E8B:B8BF..B8C1`) and nothing restores it, so the block hands back flight 21's kills (normally 0); flight 19's kills appear only in its debrief and never reach the total (U-420) | Preserve |
 | Episode completion | Mission number wraps to 0 and the menu cursor jumps to "ordering info" | Classic: return to the menu; the cursor jump is advertising (decision for the user, D4-related) |
 | Cheater rating | Only reachable with tampered totals | Preserve text only (D9) |
 | Mission 21 | Played only from the mission-19 block | Preserve |
@@ -319,3 +320,4 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 | 3 | 2026-11-05 | RE-10 (Spec author, U-252) | §4.2: items 0 and 3 flush the BIOS keyboard buffer after `Main_CampaignLoop` returns (`0000:390A..391D`, `3B97..3BAA`; keys typed during the block do not reach the menu) |
 | 4 | 2026-11-05 | RE-13 | §4.6 and Q3: which extra the launcher runs per status ([launcher](launcher.md)); no behaviour change |
 | 5 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | U-207: mission 20 has no `M8` and no debrief (`0000:2C87..2CA5`). U-081: flight 21 outcome handling (only abort tested, died ignored, abort → mission not advanced); in mission 19 the skip tests before flight 21 jump to flight 21, not to the block end (`0000:2A45..2A9D`) |
+| 6 | 2026-11-06 | RE-17 (Archaeologist + Spec author) | U-420: after block 19 the menu adds flight 21's kills (flight 21 zeroes `g_MissionKills` at entry; the only writers are that reset and the two kill increments, `0000:3BBB`/`3942` add it once); §4.4 row 19 and §5 row |

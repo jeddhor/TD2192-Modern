@@ -3,7 +3,8 @@
 //!
 //! Tick rates follow the original's pacing (`docs/spec/core/timing.md` rev 1): menus, story
 //! sequences and fades step once per vertical retrace ([`RETRACE_HZ`]); flight steps once per
-//! BIOS timer tick ([`FLIGHT_TICK_HZ`], provisional until the oracle measurement, U-001/U-032).
+//! BIOS timer tick ([`FLIGHT_TICK_HZ`], ADR-0007: the Sound Blaster + music rate, measured by VE-3,
+//! C-0074).
 
 use td_assets::{DataDir, ExeResources};
 use td_audio::AudioCommand;
@@ -15,9 +16,10 @@ use crate::settings::Settings;
 /// VGA mode 13h refresh rate: the pace of retrace-synchronised screens and fades.
 pub const RETRACE_HZ: f64 = 70.086;
 
-/// In-flight game tick. ASSUMPTION(U-001, U-032): one BIOS tick while a 96 Hz song plays
-/// (19.202 Hz, timing spec §4.2), pending the oracle measurement.
-pub const FLIGHT_TICK_HZ: f64 = 19.202;
+/// In-flight game tick: one BIOS tick in the Sound Blaster + music timer state, 1,193,182 /
+/// (12,428 × 5) = 19.2015 Hz (timing spec §4.2; ADR-0007, accepted 2026-11-06; measured 19.208
+/// in C-0074).
+pub const FLIGHT_TICK_HZ: f64 = 1_193_182.0 / 62_140.0;
 
 /// What a screen asks the flow to do after a tick.
 #[derive(Debug)]

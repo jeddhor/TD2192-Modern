@@ -1,6 +1,6 @@
 # ADR-0007: Canonical Classic tick rate
 
-- **Status:** Proposed (VE-3's M1-06 measurements, 2026-11-06; needs the user's decision)
+- **Status:** Accepted (the user, 2026-11-06; from VE-3's M1-06 measurements)
 - **Date:** 2026-11-06
 
 ## Context
@@ -17,7 +17,7 @@ Everything paced in DOS time scales the same way. Examples are the timed story h
 
 The port uses one fixed rate today, `FLIGHT_TICK_HZ` = 19.202 Hz (`td_flow::screen`). It also has a music volume rather than a music on/off switch in `td.cfg`, so a player who turns the music down still has the "music playing" timer state.
 
-## Decision (proposed)
+## Decision
 
 1. **Classic runs at 19.2015 Hz in every configuration.** This is the reference configuration, Sound Blaster with music. `FLIGHT_TICK_HZ` becomes 1,193,182 / 62,140 = 19.2015 Hz, the exact divisor product for that WORX state (timing §4.2); the measured 19.208 is within the oracle's clock error. The port's current 19.202 is 0.003 % away, so play does not change.
 2. **DOS-time waits use the same clock.** DOS time counts BIOS ticks at a nominal 18.2065 per second, so a wait of *s* DOS seconds lasts *s* × 18.2065 / 19.2015 ≈ 0.948 *s* wall seconds (10 s = 664 retrace frames, as VE-3 measured). This is the fix for BUG-7.

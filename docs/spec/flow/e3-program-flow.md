@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/e3-program-flow` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | As [e2-program-flow](e2-program-flow.md): T2 for the order of screens, scenes, dialogue, music and flights; T1 for the state that flows between missions (mission number, kills, outcome flags, the retry prompt's `Random` call, the `td3.sav` slot format); T0 for menu colours; T3 for the text-mode configuration screen, the `/?` usage text, the memory gate and the exit notice |
 | **Confidence** | LIKELY overall. CONFIRMED (static) for the call order of all 18 mission blocks, every branch, every skip test (200) and every write of the campaign state: complete token walk of `Main_CampaignLoop` plus a byte scan of the whole image for writes of the flags (§10). CONFIRMED (static) for the music table, the flight song, start-up, menu bookkeeping and the save format. The start-up path to flight 1 and the `TD3.SAV` restore path to block 8 of §8 are CONFIRMED by C-0036 and C-0041 (the anchors and Esc windows below are the ones used there); the other Verifier timings are LIKELY (U-280) |
@@ -168,6 +168,7 @@ The loop is E2's (E2 §4.2) with these differences:
 2. **Loader** `UI_LoadMainMenu(playMusic)` `0000:29E5`: **flushes the BIOS keyboard buffer** first (new); then exactly as E2: song 7 only when the argument is non-zero; `Gfx_InitUnchained`; `td.men` regions, `tdmen.pal`, `td.men` again; entries 224..233 := (16, 0, 0) including 227; the cursor's entry gets red 63 only; fade in (`0000:0000`); the cursor's red goes back to 16 in the buffer. OB-041 therefore applies to E3 as well.
 3. **Fades** `0000:0000` (in) and `0000:00D2` (out): identical to E2 (17 levels, DAC 1..255 := Round(c × s / 16) from `g_MenuPalette`, one retrace-bit wait per level). U-206 resolved for E3.
 4. **Highlight loop** and un-highlight: identical to E2 (`0000:2E58..2ECE`, `39EA..3A59`), including the ramp of the start cursor at loop entry and the 11 steps per frame. C-0125: fade-in f270..303 (2 frames per level), start ramp f303..307, fade-out on Enter f433..466.
+5. **Key drain (U-441, U-480):** a poll that finds a key reads it (and the scan code after an extended key's 0), then reads every further waiting key from the BIOS buffer and discards it, storing each byte `ReadKey` returns in `g_MenuDrainKey` DS:0660 (`0000:2F01`). The last discarded byte stays there for the program run and becomes a muzzle offset of class-4 volleys on heading 0Ch ([weapons](../sim/weapons.md) rev 5 §3.3.3 item 2). A port keeps the BIOS-buffer behaviour: one key handled per poll, the rest discarded, the last discarded byte recorded.
 
 Items (selection: Space, Enter, joystick button 1 or 2; Up/`8`/stick up and Down/`2`/stick down wrap 0..8 and skip items 1 and 3 while mission = 0; Esc = quit box; confirmation `UpCase(key) = 'Y'`):
 
@@ -490,3 +491,4 @@ The §8.2 E3 table is correct for the order of every call in all 18 blocks, and 
 |---|---|---|---|
 | 1 | 2026-11-05 | RE-10c (Archaeologist + Spec author, draft for RE-10); merged and checked by RE-10 (C-0036, C-0041; U-270) | Initial: start-up, menu, all 18 blocks (blocks 6 and 11 in detail), ending A and the episode end, music, flight hand-off, keyboard flushes, save format, Verifier section; OB-050, OB-051; OB-027 and OB-041 extended; U-280..U-282; U-011 and U-206 resolved for E3 |
 | 2 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.2 item 4: the menu fades and entry ramp measured as E2's (C-0125) |
+| 3 | 2026-11-06 | RE-17 (Archaeologist + Spec author) | §4.2 item 5: the menu poll discards waiting keys into `g_MenuDrainKey` DS:0660, a two-digit muzzle byte (U-441, weapons rev 5) |
