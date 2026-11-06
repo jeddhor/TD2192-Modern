@@ -37,6 +37,14 @@
 //! else is copied from the capture: `g_Weapon` comes from the session (BUG-2 fixed), and the
 //! hit flash ended by E1 flight 17's cut-scene is zeroed by td-sim (flight-screens §4.10,
 //! BUG-3).
+//!
+//! **Runs of several flights** (VE-5, oracle build 3, ORACLE.md §5b; [`check_run`]): each
+//! `tickwatch` line of the scenario starts a watcher generation, and the second flight's dumps
+//! carry the suffix `_g2`. The first flight starts at program start, each later one with the
+//! session the flight before it left (`Flight::session`), its muzzle bytes from its own tick-1
+//! record. The afterburner's burst frame (and its heading during a burst) is compared too.
+//! A [`Leg`] with `ends: false` compares a replay that covers only part of a flight (RE
+//! captures keyed by hand, U-430).
 
 // Each test crate uses one layout.
 #![allow(dead_code)]
@@ -113,6 +121,8 @@ pub struct Layout {
     pub turn: usize,
     pub heading: usize,
     pub weapon: usize,
+    /// `g_BurstFrame`, then `g_BurstHeading` (afterburner, flight-model §4.7).
+    pub burst: usize,
     pub over: usize,
     pub keys: usize,
     /// `g_SlotMarker` (20 slots, then the home marker).
@@ -149,6 +159,7 @@ pub const E1: Layout = Layout {
     turn: 0x1A5A,
     heading: 0x1A56,
     weapon: 0x1CB8,
+    burst: 0x1836,
     over: 0x32B7,
     keys: 0x1A5C,
     markers: 0x3958,
@@ -183,6 +194,7 @@ pub const E2: Layout = Layout {
     turn: 0x1982,
     heading: 0x197E,
     weapon: 0x1BE0,
+    burst: 0x175A,
     over: 0x31DF,
     keys: 0x1984,
     markers: 0x3880,
@@ -217,6 +229,7 @@ pub const E3: Layout = Layout {
     turn: 0x197E,
     heading: 0x197A,
     weapon: 0x1BDC,
+    burst: 0x1756,
     over: 0x31DB,
     keys: 0x1980,
     markers: 0x387C,
@@ -395,9 +408,18 @@ fn fields(f: &Flight, d: &Dump) -> Fields {
         field("weapon", f.weapon, d.u8(l.weapon)),
         field("missiles", f.missiles, d.u8(l.weapon + 1)),
         field("cooldown", f.missile_cooldown, d.u8(l.weapon + 2)),
+        field("burst frame", f.player.burst_frame, d.u8(l.burst)),
         field("over", u8::from(f.mission_over), d.u8(l.over)),
         field("end ticks", f.end_ticks, d.u8(l.over + 1)),
     ];
+    // The burst heading is stale between bursts on both sides (VE-5).
+    if f.player.burst_frame != 0 || d.u8(l.burst) != 0 {
+        v.push(field(
+            "burst heading",
+            f.player.burst_heading.code(),
+            d.u8(l.burst + 1),
+        ));
+    }
     for (i, s) in f.ships.0.iter().enumerate() {
         v.push(field(
             &format!("marker {}", i + 1),
@@ -499,7 +521,7 @@ fn slot_diff(f: &Flight, d: &Dump, i: usize) -> Option<String> {
     Some(format!("slot {}: {}", i + 1, out.join(", ")))
 }
 
-fn differences(f: &Flight, d: &Dump) -> Vec<String> {
+fn differences(f: &Flight, d: &Dump, shots: bool) -> Vec<String> {
     let mut errs: Vec<String> = fields(f, d)
         .iter()
         .filter(|(_, a, b)| a != b)
@@ -511,7 +533,7 @@ fn differences(f: &Flight, d: &Dump) -> Vec<String> {
             errs.extend(slot_diff(f, d, i));
         }
     }
-    for i in 0..SHOT_SLOTS {
+    for i in (0..SHOT_SLOTS).filter(|_| shots) {
         let (o, t) = (f.shots.0[i], d.shot(i));
         // A free slot keeps stale fields in the original; only tile X = FFh matters there.
         let same = if !o.alive() || !t.alive() {
@@ -563,19 +585,69 @@ struct Coverage {
     events: Vec<String>,
 }
 
-/// The packed projectile dump of a capture and its linear address (`tick_SSSS-0000_240_*.bin`).
-fn proj_file(cap: &Path) -> (PathBuf, usize) {
-    let p = fs::read_dir(cap.join("mem"))
-        .unwrap()
+/// The file name suffix of a watcher generation's dumps (oracle 3, ORACLE.md §5b: `_g<n>` from
+/// the second flight of a run on).
+fn gen_suffix(generation: usize) -> String {
+    if generation > 1 {
+        format!("_g{generation}")
+    } else {
+        String::new()
+    }
+}
+
+/// The first file in `cap/mem` whose name starts with `head` and ends with `tail`.
+fn mem_file(cap: &Path, head: &str, tail: &str) -> Option<PathBuf> {
+    let mut v: Vec<PathBuf> = fs::read_dir(cap.join("mem"))
+        .ok()?
         .map(|e| e.unwrap().path())
-        .find(|p| {
+        .filter(|p| {
             let n = p.file_name().unwrap().to_string_lossy();
-            n.starts_with("tick_") && n.ends_with("_240_proj.bin")
+            n.starts_with(head) && n.ends_with(tail)
         })
-        .expect("a projectile dump");
+        .collect();
+    v.sort();
+    v.into_iter().next()
+}
+
+/// The packed projectile dump of a generation and its linear address and length
+/// (`tick_SSSS-0000_<LEN>_proj[_g<n>].bin`; VE-5 dumps a window that holds every heap place of
+/// E2/E3), if the capture has one.
+fn proj_file(cap: &Path, generation: usize) -> Option<(PathBuf, usize, usize)> {
+    let p = mem_file(
+        cap,
+        "tick_",
+        &format!("_proj{}.bin", gen_suffix(generation)),
+    )?;
     let name = p.file_name().unwrap().to_string_lossy().into_owned();
     let seg = usize::from_str_radix(&name[5..9], 16).unwrap();
-    (p, seg * 16)
+    let len = name[15..].split('_').next().unwrap();
+    let len = usize::from_str_radix(len, 16).unwrap();
+    Some((p, seg * 16, len))
+}
+
+/// Where a flight's muzzle bytes past the table come from (U-160, weapons rev 4/5 §3.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Muzzles {
+    /// E1 direct start: built by td-sim (`FrontEnd::direct_start`) and checked against the
+    /// capture's tick-1 record.
+    DirectStart,
+    /// The capture's tick-1 record (E2/E3, whose ranges td-sim does not build yet; a flight
+    /// after a played story or after another flight, whose front-end state only td-flow keeps:
+    /// `td-flow/tests/front_end_state.rs` checks those bytes against the same records).
+    Capture,
+}
+
+/// One flight of a capture's program run: the replay `e<E>f<NN><suffix>.tdr`, flown with the
+/// session the flights before it left, compared with the records of its watcher generation.
+#[derive(Debug, Clone, Copy)]
+pub struct Leg<'a> {
+    pub flight: u8,
+    pub suffix: &'a str,
+    pub muzzles: Muzzles,
+    /// The flight ends on the replay's last tick (success or the end of a death), the
+    /// original's records end there too, and the capture has the outcome dump `end240`.
+    /// Otherwise the replay covers part of the flight and each of its ticks is compared.
+    pub ends: bool,
 }
 
 /// Compares flight `flight` of `l`'s episode (success replay `e<E>f<NN>.tdr`) with its
@@ -589,33 +661,91 @@ pub fn check(l: &Layout, data: &Path, oracle: &Path, flight: u8) {
 /// As [`check`] for the replay `e<E>f<NN><suffix>.tdr` and the capture whose scenario starts
 /// with `# <tag> `.
 pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: &str, tag: &str) {
-    let Ok(bytes) = fs::read(replay_path(l, flight, suffix)) else {
-        eprintln!("SKIPPED: no replay for flight {flight}{suffix}");
-        return;
+    let muzzles = if l.episode == Episode::E1 {
+        Muzzles::DirectStart
+    } else {
+        Muzzles::Capture
     };
+    check_run(
+        l,
+        data,
+        oracle,
+        tag,
+        &[Leg {
+            flight,
+            suffix,
+            muzzles,
+            ends: true,
+        }],
+    );
+}
+
+/// Compares the flights of one program run with the capture whose scenario starts with
+/// `# <tag> ` (VE-5, oracle 3: the second flight's records are generation 2): the first flight
+/// starts at program start (`Session::for_episode`), each later one with the session the one
+/// before it left (`Flight::session`; the front end between them draws no `Random`).
+pub fn check_run(l: &Layout, data: &Path, oracle: &Path, tag: &str, legs: &[Leg]) {
     let Some(cap) = find_capture(oracle, tag) else {
         eprintln!("SKIPPED: no {tag} capture under the oracle root");
         return;
     };
-    let name = cap.file_name().unwrap().to_string_lossy().into_owned();
-    let r = Replay::from_bytes(&bytes).unwrap();
+    let mut replays = vec![];
+    for leg in legs {
+        let Ok(bytes) = fs::read(replay_path(l, leg.flight, leg.suffix)) else {
+            eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
+            return;
+        };
+        replays.push(Replay::from_bytes(&bytes).unwrap());
+    }
+    let mut session = Session::for_episode(l.episode);
+    for (i, (leg, r)) in legs.iter().zip(&replays).enumerate() {
+        let f = check_leg(l, data, &cap, i + 1, leg, r, session);
+        session = f.session();
+    }
+}
+
+/// Compares one flight (generation `generation` of the capture) and returns its final state.
+fn check_leg(
+    l: &Layout,
+    data: &Path,
+    cap: &Path,
+    generation: usize,
+    leg: &Leg,
+    r: &Replay,
+    session: Session,
+) -> Flight {
+    let flight = leg.flight;
+    let name = format!(
+        "{}{}",
+        cap.file_name().unwrap().to_string_lossy(),
+        if generation > 1 {
+            format!(" (flight {generation} of the run)")
+        } else {
+            String::new()
+        }
+    );
     assert_eq!(
         (r.episode, r.mission),
         (l.number(), flight),
         "{name}: replay"
     );
-    let ds = load_packed(
-        &cap.join(format!("mem/tick_{}-0000_{:X}_ds.bin", l.dgroup, l.ds_len)),
-        l.ds_len,
-    );
-    let (pf, proj_base) = proj_file(&cap);
-    let proj = load_packed(&pf, 0x240);
-    assert_eq!(ds.len(), proj.len(), "{name}: record counts");
+    assert_eq!(r.seed, session.rng.seed(), "{name}: the replay's session");
+    let gs = gen_suffix(generation);
+    let ds_path = mem_file(cap, "tick_", &format!("-0000_{:X}_ds{gs}.bin", l.ds_len))
+        .unwrap_or_else(|| panic!("{name}: no DGROUP dump of generation {generation}"));
+    let ds = load_packed(&ds_path, l.ds_len);
+    let proj = proj_file(cap, generation).map(|(p, base, len)| (load_packed(&p, len), base));
+    let empty: Vec<u8> = vec![];
+    if let Some((p, _)) = &proj {
+        assert_eq!(ds.len(), p.len(), "{name}: record counts");
+    }
     // Records by counter value (stall records apart).
     let mut by_tick = std::collections::BTreeMap::new();
     let mut stalls = std::collections::BTreeMap::new();
     for (i, rec) in ds.iter().enumerate() {
-        assert_eq!(rec.value, proj[i].value, "{name}: record {i}");
+        if let Some((p, _)) = &proj {
+            assert_eq!(rec.value, p[i].value, "{name}: record {i}");
+        }
         if rec.value & STALL == 0 {
             by_tick.insert(rec.value, i);
         } else {
@@ -625,8 +755,8 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
     let dump = |i: usize| Dump {
         l,
         ds: &ds[i].bytes,
-        proj: &proj[i].bytes,
-        proj_base,
+        proj: proj.as_ref().map_or(&empty, |(p, _)| &p[i].bytes),
+        proj_base: proj.as_ref().map_or(0, |(_, b)| *b),
     };
 
     let ep = l.episode;
@@ -634,18 +764,18 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
     let first = dump(*by_tick.get(&1).expect("a record of tick 1"));
     let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, flight)).unwrap()).unwrap();
     let captured = &first.ds[l.muzzles..l.muzzles + MUZZLE_LEN];
-    let muzzles = if ep == Episode::E1 {
-        direct_start_muzzles(&dir, captured, &name)
-    } else {
-        captured.to_vec()
+    let muzzles = match leg.muzzles {
+        Muzzles::DirectStart => direct_start_muzzles(&dir, captured, &name),
+        Muzzles::Capture => captured.to_vec(),
     };
     let world = episode::world(ep, flight, map, muzzles);
     let mission = episode::mission_file(ep, flight)
         .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
-    let mut f = Flight::start(flight, mission.as_ref(), &world, Session::for_episode(ep));
+    let mut f = Flight::start(flight, mission.as_ref(), &world, session);
+    let has_proj = proj.is_some();
 
     // Setup: the record of tick 1 holds the state after setup (plus tick 1's turn step).
-    let mut errs = differences(&f, &first);
+    let mut errs = differences(&f, &first, has_proj);
     errs.retain(|e| !e.starts_with("draw page"));
     assert!(
         errs.is_empty(),
@@ -682,7 +812,7 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
         }
         // After the last tick: the stall record of that tick when the original stopped there
         // too, else the record of the tick it went on to fly.
-        let idx = if t < n {
+        let idx = if t < n || !leg.ends {
             by_tick.get(&(t + 1)).copied()
         } else {
             by_tick.get(&(t + 1)).or_else(|| stalls.get(&t)).copied()
@@ -695,7 +825,7 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
             );
         };
         let d = dump(i);
-        let errs = differences(&f, &d);
+        let errs = differences(&f, &d, has_proj);
         if !errs.is_empty() {
             panic!(
                 "{name} flight {flight}: first divergence after tick {t} (record frame {}), \
@@ -710,23 +840,36 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
         cov.slot_ticks += (0..SHIP_SLOTS).filter(|&s| f.ships.0[s].alive()).count();
         cov.ticks = t;
         prev = d;
-        assert_eq!(
-            result == TickResult::Finished,
-            t == n,
-            "{name} flight {flight}: port flight finished at tick {t} of {n}"
+        if leg.ends {
+            assert_eq!(
+                result == TickResult::Finished,
+                t == n,
+                "{name} flight {flight}: port flight finished at tick {t} of {n}"
+            );
+        } else {
+            assert_ne!(
+                result,
+                TickResult::Finished,
+                "{name} flight {flight}: port flight finished at tick {t}"
+            );
+        }
+    }
+    if !leg.ends {
+        eprintln!(
+            "{name} flight {flight}: PASS ticks 1..{} (part of the flight), {} slot-ticks, \
+             projectiles {}, comm {:?}, events {:?}",
+            cov.ticks,
+            cov.slot_ticks,
+            if has_proj { "compared" } else { "not dumped" },
+            cov.comm_viewers,
+            cov.events
         );
+        return f;
     }
     // The original flew no further tick, and its outcome is ours.
     let last = by_tick.keys().last().copied().unwrap();
     assert_eq!(last, n, "{name} flight {flight}: original's last tick");
-    let end = fs::read_dir(cap.join("mem"))
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .find(|p| {
-            let n = p.file_name().unwrap().to_string_lossy();
-            n.starts_with('f') && n.ends_with("_end240.bin")
-        })
-        .expect("the end240 dump");
+    let end = mem_file(cap, "f", &format!("_end240{gs}.bin")).expect("the end240 dump");
     let end = fs::read(end).unwrap();
     // g_PlayerDied follows g_MissionLost in every episode.
     assert_eq!(
@@ -750,4 +893,5 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
         cov.comm_viewers,
         cov.events
     );
+    f
 }

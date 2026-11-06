@@ -92,9 +92,10 @@ pub fn transmission_waits(f: &Flight) -> bool {
 pub const CHECKPOINT_INTERVAL: u32 = 100;
 
 /// Runs flight `number` with no input for `ticks` ticks and prints what happens (phase changes,
-/// spawns and removals, kills, damage, the end), to study a flight before planning it.
-pub fn probe(root: &Path, episode: Episode, number: u8, ticks: u32) -> Result<()> {
-    let setup = FlightSetup::load(root, episode, number)?;
+/// spawns and removals, kills, damage, the end), to study a flight before planning it. A flight
+/// that follows another in its block starts after the predecessor's replay in `dir`.
+pub fn probe(root: &Path, episode: Episode, number: u8, ticks: u32, dir: &Path) -> Result<()> {
+    let setup = FlightSetup::load_chain(root, episode, number, Some(dir))?;
     let mut f = setup.start();
     println!(
         "flight {number}: class {} view {:?} phase {} palette {} late {}",
@@ -145,7 +146,8 @@ pub fn probe(root: &Path, episode: Episode, number: u8, ticks: u32) -> Result<()
 /// plan covers), at most `max_ticks` ticks. With `modals`, `e<E>f<NN>-modals.tdr`: the same with
 /// one tap each of P (pause) in tick 100, F5 (tactical map) in tick 200 and Esc (flight menu)
 /// in tick 300, which open their screens with no other key held (the oracle schedule closes
-/// them, [`schedule::oracle_lines`]).
+/// them, [`schedule::oracle_lines`]). `suffix` replaces the file name's `-idle`/`-modals` (E1
+/// flight 21 flies itself and ends after 25 ticks: `e1f21.tdr` is an idle replay).
 pub fn idle(
     root: &Path,
     episode: Episode,
@@ -153,8 +155,9 @@ pub fn idle(
     out: &Path,
     max_ticks: u32,
     modals: bool,
+    suffix: Option<&str>,
 ) -> Result<()> {
-    let setup = FlightSetup::load(root, episode, number)?;
+    let setup = FlightSetup::load_chain(root, episode, number, Some(out))?;
     let mut f = setup.start();
     let mut inputs = vec![];
     loop {
@@ -181,7 +184,8 @@ pub fn idle(
         comm_ticks: comm_ticks(&setup, &inputs),
         inputs,
     };
-    write_outputs(&setup, &plan, out, if modals { "-modals" } else { "-idle" })?;
+    let suffix = suffix.unwrap_or(if modals { "-modals" } else { "-idle" });
+    write_outputs(&setup, &plan, out, suffix)?;
     println!(
         "flight {number}: {} idle ticks; succeeded {} lost {} died {} outcome {}",
         plan.inputs.len(),
@@ -189,6 +193,97 @@ pub fn idle(
         f.lost,
         f.died(),
         f.outcome()
+    );
+    Ok(())
+}
+
+/// Writes the replay `out` of `ticks` ticks of flight `number` keyed by the `tick:T down|up
+/// <key>` and `tick:T press <key> [hold]` lines of an oracle scenario (ORACLE.md §5a; other
+/// lines are ignored, a key line with a frame offset is refused). By the tick rule (see
+/// [`schedule`]) port tick T sees the keys down after the transitions of `tick:T`, and a key is
+/// made in T when it goes down there. The flight starts as its replays do
+/// ([`FlightSetup::load_chain`], predecessors from `out`'s directory).
+pub fn from_schedule(
+    root: &Path,
+    episode: Episode,
+    number: u8,
+    scenario: &Path,
+    out: &Path,
+    ticks: u32,
+) -> Result<()> {
+    use std::collections::BTreeMap;
+    use td_sim::FlightKey;
+    let text = std::fs::read_to_string(scenario)
+        .map_err(|e| anyhow::anyhow!("{}: {e}", scenario.display()))?;
+    let key_of = |name: &str| {
+        FlightKey::ALL
+            .iter()
+            .copied()
+            .find(|&k| schedule::key_name(k) == name)
+    };
+    // tick -> transitions (key, down) in file order
+    let mut at: BTreeMap<u32, Vec<(FlightKey, bool)>> = BTreeMap::new();
+    for line in text.lines().map(str::trim) {
+        let mut tok = line.split_whitespace();
+        let (Some(when), Some(act), Some(key)) = (tok.next(), tok.next(), tok.next()) else {
+            continue;
+        };
+        let Some(t) = when.strip_prefix("tick:") else {
+            continue;
+        };
+        if !matches!(act, "down" | "up" | "press") {
+            continue;
+        }
+        if t.contains(['+', '-']) {
+            bail!("{line}: key lines with frame offsets or ranges cannot be replayed");
+        }
+        let t: u32 = t.parse()?;
+        let Some(k) = key_of(key) else {
+            bail!("{line}: not a flight key");
+        };
+        match act {
+            "press" => {
+                let hold: u32 = tok.next().map(str::parse).transpose()?.unwrap_or(1).max(1);
+                at.entry(t).or_default().push((k, true));
+                at.entry(t + hold).or_default().push((k, false));
+            }
+            _ => at.entry(t).or_default().push((k, act == "down")),
+        }
+    }
+    let setup = FlightSetup::load_chain(root, episode, number, out.parent())?;
+    let mut down: Vec<FlightKey> = vec![];
+    let mut inputs = vec![];
+    for t in 1..=ticks {
+        let prev = down.clone();
+        let mut made = vec![];
+        for &(k, d) in at.get(&t).map(Vec::as_slice).unwrap_or(&[]) {
+            down.retain(|&x| x != k);
+            if d {
+                down.push(k);
+                made.push(k);
+            }
+        }
+        let mut c = TickControls::default();
+        for &k in &down {
+            c.set_down(k);
+            if made.contains(&k) || !prev.contains(&k) {
+                c.set_made(k);
+            }
+        }
+        inputs.push(c.to_word());
+    }
+    check_inputs(&inputs)?;
+    let plan = Plan {
+        comm_ticks: comm_ticks(&setup, &inputs),
+        inputs,
+    };
+    let r = replay_of(&setup, &plan);
+    std::fs::write(out, r.to_bytes()).map_err(|e| anyhow::anyhow!("{}: {e}", out.display()))?;
+    println!(
+        "wrote {} ({} ticks, comm viewers at {:?})",
+        out.display(),
+        ticks,
+        plan.comm_ticks
     );
     Ok(())
 }
@@ -252,8 +347,10 @@ pub fn run(
     alt_muzzles: Option<&Path>,
     beam: usize,
     dual: bool,
+    weapons: bool,
+    suffix: &str,
 ) -> Result<()> {
-    let setup = FlightSetup::load(root, episode, number)?;
+    let setup = FlightSetup::load_chain(root, episode, number, Some(out))?;
     let alt =
         match alt_muzzles {
             Some(p) => Some(setup.with_muzzles(
@@ -261,13 +358,18 @@ pub fn run(
             )),
             None => None,
         };
+    let opts = search::Options {
+        max_ticks,
+        verbose,
+        beam,
+        dual,
+        weapons,
+    };
     // Flights are large values; give the search a big stack (the main thread's is 1 MB).
     let found = std::thread::scope(|s| {
         std::thread::Builder::new()
             .stack_size(256 << 20)
-            .spawn_scoped(s, || {
-                search::plan(&setup, alt.as_ref(), max_ticks, verbose, beam, dual)
-            })
+            .spawn_scoped(s, || search::plan(&setup, alt.as_ref(), &opts))
             .map(|h| h.join())
     });
     let Ok(Ok(found)) = found else {
@@ -303,13 +405,17 @@ pub fn run(
         }
         same = core_hash(&g) == core_hash(&f);
     }
-    write_outputs(&setup, &plan, out, "")?;
+    write_outputs(&setup, &plan, out, suffix)?;
+    let start = setup.start();
     println!(
-        "flight {number}: {} ticks, kills {}, outcome {}, comm viewers at {:?}, same course with the alt bytes {same}",
+        "flight {number}: {} ticks, kills {}, outcome {}, comm viewers at {:?}, same course with the alt bytes {same}; missiles fired {}, afterburner bursts {}, Tab presses {}",
         n,
         f.kills,
         f.outcome(),
-        plan.comm_ticks
+        plan.comm_ticks,
+        start.missiles.saturating_sub(f.missiles),
+        schedule::presses(&plan.inputs, td_sim::FlightKey::KpPlus),
+        schedule::presses(&plan.inputs, td_sim::FlightKey::Tab),
     );
     Ok(())
 }

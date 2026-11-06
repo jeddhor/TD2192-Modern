@@ -72,9 +72,24 @@ pub const CLEARABLE: [FlightKey; 6] = [
 /// Longest hold of a [`CLEARABLE`] key, in ticks (about 260 ms, below the 500 ms delay).
 pub const MAX_CLEARABLE_HOLD: u32 = 5;
 
+/// The number of ticks in which `key` goes down.
+pub fn presses(inputs: &[u64], key: FlightKey) -> usize {
+    let mut prev = TickControls::default();
+    let mut n = 0;
+    for &w in inputs {
+        let c = TickControls::from_word(w);
+        n += usize::from(c.is_down(key) && !prev.is_down(key));
+        prev = c;
+    }
+    n
+}
+
 /// Checks that a plan can be keyed to the oracle: a key is made exactly in the tick it goes
-/// down, no joystick, clearable keys held briefly. Returns the first problem.
+/// down, no joystick, clearable keys held briefly. A plan that presses Tab may select the
+/// missile weapon, and a missile launch clears the Space byte (weapons §4.1): Space is then
+/// clearable too. Returns the first problem.
 pub fn check(inputs: &[u64]) -> Result<()> {
+    let space_clears = presses(inputs, FlightKey::Tab) > 0;
     let mut prev = TickControls::default();
     let mut held = [0u32; FlightKey::ALL.len()];
     for (i, &w) in inputs.iter().enumerate() {
@@ -89,7 +104,8 @@ pub fn check(inputs: &[u64]) -> Result<()> {
                 bail!("tick {}: {key:?} made {made} but pressed {pressed}", i + 1);
             }
             held[k] = if c.is_down(key) { held[k] + 1 } else { 0 };
-            if CLEARABLE.contains(&key) && held[k] > MAX_CLEARABLE_HOLD {
+            let clearable = CLEARABLE.contains(&key) || (space_clears && key == FlightKey::Space);
+            if clearable && held[k] > MAX_CLEARABLE_HOLD {
                 bail!(
                     "tick {}: {key:?} held longer than {MAX_CLEARABLE_HOLD} ticks",
                     i + 1

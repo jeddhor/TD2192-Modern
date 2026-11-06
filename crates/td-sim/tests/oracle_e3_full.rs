@@ -106,3 +106,36 @@ fn flight_18_full_matches_oracle() {
 fn flight_19_full_matches_oracle() {
     check(19);
 }
+
+/// U-430: the player leaves the home hangar of flight 10 and flies back in (RE-17's captures,
+/// tick-keyed input from their scenarios: `tdtool schedule-replay`). Part of the flight, every
+/// tick; the captures dump no projectiles (VE-5).
+fn hangar(suffix: &str, tag: &str) {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        tag,
+        &[full_flight::Leg {
+            flight: 10,
+            suffix,
+            muzzles: full_flight::Muzzles::Capture,
+            ends: false,
+        }],
+    );
+}
+
+/// C-0182: a 12-tick dive south out of `home17`, back north into it at tick 71, two bounces off
+/// the hangar top.
+#[test]
+fn flight_10_hangar_return_b_matches_oracle() {
+    hangar("-hangar-b", "re17-e3f10-hangar-b");
+}
+
+/// C-0183: a 16-tick dive south to view (17, 166), back in at tick 70, sideways thrust that does
+/// not move the ship, a bounce off the hangar top.
+#[test]
+fn flight_10_hangar_return_c_matches_oracle() {
+    hangar("-hangar-c", "re17-e3f10-hangar-c");
+}

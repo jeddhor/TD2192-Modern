@@ -15,9 +15,11 @@ use td_sim::state_hash;
 use crate::flight_setup::{FlightSetup, episode_of};
 use crate::plan;
 
-/// The flight a replay is of.
-pub fn setup_of(root: &Path, r: &Replay) -> Result<FlightSetup> {
-    FlightSetup::load(root, episode_of(r.episode)?, r.mission)
+/// The flight a replay is of, as its replays fly it: a flight that follows another one in its
+/// block continues the predecessor's replay from the same directory
+/// ([`crate::flight_setup::predecessor`]).
+pub fn setup_of(root: &Path, r: &Replay, file: &Path) -> Result<FlightSetup> {
+    FlightSetup::load_chain(root, episode_of(r.episode)?, r.mission, file.parent())
 }
 
 /// How a verified replay ended.
@@ -35,13 +37,13 @@ pub struct Verified {
     pub view: (i16, i16, i16, i16),
 }
 
-/// Re-runs `r` and checks its checkpoints.
-pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
-    let setup = setup_of(root, r)?;
+/// Re-runs `r` (read from `file`) and checks its checkpoints.
+pub fn verify(root: &Path, r: &Replay, file: &Path) -> Result<Verified> {
+    let setup = setup_of(root, r, file)?;
     let start = setup.session().rng.seed();
     if r.seed != start {
         bail!(
-            "replay seed {:08X} is not a direct start (program-start seed {start:08X})",
+            "replay seed {:08X} is not the flight's start (session seed {start:08X})",
             r.seed
         );
     }
@@ -94,8 +96,8 @@ pub fn verify(root: &Path, r: &Replay) -> Result<Verified> {
 /// Runs the inputs in the installation's world (a direct start's muzzle bytes, weapons rev 4
 /// §3.3) and in `alt` (other muzzle bytes, U-160) and prints the first tick where the two
 /// flights differ, with what changed in each.
-pub fn compare_muzzles(root: &Path, r: &Replay, alt: Vec<u8>) -> Result<()> {
-    let base = setup_of(root, r)?;
+pub fn compare_muzzles(root: &Path, r: &Replay, file: &Path, alt: Vec<u8>) -> Result<()> {
+    let base = setup_of(root, r, file)?;
     let other = base.with_muzzles(alt);
     let (mut a, mut b) = (base.start(), other.start());
     for (i, &w) in r.inputs.iter().enumerate() {
@@ -148,7 +150,7 @@ pub fn run(
         r.checkpoints.len()
     );
     if verify_it {
-        let v = verify(root, &r)?;
+        let v = verify(root, &r, file)?;
         println!(
             "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {} view {:?}",
             v.checkpoints, v.finished_at, v.succeeded, v.lost, v.died, v.kills, v.outcome, v.view
@@ -157,7 +159,7 @@ pub fn run(
     if let Some(out) = rewrite {
         // Same inputs, checkpoints recomputed with the current td-sim (ADG §10.5: only after a
         // Verifier confirmed the new behaviour against the original).
-        let setup = setup_of(root, &r)?;
+        let setup = setup_of(root, &r, file)?;
         let plan = plan::Plan {
             inputs: r.inputs.clone(),
             comm_ticks: vec![],
@@ -168,10 +170,10 @@ pub fn run(
     }
     if let Some(alt) = alt_muzzles {
         let bytes = std::fs::read(alt).with_context(|| format!("read {}", alt.display()))?;
-        compare_muzzles(root, &r, bytes)?;
+        compare_muzzles(root, &r, file, bytes)?;
     }
     if let Some(out) = schedule {
-        let setup = setup_of(root, &r)?;
+        let setup = setup_of(root, &r, file)?;
         plan::check_inputs(&r.inputs)?;
         let modals = plan::modal_ticks(&setup, &r.inputs);
         let comm = plan::comm_ticks(&setup, &r.inputs);
