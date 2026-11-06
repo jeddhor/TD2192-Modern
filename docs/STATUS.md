@@ -129,7 +129,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M5-05 | Dossier screens | SP/IM | M1-11 | REVIEW | IM-1, IM-5 | IM-5 2026-11-02: orders (frame + typed lines, 5 s), enemy dossier (face 6, 10 s), pilot dossier (face 1, delays, 25 s) per spec/flow/screens.md rev 1 3.4-3.5 (U-121) in td-flow::program; no capture of these screens (static layouts) |
 | M5-06 | Help screens | SP/IM | M2-09 | REVIEW | IM-1 | 2026-11-02 td-flow::story::help: td.hlp pages 1 and 2, each held for a key, menu item 4 |
 | M5-07 | Script-choice + missing-dialogue screens | SP/IM | M5-01 | REVIEW | IM-1, IM-5 | IM-5 2026-11-02: script choice and missing-dialogue notice layouts and palette per spec/flow/screens.md rev 1 3.2 (U-121); L5 0-diff vs C-0002 f710 (tests/story_parity.rs) |
-| M5-08 | Intro sequence | SP/IM | M1-10 | TODO | | RE/SP part DONE 2026-11-05 (RE-13): docs/spec/flow/intro.md rev 1, test vectors from C-0047 (frames and RAM per step). IM part not started: needs a VGA-memory model for the end-of-flyover sprite wrap (OB-058), or a special case |
+| M5-08 | Intro sequence | SP/IM | M1-10 | IN PROGRESS | IM-15 | RE/SP part DONE 2026-11-05 (RE-13): docs/spec/flow/intro.md rev 1, test vectors from C-0047 (frames and RAM per step). IM part not started: needs a VGA-memory model for the end-of-flyover sprite wrap (OB-058), or a special case |
 | M5-09 | Narrative parity | VE | M5-01..M5-08 | TODO | | |
 
 ## M6: Flight core
@@ -263,7 +263,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M11-02 | In-flight options menu (Esc) | SP/IM | M6-06 | REVIEW | IM-5 | IM-5 2026-11-02: Esc computer menu (items, keys incl. OB-030, pulses, fades, abort, view restore), ship library, help in td_flow::flight_screens::menu (flight-screens rev 1 4.1); L5 0-diff vs C-0012 f3844, f4184, f4824, f5124, f5514 and C-0014 f1822 (menu in IR) |
 | M11-03 | Modern settings screens (video, audio, controls, profile, accessibility, data dir) | IM | M4-05 | TODO | | |
 | M11-04 | Gamepad UI navigation | IM | M11-03 | TODO | | |
-| M11-05 | Credits screen (exe resources) | IM | M2-14 | TODO | | RE part DONE 2026-11-05 (RE-13): docs/spec/frontend/credits.md rev 1. The only credits are file0000's `intro.credits` (25 strings), grouped by the flyover caption order. Mode A replays the intro flyover; mode B shows grouped pages in the caption style (proposal). IM part not started |
+| M11-05 | Credits screen (exe resources) | IM | M2-14 | IN PROGRESS | IM-15 | RE part DONE 2026-11-05 (RE-13): docs/spec/frontend/credits.md rev 1. The only credits are file0000's `intro.credits` (25 strings), grouped by the flyover caption order. Mode A replays the intro flyover; mode B shows grouped pages in the caption style (proposal). IM part not started |
 | M11-06 | Original save import (D3) | IM | M2-12, D3 | TODO |  | Screen part done by IM-7 2026-11-05 (td_flow::save_screens, see M9-19): the port keeps its own td.sav/td.stt in <user data>/saves in the original byte format and starts empty; the game folder's saves are never read. Import/export of the original files waits for D3 |
 | M11-07 | TFP extras (D4, optional) | RE/IM | D4 | TODO | | |
 
