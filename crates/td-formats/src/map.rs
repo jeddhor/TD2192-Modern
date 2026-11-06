@@ -4,14 +4,14 @@
 //! Spec: `docs/re/FORMATS.md` §5 (CONFIRMED against oracle flight frame C-0002 f3500: with
 //! column-major indexing all 42 identifiable 32x32 tiles in view match one map position; with
 //! row-major indexing none does). Fidelity: T0.
-//! Episode maps (`td.map`, `td2.map`, `td3.map`, `td4.map`) are 201x201; `intro.map` is 200x200.
+//! Episode maps (`td.map`, `td2.map`, `td3.map`, `td4.map`) are 201x201. `intro.map` is not a
+//! square map: it is 20 columns x 2000 rows, column-major (FORMATS §5, `docs/spec/flow/intro.md`
+//! §3.2), and the intro reads it directly (`td_render::intro`).
 
 use crate::{FormatError, Result};
 
 /// Edge length of an episode map in tiles.
 pub const EPISODE_MAP_SIZE: usize = 201;
-/// Edge length of the intro map in tiles.
-pub const INTRO_MAP_SIZE: usize = 200;
 
 /// A square tile map.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,11 +24,6 @@ impl TileMap {
     /// Parses a 201x201 episode map.
     pub fn parse_episode(data: &[u8]) -> Result<Self> {
         Self::parse_square(data, EPISODE_MAP_SIZE)
-    }
-
-    /// Parses the 200x200 intro map.
-    pub fn parse_intro(data: &[u8]) -> Result<Self> {
-        Self::parse_square(data, INTRO_MAP_SIZE)
     }
 
     /// Parses a square map whose edge length is inferred from the data length.
@@ -81,7 +76,7 @@ mod tests {
         assert_eq!(m.get(3, 5), Some(42));
         assert_eq!(m.get(5, 3), Some(0));
         assert_eq!(m.get(201, 0), None);
-        assert!(TileMap::parse_intro(&data).is_err());
+        assert!(TileMap::parse_episode(&data[..200 * 200]).is_err());
         assert_eq!(TileMap::parse_any(&data).unwrap().size(), 201);
         assert!(TileMap::parse_any(&data[..1000]).is_err());
         assert!(TileMap::parse_any(&[]).is_err());
