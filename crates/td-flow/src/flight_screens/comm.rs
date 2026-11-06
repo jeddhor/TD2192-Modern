@@ -158,6 +158,27 @@ const E2_PORTRAIT_A: [usize; 7] = [1, 2, 3, 4, 5, 6, 5];
 /// marker. ASSUMPTION(U-310): a line that starts with two spaces right after a blank
 /// (spaces-only) line starts the other speaker's box; the first line is box A.
 pub fn e2_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmission {
+    let a = E2_PORTRAIT_A.get(n.wrapping_sub(1)).copied().unwrap_or(1);
+    later_transmission(a, run, prompts)
+}
+
+/// `td3.ccm` record of box A for E3 transmissions 1..=5 (there is no 4). ASSUMPTION(U-351):
+/// the file holds five records; record 0 is the player (box B) as in E1/E2 and records 1..=4
+/// are the four callers in the order of their comms (1 the Vulture lieutenant, 2 Kreel,
+/// 3 Striker, 5 Osyluth).
+const E3_PORTRAIT_A: [usize; 5] = [1, 2, 3, 0, 4];
+
+/// An Episode 3 transmission `n` (1, 2, 3 or 5) from its string run (`e3.comms.01`..`.03`,
+/// `.04` for comm 5, episode-deltas rev 3 §10). The comm loaders `td3:2215:0135, 042A, 0680,
+/// 093D` are not specified (U-351); read as [`e2_transmission`] (U-310). `e3.comms.02` holds
+/// only four strings and no end marker: the screen then waits for F6 or Esc after them.
+pub fn e3_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmission {
+    let a = E3_PORTRAIT_A.get(n.wrapping_sub(1)).copied().unwrap_or(1);
+    later_transmission(a, run, prompts)
+}
+
+/// The provisional E2/E3 reading with box A showing `td2.ccm`/`td3.ccm` record `portrait_a`.
+fn later_transmission(portrait_a: usize, run: &[String], prompts: &[String]) -> Transmission {
     let blank = |s: &str| s.trim().is_empty();
     let mut lines = Vec::new();
     let mut side = 0;
@@ -177,9 +198,8 @@ pub fn e2_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmis
         prev_blank = blank(text);
         lines.push((Line::Text(j), side));
     }
-    let a = E2_PORTRAIT_A.get(n.wrapping_sub(1)).copied().unwrap_or(1);
     Transmission {
-        portraits: (a, 0),
+        portraits: (portrait_a, 0),
         lines,
     }
 }
