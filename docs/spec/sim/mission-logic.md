@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-logic` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, success and failure decide the outcome of a flight; the order of the per-tick rules matters where two rules write the same ship) · T2 for the ticker text itself (render/hud.md) |
 | **Confidence** | LIKELY overall (static: every rule was read from the instruction stream, with the listing checked where the decompiler drops operands). Flight 1 CONFIRMED by capture C-0010 for phases 1→5, the spawns and hides, the exit rules, the ticker-idle gate and the respawn distance (§7). Flights 4–21 LIKELY (static only). The behaviour that `AI_SetTarget` triggers is RE-5's ([mission-ships](mission-ships.md)) |
 | **Tasks** | M8-02 (feeds M8-05, M8-06, M8-07, M8-08, M8-10, M9) |
-| **Unknowns** | U-031 (resolved for `2404`), U-180, U-181, U-182, U-183, U-184 |
+| **Unknowns** | U-031 (resolved for `2404`), U-180, U-181, U-182, U-183, U-184, U-390 (resolved, RE-15) |
 
 ## 1. Summary
 
@@ -535,10 +535,13 @@ for a = 1..6: engage a → 8, 9, 10, 12, 13, 5;  then a → player with range 50
 for a = 8, 9, 10: engage a → 1, 2, 3, 4, 5, 6, 5
 engage 12 → 1, 2, 3, 4, 6, 5, 5   (target 6 before 5)
 engage 13 → 1, 2, 3, 4, 5, 6, 5
-engage 8 → player, 35;  9 → player, 25;  10 → player, 30;  12 → player, 35;  13 → player, 30
+if phase < 100:                    (2404:501F; the only condition in the block's rules)
+    engage 8 → player, 35;  9 → player, 25;  10 → player, 30;  12 → player, 35;  13 → player, 30
 ```
 
 Order within each attacker a = 1..6: targets 8, 9, 10, 12, 13 (range 5), then the player. The flight completes when the transmission is read (phase 100), then the base test.
+
+**After the transmission (U-390, RE-15).** The last five rules, the attacks of slots 8, 9, 10, 12 and 13 on the player, run only while phase < 100. Once the comm viewer has set phase 100 those slots are never again ordered to attack the player; attacks already ordered run on until their budget or hold schedule ends them ([mission-ships](mission-ships.md) §4.3.10), and the rules against slots 1..6 still run. Every other rule of the block is unconditional. This is what C-0064 shows: slot 13's attack ends through its hold schedule in tick 162 (the tick the transmission is read) and is not re-ordered in ticks 163–301 although the player stays within 30; slot 9 likewise after tick 222.
 
 ### 5.15 Flight 15 (helicopter; two convoys)
 
@@ -616,11 +619,12 @@ if count > 2:                                             (the base is destroyed
     count = 45: DAC := white; map tiles (105..108, 104..107) := 49 (16 calls Random(1), each 0)
     count = 48: DAC := the flight palette; lost := 1
     count += 1
-cut-scene (when DS:32B6 = 1): fade out; td1-17.pic (90 rows from screen row 67); text
-    e1.flight_events.02[0..4] with delays (1,000 ms and 2,000 ms) and palette flashes; fade back; DS:32B6 := 0
+cut-scene (when DS:32B6 ≠ 0, last in Msn_UpdateEvents): fade out; td1-17.pic at screen rows 35..124;
+    e1.flight_events.02[0..4] with delays and palette flashes; fade back; DS:32B6 := 0
+    (every pixel, ink, delay and DAC write: flow/flight-screens §4.10.1)
 ```
 
-The cut-scene uses `Crt.Delay`, i.e. real time; ticks stop while it runs. Three ships standing on tile (107, 106) (whether alive or not) start the destruction, which ends the flight as lost 46 ticks later.
+The cut-scene uses `Crt.Delay`, i.e. real time; ticks stop while it runs. Its full presentation is [flight-screens §4.10.1](../flow/flight-screens.md). Three ships standing on tile (107, 106) (whether alive or not) start the destruction, which ends the flight as lost 46 ticks later.
 
 ### 5.18 Flight 18 (Leopold's bomb truck)
 
@@ -656,7 +660,7 @@ A: if phase = 2: home marker := 3Dh; post(M2[16], c = 42); phase := 100
 B: if phase > 1: for s = 1..10: engage s → player, 25
 ```
 
-`Msn_UpdateEvents`: if phase = 1 and viewY = 70 and 117 < viewX < 124 (the player has driven the truck to the V.C.I.): store the five F5-screen info lines (`e1.flight_events.01[1..4]`, the last twice) at DS:1FD4.., show `e1.flight_events.01[5]` on a cleared screen for 2,000 ms (real time), then: player class := 8; armour := 1; slot 19 := a class-0 ship (the truck left behind) at the player's position (tile (viewX + 5, viewY + 3), offsets = the view offsets; also stored as words at DS:16EE..16F5); phase := 2; viewY += 1. Tick-order step 10 adds the flight-19 rule "phase > 1: shields capped at 10" (tick-order §4).
+`Msn_UpdateEvents`: if phase = 1 and viewY = 70 and 117 < viewX < 124 (the player has driven the truck to the V.C.I.): store the five F5-screen info lines (`e1.flight_events.01[1..4]`, the last twice, each as `string[30]`: elements 1 and 2 have 31 characters and lose their last one) at DS:1FD4 + 31l, show `e1.flight_events.01[5]` on a cleared screen for 2,000 ms (real time; presentation: [flight-screens §4.10.2](../flow/flight-screens.md)), then: player class := 8; armour := 1; slot 19 := a class-0 ship (the truck left behind) at the player's position (tile (viewX + 5, viewY + 3), offsets = the view offsets; also stored as words at DS:16EE..16F5); phase := 2; viewY += 1. Tick-order step 10 adds the flight-19 rule "phase > 1: shields capped at 10" (tick-order §4).
 
 ### 5.20 Flight 20 (the lander)
 
@@ -743,6 +747,7 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | Outcome tests | `0E8B:F826..F990` | static (listing) | CONFIRMED (code) |
 | Start state | `0E8B:60D8` (RE-5's) | static | LIKELY |
 | Message ids | string addresses `2404:0898..13CF` and `2404:2F2E..34C2` = `e1.flight_messages.01/02` | resource map | CONFIRMED |
+| Flight 14: the five attacks on the player only while phase < 100 | `2404:501F..50AB` | static (listing); C-0064 ticks 163–301 | CONFIRMED |
 
 ## 10. Revision history
 
@@ -750,3 +755,4 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-6 (Archaeologist + Spec author) | Initial: architecture, primitives, flights 1–3 |
 | 2 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: hud references (ticker §4.7, F6 indicator §4.8); loop exit is tick-order step 33 (was 35), flight-20 armour rule after step 32 (was "step 34"); F5 in flight 14 is the tactical map, not a ship switch |
+| 3 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §5.14: the attacks of slots 8, 9, 10, 12, 13 on the player run only while phase < 100 (U-390; VE-2 D2, C-0064). §5.17, §5.19: the cut-scene and the V.C.I. screen are specified in flow/flight-screens §4.10; the F5 lines of flight 19 are `string[30]` (two lose their last character) |

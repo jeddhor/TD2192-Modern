@@ -101,7 +101,7 @@ Loaded later, during flight:
 | `td.cmm` | `0E8B:5435` (F6 transmission screen) | 32 × 1,024 (4 rows × 8 columns of 32 × 32 cells) through sprite slot 0 | Drawn as a 256 × 128 panel at page-relative (16.., 32..) | LIKELY |
 | `td1.ccm` | `0E8B:51FE`, `0E8B:530B` | Seek *i* × 1,024, read 1,024 (comm portrait *i*) into sprite slot 0, draw; then re-read the first 1,024 bytes of `td.shp` to restore slot 0 | Two 32 × 32 portraits on the transmission panel | LIKELY |
 | `td.shp` | `0E8B:7374` (ship library screen) | 9 × 1,024 (sprites 0..8) one at a time into slot 0, drawn at fixed positions; then slot 0 is replaced by a generated pattern; finally the first 1,024 bytes are re-read | Ship library | LIKELY |
-| `td1-17.pic` | `0E8B:9860` (mission event handler) | 90 rows × 320, one byte per read, no palette (current `td.pal`) | Page rows 67..156 | LIKELY |
+| `td1-17.pic` | `0E8B:9860` (mission event handler) | 90 rows × 320, one byte per read, no palette (current `td.pal`) | VGA rows 67..156 = page-0 rows 35..124, on screen at rows 35..124 (flow/flight-screens §4.10.1) | CONFIRMED (C-0067) |
 | `td.joy` | `0E8B:AF1F` (joystick calibration) | 40 rows × 40, one byte per read | (140..179, 70..109) | LIKELY |
 
 ## 6. Sound
