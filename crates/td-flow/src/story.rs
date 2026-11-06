@@ -919,13 +919,14 @@ mod tests {
     #[test]
     fn a_nearly_black_buffer_fades_at_one_frame_per_level() {
         // BUG-6 (screens rev 3 §2.1, text rev 3 §4.5.2): the first title card after program
-        // start fades only entry 85 over the black (or script-choice) buffer: 17 frames a
-        // fade, against 34 once a picture palette is left in g_Palette (C-0002 f1063..1080
-        // and f1409..1428 against C-0170 f1003..1036 and f1364..1397).
+        // start fades only entry 85 over the black (or script-choice) buffer: one frame a
+        // level, the last level 18 frames after the fade starts (M12-14: levels shown 2, 3,
+        // …, 18), against 34 once a picture palette is left in g_Palette (C-0002 f1063..1080
+        // and f1409..1426 against C-0170 f1003..1036 and f1364..1397).
         let mut s = StoryScreen::blank(Hold::Seconds(5));
         s.pal.colors[usize::from(TITLE_ENTRY)] = TITLE_RGB;
         assert_eq!(s.fade_frames_per_level(), 1);
-        assert_eq!(run(&mut s, &TickInput::default()), 17 + 332 + 17);
+        assert_eq!(run(&mut s, &TickInput::default()), 18 + 332 + 18);
         let mut left = Palette::default();
         for c in &mut left.colors {
             *c = Rgb6 { r: 9, g: 9, b: 9 };

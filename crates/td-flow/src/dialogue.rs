@@ -970,7 +970,8 @@ mod tests {
     #[test]
     fn a_scene_without_portraits_fades_at_one_frame_per_level() {
         // Face 200 loads nothing: the buffer is nearly black (one text entry), so each level
-        // takes one frame (screens rev 3 §2.1); a picture palette left in g_Palette counts.
+        // takes one frame (screens rev 3 §2.1), the last shown 18 frames after the fade starts
+        // (M12-14); a picture palette left in g_Palette counts (34).
         let data = script(&[
             b"\x06\x02",
             b"\x01\x01\xc8\x40a",
@@ -982,7 +983,7 @@ mod tests {
         ]);
         let mut s = DialogueScene::new(assets(data.clone()), Episode::E1, 2);
         s.step(&TickInput::default());
-        assert_eq!(run_until(&mut s, |s| s.lit), 17);
+        assert_eq!(run_until(&mut s, |s| s.lit), 18);
         let mut left = Palette::default();
         for c in &mut left.colors {
             *c = Rgb6 { r: 7, g: 7, b: 7 };
