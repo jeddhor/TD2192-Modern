@@ -42,9 +42,9 @@ Sources: static analysis of the private Ghidra copy (RE-3, 2026-11-02); C-0002 `
 | `tdmen.pal` | `0000:2E88`, `0000:3381` | 768 → `g_MenuPalette` | RAM | Menu fades | CONFIRMED |
 | `td.hlp` | `0000:02AF` (from the menu) | 768 → `g_MenuPalette`; 200 rows × 320 → VGA rows 200..399, shown (start address 44C0h), wait for a key; second 200 rows → same place, shown | VGA | Help, two pages | CONFIRMED (static); file decode agrees |
 | `td.hlp` | `0E8B:6EDF` (in flight) | 768 → `g_FlightPalette`; page 1 and page 2 as above into the current flight page | VGA | In-flight help | LIKELY |
-| `td.stt` | `051A:76EA` (restore), `051A:7EEA` (save) | Text file, 10 lines → 10 slot names | Stack | Save/restore screen; `7EEA` rewrites it | LIKELY |
-| `td.sav` | `051A:76EA`, `051A:7EEA` | For slot *s* = 1..10: seek (*s* − 1) × 3, read 1 byte (mission number) + 2 bytes (word). A mission byte of 0 or > 20 marks the slot empty. Bytes 30..69 are never read. `7EEA` writes the 3 bytes of the chosen slot. | Stack | Save/restore screen | LIKELY |
-| `td.sss` | `051A:76EA`, `051A:7EEA` | 19 rows × 320, one byte per read; every pixel is plotted 10 times, at rows 10 + 19·k (k = 0..9) | VGA | Ten slot bars stacked from row 10 to 199 | LIKELY |
+| `td.stt` | `051A:76EA` (restore), `051A:7EEA` (save) | Text file, 10 lines → 10 slot names | Stack | Save/restore screen; `7EEA` rewrites all 10 lines ([flow/save-screens](../spec/flow/save-screens.md)) | CONFIRMED (C-0042) |
+| `td.sav` | `051A:76EA`, `051A:7EEA` | For slot *s* = 1..10: seek (*s* − 1) × 3, read 1 byte (mission number) + 2 bytes (kills to date). A mission byte of 0 or > 20 marks the slot empty. Bytes 30..69 are never read. `7EEA` writes **all ten slots** back (rev: was "the chosen slot") | Stack | Save/restore screen | CONFIRMED (C-0042) |
+| `td.sss` | `051A:76EA`, `051A:7EEA` | 19 rows × 320, one byte per read; every pixel is plotted 10 times, at rows 10 + 19·k (k = 0..9) | VGA | Ten slot bars stacked from row 10 to 199 | CONFIRMED (C-0042) |
 
 ## 4. Story, scenes and dialogue
 

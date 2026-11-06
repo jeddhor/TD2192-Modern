@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/episode-program-flow` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 for the order of screens, scenes, dialogue, music and flights (the player sees it); T1 for the state that flows between missions (mission number, kills, outcome flags); T3 for the text-mode configuration screen and the `tdstatus.dat` hand-off (replaced by the port's own shell) |
 | **Confidence** | LIKELY overall (static analysis of the complete sequencer and menu). The mission-1 path is CONFIRMED by capture C-0002 (config → script choice → menu → title card → hangar card → dialogue → hint → flight → retry) |
@@ -132,10 +132,10 @@ Menu cursor `g_MenuCursor` DS:0754 (0..8; Up/Down wrap; items 1 and 3 are skippe
 
 | Item | Action |
 |---:|---|
-| 0 | Start new game (asks for confirmation if a game is in progress): mission := 1, kills to date := 0, play one mission block (§4.3). If the block completed: mission += 1, kills to date += mission kills, cursor := 3. If the game ended (`g_GameOver` DS:060F): mission := 0 |
-| 1 | Save game `051A:7EEA(mission, kills to date, palette)` (only while a game is in progress) |
-| 2 | Restore game `051A:76EA(palette)` (confirmation if a game is in progress); cursor := 3 when a game was loaded |
-| 3 | Next mission: play one mission block. On completion: mission += 1, kills += mission kills; if mission reaches 21: mission := 0, cursor := 7 (episode finished). On game over: mission := 0, cursor := 0 |
+| 0 | Start new game (asks for confirmation if a game is in progress): mission := 1, kills to date := 0, play one mission block (§4.3), then flush the BIOS keyboard buffer (`0000:390A..391D`). If the block completed: mission += 1, kills to date += mission kills, cursor := 3. If the game ended (`g_GameOver` DS:060F): mission := 0 |
+| 1 | Save game `051A:7EEA(mission, kills to date, palette)` (only while a game is in progress; [save-screens](save-screens.md)) |
+| 2 | Restore game `051A:76EA(palette)` (confirmation if a game is in progress); cursor := 3 when a game is in progress afterwards, even after Esc ([save-screens](save-screens.md)) |
+| 3 | Next mission: play one mission block, then flush the BIOS keyboard buffer (`0000:3B97..3BAA`). On completion: mission += 1, kills += mission kills; if mission reaches 21: mission := 0, cursor := 7 (episode finished). On game over: mission := 0, cursor := 0 |
 | 4 | Help screens `0000:02AF` (`td.hlp`) |
 | 5 | Story so far `051A:8EAA`, then reload `tdmen.pal` |
 | 6 | Exit for the "about" program: write `tdstatus.dat` with status 2 and Halt (the launcher runs the extra and restarts the episode, §4.6) |
@@ -312,3 +312,4 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial: start-up, menu, complete E1 mission sequence, endings, debrief tiers, tdstatus.dat |
 | 2 | 2026-11-02 | RE-8 | `td1-15.pic` is a plain still (U-122); retry prompt calls `Random` (U-124); skip tests per step in [screens](screens.md) §3.12 (U-125); Q1 answered (U-123) |
+| 3 | 2026-11-05 | RE-10 (Spec author, U-252) | §4.2: items 0 and 3 flush the BIOS keyboard buffer after `Main_CampaignLoop` returns (`0000:390A..391D`, `3B97..3BAA`; keys typed during the block do not reach the menu) |

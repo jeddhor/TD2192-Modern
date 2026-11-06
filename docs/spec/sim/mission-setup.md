@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-setup` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 |
 | **Confidence** | CONFIRMED for the table values (constants read from the instruction stream of `0E8B:60D8` and `Sim_FlyMission`; flight 1 checked against capture C-0009). The meaning of markers and of the mission-phase values belongs to mission logic (RE-6) |
@@ -30,9 +30,9 @@
 
 ```text
 Msn_Setup:
-    DS:396C := 3Dh                         (no reader found)
+    DS:396C := 3Dh                         (read by the guidance line, `0E8B:8A74`, `8D9A`: home-point dot colour)
     marker[1..20] := 0
-    1EDE:0E6A(flight)                      (per-flight message / comm tables: RE-6)
+    Msn_LoadTargetInfo(flight) (1EDE:0E6A) (F5 target information, flow/flight-screens 3.4)
     the block for the current flight (table 3.2), in the order listed there
 Sim_FlyMission, after Msn_Setup (0E8B:CBAA..CBD7, C879..C88C):
     if g_PlayerDrawLate != 0: view tile := (102, 100)
@@ -62,7 +62,7 @@ The default start view is set earlier in `Sim_FlyMission` (`0E8B:C62B..C64D`): v
 | 11 | 2 | (102, 104) | | 7–9 := FFh; 1–3 := 2 | 1–3, 7 := 32h | 1–3 := 100; 7 := 150 | 1–3 := 195; 4, 5 := 25; 7–9 := 255; 17, 18 := 50 | |
 | 12 | 3 | (102, 100) | yes | | 1–5 := 39h | | 7–13 := 115; 15, 16 := 55 | class 3: max speed := 20h, accel := 4; `td.hel`/`td.h2` sprites |
 | 13 | 8 | (177, 153) | | 15–17 := 3 | 8–9, 11–13, 15–17 := 32h | | 15–18, 11–13 := 195; 8–9 := 150; 1–2 := 75 | |
-| 14 | 8 | (177, 153) | | | 8–10, 12–13 := 32h | | 15–18, 11–13 := 195; 8–9 := 150; 1–6 := 75 | no F5 ship switch (tick-order step 29) |
+| 14 | 8 | (177, 153) | | | 8–10, 12–13 := 32h | | 15–18, 11–13 := 195; 8–9 := 150; 1–6 := 75 | no F5 tactical map (tick-order step 28) |
 | 15 | 3 | (102, 100) | yes | 8–12 := FFh | 1–5, 8–12 := 32h | | 3–12 := 125; 15 := 200; 16 := 125 | class 3: max speed := 20h, accel := 4; `td.hel`/`td.h2` |
 | 16 | 4 | (102, 104) | | 8–13 := FFh | 1–3, 8–10 := 32h | | 4–6, 11–13 := 125; 17 := 200 | |
 | 17 | 2 | (102, 104) | | 5–14 := FFh | 1, 5–6, 8–10, 12–14 := 32h | 5–14 := 4 | 3 := 150; 5–14 := 25 | |
@@ -95,7 +95,7 @@ The writes to `k_ClassMaxSpeed`, `k_ClassAccel` and `k_ClassShields` change type
 
 ## 6. Open questions
 
-- [ ] RE-6: meaning of markers 32h/39h for mission logic and the HUD; the role of `1EDE:0E6A`.
+- [ ] RE-6: meaning of markers 32h/39h for mission logic and the HUD; the role of `1EDE:0E6A` (answered: `Msn_LoadTargetInfo`, the F5 target information, [flight-screens §3.4](../flow/flight-screens.md)).
 - [ ] U-044: flight 21's slots (no mission file is loaded, so the arrays hold the previous flight's state).
 
 ## 7. Provenance
@@ -112,3 +112,4 @@ The writes to `k_ClassMaxSpeed`, `k_ClassAccel` and `k_ClassShields` change type
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-5 (Archaeologist + Spec author) | Initial: per-flight table for flights 1..21 |
+| 2 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: DS:396C (marker element 21) is read by the guidance line; `1EDE:0E6A` is `Msn_LoadTargetInfo` (F5 target information), not message/comm tables; flight 14 disables the F5 tactical map (tick-order step 28), not a ship switch |

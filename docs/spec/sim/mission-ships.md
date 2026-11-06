@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-ships` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (positions, waypoints, AI state, fire requests and RNG use per tick) · T2 for drawing |
 | **Confidence** | **CONFIRMED** for §4.1–§4.6: a model written from this text reproduces 3,342 of 3,343 slot-ticks of capture C-0009 byte for byte (slot arrays and the whole 1,065-byte ship record), the one exception being a ship destroyed by a projectile (step 6, [weapons](weapons.md)); shot spawns match in 49 of 51 events (§6). LIKELY for the paths the capture does not exercise (mode +422h, flights 7 and 20 specials, map edges) |
@@ -14,7 +14,7 @@
 
 A flight has 20 mission-ship slots. Each slot has a class (FFh = no ship), a position (tile + pixel offset, like the player), four biased speed components, a heading, and a 1,065-byte **ship record** that holds its path (up to 500 tile steps from the mission file), its **waypoint** (the tile it is flying to, always at most one tile step from where it was) and its AI state.
 
-Every tick `AI_UpdateShips` (`3292:0011`, tick-order step 10) regenerates shields, removes ships that left or were destroyed, and then for each live ship: when the ship's tile equals its waypoint it asks the AI (`AI_ChooseWaypoint`, `34E6:3449`) for the next waypoint; it turns one heading step toward a target heading, thrusts along each axis toward the waypoint (same speed model as the player, braking with the full thrust step), applies drift and drag with tile carry, removes ships at the map edge, and draws the ship (sprite = class code). The AI has four modes: **path following** (the default), **attack** (ordered by the mission script through `AI_OrderAttack`), **detour** (a right- or left-hand wall follower used when the direct step is blocked by solid map cells) and **return** (fly back to the point where the ship left its path). In attack mode the ship raises **fire requests** along the row or column toward its target; the main loop turns them into shots every second tick (tick-order step 31). There is no body collision between ships or with the player.
+Every tick `AI_UpdateShips` (`3292:0011`, tick-order step 10) regenerates shields, removes ships that left or were destroyed, and then for each live ship: when the ship's tile equals its waypoint it asks the AI (`AI_ChooseWaypoint`, `34E6:3449`) for the next waypoint; it turns one heading step toward a target heading, thrusts along each axis toward the waypoint (same speed model as the player, braking with the full thrust step), applies drift and drag with tile carry, removes ships at the map edge, and draws the ship (sprite = class code). The AI has four modes: **path following** (the default), **attack** (ordered by the mission script through `AI_SetTarget`), **detour** (a right- or left-hand wall follower used when the direct step is blocked by solid map cells) and **return** (fly back to the point where the ship left its path). In attack mode the ship raises **fire requests** along the row or column toward its target; the main loop turns them into shots every second tick (tick-order step 31). There is no body collision between ships or with the player.
 
 ## 2. Definitions and units
 
@@ -396,7 +396,7 @@ The return point is the waypoint the ship last left in path mode, so after an at
 
 Mode `fixedMode` (+422h) is never set by any code in `file0001` (only cleared), so `34E6:2C0D` (step toward (fixedX, fixedY)) and `34E6:04EC` never run, and the "hold list" branch of 4.3.6 never runs. A port need not implement them.
 
-#### 4.3.10 Attack orders (`AI_OrderAttack(slot, target)`, `34E6:3232`)
+#### 4.3.10 Attack orders (`AI_SetTarget(slot, target)`, `34E6:3232`)
 
 The only way into attack mode. Called by the mission logic (`2404`, 389 call sites; RE-6's mission-logic spec, in progress): `targetSel := target; attackMode := 1; directMode := 1`. It does not move the waypoint; the attack starts at the ship's next waypoint arrival. The scripts call it repeatedly, so `directMode` is often reset to 1 in the middle of a detour (C-0009: slot 19 ticks 34, 42, 49, 112, 116; the mission logic, not the AI, decides when). Mission logic also activates and removes ships by writing `g_SlotClass` directly, including `2404:05DC(slot, x, y)`: class := FFh when the ship's tile is (x, y) (in flight 1, slots 9–11 are removed at tick 1).
 
@@ -423,7 +423,7 @@ RequestFire(s, e):  fireRequest[s][e] := 1;  attackCounter += aggression
 
 The line-of-fire scan always goes toward increasing coordinates, even when the target is above or to the left (OB-016). With aggression ≥ 21 the random test always passes (the draw still happens); with 0 it never does.
 
-#### 4.4.2 Spawning (tick-order step 31, `0E8B:F2D6..F4A6`) and clearing (step 32)
+#### 4.4.2 Spawning (tick-order step 30, `0E8B:F2D6..F4A6`) and clearing (step 31)
 
 Every second tick (when `g_DrawPage` is 1 after the page toggle):
 
@@ -497,7 +497,7 @@ Sampling: ship state "after tick t" is the **last** frame whose tick counter DS:
 
 | # | Check | Result |
 |---|---|---|
-| 1 | One-tick prediction of all live slots (slot arrays + full records) for ticks 2–310, with an `AI_OrderAttack(s, 0)` hypothesis per slot for ticks where the script ordered an attack | 3,342 / 3,343 slot-ticks identical; the exception is slot 1 destroyed by a shot at tick 254 |
+| 1 | One-tick prediction of all live slots (slot arrays + full records) for ticks 2–310, with an `AI_SetTarget(s, 0)` hypothesis per slot for ticks where the script ordered an attack | 3,342 / 3,343 slot-ticks identical; the exception is slot 1 destroyed by a shot at tick 254 |
 | 2 | Slot 1 (class 0) from setup: path[1] = (124, 73), cursor 0 → tick 1: waypoint (124, 74), prev (124, 73), cursor 2, moveDir 2, target heading 2, turn 2 | as §4.2.3 vector: tile Y 73 → 74 at tick 15, waypoint (124, 75) and cursor 3 at tick 16, (124, 76) / 4 at tick 20, (124, 77) / 5 at tick 24 |
 | 3 | Slot 19 (class 7, aggression 50, handBit 1): attack ordered at tick 34 at waypoint (93, 111), player tile (107, 107) | tick 34: waypoint (94, 110), stepX 1, stepY −1, attackCounter 1; tick 41: blockedY := 1 → right-hand detour, waypoint (93, 110), moveDir 4, detourSteps 1 |
 | 4 | Slot 19 in line: tick 110 waypoint (105, 107), target (107, 107) (D = 4, same row) | waypoint unchanged, fire request 6, attackCounter 118 → 169; tick 111: holdCount 1, returnMode 1, waypoint → (104, 108) toward return point (92, 111), second request 6 (counter 220) |
@@ -511,7 +511,7 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 - [ ] U-160: what the port does for two-digit-heading muzzle offsets (OB-017).
 - [ ] U-161: confirm Real48 `Sqrt` is exact for 121 (out-of-range boundary); D = 9 is confirmed.
 - [ ] U-162: policy for a detour with moveDir ∉ {2, 4, 6, 8} (endless loop in the original; not reachable in E1 as far as known).
-- [ ] When and why the mission logic calls `AI_OrderAttack` and writes slot classes: RE-6's mission-logic spec (`2404`).
+- [ ] When and why the mission logic calls `AI_SetTarget` and writes slot classes: RE-6's mission-logic spec (`2404`).
 - [ ] VE: a capture of flights 7 and 20 (pins, sinking landers) and of a ship leaving at the map edge.
 
 ## 8. Provenance
@@ -535,3 +535,4 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Partial draft |
 | 2 | 2026-11-02 | RE-5 (Archaeologist + Spec author + Verifier) | Complete: setup, AI state machine (U-045), detour followers, firing, removal, drawing (U-042), DS:3A32 nil pointer, test vectors from C-0009 |
+| 3 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: `34E6:3232` is named `AI_SetTarget` (as in mission-logic; was `AI_OrderAttack`); volley spawning is tick-order step 30 and clearing step 31 (were 31/32) |
