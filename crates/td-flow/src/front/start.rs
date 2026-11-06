@@ -80,6 +80,8 @@ pub struct StartScreen {
     pad: PadNav,
     /// Why the last episode could not start.
     error: Option<String>,
+    /// The port's data generation this screen's fonts and episodes come from.
+    data_generation: u32,
 }
 
 fn episode_index(e: Episode) -> usize {
@@ -103,6 +105,7 @@ impl StartScreen {
             ui,
             available,
             launcher,
+            data_generation: port.data_generation(),
             port,
             cursor: 0,
             phase: Phase::Shown,
@@ -153,6 +156,25 @@ impl StartScreen {
         self.phase = Phase::Leaving(item);
     }
 
+    /// A new choice of game data (the game-data page, M13-02) is used from this screen: on
+    /// top, it asks the host to switch; once the host has, the fonts and the installed
+    /// episodes come from the new data.
+    fn follow_data(&mut self, ctx: &FlowContext<'_>) {
+        if self.port.data_generation() != self.data_generation {
+            self.data_generation = self.port.data_generation();
+            self.ui = UiAssets::load(ctx.data);
+            if let Some(info) = self.port.data_info() {
+                self.available = info.current.playable;
+            }
+            if !self.enabled(self.cursor) {
+                self.cursor = self.next_enabled(self.cursor, 1);
+            }
+        }
+        if self.port.data_pending() {
+            self.port.want_data_switch();
+        }
+    }
+
     fn act(&mut self, ctx: &mut FlowContext<'_>, item: Item) -> Transition {
         match item {
             Item::Quit => Transition::Quit,
@@ -200,6 +222,7 @@ impl StartScreen {
 
 impl Screen for StartScreen {
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+        self.follow_data(ctx);
         let step = self.pad.update(input.pad);
         match self.phase {
             Phase::Away => {
@@ -522,6 +545,55 @@ mod tests {
         rig.tick(&mut s, &key(Key::ENTER));
         let t = settle(&mut rig, &mut s);
         assert!(matches!(t, Some(Transition::Push(_))), "{t:?}");
+    }
+
+    #[test]
+    fn a_new_choice_of_game_data_is_used_from_here() {
+        use crate::front::data::{DataInfo, DataSource, DataSummary};
+        let mut rig = Rig::new();
+        let port = SettingsPort::new();
+        let summary = |playable| DataSummary {
+            path: std::path::PathBuf::from("game"),
+            archive: false,
+            counts: td_assets::FileCounts::default(),
+            playable,
+        };
+        let mut info = DataInfo {
+            current: summary([true; 3]),
+            source: DataSource::Settings,
+            pending: None,
+            message: None,
+            import_dir: std::path::PathBuf::from("game"),
+        };
+        port.set_data_info(info.clone());
+        let mut s = StartScreen::new(
+            UiAssets::blank(),
+            [true; 3],
+            Box::new(Recorder::default()),
+            port.clone(),
+        );
+        settle(&mut rig, &mut s);
+        rig.tick(&mut s, &key(Key::DOWN));
+        assert_eq!(s.selected(), Item::Episode(Episode::E2));
+        rig.tick(&mut s, &TickInput::default());
+        assert!(!port.take_data_switch(), "nothing waits");
+        // The game-data page chose data without episode 2.
+        info.pending = Some(summary([true, false, true]));
+        port.set_data_info(info.clone());
+        rig.tick(&mut s, &TickInput::default());
+        assert!(port.take_data_switch(), "on top, it asks for the switch");
+        // The host switched.
+        info.current = info.pending.take().unwrap();
+        port.set_data_info(info);
+        port.data_switched();
+        rig.tick(&mut s, &TickInput::default());
+        assert!(!port.take_data_switch());
+        assert_eq!(s.available, [true, false, true]);
+        assert_eq!(
+            s.selected(),
+            Item::Episode(Episode::E3),
+            "the cursor leaves the missing episode"
+        );
     }
 
     /// FNV-1a over the pixels and the palette.

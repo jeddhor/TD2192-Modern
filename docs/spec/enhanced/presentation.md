@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `enhanced/presentation` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, intentional deviation, Enhanced profile only. The Classic profile is unaffected |
 | **Decision** | [ADR-0006](../../adr/0006-enhanced-presentation-pipeline.md); requested by the user, 2026-11-05 |
@@ -51,6 +51,8 @@ compose (indexed, W x 200)        <- flight screen / front-end screens, as today
 - Aspect correction uses the original pixel aspect 5:6, so a *W* × 200 frame displays at *W* : 240.
 - The HUD rows (160..191) and every front-end screen are not lit, so their light map is 1.0.
 - With every Enhanced key off, the output is identical to Classic. Test this as an invariant.
+- **Marks** (rev 4): flight frames may carry fixed-colour pixels in base coordinates, drawn after "palette to RGBA" and again over the final image as *k* × *k* blocks. Today the only marks are the colour-blind guidance line (accessibility, M12-04, spec frontend/port-front-end rev 2 §3.3). That setting takes this pipeline even under the Classic profile, with *W* = 320 and every stage off, so its output is the Classic picture plus the marks.
+- **Screenshots** (rev 4): F12 saves the indexed frame as before. When this pipeline presented the frame, F12 also saves its output, (*W·k*) × (200·*k*) RGBA, before the platform scaling (`<name>.enhanced.png`).
 
 ## 4. Widescreen (M12-09)
 
@@ -77,6 +79,7 @@ compose (indexed, W x 200)        <- flight screen / front-end screens, as today
 - The 320 × 32 HUD bar is drawn at x = *m*.
 - The side panels of the HUD band are filled with a mirrored repeat of the bar's outermost 16 columns (columns 0, 1, .., 15, 15, .., 0, 0, 1, .. outward), darkened by half at the RGBA stage, so the frame is continuous at every seam.
 - All 320 × 200 front-end screens (menus, story, dialogue, comm screens, Esc menu, F5 map) are centred, with black side panels.
+- Text drawn over the finished flight picture is an overlay, not a screen. That covers the infra-red notice and, from rev 4, the pause line. It is drawn over the wide frame at x = *m*, with the pixels it does not touch keeping the wide picture (`widescreen::overlay_centred`). While paused, the frame is the one the pause was drawn over (the tick is suspended).
 
 ## 5. Upscaling (M12-10)
 
@@ -216,3 +219,4 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 | 1 | 2026-11-05 | main session | Initial design from the user's request (ADR-0006) |
 | 2 | 2026-11-05 | main session | Q4-Q7 from IM-12 resolved: `profile` key, static-playfield invariant, mirrored-repeat panels, xBR coverage weights, auto tolerance |
 | 3 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |
+| 4 | 2026-11-06 | IM-16 | §4.3: the pause line is an overlay drawn over the wide frame, like the infra-red notice. §3: fixed-colour marks (the colour-blind guidance line, which takes this pipeline at *W* = 320 under either profile) and the F12 output screenshot at the pipeline's size |

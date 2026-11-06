@@ -25,6 +25,8 @@ toml.workspace = true
 
 [dev-dependencies]
 td-test-support.workspace = true
+# Synthetic archives for the first-run import tests.
+zip.workspace = true
 
 [lints]
 workspace = true

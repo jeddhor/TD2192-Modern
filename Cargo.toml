@@ -25,6 +25,8 @@ td-test-support = { path = "crates/td-test-support" }
 # Third-party (licences recorded in THIRD_PARTY.md)
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+# Only the pure-Rust deflate back end (miniz_oxide), for reading the original ZIP (td-assets).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 hound = "3"
 png = "0.18"
 proptest = "1"
@@ -37,6 +39,9 @@ toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ymfm-sys = "0.2"
+# Reading the original distribution ZIP: Deflate and the PKZIP 1.x methods (Shrink, Reduce,
+# Implode); no encryption, no other codecs.
+zip = { version = "9", default-features = false, features = ["deflate-flate2", "legacy-zip"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
