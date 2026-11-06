@@ -206,12 +206,15 @@ impl FlightArena {
         run: Option<Rc<RefCell<RunState>>>,
     ) -> Result<Self> {
         let last = match ep {
-            Episode::E1 => 21,
+            Episode::E1 | Episode::E3 => 21,
             Episode::E2 => 20,
-            Episode::E3 => bail!("Episode 3 flights are not implemented yet (M10-02)"),
         };
         if !(1..=last).contains(&number) {
             bail!("{ep} flight number must be 1..={last}");
+        }
+        // E3 never flies flight 20: its setup block is dead (e3-mission-setup §3.2).
+        if ep == Episode::E3 && number == 20 {
+            bail!("{ep} has no flight 20 (flights 1..=19 and 21)");
         }
         // The muzzle table is byte-identical in every episode (episode-deltas §11).
         let Some(ResourceValue::Bytes(muzzles)) = resources.get("flight.muzzle_offsets").cloned()
@@ -255,6 +258,8 @@ impl FlightArena {
         let radar_id = match (ep, flight.radar_set2) {
             (Episode::E2, false) => "e2.hud.radar_tile_colours",
             (Episode::E2, true) => "e2.hud.radar_tile_colours_set2",
+            // E3 never copies the second table (e3-mission-setup §3.1).
+            (Episode::E3, _) => "e3.hud.radar_tile_colours",
             _ => "hud.radar_tile_colours",
         };
         let Some(ResourceValue::Bytes(radar)) = resources.get(radar_id).cloned() else {
@@ -545,7 +550,7 @@ struct HudDisplay {
 }
 
 /// Resource ids of the texts the mission logic posts (`td_sim::flight::logic::Message`).
-const TICKER_RESOURCES: [&str; 10] = [
+const TICKER_RESOURCES: [&str; 14] = [
     "e1.objectives",
     "e1.flight_messages.01",
     "e1.flight_messages.02",
@@ -556,6 +561,10 @@ const TICKER_RESOURCES: [&str; 10] = [
     "e2.flight_messages.02",
     "e2.jurisdiction.warnings",
     "e2.flight_events",
+    "e3.objectives",
+    "e3.flight_messages.01",
+    "e3.flight_messages.02",
+    "e3.jurisdiction.warnings",
 ];
 
 /// The tile a shot was drawn at: `Flight::drawn` holds the shots after step 6, whose last part
