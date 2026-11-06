@@ -210,3 +210,121 @@ fn record_bytes_overlay_the_path() {
     assert_eq!(s.record_bytes().len(), RECORD_LEN);
     assert_eq!(s.record_byte(0x3F8), 4);
 }
+
+/// Slot 1 (class 7, aggression 2: a budget of 15 × 2 = 30 attack steps) at waypoint
+/// (100, 100) with its return point there, ordered to attack slot 2, whose waypoint is
+/// (160, 100): too far to get in line or in range, so only the budget can end the attack.
+fn attacker_and_target() -> Ships {
+    let mut ships = Ships::default();
+    let a = &mut ships.0[0];
+    a.class = 7;
+    a.armour = 50;
+    a.record.waypoint = (100, 100);
+    a.record.prev = (99, 100);
+    a.record.return_pt = (100, 100);
+    a.record.aggression = 2;
+    let t = &mut ships.0[1];
+    t.class = 8;
+    t.armour = 50;
+    t.record.waypoint = (160, 100);
+    ships.order_attack(0, 2);
+    ships
+}
+
+#[test]
+fn attack_goes_on_after_the_target_dies_until_the_budget_runs_out() {
+    // mission-ships rev 4 §4.3.10 (U-181): the target's death (class FFh) does not end the
+    // attack. The attacker keeps heading for the target's last waypoint, one tile per call,
+    // until its budget sends it home (counter 31 > 30 at the 32nd attack step).
+    let w = world(&[]);
+    let mut rng = BpRandom::new();
+    let mut ships = attacker_and_target();
+    ships.0[1].class = NO_SHIP;
+    ships.0[1].armour = 0;
+    let mut ctx = AiContext {
+        world: &w,
+        rng: &mut rng,
+        player: (20, 20),
+    };
+    for call in 1..=31u8 {
+        ships.choose_waypoint(0, &mut ctx);
+        let r = ships.0[0].record;
+        assert_eq!(
+            (r.attack_mode, r.return_mode, r.target_sel),
+            (1, 0, 2),
+            "call {call}"
+        );
+        assert_eq!(
+            r.target,
+            (160, 100),
+            "call {call}: the dead target's last waypoint"
+        );
+        assert_eq!(r.waypoint, (100 + call, 100), "call {call}");
+        assert_eq!(r.attack_counter, u16::from(call));
+    }
+    ships.choose_waypoint(0, &mut ctx);
+    let r = ships.0[0].record;
+    assert_eq!(
+        (r.attack_mode, r.return_mode, r.target_sel, r.attack_counter),
+        (0, 1, TARGET_RETURN, 0),
+        "the budget ends the attack"
+    );
+    // The attack step that spends the budget already steps toward the return point, and the
+    // return step runs in the same call: two tiles back.
+    assert_eq!(r.waypoint, (129, 100), "heading back to the return point");
+}
+
+#[test]
+fn repeated_attack_orders_do_not_reset_the_budget() {
+    // §4.3.10: `AI_SetTarget` leaves attackCounter alone, so a mission rule that re-orders the
+    // attack every tick changes nothing while it runs: the ship goes home at the same call as
+    // with a single order. An order after that sets attack mode again while return mode is
+    // still 1: the return step then heads for the attack target, not the return point.
+    let w = world(&[]);
+    let (mut rng_a, mut rng_b) = (BpRandom::new(), BpRandom::new());
+    let (mut once, mut every) = (attacker_and_target(), attacker_and_target());
+    for call in 1..=32 {
+        every.order_attack(0, 2);
+        let mut ctx = AiContext {
+            world: &w,
+            rng: &mut rng_a,
+            player: (20, 20),
+        };
+        once.choose_waypoint(0, &mut ctx);
+        let mut ctx = AiContext {
+            world: &w,
+            rng: &mut rng_b,
+            player: (20, 20),
+        };
+        every.choose_waypoint(0, &mut ctx);
+        assert_eq!(once.0[0].record, every.0[0].record, "call {call}");
+    }
+    assert_eq!(every.0[0].record.return_mode, 1, "home at call 32 in both");
+    every.order_attack(0, 2);
+    let mut ctx = AiContext {
+        world: &w,
+        rng: &mut rng_b,
+        player: (20, 20),
+    };
+    every.choose_waypoint(0, &mut ctx);
+    let mut ctx = AiContext {
+        world: &w,
+        rng: &mut rng_a,
+        player: (20, 20),
+    };
+    once.choose_waypoint(0, &mut ctx);
+    // From (129, 100): one return step west; the re-ordered ship runs the attack step and the
+    // return step, both east.
+    assert_eq!(
+        once.0[0].record.waypoint,
+        (128, 100),
+        "single order: back home"
+    );
+    let r = every.0[0].record;
+    assert_eq!(
+        r.waypoint,
+        (131, 100),
+        "re-ordered: toward the attack target again"
+    );
+    assert_eq!((r.return_mode, r.attack_counter), (1, 1));
+}
