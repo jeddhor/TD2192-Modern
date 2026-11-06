@@ -23,7 +23,7 @@ pub mod menu;
 
 use std::collections::BTreeSet;
 
-use td_assets::{AssetError, DataDir, ExeResources, ResourceValue};
+use td_assets::{AssetError, DataDir, Episode, ExeResources, ResourceValue};
 use td_formats::FormatError;
 use td_formats::font::{Font, FontKind};
 use td_formats::palette::Palette;
@@ -88,23 +88,76 @@ pub struct FlightScreenAssets {
     pub help: Vec<u8>,
     /// `td.cmm`: 32 cells of 32 × 32 (the transmission panel).
     pub panel: Vec<u8>,
-    /// `td1.ccm`: comm portraits, 32 × 32 each.
+    /// `td1.ccm` (E2: `td2.ccm`): comm portraits, 32 × 32 each.
     pub portraits: Vec<u8>,
+    /// Transmissions 1.. as the comm loaders fill them (E1: §3.3; E2: [`comm::e2_transmission`]).
+    pub transmissions: Vec<comm::Transmission>,
     /// `ship_library`.
     pub ship_library: Vec<String>,
     /// `comm.prompts`: [0] the "press Space" prompt, [1] the closing line.
     pub comm_prompts: Vec<String>,
-    /// `e1.comms.01` .. `e1.comms.09`.
+    /// The string run of each transmission: `e1.comms.01` .. `e1.comms.09`; E2 `e2.comms.01`
+    /// .. `.05`, `.06` + `.07`, `.08` (episode-deltas rev 2 §10).
     pub comms: Vec<Vec<String>>,
     /// `flight.map_prompts`.
     pub map_prompts: Vec<String>,
     /// `flight.prompts`: [0] the IR notice, [1] the pause line.
     pub flight_prompts: Vec<String>,
-    /// `e1.target_info`.
+    /// `e1.target_info` (E2: `e2.target_info`).
     pub target_info: Vec<String>,
-    /// `hud.radar_tile_colours` (`k_TileRadarColour`, tiles 0..70).
+    /// `hud.radar_tile_colours` (`k_TileRadarColour`, tiles 0..70); E2 the map-set-1 or, once
+    /// a set-2 flight has run, the set-2 table (OB-024).
     pub radar_colours: Vec<u8>,
 }
+
+/// The resource ids that differ per episode: ship library, comm prompts, map prompts, flight
+/// prompts, target info, the comm string runs.
+struct Ids {
+    ship_library: &'static str,
+    comm_prompts: &'static str,
+    map_prompts: &'static str,
+    flight_prompts: &'static str,
+    target_info: &'static str,
+    comms: &'static [&'static [&'static str]],
+}
+
+const E1_IDS: Ids = Ids {
+    ship_library: "ship_library",
+    comm_prompts: "comm.prompts",
+    map_prompts: "flight.map_prompts",
+    flight_prompts: "flight.prompts",
+    target_info: "e1.target_info",
+    comms: &[
+        &["e1.comms.01"],
+        &["e1.comms.02"],
+        &["e1.comms.03"],
+        &["e1.comms.04"],
+        &["e1.comms.05"],
+        &["e1.comms.06"],
+        &["e1.comms.07"],
+        &["e1.comms.08"],
+        &["e1.comms.09"],
+    ],
+};
+
+/// E2. ASSUMPTION(U-313): the ship library draws the E2 strings with E1's line table and
+/// hatching (episode-deltas §6 gives only which E2 entries are hidden).
+const E2_IDS: Ids = Ids {
+    ship_library: "e2.ship_library",
+    comm_prompts: "e2.comm.prompts",
+    map_prompts: "e2.flight.map_prompts",
+    flight_prompts: "e2.flight.prompts",
+    target_info: "e2.target_info",
+    comms: &[
+        &["e2.comms.01"],
+        &["e2.comms.02"],
+        &["e2.comms.03"],
+        &["e2.comms.04"],
+        &["e2.comms.05"],
+        &["e2.comms.06", "e2.comms.07"],
+        &["e2.comms.08"],
+    ],
+};
 
 fn texts(res: &ExeResources, id: &'static str) -> Result<Vec<String>, FlightScreensError> {
     res.texts(id)
@@ -115,6 +168,19 @@ fn texts(res: &ExeResources, id: &'static str) -> Result<Vec<String>, FlightScre
 impl FlightScreenAssets {
     /// Loads everything (Episode 1).
     pub fn load(data: &DataDir, res: &ExeResources) -> Result<Self, FlightScreensError> {
+        Self::load_episode(data, res, Episode::E1, false)
+    }
+
+    /// Loads everything for `episode` (E1 or E2). `radar_set2`: E2's radar table holds the
+    /// map-set-2 colours (`Session::radar_set2`).
+    pub fn load_episode(
+        data: &DataDir,
+        res: &ExeResources,
+        episode: Episode,
+        radar_set2: bool,
+    ) -> Result<Self, FlightScreensError> {
+        let e2 = episode == Episode::E2;
+        let ids = if e2 { &E2_IDS } else { &E1_IDS };
         let font_bytes = data.read("td.lt2")?;
         let font_background = *font_bytes
             .get(FONT_BACKGROUND_BYTE)
@@ -137,22 +203,38 @@ impl FlightScreenAssets {
         if panel.len() != 32 * 1024 {
             return Err(FlightScreensError::Size("td.cmm"));
         }
-        let portraits = data.read("td1.ccm")?;
-        let Some(ResourceValue::Bytes(radar_colours)) = res.get("hud.radar_tile_colours").cloned()
-        else {
-            return Err(FlightScreensError::Resource("hud.radar_tile_colours"));
+        // UI_DrawCommPortraitA/B read td2.ccm in E2 (episode-deltas rev 2 §6).
+        let portraits = data.read(if e2 { "td2.ccm" } else { "td1.ccm" })?;
+        let radar_id = match (e2, radar_set2) {
+            (true, false) => "e2.hud.radar_tile_colours",
+            (true, true) => "e2.hud.radar_tile_colours_set2",
+            (false, _) => "hud.radar_tile_colours",
         };
-        const COMMS: [&str; 9] = [
-            "e1.comms.01",
-            "e1.comms.02",
-            "e1.comms.03",
-            "e1.comms.04",
-            "e1.comms.05",
-            "e1.comms.06",
-            "e1.comms.07",
-            "e1.comms.08",
-            "e1.comms.09",
-        ];
+        let Some(ResourceValue::Bytes(radar_colours)) = res.get(radar_id).cloned() else {
+            return Err(FlightScreensError::Resource(radar_id));
+        };
+        let comms: Vec<Vec<String>> = ids
+            .comms
+            .iter()
+            .map(|run| {
+                run.iter()
+                    .map(|id| texts(res, id))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(|parts| parts.concat())
+            })
+            .collect::<Result<_, _>>()?;
+        let comm_prompts = texts(res, ids.comm_prompts)?;
+        let transmissions = if e2 {
+            comms
+                .iter()
+                .enumerate()
+                .map(|(i, run)| comm::e2_transmission(i + 1, run, &comm_prompts))
+                .collect()
+        } else {
+            (1..=comm::TRANSMISSIONS)
+                .filter_map(comm::transmission)
+                .collect()
+        };
         Ok(Self {
             font: Font::parse(&font_bytes, FontKind::Small)?,
             font_background,
@@ -161,15 +243,13 @@ impl FlightScreenAssets {
             help,
             panel,
             portraits,
-            ship_library: texts(res, "ship_library")?,
-            comm_prompts: texts(res, "comm.prompts")?,
-            comms: COMMS
-                .iter()
-                .map(|id| texts(res, id))
-                .collect::<Result<_, _>>()?,
-            map_prompts: texts(res, "flight.map_prompts")?,
-            flight_prompts: texts(res, "flight.prompts")?,
-            target_info: texts(res, "e1.target_info")?,
+            transmissions,
+            ship_library: texts(res, ids.ship_library)?,
+            comm_prompts,
+            comms,
+            map_prompts: texts(res, ids.map_prompts)?,
+            flight_prompts: texts(res, ids.flight_prompts)?,
+            target_info: texts(res, ids.target_info)?,
             radar_colours,
         })
     }

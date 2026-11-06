@@ -21,7 +21,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use td_assets::{DataDir, Episode, ExeResources};
-use td_audio::{AudioCommand, CueRestart, MusicCues};
+use td_audio::{AudioCommand, CueRestart, CueTable, MusicCues};
 use td_formats::cmf::Cmf;
 use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
@@ -44,8 +44,12 @@ const TEXT_INK: (u8, Rgb6) = (
     },
 );
 
-/// Services shared by the menu and the campaign.
+/// Services shared by the menu and the campaign. The screens shared by Episodes 1 and 2
+/// (dialogue, retry prompt, debrief, pilot dossier, music) follow [`Program::episode`]
+/// (episode-deltas rev 2 §7, §9).
 pub struct Program {
+    /// The program: `file0001.exe` (E1) or `td2.exe` (E2).
+    pub episode: Episode,
     pub data: DataDir,
     pub res: ExeResources,
     pub assets: StoryAssets,
@@ -65,21 +69,42 @@ impl fmt::Debug for Program {
 }
 
 impl Program {
+    /// The Episode 1 program's services.
     pub fn new(
         data: &DataDir,
         res: &ExeResources,
         launcher: Box<dyn FlightLauncher>,
     ) -> Result<Self, StoryError> {
+        Self::for_episode(data, res, launcher, Episode::E1)
+    }
+
+    /// The services of `episode`'s program (E1 or E2).
+    pub fn for_episode(
+        data: &DataDir,
+        res: &ExeResources,
+        launcher: Box<dyn FlightLauncher>,
+        episode: Episode,
+    ) -> Result<Self, StoryError> {
+        let table = match episode {
+            Episode::E2 => CueTable::E2,
+            _ => CueTable::E1,
+        };
         Ok(Self {
+            episode,
             data: data.clone(),
             res: res.clone(),
             assets: StoryAssets::load(data)?,
             choice: ScriptChoice::Original,
             dialogue: None,
-            cues: MusicCues::new(CueRestart::Always),
+            cues: MusicCues::with_table(CueRestart::Always, table),
             songs: BTreeMap::new(),
             launcher,
         })
+    }
+
+    /// Resource id `e1` in Episode 1, `e2` in Episode 2 (the E2 ids carry the `e2.` prefix).
+    fn id(&self, e1: &'static str, e2: &'static str) -> &'static str {
+        if self.episode == Episode::E2 { e2 } else { e1 }
     }
 
     /// The `0000:OOOO` string of `file0001.exe` (empty if unavailable).
@@ -90,7 +115,7 @@ impl Program {
         })
     }
 
-    fn texts(&self, id: &str) -> Vec<String> {
+    pub(crate) fn texts(&self, id: &str) -> Vec<String> {
         self.res
             .texts(id)
             .map(<[String]>::to_vec)
@@ -126,13 +151,13 @@ impl Program {
     /// A dialogue scene of the chosen script (an empty scene if the files are missing).
     pub fn dialogue(&mut self, id: u8) -> DialogueScene {
         if self.dialogue.is_none() {
-            match DialogueAssets::load(&self.data, &self.res, Episode::E1, self.choice) {
+            match DialogueAssets::load(&self.data, &self.res, self.episode, self.choice) {
                 Ok(a) => self.dialogue = Some(a),
                 Err(e) => tracing::warn!("dialogue unavailable: {e}"),
             }
         }
         match &self.dialogue {
-            Some(a) => DialogueScene::new(a.clone(), Episode::E1, id),
+            Some(a) => DialogueScene::new(a.clone(), self.episode, id),
             None => DialogueScene::new(
                 DialogueAssets {
                     script: Vec::new(),
@@ -141,7 +166,7 @@ impl Program {
                     td_pal: self.assets.td_pal.clone(),
                     prompt: None,
                 },
-                Episode::E1,
+                self.episode,
                 id,
             ),
         }
@@ -168,7 +193,7 @@ impl Program {
     }
 
     /// A port notice: lines from (10, 10) down, 9 pixels apart, in white.
-    fn page(&self, lines: &[String], hold: Hold) -> StoryScreen {
+    pub(crate) fn page(&self, lines: &[String], hold: Hold) -> StoryScreen {
         let placed: Vec<_> = lines
             .iter()
             .enumerate()
@@ -185,14 +210,14 @@ impl Program {
     }
 
     /// `Dlg_LoadPortrait(side 1, face, " ", 0)`: the face in the right half of rows 0..99,
-    /// colours 112..223 (screens §3.5).
+    /// colours 112..223 (screens §3.5; E2 reads `newfaces.td2`, episode-deltas §9.3).
     fn portrait(&self, s: &mut StoryScreen, face: u8) {
         let faces = self
             .data
-            .read("newfaces.td")
+            .read(crate::dialogue::portrait_file(self.episode))
             .ok()
             .and_then(|b| td_formats::portraits::Portraits::parse(&b).ok());
-        let face = crate::dialogue::remap_face(Episode::E1, face);
+        let face = crate::dialogue::remap_face(self.episode, face);
         let Some(p) = faces.as_ref().and_then(|f| f.by_face_byte(face)) else {
             tracing::warn!("portrait {face} unavailable");
             return;
@@ -257,12 +282,18 @@ impl Program {
 
     /// The retry prompt (`UI_RetryPrompt` `051A:6A33`, screens §3.7): `Random(10)` from the
     /// program's generator picks the taunt, typed before the fade-in; the two key lines are
-    /// drawn after it. Any key but Esc flies again.
+    /// drawn after it. Any key but Esc flies again. E2 (`04EC:6E62`, episode-deltas §9.1):
+    /// taunt 5 has its own text and pen x 50.
     pub fn retry_prompt(&mut self) -> StoryScreen {
         /// Pen x of taunt r (screens §3.7).
         const TAUNT_X: [i32; 10] = [78, 46, 54, 82, 58, 46, 130, 30, 70, 42];
         let r = usize::from(self.launcher.random(10).min(9));
-        let t = self.texts("retry.taunts");
+        let t = self.texts(self.id("retry.taunts", "e2.retry.taunts"));
+        let x = if self.episode == Episode::E2 && r == 5 {
+            50
+        } else {
+            TAUNT_X[r]
+        };
         let items = vec![
             TextItem::drawn((86, 110), line(&t, 10), 39),
             TextItem::drawn((82, 117), line(&t, 11), 39),
@@ -274,19 +305,36 @@ impl Program {
             items,
             Hold::Key,
         );
-        story::type_now(
-            &mut s,
-            &self.assets.small,
-            &line(&t, r),
-            (TAUNT_X[r], 90),
-            40,
-        );
+        story::type_now(&mut s, &self.assets.small, &line(&t, r), (x, 90), 40);
         s
+    }
+
+    /// The debrief texts: labels (7), the cheater line, tiers (11), the failure note and the
+    /// note label. E2 keeps them as one run of 21 strings in this order (`e2.debrief`).
+    fn debrief_texts(&self) -> (Vec<String>, String, Vec<String>, String, String) {
+        if self.episode == Episode::E2 {
+            let all = self.texts("e2.debrief");
+            let part = |r: std::ops::Range<usize>| all.get(r).map(<[_]>::to_vec);
+            return (
+                part(0..7).unwrap_or_default(),
+                line(&all, 7),
+                part(8..19).unwrap_or_default(),
+                line(&all, 19),
+                line(&all, 20),
+            );
+        }
+        (
+            self.texts("debrief.labels"),
+            self.text_of("debrief.cheater"),
+            self.texts("debrief.tiers"),
+            self.text_of("debrief.failure_note"),
+            self.text_of("debrief.note_label"),
+        )
     }
 
     /// The debrief (`UI_Debrief` `051A:6FF2`, screens §3.6, episode-program-flow §4.5): face 1;
     /// the rating of T = kills to date + kills, or the failure note when the outcome is 0;
-    /// 10 s.
+    /// 10 s. Identical in E2 (episode-deltas §9.1).
     pub fn debrief(
         &self,
         mission: u8,
@@ -294,15 +342,15 @@ impl Program {
         kills_to_date: i16,
         outcome: bool,
     ) -> StoryScreen {
-        let l = self.texts("debrief.labels");
+        let (l, cheater, tiers, failure, note_label) = self.debrief_texts();
         let get = |i: usize| line(&l, i);
         let total = i32::from(kills_to_date) + i32::from(kills);
         let verdict = if !outcome {
-            self.text_of("debrief.failure_note")
+            failure
         } else {
             match rating(total) {
-                Rating::Cheater => self.text_of("debrief.cheater"),
-                Rating::Tier(t) => line(&self.texts("debrief.tiers"), usize::from(t) - 1),
+                Rating::Cheater => cheater,
+                Rating::Tier(t) => line(&tiers, usize::from(t) - 1),
             }
         };
         let items = vec![
@@ -311,7 +359,7 @@ impl Program {
             TextItem::typed((20, 75), if outcome { get(3) } else { get(4) }, 39).after(500),
             TextItem::typed((20, 95), format!("{}{}", get(5), kills), 40),
             TextItem::typed((20, 105), format!("{}{}", get(6), total), 40).after(500),
-            TextItem::typed((20, 130), self.text_of("debrief.note_label"), 40).after(500),
+            TextItem::typed((20, 130), note_label, 40).after(500),
             TextItem::typed((20, 140), verdict, 39).after(500),
         ];
         let mut s = story::typed_page(
@@ -326,9 +374,9 @@ impl Program {
     }
 
     /// The pilot dossier of ending A (`UI_PlayerDossier` `051A:74B2`, screens §3.5): face 1;
-    /// 25 s.
+    /// 25 s. E2 (`04EC:712D`): same layout, `e2.dossier.player`.
     pub fn player_dossier(&self, total: i16) -> StoryScreen {
-        let t = self.texts("e1.dossier.player");
+        let t = self.texts(self.id("e1.dossier.player", "e2.dossier.player"));
         let items = vec![
             TextItem::typed((20, 45), line(&t, 0), 40),
             TextItem::typed((20, 91), line(&t, 1), 40).after(500),
@@ -351,7 +399,7 @@ impl Program {
 }
 
 /// Line `i` of a resource list ("" if missing).
-fn line(list: &[String], i: usize) -> String {
+pub(crate) fn line(list: &[String], i: usize) -> String {
     list.get(i).cloned().unwrap_or_default()
 }
 
