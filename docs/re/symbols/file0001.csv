@@ -155,6 +155,9 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:2FBF,data,g_WorxChanVolume,u8[16],channel volumes (controller 7); initial 7Fh; not reset per song,CONFIRMED,M3-05
 2C37:31AB,data,k_WorxNoteOffset,u8,F4h = -12 added to melodic notes,CONFIRMED,M3-05
 2C37:31DC,data,k_WorxDspCmd,u8[8],DSP play command by codec: 14 75 77 17 (with reference) 14 74 76 16,CONFIRMED,M3-05
+2C37:31E6,data,g_WorxDmaPage,u8,DMA page of the VOC ring buffer,CONFIRMED,RE-16
+2C37:31E7,data,g_WorxDmaAddr,u16,low 16 bits of the VOC ring physical address (16 x CS + 416h; +1000h across a 64 KB page),CONFIRMED,RE-16
+2C37:31F2,data,g_WorxVocPlaying,u8,"digital sound playing (fn 08h); cleared one refill after the data is used up (voc-and-adpcm 2.3)",CONFIRMED,RE-16
 2C37:3285,func,WORX_InstallInterrupts,,"hooks INT 63h (driver API, 2C37:34EE) and INT 08h (2C37:4558); PIT divisor 0952h",CONFIRMED,M1-03
 2C37:336E,func,WORX_RemoveInterrupts,,restores INT 08h and INT 63h,CONFIRMED,M1-03
 2C37:34EE,label,WORX_Int63Handler,,WORX driver API (software interrupt 63h),LIKELY,M1-03
@@ -169,9 +172,22 @@ address,kind,name,signature,comment,confidence,source_task
 2C37:4791,func,WORX_FnPlayCmf,,fn 1Eh handler; also the loop restart,CONFIRMED,M3-05
 2C37:487E,func,WORX_MusicTick,,one music tick (called by the timer ISR),CONFIRMED,M3-05
 2C37:4A72,func,WORX_SetTimerRate,,AX = PIT ch0 divisor (mode 2); N = FFFFh div divisor fast ticks per BIOS tick,CONFIRMED,M1-06
+2C37:4B48,data,g_WorxDspActive,u8,bit 0: a DSP transfer is running (stop sends D0h),CONFIRMED,RE-16
+2C37:4B49,func,WORX_StopVoc,,"playing := 0; if a transfer runs: DSP D0h, mask DMA ch1 (fn 07h, terminator)",CONFIRMED,RE-16
+2C37:4B95,func,WORX_FnSbInit,,"fn 01h: ring at CS:0416, DSP reset/detect, IRQ hook, speaker on, mixer to FFh",CONFIRMED,RE-16
+2C37:4CE3,data,g_WorxRefillLen,u16,bytes to refill (1000h at a block start),CONFIRMED,RE-16
+2C37:4CE5,data,g_WorxDmaLastPos,u16,ring offset of the DMA at the last refill (0 after a wrap),CONFIRMED,RE-16
+2C37:4CE7,data,g_WorxVocRemaining,u24,data bytes of the block not yet copied to the ring,CONFIRMED,RE-16
+2C37:4CF6,data,g_WorxVocBuffered,u16,"bytes copied but not yet passed by the DMA, as accounted at refills",CONFIRMED,RE-16
 2C37:4CF9,func,WORX_DspStart,,"DSP 40h + time constant, DMA ch1 auto-init 4 KB, play command from k_WorxDspCmd",CONFIRMED,M3-05
+2C37:4DC2,data,g_WorxRefillStart,u16,ring offset where the next refill writes,CONFIRMED,RE-16
+2C37:4DC4,func,WORX_DmaRefillSpan,,"DMA ch1 address high byte -> CX = bytes passed since the last refill; 0 below 400h, above 1000h or unmoved; wrap to 0",CONFIRMED,RE-16
 2C37:5E47,func,WORX_DspWrite,,AL to the DSP write port (waits for ready),CONFIRMED,M3-05
+2C37:61FA,func,WORX_VocRefill,,timer second-level work: refill the VOC ring when the DMA has moved (timer streaming),CONFIRMED,RE-16
 2C37:62D5,func,WORX_FnPlayVoc,,fn 06h handler: stop current; parse VOC blocks from memory,CONFIRMED,M3-05
+2C37:631F,func,WORX_VocFillNext,,"playing := 1; silence-fill the refill span; stream data, or halt (D0h) and read the next block when used up",CONFIRMED,RE-16
+2C37:643F,label,WORX_VocBlockType1,,"type 1: tc, codec, length - 2; copy up to 4 KB; WORX_DspStart",CONFIRMED,RE-16
+2C37:6514,func,WORX_VocCopyChunk,,copy min(refill length; remaining) data bytes into the ring unchanged,CONFIRMED,RE-16
 3292:0000,func,AI_ResetShipRecords,void far(void),flight setup (0E8B:B8BA): calls AI_ClearShipRecords,CONFIRMED,M8-01
 3292:0011,func,AI_UpdateShips,void far(Flight: Byte),per tick (tick-order step 10): shield regen and removal; per live slot: waypoint arrival -> AI_ChooseWaypoint; turn; thrust toward the waypoint; cap 42; drift/drag/carry; map-edge removal; flight 7 pins; draw (sprite = class),CONFIRMED,M8-03
 34E6:0000,func,AI_ClearShipRecords,void far(void),clears the AI fields of the 20 ship records and path steps 1..255; record +419h := (Random(2) = 1) per slot 1..20 (detour hand); unit init and flight start,CONFIRMED,M8-03

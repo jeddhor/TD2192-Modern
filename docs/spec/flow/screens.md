@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/screens` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
-| **Fidelity tier** | T0 for layouts, fonts, colours and resource ids; T1 for the `Random` call of the retry prompt and the skip rule; T2 for wait and fade timing |
+| **Fidelity tier** | T0 for layouts, fonts, colours and resource ids; T1 for the `Random` call of the retry prompt and the skip rule; T2 for wait and fade timing (§2.1, §2.2: measured at P1) |
 | **Confidence** | LIKELY (static analysis of each routine); main-menu pixels CONFIRMED against C-0002 f997 |
 | **Tasks** | M5-03, M5-05, M5-07, M8-09, M9-18, M9-19 (resolves U-120..U-125) |
 | **Unknowns** | U-120, U-121, U-122, U-123, U-124, U-125 (resolved here); U-227..U-229 (new) |
@@ -20,7 +20,16 @@ Every front-end screen follows one pattern: re-initialise mode X (`Gfx_InitUncha
 
 ### 2.1 Fades
 
-`Gfx_FadeInScene` (`051A:0016`) sets DAC entries 1..255 to Round(c × s / 16) of `g_Palette` for s = 0..16 (Real48 `Round`), waiting before each level until the VGA status bit 3 is set (it returns at once if a retrace is in progress). `Gfx_FadeOutScene` (`051A:013F`) runs s = 16..0. The time per level is one wait plus 255 × 3 Real48 operations; at preset P1 (cycles 20000) a level takes 2 frames (C-0002), so a fade lasts about 34 frames. DAC entry 0 is never faded.
+`Gfx_FadeInScene` (`051A:0016`) sets DAC entries 1..255 to Round(c × s / 16) of `g_Palette` for s = 0..16 (Real48 `Round`), waiting before each level until the VGA status bit 3 is set (it returns at once if a retrace is in progress). `Gfx_FadeOutScene` (`051A:013F`) runs s = 16..0. DAC entry 0 is never faded.
+
+**Frames per level (BUG-6).** A level costs one retrace wait plus, for each of the 765 components, a Real48 conversion, division and `Round`. Those Real48 operations are cheap on a zero operand and expensive otherwise, so the time per level depends on how many components of the palette being faded are non-zero, not on which screen it is. At preset P1 (cycles 20000):
+
+| Palette being faded | Non-zero components | Frames per level | Fade (17 levels) | Evidence |
+|---|---:|---:|---:|---|
+| Nearly black: `g_Palette` untouched since program start (BSS zeros), or as the script-choice screen left it (it zeroes the buffer and sets 7 components) | ≤ 10 | 1 | 17–18 frames | script choice C-0002 f645..662, f780..797; title card after it C-0002 f1063..1080, f1409..1428; title card at a direct start C-0160 f342..359, f689..706 |
+| A loaded picture palette (scene cards, stills, dialogue, debrief, orders, dossiers, retry, story so far, the menu's `tdmen.pal`) | ≈ 600–700 | 2 | 33–34 frames | menu C-0002 f835..868; hangar f1449..1482; title card after "story so far" (677 non-zero) C-0170 f1003..1036, f1364..1397 |
+
+The palette buffer is shared: a screen that draws only a few inks (the mission title card sets only entry 85) fades whatever the previous screen left in `g_Palette`. So the **mission title card** fades at 1 frame per level only while `g_Palette` is still nearly black, which in Episode 1 means the first title card after program start when no picture palette has been loaded since (new game straight from the script choice, or from a direct start); after any scene, dialogue, story so far or flight debrief it fades at 2 frames per level like every other screen. The intermediate case does not occur in the shipped flows; the crossover lies between 10 and 677 non-zero components (an estimate from the measured level times: about 380). Port rule (Classic, T2): count the non-zero components among the entries the fade writes; fewer than 380 → 1 frame per level, otherwise 2. The same rule applies to the menu fades (`0000:0000`, `0000:0124`) and to the flight fades ([flight-screens §4.5.3](flight-screens.md#453-flight-fades)). On a faster machine every level would take 1 frame; P1 is the reference.
 
 ### 2.2 Waits (U-123)
 
@@ -34,6 +43,7 @@ Every front-end screen follows one pattern: re-initialise mode X (`Gfx_InitUncha
 - Keys typed earlier and still in the BIOS buffer (for example during the fade-in, or during typing) end the wait at once. Nothing flushes the buffer except where stated (hint screen, main menu).
 - Every 655.36 s of the day there is a window of n seconds in which start + 100n wraps past 65535: then the wait ends immediately (OB-034). A wait that straddles the wrap of `now` ends when `now` wraps (start ≤ now fails).
 - The joystick is read through `Inp_JoystickAvailable`, independent of the configuration.
+- **Clock (BUG-7).** "n seconds" is DOS time, which advances only with the BIOS tick: the wait ends at the first BIOS tick at which the DOS centisecond clock has moved by 100·n, i.e. after ceil(n × 18.2065) BIOS ticks or one less ([timing §4.4](../core/timing.md#44-clocks-outside-flight-bug-7)). With the Classic BIOS clock of 19.2015 Hz ([ADR-0007](../../adr/0007-classic-tick-rate.md), proposed) a wait of n seconds lasts n × 18.2065 / 19.2015 = 0.948 n wall seconds: 5 s → 4.74 s (332 frames), 10 s → 9.48 s (664 frames), 15 s → 14.2 s, 25 s → 23.7 s, 30 s → 28.4 s, 45 s → 42.7 s. Measured: 328 and 664 frames (C-0002, C-0170). The `Crt.Delay` pauses inside screens (debrief and dossier lines, save and restore screens) are real milliseconds and do not scale. Every timed wait and its clock: timing §4.4.
 
 ### 2.3 Text and palette conventions
 
@@ -45,7 +55,7 @@ Positions are pen positions as in text.md (first inked pixel at x + 2 for a norm
 
 Loader: `tdmen.pal` into `g_MenuPalette` (DS:07E0); the `td.men` main-menu image (bytes 16,000..79,999) to VGA rows 0..199; split line 400; entries 224..233 := (16, 0, 0), then entry 227 (item 3, "next mission") := (0, 0, 0); the cursor's entry := (63, 0, 0), or (63, 63, 0) for cursor 3; fade in all entries (`Flow_MenuFadeIn` `0000:0000`, 17 levels as 2.1); then the cursor entry goes back to (16, 0, 0) (or (0, 0, 0) for item 3) **in the palette buffer only**; DAC 255 := (63, 63, 63); finally the free heap size (`MemAvail`, decimal) is drawn with `Txt_DrawStringOnce` at pen (10, 10) in **ink 0**. The ink-0 digits are invisible on black and show only where the image is not black: C-0002 f997 differs from `td.men` in exactly 5 pixels, (24, 11), (40, 11), (40, 13), (24, 15), (40, 15), all ink 0 over colour 181. A port cannot reproduce the MemAvail number; proposal: omit it (T3, 5 pixels).
 
-Loop, per change of cursor:
+Loop: the highlight step runs once when the loop starts, right after the loader's fade-in, and again after every change of cursor (C-0002 f868..872: the ramp of the start cursor, 11 steps per frame, after the fade-in f835..868):
 
 | Step | Effect |
 |---|---|
@@ -216,6 +226,8 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 |---|---|---|---|
 | Main menu colours, keys, boxes | `0000:3381..424B`, `0000:2E88..30xx`, `0000:0000` | static; C-0002 f997 | CONFIRMED (colours, 5 pixels) / LIKELY (keys) |
 | Waits | `051A:1A40`, `051A:1AA3` | static | LIKELY |
+| Wait clock = DOS time; hold lengths | `051A:1AA3`; C-0002, C-0170 | static + capture | CONFIRMED |
+| Fade frames per level follow the palette's non-zero count | `051A:0016`, `013F`; script choice zeroes `g_Palette` (`051A:54C1..54F3`); C-0002, C-0160, C-0170 | static + capture | CONFIRMED (the two measured classes); crossover estimated |
 | Script choice, notice | `051A:527F`, `051A:56D5` | static; C-0002 f710 (palette) | LIKELY |
 | Hint lines | `051A:2B26` | static; C-0002 f3332 (hint 1) | LIKELY |
 | Orders, dossiers, debrief, retry | `051A:62FD`, `6653`, `74B2`, `6FF2`, `6A33` | static | LIKELY |
@@ -229,3 +241,4 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-8 (Archaeologist + Spec author) | Initial: U-120..U-125 |
 | 2 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.12: in block 19 a skip before flight 21 jumps to flight 21, not to the block end (`0000:2A59..2A9D`; U-081) |
+| 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §2.1: frames per fade level follow the non-zero count of the palette being faded (1 for a nearly black buffer, 2 for a picture palette at P1); the title card's fast fade only while `g_Palette` is still black (BUG-6; C-0160, C-0170). §2.2: the wait clock is DOS time, 0.948 n s with the ADR-0007 clock (BUG-7). §3.1: the highlight ramp also runs at loop entry |
