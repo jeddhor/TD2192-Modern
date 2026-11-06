@@ -163,12 +163,16 @@ fn real_main() -> Result<()> {
         }
         (None, None) => match cli.dev_mapview.as_deref() {
             Some(map) => Box::new(mapview::MapView::new(&dir, map)?),
-            // The Episode 1 program: script choice, menu, campaign, flights.
-            None => Box::new(td_flow::Episode1::new(
-                &dir,
-                &resources,
-                Box::new(flight::ArenaLauncher::default()),
-            )?),
+            // The Episode 1 program: script choice, menu, campaign, flights. Saved games live
+            // in the user data directory, never in the game folder.
+            None => Box::new(
+                td_flow::Episode1::new(
+                    &dir,
+                    &resources,
+                    Box::new(flight::ArenaLauncher::default()),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
         },
     };
     let options = run::RunOptions {

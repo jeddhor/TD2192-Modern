@@ -8,13 +8,15 @@
 //!
 //! Not ported (T3 or decided elsewhere): the text-mode configuration screen and command-line
 //! switches (the port has its own settings), joystick calibration, `tdstatus.dat` (menu items
-//! 6 and 7 show a "not yet" notice instead of halting for the launcher), save and restore
-//! (stubs until D3, M2-12/M11-06).
+//! 6 and 7 show a "not yet" notice instead of halting for the launcher).
 //!
-//! The menu screen itself (fades, pulses, keys, boxes) is [`crate::main_menu`].
+//! The menu screen itself (fades, pulses, keys, boxes) is [`crate::main_menu`]; the save and
+//! restore screens (items 1 and 2) are [`crate::save_screens`], with the port's own files in
+//! the directory given to [`Episode1::with_save_dir`] (none: saving is not possible).
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use td_assets::{DataDir, Episode, ExeResources};
@@ -28,6 +30,7 @@ use td_render::{Framebuffer, WIDTH, title_text};
 use crate::campaign::{Bg, BlockResult, Campaign, FlightLauncher, Rating, Step, rating};
 use crate::dialogue::{DialogueAssets, DialogueScene, ScriptChoice};
 use crate::main_menu::{MainMenu, MenuGraphics, NEXT_MISSION, QUIT, Reentry, SAVE};
+use crate::save_screens::{E1_FILES, SaveKind, SaveOutcome, SaveScreen, SaveSet};
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::story::{self, Hold, StoryAssets, StoryError, StoryScreen, TextItem};
 
@@ -384,6 +387,8 @@ enum Stage {
     Campaign(Box<Campaign>),
     /// A screen started from the menu, and how the menu comes back after it.
     Sub(StoryScreen, Reentry),
+    /// The save or restore screen.
+    Saves(Box<SaveScreen>),
     Quit,
 }
 
@@ -394,6 +399,8 @@ pub struct Episode1 {
     menu: MainMenu,
     mission: u8,
     kills_to_date: i16,
+    /// Where the port keeps `td.sav` and `td.stt` (never the game folder).
+    save_dir: Option<PathBuf>,
 }
 
 impl fmt::Debug for Episode1 {
@@ -421,12 +428,72 @@ impl Episode1 {
             menu: MainMenu::new(gfx),
             mission: 0,
             kills_to_date: 0,
+            save_dir: None,
         })
+    }
+
+    /// Keeps the saved games in `dir` (the user data directory's `saves`), in the original
+    /// `td.sav`/`td.stt` format. Without it the restore screen shows empty slots and saving
+    /// writes nothing.
+    #[must_use]
+    pub fn with_save_dir(mut self, dir: PathBuf) -> Self {
+        self.save_dir = Some(dir);
+        self
     }
 
     /// The main menu (cursor, palette buffer and screen).
     pub fn menu(&self) -> &MainMenu {
         &self.menu
+    }
+
+    /// The campaign state the menu keeps: the next mission (0 = no game) and the kills to date.
+    pub fn game(&self) -> (u8, i16) {
+        (self.mission, self.kills_to_date)
+    }
+
+    /// The save (item 1) or restore (item 2) screen with the files as they are now.
+    fn save_screen(&self, kind: SaveKind) -> SaveScreen {
+        let id = match kind {
+            SaveKind::Save { .. } => "saves.save",
+            SaveKind::Restore => "saves.restore",
+        };
+        let set = SaveSet::load(self.save_dir.as_deref(), E1_FILES);
+        SaveScreen::open(
+            kind,
+            &self.prog.data,
+            &self.prog.assets.small,
+            &self.prog.texts(id),
+            self.menu.palette_buffer(),
+            set,
+        )
+    }
+
+    /// The menu after the save or restore screen (save-screens §4.3–§4.4): a restore sets the
+    /// game; a save writes the files; the cursor goes to 3 whenever a game is in progress
+    /// after the restore screen, Esc included.
+    fn saves_done(&mut self, ctx: &mut FlowContext<'_>, outcome: SaveOutcome) {
+        let restore = !matches!(outcome, SaveOutcome::Saved(_));
+        match outcome {
+            SaveOutcome::Left => {}
+            SaveOutcome::Restored { mission, kills } => {
+                self.mission = mission;
+                self.kills_to_date = kills;
+            }
+            SaveOutcome::Saved(set) => match &self.save_dir {
+                Some(dir) => {
+                    if let Err(e) = set.store(dir, E1_FILES) {
+                        tracing::warn!("saving to {} failed: {e}", dir.display());
+                    }
+                }
+                None => tracing::warn!("no save directory; the game was not saved"),
+            },
+        }
+        let cursor = if restore && self.in_game() {
+            NEXT_MISSION
+        } else {
+            self.menu.cursor()
+        };
+        self.enter_menu(ctx, cursor, Reentry::Loader { first: false });
     }
 
     /// The palette of the script choice and the missing-dialogue notice (screens §3.2): all
@@ -538,10 +605,19 @@ impl Episode1 {
                 story::story_so_far(&self.prog.data, &self.prog.assets, &t)
                     .map(|s| (s, Reentry::Story))
             }
-            SAVE | 2 => Ok((
-                self.notice("save and restore are not available yet"),
-                loader,
-            )),
+            SAVE | 2 => {
+                // Both screens flush the BIOS buffer at entry (save-screens §4.1).
+                let kind = if item == SAVE {
+                    SaveKind::Save {
+                        mission: self.mission,
+                        kills: self.kills_to_date,
+                    }
+                } else {
+                    SaveKind::Restore
+                };
+                self.stage = Stage::Saves(Box::new(self.save_screen(kind)));
+                return;
+            }
             _ => Ok((self.notice("this program is not available yet"), loader)),
         };
         match sub {
@@ -642,6 +718,13 @@ impl Screen for Episode1 {
                     self.select(ctx, item);
                 }
             }
+            Stage::Saves(s) => {
+                s.step(input);
+                if let Some(o) = s.outcome() {
+                    let o = o.clone();
+                    self.saves_done(ctx, o);
+                }
+            }
             Stage::Quit => return Transition::Quit,
         }
         Transition::None
@@ -651,6 +734,7 @@ impl Screen for Episode1 {
         match &self.stage {
             Stage::ScriptChoice(s) | Stage::Notice(s) | Stage::Sub(s, _) => s.draw(fb),
             Stage::Campaign(c) => c.draw(fb),
+            Stage::Saves(s) => s.draw(fb),
             Stage::Menu | Stage::Start | Stage::Quit => self.menu.draw(fb),
         }
     }
