@@ -192,6 +192,8 @@ pub struct FlightArena {
     magenta: Option<u8>,
     /// The Enhanced frame shared with the run loop.
     enhanced: Option<SharedView>,
+    /// Enhanced lighting: the colours that glow (`lights`).
+    emissive: td_render::enhanced::scene::Emissive,
 }
 
 /// The flight's sprite data as `Sim_FlyMission` leaves it (flight-screens rev 2 §4.9): the
@@ -416,6 +418,7 @@ impl FlightArena {
             board.clone()
         };
         let palette = Palette::parse(&dir.read("td.pal")?)?;
+        let emissive = lights::emissive_of(&bank);
         Ok(Self {
             world,
             tiles: Tileset::parse(&dir.read(episode::tileset_file(ep, number))?)?,
@@ -443,6 +446,7 @@ impl FlightArena {
             events: Vec::new(),
             magenta: None,
             enhanced: None,
+            emissive,
         })
     }
 

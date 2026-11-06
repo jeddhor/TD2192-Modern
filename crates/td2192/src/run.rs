@@ -16,7 +16,7 @@ use td_flow::{FixedStep, Flow, FlowContext, Settings};
 use td_input::TickInput;
 use td_platform::{InputSnapshot, Key, Platform, ScaleMode, WindowConfig};
 use td_render::Framebuffer;
-use td_render::enhanced::NoPost;
+use td_render::enhanced::lighting::LightStage;
 
 use crate::enhanced::{Enhanced, SharedView};
 
@@ -77,8 +77,8 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         settings,
         rd.enhanced.clone(),
         Some(rd.user_dir.join("settings.toml")),
-        // IM-13: the lighting and bloom stage (M12-11, M12-12) goes here.
-        Box::new(NoPost),
+        // The lighting and bloom stage (M12-11, M12-12).
+        Box::new(LightStage::default()),
     );
 
     let rate_of = |flow: &Flow| settings.dev.tick_hz.unwrap_or_else(|| flow.tick_hz());
