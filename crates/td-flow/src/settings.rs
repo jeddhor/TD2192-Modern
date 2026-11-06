@@ -247,6 +247,8 @@ pub struct Settings {
     pub controls: ControlsSettings,
     pub accessibility: AccessibilitySettings,
     pub dev: DevSettings,
+    /// When the intro plays before Episode 1 (Enhanced only; launcher spec §4.10).
+    pub intro: crate::intro::IntroSettings,
 }
 
 impl Settings {

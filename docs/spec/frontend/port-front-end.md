@@ -27,7 +27,9 @@ The small font has no capitals, `:`, `/` or brackets, so every label is lower ca
 ## 2. Start screen (M11-01)
 
 - Shown when `td2192` runs without `--episode` (and without a developer flag). `--episode N` starts episode N's program directly, as before.
-- Items: `episode 1`, `episode 2`, `episode 3`, `options`, `quit`. An episode whose files `td_assets::validate` does not find is drawn in entry 226 with `- not installed` and the cursor skips it.
+- Items: `episode 1`, `episode 2`, `episode 3`, `options`, `credits`, `quit`. An episode whose files `td_assets::validate` does not find is drawn in entry 226 with `- not installed` and the cursor skips it.
+- `credits` (IM-15) pushes the credits screen ([credits](credits.md)): mode A (the intro flyover) under the Classic profile, mode B (grouped pages) under Enhanced; it pops back here. If its files are missing the screen says `the credits could not start`.
+- Starting Episode 1 plays the intro first ([launcher](../flow/launcher.md) §4.10); Esc skips it.
 - Choosing an episode fades out and starts that episode's program from its start, a new program run (its own flight session and RNG stream, as when the original starts the executable).
 - The episode's quit item (`Transition::Quit`) returns to the start screen (`Screen::catches_quit`), which stops the music and effects and fades in again with the cursor where it was.
 - Esc (or East) moves the cursor to `quit`; a second Esc or a confirm there quits.
@@ -43,7 +45,7 @@ Reached from the start screen and with **F2** during play (the original reads no
 | video | fullscreen, scaling (aspect 4x3, integer, stretch), widescreen\*, pixel upscaler\*, dynamic lighting\*, bloom\* |
 | audio | music volume, sound volume (0..100 in tens, with a bar), sound effects (classic, polyphonic) |
 | controls | one row per original flight key: action, original key, keyboard binding, gamepad binding; reset to defaults |
-| profile | classic or enhanced, with a two-line description |
+| profile | classic or enhanced, with a two-line description; intro before episode 1 (always, first launch, never: `[intro] play`, read only under Enhanced, so it is drawn in entry 226 under Classic, which always plays the intro) |
 | accessibility | colour-blind guidance line |
 
 \* `[enhanced]` features (MDG §6.2). Under the Classic profile they are drawn in entry 226, cannot be chosen, and the page notes `enhanced options need the enhanced profile`. Their values are kept, and `Settings::effective_enhanced` is all off until the profile is Enhanced. The profile governs only `[enhanced]` (spec enhanced/presentation rev 2 §2): the SFX policy and the accessibility options are separate settings that default to off. Widescreen is marked `affects gameplay` on its row at all times, and shows the note `affects gameplay - visibility` while selected (spec enhanced/presentation §2).

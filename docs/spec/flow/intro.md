@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/intro` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for every drawn frame (layout, glyphs, tile grid, sprite blit, captions, palette values); T1 for the flyover state per step (scroll, hoverskid path, `Random` stream); T2 for wall-clock timing (fade speed, delays, step rate) and audio |
 | **Confidence** | CONFIRMED for the drawn frames and the flyover state: 1,792 framebuffer dumps of C-0047 match a model of this spec pixel for pixel (every date, narration, flyover, `intro1` and `intro2` frame that is not a loading frame), and 903 per-frame RAM dumps match the state rules of §4.6. LIKELY for the sound-effect schedule (static only) |
@@ -229,7 +229,7 @@ Calls (pen x, pen y, ink):
 
 ### 4.5 Tiles and the hoverskid blit
 
-**Tile.** A grid cell (c, r) on page p is the 32 × 32 tile copied, with latched writes, from VGA byte `(B580h + 256 × tile) mod 65536` (8 bytes per row, 32 rows) to page p's grid position: VGA byte `0B00h + 5AC0h·p + (r + p) × 0B00h + 8c`. That is VGA row 32 + 264p + 32r, x = 32c. Tile pixel (tx, ty) is `td.blk` byte `1024 × tile + 32 ty + tx` (or `td.dun` for tiles 71..73).
+**Tile.** A grid cell (c, r) on page p is the 32 × 32 tile copied, with latched writes, from VGA byte `(B580h + 256 × tile) mod 65536` (8 bytes per row, 32 rows) to page p's grid position: VGA byte `0B00h + 5AC0h·p + r × 0B00h + 8c`. That is VGA row 32 + 264p + 32r, x = 32c. Tile pixel (tx, ty) is `td.blk` byte `1024 × tile + 32 ty + tx` (or `td.dun` for tiles 71..73).
 
 **Hoverskid** (`0957:0000(page, sprite, y, x)`). The routine draws 32 rows of 32 pixels to VGA rows `232p + (y mod 256) + dy` (dy = 0..31) at pixels `(x and FFFCh) + dx` (dx = 0..31). Only the low byte of y is used, and x is truncated to a multiple of 4. Each destination pixel takes the source byte
 
@@ -427,3 +427,4 @@ The CMF playback itself is [audio/cmf](../audio/cmf.md) (§6.2 C1 checks this ex
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-05 | RE-13 (Archaeologist + Spec author + Verifier) | Initial: whole intro, verified against C-0047 (1,792 frames, 903 RAM dumps) |
+| 2 | 2026-11-06 | main session | §4.5 tile destination: `r × 0B00h`, not `(r + p) × 0B00h`, which matches the stated row 32 + 264p + 32r and the frames (found by IM-15) |
