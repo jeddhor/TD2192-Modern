@@ -75,6 +75,8 @@ Vectors 1–4 follow from §3 by hand (they test the description, not the origin
 ## 5. Open questions
 
 - [x] U-035: resolved. WORX picks the DSP command from the table at `file0001:2C37:31DC` (`14 75 77 17 14 74 76 16`), indexed by the block's codec byte. Codecs 0..3 select the "with reference" commands. The "no reference" entries (index 4..7) are reachable only through WORX function 3Fh, which the game does not call.
+- [ ] U-400 (VE-3, M3-08 A/B): §3 does not match the oracle. Correlation of the §3 decode with DOSBox-X's output: 4-bit `scratch` 0.86, `home` 0.26, 2.6-bit `punyexp` 0.85, 2-bit `vulturei` 0.78. A rule that fits (0.988..0.9997, at the PCM gain): delta = m at step 0 and (2m + 1) × 2^(step − 1) at steps ≥ 1, no shift, top step 3 (4-bit), 4 (2.6-bit), 5 (2-bit), same step up/down conditions. Black-box fit; see [M3-audio](../../parity/M3-audio.md) row 14 and BUG-2.
+- [ ] U-402 (VE-3): `ric3.voc` (tc 173) plays at 1,000,000/84 = 11,905 Hz in the oracle, not 12,048 Hz.
 - [x] Does WORX apply any volume scaling or filtering to SFX? No: samples go to the DSP unchanged. The game sets the SB Pro mixer voice volume per effect (left/right panning and distance), see [sfx-policy](sfx-policy.md).
 
 ## 6. Provenance

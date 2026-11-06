@@ -64,7 +64,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | REVIEW | RE-2 | docs/spec/flow/episode-program-flow.md rev 1 (start-up, menu, all 20 E1 mission blocks + flight 21, endings, debrief tiers, tdstatus.dat). Static; mission-1 path matches C-0002 |
 | M1-05 | Asset load-site table | RE | M1-01 | DONE | RE-3 | 2026-11-02: docs/re/asset-load-sites.md (all E1 load sites, VGA layout); FORMATS 3/4/6.3/7/9-13 updated (path stride 501, td.men regions, stills confirmed); E2/E3 map/tileset loaders |
-| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | IN PROGRESS | RE-1, VE-3 | Static draft done 2026-11-02 (RE-1): docs/spec/core/timing.md (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). VE-3 2026-11-06: VE measurements M1-M7 per docs/handoffs/2026-11-02-M1-06.md |
+| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | IN PROGRESS | RE-1, VE-3 | Static draft (RE-1): docs/spec/core/timing.md. VE part DONE 2026-11-06 (VE-3): section 8 M1-M7 measured (C-0074 matrix, C-0072, C-0075): 19.21 / 18.52 / 18.21 Hz (SB+music / SB no music / nosound) at 8,000-60,000 cycles, CPU-bound 13.3-13.9 Hz at 3,000; one flip per tick; no BIOS keyboard chaining; U-032 resolved. Remaining: SP rev with the canonical rate + ADR (proposal 19.2015 Hz in docs/parity/M12-timing.md section 3) |
 | M1-07 | Global data map + symbols | RE | M1-01 | REVIEW | RE-2 | docs/re/globals.md (front end, input + flight keys, cheat chords, player/view state, slot/projectile/explosion arrays, buffers) + 158 symbol rows (functions and data; ApplySymbols-checked on a private copy) |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | REVIEW | RE-2 | docs/re/structures.md: units (tile+pixel), mission file load map with 501-byte path stride (FORMATS 7 corrected; M2-11 parser needs the fix), ship record 1065 B, slot/projectile/explosion arrays, class table (U-008), heading codes (U-003), tile attributes (U-009) |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | DONE | RE-7 | 2026-11-02: docs/re/episode-deltas.md rev 1; symbols td2.csv (505 rows) / td3.csv (493); tools match-episodes.py + ExportInstructionTable.java; 7 units identical (System, WORX, Crt, sfx, 386E, 34E6, 3A92); E2 380/394 matched (316 identical), E3 374/384 (311); U-006, U-012 resolved, U-005/U-009 partial; U-200..U-207; OB-023..OB-028 |
@@ -98,13 +98,13 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M3-01 | VOC parser | IM | M0-06 | DONE | main-session | 2026-11-02; td-formats::voc; all 17 files parse |
-| M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | DONE | main-session | 2026-11-02; spec audio/voc-and-adpcm.md; decoder + vectors; decoded signals sane (lag-1 autocorr 0.79-1.00); A/B pending M3-08 |
+| M3-02 | Creative ADPCM decoders (4/2.6/2-bit) | SP/IM | M3-01 | DONE | main-session | 2026-11-02; spec audio/voc-and-adpcm.md; decoder + vectors. A/B (VE-3, M3-08, 2026-11-06): FAIL against the oracle, BUG-2 / U-400 |
 | M3-03 | td-opl (ymfm wrapper) | IM | M0-01 | DONE | main-session | 2026-11-02; td-opl over ymfm-sys (YM3812) |
 | M3-04 | CMF parser + sequencer | IM | M3-03 | DONE | IM-2 | 2026-11-02; spec audio/cmf.md rev 2: CmfDriver = WORX driver (clock 0x0C, -12 offset, voice allocation, lazy instrument loads, velocity ignored, fixed drum kit, start/stop/loop); L5 exact vs C-0001 and C-0002 DROs (b44d5d5) |
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | DONE | RE-4 | 2026-11-02; docs/spec/audio/cmf.md rev 2: WORX player exact (emulated driver = C-0001 capture 4,364/4,364 writes; model = driver on 17 songs, 146,595 writes); U-007, U-034, U-035 resolved; timing.md rev 2 |
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | DONE | IM-2 | 2026-11-02; sfx-policy rev 1: Classic arbiter (priority, pre-emption, idle 0, 15-tile cut-off, OB-009 too far), effect->VOC table, SB Pro levels -> stereo gain (linear, untuned); music-cues rev 1 table + MusicCues::play_cue in td-audio (not wired); U-140, U-141 open (9a3814d). RE-14 2026-11-06: U-083 resolved, sfx-policy rev 2 §3.2 (every call site confirmed; 200 = incoming-transmission chime; end-sequence blasts; helicopter volley id 2) |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
-| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | IN PROGRESS | VE-3 | VE-3 2026-11-06: remaining rows (VOC onsets/rate/ADPCM A/B/length/pre-emption vs WAV, music/SFX balance and SB Pro levels, CMF loop restart row 12); intro effects (intro §8 Q2, U-380 VE part). Earlier (main-session, IM-2): CMF register stream exact vs C-0001 (4,455 writes) and C-0002 (3,438), timing within 1.5 ticks (td-audio tests/oracle_parity.rs) |
+| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | REVIEW | VE-3 | VE-3 2026-11-06: docs/parity/M3-audio.md rows 12-20. Row 12 loop restart PASS (C-0073 DRO exact incl. 2 restarts, pass 4,841 ticks; test looping_menu_music_matches_capture_c0073); 12a first event at song start 1 tick late (U-401). VOC: onsets 1-10 ms into the triggering tick, rates = header except ric3 11,905 Hz (U-402), pre-emption PASS, ADPCM decode FAIL (BUG-2, U-400). Levels 4 dB per step (0.0997/0.158/0.238/0.364 at 10..13) and music 0.21 x raw: port tuned (td_audio::mixer::sb_level_gain, MUSIC_GAIN). Intro effects vs intro rev 3: onsets +1.1..1.6 ms, no rule-7 scratch at P1, fires at step 327 with music off (C-0071). Captures C-0070..C-0073. Earlier: CMF stream exact vs C-0001/C-0002 (IM-2) |
 
 ## M4: Platform shell
 
@@ -272,7 +272,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | TODO | | |
-| M12-02 | Timing audit | VE | M12-01 | IN PROGRESS | VE-3 | VE-3 2026-11-06: timing audit of every screen kind vs captures, docs/parity/M12-timing.md (started ahead of M12-01 at the coordinator's request) |
+| M12-02 | Timing audit | VE | M12-01 | REVIEW | VE-3 | VE-3 2026-11-06: docs/parity/M12-timing.md, 21 screen rows: 10 PASS, 8 FAIL, 2 not measured. FAIL: episode flights tick at 70.086 Hz (BUG-3, blocker), title-card fades (BUG-4), DOS-time waits 5.5 % (BUG-5), flight-menu fades (BUG-6), E2/E3 menu fades/pulse missing, flight 17/19 scenes missing. Canonical tick-rate proposal 19.2015 Hz (section 3) for the coordinator/user |
 | M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | TODO | | |
 | M12-04 | Enhanced features for 1.0 (D5) | IM | D5 | REVIEW | IM-16 | IM-16 2026-11-06: colour-blind guidance line done (td_render::enhanced::guidance: Okabe-Ito orange/sky blue + white cores with black outline per marker, drawn at the RGBA stage after the palette and over the final image; works under either profile; Classic unchanged with the setting off, invariant test with data; spec frontend/port-front-end rev 2 3.3). The other Enhanced features of this row wait for D5 |
 | M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
@@ -310,3 +310,48 @@ Template: ADG §17.5.
 - Actual (port): shields 0, armour 0 (`ClassTables::entry` returns 0 past the table, U-143)
 - Spec reference: mission-ships.md rev 2 §4.1 step 3, §5 "Class FFh at setup"; U-143
 - Severity: minor (hidden slots; matters only if mission logic spawns such a slot: ours would be removed at once with armour 0). Fix task M8-12
+
+### BUG-2: Creative ADPCM decoder does not match the oracle (all three codecs)
+- Found by / date / milestone: VE-3, 2026-11-06, M3 (M3-08 A/B of M3-02)
+- Profile: both
+- Steps: decode `home.voc`, `scratch.voc` (4-bit), `punyexp.voc` (2.6-bit), `vulturei.voc` (2-bit) with `td_audio::decode_voc` and compare with the oracle WAVs C-0071 / C-0072 (docs/parity/M3-audio.md row 14)
+- Expected (oracle): correlation 0.988..0.9997 with delta = m at step 0, (2m + 1) × 2^(step − 1) at steps ≥ 1, no shift, top step 3 / 4 / 5 for 4 / 2.6 / 2 bits; `ric3.voc` at 11,905 Hz (U-402)
+- Actual (port, voc-and-adpcm rev 2 §3): 0.26 (`home`), 0.86 (`scratch`), 0.85 (`punyexp`), 0.78 (`vulturei`); long 4-bit effects decode to noise
+- Spec reference: voc-and-adpcm.md rev 2 §3; U-400, U-402
+- Severity: major (every ADPCM effect sounds wrong). Fix: SP revision of §3 (U-400), then IM
+
+### BUG-3: flights inside an episode tick at 70.086 Hz
+- Found by / date / milestone: VE-3, 2026-11-06, M12 (M12-02), static reading
+- Profile: both
+- Steps: play E1 from the start screen into flight 1 and count sim ticks per second
+- Expected (original, C-0010 / C-0074): 19.21 ticks/s (timing §4.2; docs/parity/M12-timing.md §2)
+- Actual (port): `Episode1` / `LaterEpisode` do not override `Screen::tick_hz`, so `Flow::tick_hz` is `RETRACE_HZ`, and `campaign.rs` ticks the flight child once per episode tick: 70.086 ticks/s, 3.65× fast. Only `--flight` dev mode (`FlightArena::tick_hz`) runs at `FLIGHT_TICK_HZ`
+- Spec reference: core/timing.md §4.1–4.2; M12-timing row 2
+- Severity: blocker for Classic parity. Fix: IM, delegate `tick_hz` to the flight child (and to its modal screens)
+
+### BUG-4: mission title card fades take 34 frames; the original takes 18–20
+- Found by / date / milestone: VE-3, 2026-11-06, M12-02
+- Profile: Classic
+- Steps: compare the `td-let.cin` title card's palette ramps with C-0002 f1063..1080 and f1409..1428
+- Expected: 17 levels at about one level per frame (18 f in, 20 f out)
+- Actual: the 2-frames-per-level scene fade (34 f)
+- Spec reference: render/text §4.5, screens (rate not stated); M12-timing row 5
+- Severity: minor. Fix: SP states the measured rate, then IM
+
+### BUG-5: timed story waits use real seconds; the original's run 5.5 % faster while music plays
+- Found by / date / milestone: VE-3, 2026-11-06, M12-02
+- Profile: Classic
+- Steps: compare timed card holds with C-0002 (title card f1081..1408, hangar f1483..2146)
+- Expected: waits in DOS time, which runs at f_BIOS / 18.2065 (1.0547 with music): 5 s = 328–332 f, 10 s = 664 f
+- Actual: `story.rs` `seconds(s)` = s × 70.086: 350 f and 701 f
+- Spec reference: core/timing.md §4.2, §4.4; M12-timing rows 6–8
+- Severity: minor. Fix: SP adds the rule to the story and screens specs; IM scales by 18.2065 / f_BIOS for the active sound configuration
+
+### BUG-6: flight Esc-menu fades take 17 frames; the original takes 33–34
+- Found by / date / milestone: VE-3, 2026-11-06, M12-02
+- Profile: Classic
+- Steps: compare the Esc-menu fade-out and fade-in palette ramps with C-0012 f3556..3588 and f3595..3628
+- Expected: 17 levels at 2 frames per level (33–34 f)
+- Actual: 1 level per retrace (17 f), `flight_screens/menu.rs`
+- Spec reference: flow/flight-screens §4.1 (rate not measured); M12-timing row 11
+- Severity: minor. Fix: SP records the rate, then IM
