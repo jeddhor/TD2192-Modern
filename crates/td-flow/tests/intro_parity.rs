@@ -1,6 +1,7 @@
-//! The intro against oracle capture C-0047 (`docs/spec/flow/intro.md` rev 1 §6): the flyover
-//! state per step (vector 4), the step cadence (vector 5), every captured frame of the cards
-//! and the flyover windows (vectors 6 and 7) and the full fades (vector 3).
+//! The intro against oracle captures C-0047 and C-0081 (`docs/spec/flow/intro.md` rev 3 §6):
+//! the flyover state per step (vector 4), the step cadence (vector 5), every captured frame of
+//! the cards and the flyover windows (vectors 6 and 7), the full fades (vector 3), the effect
+//! flag DS:0069 in every C-0047 dump, and the effect and music bytes of C-0081 (vectors 9, 10).
 //!
 //! Gated on TD2192_ORACLE (and TD2192_DATA for everything that draws). No captured pixels are
 //! stored; the captures are read at test time.
@@ -24,6 +25,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use td_assets::{DataDir, ExeResources};
+use td_audio::AudioCommand;
 use td_flow::intro::flyover::{END_STEP, FlyoverState};
 use td_flow::intro::{Intro, IntroOptions, Mark};
 use td_flow::screen::Screen;
@@ -511,27 +513,21 @@ fn vectors_3_6_7_every_captured_frame() {
     assert!(compared > 1500, "{compared}");
     assert!(raced.len() <= 4, "{raced:?}");
     assert!(boundary.len() <= 4, "{boundary:?}");
-    // The effect flag DS:0069 (intro §3.6) depends on the effect lengths: check it here,
-    // where the effects play. U-380: the capture's flag is 0 in every dump (steps 1..120,
-    // 434..462, 1557..1618), while §3.6 rule 7 sets it on the first silent step after 265
-    // (about step 323, when home.voc ends) and nothing clears it again. The port follows the
-    // spec; the dumps after step 265 are reported, not failed.
-    let mut rule7 = Vec::new();
+    // The effect flag DS:0069 (intro rev 3 §3.6) depends on how long each effect counts as
+    // playing: check it here, where the effects play. With the measured busy times (U-380)
+    // rule 7 never fires, so the flag is 0 in every dump, as the capture shows (steps 1..120,
+    // 434..462, 1557..1618).
+    let mut checked = 0;
     for (&f, r) in &dumps {
         if r.page == ((r.s + 1) % 2) as u8
             && let Some(&flag) = flags.get(&r.s)
         {
-            if r.s > 265 && u8::from(flag) != r.flag {
-                rule7.push(f);
-                continue;
-            }
             assert_eq!(u8::from(flag), r.flag, "f{f}: effect flag at step {}", r.s);
+            checked += 1;
         }
     }
-    eprintln!(
-        "effect flag: {} dumps after step 265 differ from the spec's rule 7 (U-380)",
-        rule7.len()
-    );
+    eprintln!("effect flag: {checked} dumps, all equal");
+    assert!(checked >= 750, "{checked}");
 }
 
 /// Our screen when step `s` begins, with `options`.
@@ -669,4 +665,203 @@ fn compare(ours: &Framebuffer, prev: &Palette, file: &Path, allow: Allow) -> Res
         return Err(format!("DAC {e}: ours {o:?}, capture {c:?}"));
     }
     Ok(Seen::Equal)
+}
+
+/// The last step of vector 9's effect schedule: `home` is flagged through step 329, `pulse`
+/// plays at step 330.
+const VECTOR_9_LAST_STEP: u16 = 330;
+
+/// One C-0081 RAM sample (intro rev 3 §6 vectors 9 and 10): DGROUP 1EE5:0000 (step DS:0190,
+/// music state DS:0068, effect flag DS:0069) and the WORX driver bytes at 16A2:3180 (music
+/// playing CS:3189, digital sound playing CS:3211).
+#[derive(Debug, Clone, Copy)]
+struct Worx {
+    s: u16,
+    music_state: u8,
+    flag: u8,
+    music: bool,
+    digital: bool,
+}
+
+/// C-0081's per-frame samples, f1550..7620.
+fn c0081(oracle: &Path) -> BTreeMap<u64, Worx> {
+    let dir = oracle.join("C-0081").join("mem");
+    let mut out = BTreeMap::new();
+    for f in 1550..=7620u64 {
+        let read = |tag: &str| fs::read(dir.join(format!("f{f:08}_{tag}.bin"))).ok();
+        let (Some(ds), Some(worx)) = (read("1EE5-0000_200_ds0"), read("16A2-3180_100_worx")) else {
+            continue;
+        };
+        out.insert(
+            f,
+            Worx {
+                s: word(&ds, 0x190) as u16,
+                music_state: ds[0x68],
+                flag: ds[0x69],
+                music: worx[0x3189 - 0x3180] != 0,
+                digital: worx[0x3211 - 0x3180] != 0,
+            },
+        );
+    }
+    out
+}
+
+/// Our flyover, tick by tick: (step, music state, effect flag, music playing, effect
+/// playing) after each tick, the tick at which each step began, and the steps that started
+/// an effect.
+type OurFlyover = (
+    Vec<(u16, u8, bool, bool, bool)>,
+    BTreeMap<u16, usize>,
+    Vec<u16>,
+);
+
+fn our_flyover() -> OurFlyover {
+    let mut intro = load_intro().unwrap();
+    let mut audio = Vec::new();
+    let mut ticks = vec![(0, 0, false, false, false)];
+    let mut starts = BTreeMap::new();
+    let mut effects = Vec::new();
+    while !intro.finished() {
+        intro.step(&TickInput::default(), &mut audio);
+        let f = intro.flyover();
+        let n = audio
+            .iter()
+            .filter(|c| matches!(c, AudioCommand::PlaySfx { .. }))
+            .count();
+        effects.extend(std::iter::repeat_n(f.s, n));
+        audio.clear();
+        ticks.push((
+            f.s,
+            intro.music_state(),
+            f.flag,
+            intro.music_playing(),
+            intro.effect_playing(),
+        ));
+        if let Some(&(m, Mark::Step(s))) = intro.marks().last()
+            && m == intro.frame()
+        {
+            starts.insert(s, m as usize);
+        }
+    }
+    (ticks, starts, effects)
+}
+
+/// The first capture frame whose dump shows each step.
+fn first_dumps(dumps: &BTreeMap<u64, Worx>) -> BTreeMap<u16, u64> {
+    let mut out = BTreeMap::new();
+    for (&f, w) in dumps {
+        if (1..END_STEP).contains(&w.s) {
+            out.entry(w.s).or_insert(f);
+        }
+    }
+    out
+}
+
+#[test]
+fn vectors_9_10_effect_and_music_bytes_match_c0081() {
+    // intro rev 3 §3.6, §4.6, §6 vectors 9 and 10. Each dump of step s, k frames after the
+    // first dump of s, is compared with our state k ticks after step s began. The effect flag
+    // DS:0069 and the music state DS:0068 must be equal in every dump. The two WORX bytes are
+    // ours modelled from the measured busy times and the song clock: they must be equal except
+    // in a dump next to one of the capture's own transitions (the original's driver changes
+    // them inside a frame; T2), and the effect starts must fall on the capture's steps.
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let dumps = c0081(&oracle);
+    assert!(dumps.len() > 6000, "{} C-0081 dumps", dumps.len());
+    let firsts = first_dumps(&dumps);
+    let (ours, starts, effects) = our_flyover();
+    let (mut compared, mut shorter, mut near, mut hard) = (0, 0, Vec::new(), Vec::new());
+    let mut before_effects = Vec::new();
+    let changes = |f: u64, pick: fn(&Worx) -> bool| {
+        let v = pick(&dumps[&f]);
+        [f - 1, f + 1]
+            .iter()
+            .any(|g| dumps.get(g).is_some_and(|w| pick(w) != v))
+    };
+    for (&f, w) in &dumps {
+        let (Some(&first), Some(&start)) = (firsts.get(&w.s), starts.get(&w.s)) else {
+            continue;
+        };
+        let (s, music_state, flag, music, digital) = ours[start + (f - first) as usize];
+        if s != w.s {
+            // Our step s lasted one frame less than the capture's (3 against 4 frames).
+            shorter += 1;
+            continue;
+        }
+        if flag != (w.flag != 0) {
+            // The first dump of a step can fall between s := s + 1 (step 2) and the effect
+            // checks (step 4; the grid is drawn in between): it still holds the flag of the
+            // step before (rule 4 at step 213: the dump of f2391 shows s = 213, flag 0; the
+            // flag is set in frame 2392, vector 9).
+            let before = ours[start - 1].2;
+            assert!(
+                f == first && before == (w.flag != 0),
+                "f{f}: effect flag DS:0069 at step {s}"
+            );
+            before_effects.push(f);
+        }
+        assert_eq!(
+            music_state, w.music_state,
+            "f{f}: music state DS:0068 at step {s}"
+        );
+        for (name, ours, theirs, pick) in [
+            (
+                "music",
+                music,
+                w.music,
+                (|w: &Worx| w.music) as fn(&Worx) -> bool,
+            ),
+            ("digital", digital, w.digital, |w: &Worx| w.digital),
+        ] {
+            // The effect byte frame by frame only through vector 9's window: later `pulse`
+            // restarts (7 or 8 steps apart, decided by under a frame) drift by a step against
+            // the capture's as the two step cadences differ by a frame here and there (T2).
+            if name == "digital" && s > VECTOR_9_LAST_STEP {
+                continue;
+            }
+            if ours != theirs {
+                if changes(f, pick) {
+                    near.push((f, name));
+                } else {
+                    hard.push((f, s, name));
+                }
+            }
+        }
+        compared += 1;
+    }
+    eprintln!(
+        "vectors 9/10: {compared} dumps ({shorter} past the end of our shorter step); flag \
+         before the step's effect checks in {before_effects:?}; WORX bytes one frame off at a \
+         transition in {} dumps {near:?}",
+        near.len()
+    );
+    assert!(before_effects.len() <= 2, "{before_effects:?}");
+    assert!(
+        hard.is_empty(),
+        "{} dumps differ: {:?}",
+        hard.len(),
+        &hard[..hard.len().min(20)]
+    );
+    assert!(compared > 5500, "{compared}");
+    assert!(near.len() <= 30, "{}", near.len());
+    // After vector 9's window only rule 8 plays: `pulse` every 7 or 8 steps to the end.
+    let late: Vec<u16> = effects
+        .iter()
+        .copied()
+        .filter(|&s| s >= VECTOR_9_LAST_STEP)
+        .collect();
+    assert_eq!(late.first(), Some(&VECTOR_9_LAST_STEP), "pulse at step 330");
+    assert!(late.len() > 150, "{}", late.len());
+    for w in late.windows(2) {
+        assert!(
+            (7..=8).contains(&(w[1] - w[0])),
+            "pulse at steps {} and {}",
+            w[0],
+            w[1]
+        );
+    }
+    // Vector 10: intro2.cmf starts at step 1596 (music state 3 from there).
+    let first3 = ours.iter().position(|t| t.1 == 3).unwrap();
+    assert_eq!(ours[first3].0, 1596, "intro2.cmf restarted at step 1596");
 }

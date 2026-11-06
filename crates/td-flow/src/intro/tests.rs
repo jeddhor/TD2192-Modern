@@ -401,13 +401,20 @@ fn effects_follow_the_schedule() {
             _ => None,
         })
         .collect();
-    // whoosh at step 1, then pulse when it has ended (1 s = 20 steps).
+    // whoosh at step 1, then pulse once WORX would report it ended: the measured 317 frames
+    // of intro rev 3 §3.6 (step 88), whatever the sample's length (U-380).
     assert_eq!(lens[0], (1, 11_025));
-    assert_eq!(lens[1].1, 5_512);
-    assert!((20..=21).contains(&lens[1].0), "{:?}", lens[1]);
+    assert_eq!(lens[1], (88, 5_512));
     for (step, len) in [(150, 11_025), (155, 22_050), (240, 11_025), (245, 11_025)] {
         assert!(lens.contains(&(step, len)), "step {step}");
     }
+    // Rule 4 when ric3's 211 frames have passed; no rule-7 scratch while home is flagged.
+    assert!(lens.contains(&(213, 11_025)));
+    assert!(
+        !lens.iter().any(|&(s, _)| (246..330).contains(&s)),
+        "{lens:?}"
+    );
+    assert!(lens.contains(&(330, 5_512)));
     // Pulse keeps filling the silences to the end of the flyover.
     assert!(lens.iter().any(|&(s, l)| s > 1500 && l == 5_512));
 }

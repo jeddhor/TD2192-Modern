@@ -1,9 +1,10 @@
 //! The intro flyover's state: scroll, hoverskid motion, the `Random` weave, the caption table,
 //! the sound-effect schedule and the clocks that pace the steps.
 //!
-//! Spec: `docs/spec/flow/intro.md` (rev 1) §3.5 (captions), §3.6 (effects, U-036), §3.7
-//! (constants), §4.3 (timing) and §4.6 (the loop). Fidelity: T1 for the state per step (C-0047
-//! RAM, `tests/intro_parity.rs`), T2 for the pacing and the audio.
+//! Spec: `docs/spec/flow/intro.md` (rev 3) §3.5 (captions), §3.6 (effects, U-036; the measured
+//! busy times of U-380), §3.7 (constants), §4.3 (timing) and §4.6 (the loop; the song restart
+//! of U-370). Fidelity: T1 for the state per step (C-0047 RAM, `tests/intro_parity.rs`), T2 for
+//! the pacing and the audio.
 
 use td_sim::rng::BpRandom;
 
@@ -245,6 +246,22 @@ impl Effect {
             Effect::Whoosh | Effect::Scratch => 12,
         }
     }
+
+    /// How long the effect counts as playing for the "no effect playing" checks, in half
+    /// frames of the 70.086 Hz retrace (intro rev 3 §3.6, U-380). The test is WORX's own
+    /// "digital sound playing" byte, which outlasts the sample; port policy (Classic, T2):
+    /// the measured P1 times of the §3.6 table, not the sample lengths. `whoosh` 317 frames,
+    /// `pulse` and `scratch` 25.5, `ric3` 211, `home` 309 (C-0081). The port starts steps on
+    /// frame boundaries, so 25.5 frames acts as 26.
+    #[must_use]
+    pub fn busy_half_frames(self) -> u64 {
+        match self {
+            Effect::Whoosh => 2 * 317,
+            Effect::Pulse | Effect::Scratch => 51,
+            Effect::Ric3 => 2 * 211,
+            Effect::Home => 2 * 309,
+        }
+    }
 }
 
 /// The effect checks of one step (intro §3.6), run after the grid is drawn. `playing` reports
@@ -354,14 +371,6 @@ impl FrameClock {
 pub const BIOS_PHASE_NUM: u64 = 137;
 /// Denominator of [`BIOS_PHASE_NUM`].
 pub const BIOS_PHASE_DEN: u64 = 400;
-
-/// Converts `samples` at `rate` Hz into song ticks, rounded up.
-#[must_use]
-pub fn samples_to_ticks(samples: usize, rate: u32) -> u64 {
-    let num = samples as u64 * PIT_CLOCK;
-    let den = u64::from(rate.max(1)) * SONG_DIVISOR;
-    num.div_ceil(den)
-}
 
 #[cfg(test)]
 mod tests {
@@ -493,6 +502,85 @@ mod tests {
         // Steps 2.. start 3, 7, 10, 14 frames after step 1 (C-0047 f1618..1632).
         assert_eq!(&ticks[..4], &[3, 7, 10, 14]);
         assert!(ticks.windows(2).all(|w| (3..=4).contains(&(w[1] - w[0]))));
-        assert_eq!(samples_to_ticks(11_025, 11_025), 97);
+    }
+
+    /// The effect onsets of steps 1..=400 with the measured busy times, the steps at the frames
+    /// of the P1 BIOS clock (step 1 in frame 1).
+    fn measured_schedule() -> Vec<(u16, Effect)> {
+        let mut st = FlyoverState::new();
+        let mut clock = FrameClock::bios(BIOS_PHASE_NUM, BIOS_PHASE_DEN);
+        let (mut frame, mut end) = (1u64, 0u64);
+        let mut out = Vec::new();
+        for s in 1..=400u16 {
+            st.s = s;
+            let now = 2 * frame;
+            let started = std::cell::RefCell::new(Vec::new());
+            let busy = std::cell::Cell::new(end);
+            effects(
+                &mut st,
+                || now < busy.get(),
+                |e| {
+                    started.borrow_mut().push(e);
+                    busy.set(now + e.busy_half_frames());
+                },
+            );
+            end = busy.get();
+            out.extend(started.into_inner().into_iter().map(|e| (s, e)));
+            loop {
+                frame += 1;
+                if clock.frame() > 0 {
+                    break;
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn measured_busy_times_give_vector_9() {
+        // intro rev 3 §3.6 and §6 vector 9 (C-0081): whoosh until step 88, then pulse every 7
+        // or 8 steps; rule 4 at step 213 (when ric3 is no longer flagged); home flagged through
+        // step 329's checks, so rule 7 never fires; pulse again from step 330.
+        let sc = measured_schedule();
+        let pulses: Vec<u16> = sc
+            .iter()
+            .filter(|(s, e)| *e == Effect::Pulse && *s < 150)
+            .map(|&(s, _)| s)
+            .collect();
+        assert_eq!(pulses, [88, 96, 103, 111, 119, 126, 134, 142]);
+        let others: Vec<(u16, Effect)> = sc
+            .iter()
+            .copied()
+            .filter(|(_, e)| *e != Effect::Pulse)
+            .collect();
+        assert_eq!(
+            others,
+            [
+                (1, Effect::Whoosh),
+                (150, Effect::Scratch),
+                (155, Effect::Ric3),
+                (213, Effect::Scratch),
+                (240, Effect::Scratch),
+                (245, Effect::Home),
+            ],
+            "no rule-7 scratch"
+        );
+        assert!(sc.contains(&(220, Effect::Pulse)), "rule 4's scratch ends");
+        assert!(
+            sc.contains(&(330, Effect::Pulse)),
+            "home ends after step 329"
+        );
+        assert!(!sc.iter().any(|&(s, _)| (246..330).contains(&s)));
+        let starts: Vec<u16> = sc
+            .iter()
+            .filter(|(_, e)| *e == Effect::Pulse)
+            .map(|&(s, _)| s)
+            .collect();
+        let gaps: Vec<u16> = starts
+            .windows(2)
+            .map(|w| w[1] - w[0])
+            .filter(|&g| g < 20)
+            .collect();
+        assert!(gaps.iter().all(|g| (7..=8).contains(g)), "{gaps:?}");
     }
 }

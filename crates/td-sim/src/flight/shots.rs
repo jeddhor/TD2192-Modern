@@ -425,6 +425,15 @@ impl Shots {
             ship.armour = 0;
         }
         if shot.kind == HOMING {
+            // Destroyed outright, with destruction sound 100 at the ship (sfx-policy rev 2
+            // §3.2, `0E8B:122D`): requested a second time in the tick when the damage above
+            // already destroyed the ship. E2 has no such request (episode-deltas P5).
+            if c.episode != Episode::E2 {
+                c.events.push(Event::Sound {
+                    kind: 100,
+                    source: at,
+                });
+            }
             *c.white_flash = 4;
             ship.armour = 0;
             ship.shields = 0;
@@ -545,3 +554,6 @@ impl HashState for Shots {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

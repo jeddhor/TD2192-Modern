@@ -554,13 +554,16 @@ impl Flight {
             self.flight_19_pin();
             self.drawn.ships.clone_from(&self.ships);
             // 11. End sequence (provisional: counts the end ticks; of its other effects only
-            // the distance flash of end tick 12 is ported, at (viewX + 5, viewY + 2):
-            // hit-flash.md §4.2 caller 2, v = 19).
+            // the distance flash of end tick 12, at (viewX + 5, viewY + 2): hit-flash.md §4.2
+            // caller 2, v = 19, and the sounds of sfx-policy rev 2 §3.2 are ported).
             if self.mission_over {
                 if self.end_ticks == 12 {
                     let v = self.player.view;
                     let at = ((v.tile_x + 5) as u8, (v.tile_y + 2) as u8);
                     hit_flash::distance_flash(&mut self.hit_flash, v, at);
+                }
+                if let Some(kind) = end_sequence_sound(self.end_ticks) {
+                    events.push(Event::Sound { kind, source: None });
                 }
                 self.end_ticks = self.end_ticks.saturating_add(1);
             }
@@ -706,6 +709,20 @@ impl Flight {
     }
 }
 
+/// The sound `Sim_EndSequenceStep` (tick-order step 11) requests at end tick `end_ticks`, the
+/// value before the step counts it up (sfx-policy rev 2 §3.2, `0E8B:5719`, `578D`, `5908`,
+/// `596A`, `59CF`; the routine is the same in E2 and E3): a small blast (9) at ticks 3, 6 and 9
+/// (multiples of 3 below 12; the count starts at 1), the big explosion (100) at 12, after the
+/// distance flash, and small blasts again at 17, 19 and 25. All at the player (no position).
+#[must_use]
+pub fn end_sequence_sound(end_ticks: u8) -> Option<u8> {
+    match end_ticks {
+        12 => Some(100),
+        3 | 6 | 9 | 17 | 19 | 25 => Some(9),
+        _ => None,
+    }
+}
+
 impl Flight {
     /// E3 hazard tiles 41h..46h (e3-mission-ships rev 1 §5.1, `td3:0C5D:D27A..D3CB`): after
     /// drift and drag, before collision and carry, every tick (also while the mission is over,
@@ -848,5 +865,7 @@ impl HashState for Flight {
     }
 }
 
+#[cfg(test)]
+mod sound_tests;
 #[cfg(test)]
 mod tests;

@@ -1,9 +1,11 @@
 //! The Episode 1 campaign sequencer (`Main_CampaignLoop`): one mission block per call, from
 //! the pre-flight story through the flight, retries, debrief, post-flight story and endings.
 //!
-//! Spec: `docs/spec/flow/episode-program-flow.md` (rev 2) §4.3–§4.5 (the block, the per-mission
-//! table and the endings), `docs/spec/flow/screens.md` (rev 1) §3.7 (retry prompt) and §3.12
-//! (skip tests); music cues per `docs/spec/audio/music-cues.md` (rev 1) §4.1–§4.2.
+//! Spec: `docs/spec/flow/episode-program-flow.md` (rev 5) §4.3–§4.5 (the block, the per-mission
+//! table and the endings; mission 20 has no debrief, U-207; flight 21's outcome, U-081),
+//! `docs/spec/flow/screens.md` (rev 2) §3.7 (retry prompt) and §3.12 (skip tests; in block 19
+//! a skip before flight 21 jumps to flight 21); music cues per `docs/spec/audio/music-cues.md`
+//! (rev 2) §4.1–§4.2.
 //! Fidelity: T2 for the order of screens, T1 for the state handed back to the menu and for the
 //! retry prompt's `Random(10)`.
 //!
@@ -644,6 +646,10 @@ pub const E1_BLOCKS: [Block; 20] = [
     },
 ];
 
+/// The mission whose block has no `M8` cue and no debrief after its flight
+/// (episode-program-flow rev 5 §4.4, `0000:2C87..2CA5`, U-207).
+const NO_DEBRIEF: u8 = 20;
+
 /// Ending B and C scene strings (§4.5).
 const ENDING_B: [u16; 3] = [0xE6B, 0xE9B, 0xEC3];
 const ENDING_C: [u16; 3] = [0xED4, 0xE9B, 0xEC3];
@@ -891,6 +897,16 @@ impl Campaign {
         self.pos == Pos::Retry
     }
 
+    /// True while the debrief is shown.
+    pub fn in_debrief(&self) -> bool {
+        self.pos == Pos::Debrief
+    }
+
+    /// True while a flight runs.
+    pub fn in_flight(&self) -> bool {
+        matches!(self.child, Some(Child::Flight(_)))
+    }
+
     /// Runs the block for one frame; returns the result when the block is over.
     pub fn step(
         &mut self,
@@ -969,6 +985,10 @@ impl Campaign {
         let step = self.child_step.take();
         match (self.pos, child) {
             (Pos::Fly, Some(Child::Flight(f))) if step == Some(Fly21) => {
+                // Flight 21 (episode-program-flow rev 5 §4.4, U-081): only the abort flag is
+                // tested. Died (always set: the flight ends through the end sequence) is
+                // ignored; no retry, no `M8`, no debrief; abort → the mission does not advance.
+                // ASSUMPTION(U-420): the block hands back flight 19's kills, not flight 21's.
                 prog.cues.stop(ctx.audio);
                 let r = f.result();
                 if r.aborted {
@@ -1019,7 +1039,13 @@ impl Campaign {
                 // P15 and block 19's D89.
                 let tested = !matches!(step, Some(DOutcome(..) | P15 | D(89)));
                 self.pos = if skipped && tested && !glued {
-                    Pos::Return
+                    // Block 19: a set flag before flight 21 jumps to the flight 21 call, not to
+                    // the block's end (screens rev 2 §3.12, episode-program-flow rev 5 §4.4,
+                    // U-081); after flight 21 the tests end the block as usual.
+                    match self.post()[i + 1..].iter().position(|&s| s == Fly21) {
+                        Some(k) => Pos::Post(i + 1 + k),
+                        None => Pos::Return,
+                    }
                 } else {
                     Pos::Post(i + 1)
                 };
@@ -1041,6 +1067,11 @@ impl Campaign {
         if r.aborted {
             self.result.advance = false;
             return Pos::Return;
+        }
+        if self.mission == NO_DEBRIEF {
+            // Mission 20: no `M8` and no debrief; the post-flight story starts at once
+            // (episode-program-flow rev 5 §4.3, §4.4, U-207). The kills still count.
+            return Pos::Post(0);
         }
         Pos::Debrief
     }
