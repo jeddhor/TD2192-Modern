@@ -129,6 +129,19 @@ pub fn home_views(ep: Episode, flight: u8) -> Vec<(i16, i16)> {
     }
 }
 
+/// The base test's limit on `viewSubY`, where it has one (E2 §4.4: 36, 35, 31; E3 §4.3: 31
+/// for flights 1–5, `home17` 35).
+fn home_sub_y_max(ep: Episode, flight: u8) -> Option<i16> {
+    match (ep, flight) {
+        (Episode::E2, 1..=3) => Some(36),
+        (Episode::E2, 7) => Some(35),
+        (Episode::E2, 9..=19) => Some(31),
+        (Episode::E3, 1..=5) => Some(31),
+        (Episode::E3, 7..=10 | 12 | 14..=17 | 19 | 21) => Some(35),
+        _ => None,
+    }
+}
+
 /// Flights whose base test has no phase condition (E2 §5.6, §5.7; E3 §5.11, §5.13, §5.14,
 /// §5.21).
 fn home_any_phase(ep: Episode, flight: u8) -> bool {
@@ -328,6 +341,9 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
         None
     } else if phase >= 100 || targets.is_empty() || g.home_any_phase {
         s -= view_term(&home_views(f.episode, f.number)) * 400 / 32;
+        if let Some(max) = home_sub_y_max(f.episode, f.number) {
+            s -= i64::from((v.sub_y - max).max(0)) * 400;
+        }
         Some(&g.home_field)
     } else {
         // Distance to the nearest cell with a line of fire on a target.
@@ -632,12 +648,17 @@ pub fn plan(
                     )
                 })
                 .collect();
+            let v = b.player.view;
             eprintln!(
-                "tick {ticks}: score {} phase {} cell ({},{}) armour {} kills {} targets {}",
+                "tick {ticks}: score {} phase {} cell ({},{}) view ({},{})+({},{}) armour {} kills {} targets {}",
                 new_beam[0].score,
                 b.mission.phase,
                 cell.0,
                 cell.1,
+                v.tile_x,
+                v.tile_y,
+                v.sub_x,
+                v.sub_y,
                 b.player.armour,
                 b.kills,
                 targets.join(" ")
