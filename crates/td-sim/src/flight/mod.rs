@@ -291,13 +291,13 @@ impl Flight {
         ships.reset_records(&mut rng);
         if let Some(m) = mission {
             ships.load_mission(m, &classes);
-            if episode != Episode::E1 {
-                // A class-FFh slot reads the bytes after the class tables: shields DS:052F = 34,
-                // armour 2 × DS:0525 = 68 (e2-mission-setup §2, e3-mission-setup §2).
-                for s in ships.0.iter_mut().filter(|s| !s.alive()) {
-                    s.shields = 34;
-                    s.armour = 68;
-                }
+            // A class-FFh slot reads the bytes after the class tables: shields 34, armour
+            // 2 × 34 = 68 in every episode (E1 DS:03D1 / DS:03C7, confirmed by VE-1 in C-0017,
+            // U-143 and BUG-1; E2 DS:052F / DS:0525, e2-mission-setup §2; E3 the same DS:052F /
+            // DS:0525, e3-mission-setup §2, confirmed in C-0036 and C-0041).
+            for s in ships.0.iter_mut().filter(|s| !s.alive()) {
+                s.shields = 34;
+                s.armour = 68;
             }
         }
         if episode == Episode::E2 && episode::map_set(episode, number) == 2 {
