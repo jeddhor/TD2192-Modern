@@ -1,0 +1,76 @@
+address,kind,name,signature,comment,confidence,source_task
+0000:0000,func,Gfx_WaitRetraceBit,,loops until VGA status bit 3 is set; returns at once inside a retrace,CONFIRMED,M1-10
+0000:0016,func,Intro_FadeIn,,DAC 1..255 := g_Palette * level div 64 for level 0..64; one retrace wait per level (flow/intro.md 4.2),CONFIRMED,M1-10
+0000:00AF,func,Intro_FadeOut,,as Intro_FadeIn for level 64..0,CONFIRMED,M1-10
+0000:0149,func,Txt_DrawGlyph,"void near pascal(X: Integer; Y: Integer; Ch: Byte; Color: Byte; Flag: Byte)",td.lt2 5x5 glyph (transparent) plus code-drawn , . - : apostrophe; Flag unused,CONFIRMED,M1-10
+0000:0302,func,Txt_DrawStringSpaced,"void near pascal(X: Integer; Y: Integer; var S: String; Color: Byte)",text A: small-font string with one extra pixel before every character but x/y (flyover captions),CONFIRMED,M1-10
+0000:06BC,func,Txt_DrawString,"void near pascal(X: Integer; Y: Integer; var S: String; Color: Byte)",text B: small-font string as file0001 Txt_DrawString; ^ = raised 2,CONFIRMED,M1-10
+0000:0A6D,func,Intro_Hold,"void near pascal(HalfSeconds: Byte)",waits until DOS time > g_TPrev + 50 n or a key is waiting (16-bit timestamp; OB-034),CONFIRMED,M1-10
+0000:0FC0,func,Intro_Main,,whole intro: date card; intro0 narration; flyover; intro1; intro2; exit (flow/intro.md),CONFIRMED,M1-10
+02FA:0055,func,WORX_Shutdown,,,CONFIRMED,M1-10
+02FA:010A,func,WORX_LoadSfx,"pointer far pascal(Name: String)",the five intro VOCs,CONFIRMED,M1-10
+02FA:01AB,func,WORX_SetVoiceVolume,"word far pascal(Left: Byte; Right: Byte)",driver fn 21h,CONFIRMED,M1-10
+02FA:01E2,func,WORX_SetFmVolume,"word far pascal(Left: Byte; Right: Byte)",driver fn 22h,CONFIRMED,M1-10
+02FA:0219,func,WORX_DetectAdLib,word far pascal(void),driver fn 23h,CONFIRMED,M1-10
+02FA:0238,func,WORX_SbShutdown,,driver fn 04h,CONFIRMED,M1-10
+02FA:0254,func,WORX_SbInit,word far pascal(void),driver fn 01h; result in g_SbCard (FFFFh = none),CONFIRMED,M1-10
+02FA:0273,func,WORX_LoadMusic,"pointer far pascal(Name: String)",the three intro CMFs,CONFIRMED,M1-10
+02FA:031E,func,WORX_PlayVoc,"word far pascal(P: Pointer)",driver fn 06h,CONFIRMED,M1-10
+02FA:034B,func,WORX_PlayCmf,"word far pascal(P: Pointer)",driver fn 1Eh,CONFIRMED,M1-10
+02FA:0378,func,WORX_MusicPlaying,word far pascal(void),driver fn 0Eh; polled every flyover step (U-370),CONFIRMED,M1-10
+02FA:0397,func,WORX_SetMusicLoop,"word far pascal(On: Word)",driver fn 1Dh; 0 before intro.cmf,CONFIRMED,M1-10
+02FA:03BB,func,WORX_Init,word far pascal(void),driver fn 26h,CONFIRMED,M1-10
+02FA:03DC,func,WORX_StopMusic,,driver fn 0Dh,CONFIRMED,M1-10
+02FA:03F2,func,WORX_VocPlaying,word far pascal(void),driver fn 08h,CONFIRMED,M1-10
+02FA:0411,func,WORX_SetTimerStreaming,"word far pascal(On: Word)",driver fn 3Eh; 1 when effects = 2,CONFIRMED,M1-10
+0957:0000,func,Gfx_DrawSpriteFlipped,"void far pascal(X: Word; Y: Word; Sprite: Byte; Page: Byte)",32x32 td.shp record; vertically flipped; reads one column right (OB-059); y low byte only (OB-058); 0 transparent,CONFIRMED,M1-10
+0957:0170,func,Gfx_ClearPage,"void far pascal(Offset: Word; Width: Word; Page: Byte)",232 rows from 0B00h (page 0) or 5AC0h (page 1),CONFIRMED,M1-10
+0957:01B3,func,Gfx_SetDac,"void far pascal(Index: Byte; R: Byte; G: Byte; B: Byte)",,CONFIRMED,M1-10
+0957:01D5,func,Gfx_DrawTile,"void far pascal(Col: Byte; Row: Byte; Tile: Byte; Page: Byte)",latched copy from VGA B580h + 256 tile,CONFIRMED,M1-10
+0957:0250,func,Gfx_SetLogicalWidth,,CRTC 13h := 2Ch (352-pixel rows),CONFIRMED,M1-10
+0957:0266,func,Gfx_SetSplitLine,"void far pascal(Line: Word)",CRTC line compare; 400 = off,CONFIRMED,M1-10
+0957:02BC,func,Gfx_InitUnchained,,mode 13h; DAC all black; unchained; VGA memory cleared,CONFIRMED,M1-10
+0957:0343,func,Gfx_SetStart,"void far pascal(Address: Word)",CRTC start address,CONFIRMED,M1-10
+0957:0375,func,Gfx_PutPixel,"void far pascal(X: Word; Y: Word; Color: Byte)",byte (Y*88 + X div 4) mod 65536 of plane X mod 4,CONFIRMED,M1-10
+0993:0177,func,Crt_TextMode,,,CONFIRMED,M1-10
+0993:02A8,func,Crt_Delay,,,CONFIRMED,M1-10
+0993:0301,func,Crt_NoSound,,,CONFIRMED,M1-10
+0993:0308,func,Crt_KeyPressed,,,CONFIRMED,M1-10
+0993:031A,func,Crt_ReadKey,,,CONFIRMED,M1-10
+09F5:0036,func,Dos_GetTime,,,CONFIRMED,M1-10
+09FD:0116,func,BP_Halt,,,CONFIRMED,M1-10
+09FD:12BA,func,BP_RandomInt,"word far pascal(Range: Word)",,CONFIRMED,M1-10
+09FD:1317,func,BP_RandNext,,RandSeed * 08088405h + 1,CONFIRMED,M1-10
+0B3D:003E,data,RandSeed,u32,starts at 0; Randomize is never called,CONFIRMED,M1-10
+0B3D:0052,data,g_SoundOverride,u8,1 for /PC /pc /NOSOUND /nosound,CONFIRMED,M1-10
+0B3D:0053,data,g_Music,u8,1 none / 2 FM (td.cfg byte 0 or detection or switch),CONFIRMED,M1-10
+0B3D:0054,data,g_Sfx,u8,1 none / 2 SB / 3 speaker (td.cfg byte 1 or detection or switch),CONFIRMED,M1-10
+0B3D:0058,data,g_TPrev,T[8],DOS time of the last tick or hold start (4 words),CONFIRMED,M1-10
+0B3D:0060,data,g_TNow,T[8],latest DOS time sample (4 words),CONFIRMED,M1-10
+0B3D:0068,data,g_MusicState,u8,0 none; 2 intro1; 1 intro; 3 intro2,CONFIRMED,M1-10
+0B3D:0069,data,g_SfxFlag,u8,one-shot flag of the scratch rules (flow/intro.md 3.6),CONFIRMED,M1-10
+0B3D:006A,data,g_CmfIntro,farptr,intro.cmf,CONFIRMED,M1-10
+0B3D:006E,data,g_CmfIntro1,farptr,intro1.cmf,CONFIRMED,M1-10
+0B3D:0072,data,g_CmfIntro2,farptr,intro2.cmf,CONFIRMED,M1-10
+0B3D:0078,data,g_SbCard,i16,WORX_SbInit result; -1 = no Sound Blaster,CONFIRMED,M1-10
+0B3D:007A,data,g_VocScratch,farptr,scratch.voc,CONFIRMED,M1-10
+0B3D:007E,data,g_VocRic3,farptr,ric3.voc,CONFIRMED,M1-10
+0B3D:0082,data,g_VocHome,farptr,home.voc,CONFIRMED,M1-10
+0B3D:0086,data,g_VocWhoosh,farptr,whoosh.voc,CONFIRMED,M1-10
+0B3D:008A,data,g_VocPulse,farptr,pulse.voc,CONFIRMED,M1-10
+0B3D:008E,data,g_LastKey,u8,last key read at a key check,CONFIRMED,M1-10
+0B3D:0090,data,g_Caption,string[255],current caption or narration line,CONFIRMED,M1-10
+0B3D:0190,data,g_Step,u16,flyover step 1..1618; 10000 ends the loop,CONFIRMED,M1-10
+0B3D:0192,data,g_MapCol0,i16,first map column (5),CONFIRMED,M1-10
+0B3D:0194,data,g_MapRow0,i16,first map row (2..841),CONFIRMED,M1-10
+0B3D:0196,data,g_ScrollX,i16,horizontal offset (16; constant),CONFIRMED,M1-10
+0B3D:0198,data,g_ScrollY,i16,vertical offset 16..47,CONFIRMED,M1-10
+0B3D:019A,data,g_IntroMap,T[40000],intro.map (20 x 2000; column-major),CONFIRMED,M1-10
+0B3D:A17A,data,g_ScrStrip,T[2240],7 image rows saved for erasing narration lines,CONFIRMED,M1-10
+0B3D:AA3C,data,g_SkidSteer,i16,-1..1,CONFIRMED,M1-10
+0B3D:AA3E,data,g_SkidSpeed,i16,-5..5,CONFIRMED,M1-10
+0B3D:AA40,data,g_SkidY,i16,hoverskid y (page coordinates; screen y = value - 16),CONFIRMED,M1-10
+0B3D:AD1E,data,g_Palette,T[768],working palette,CONFIRMED,M1-10
+0B3D:B03A,data,g_FontPtr,farptr,td.lt2 block (950 bytes),CONFIRMED,M1-10
+0B3D:B44B,data,g_DrawPage,u8,flyover back page,CONFIRMED,M1-10
+0B3D:B44C,data,g_SpritePtr,farptr,td.shp block (62464 bytes reserved),CONFIRMED,M1-10

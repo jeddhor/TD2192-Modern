@@ -30,7 +30,7 @@ Rules: offsets are **file offsets** (of the ShortString length byte for `pstring
 | Map | Exe | Resources | Notes |
 |---|---|---:|---|
 | `file0001.toml` | Episode 1 | 82 | Compiled in; `tdtool exe-res` passes (RE-8, 2026-11-02; RE-8: `e1.comms.04.01`, `e1.comms.misc` and `e1.comms.04.02` merged into `e1.comms.04`) |
-| `file0000.toml` | Intro | 4 | Narration cards and credits. **Register in `MAPS`** |
+| `file0000.toml` | Intro | 4 | Narration cards and credits; registered in `MAPS`. Order of display: [spec/flow/intro.md](../../spec/flow/intro.md) §3.3, §3.5; `intro.credits` is also the source of the credits screen ([spec/frontend/credits.md](../../spec/frontend/credits.md)) |
 | `td2.toml` | Episode 2 | 67 | Compiled in (2 HUD tables added by M1-09; RE-9, M10-01: `e2.locations` and `e2.target_info.01`..`.06` merged into `e2.target_info` (113), `e2.flight_messages.02` count 20) |
 | `td3.toml` | Episode 3 | 56 | Compiled in (1 HUD table added by M1-09; RE-10, M10-02: `e3.locations` and `e3.target_info.01`..`.07` replaced by `e3.target_info`, 114 strings) |
 

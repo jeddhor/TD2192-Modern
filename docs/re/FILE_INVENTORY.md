@@ -44,7 +44,7 @@ Confidence: `CONFIRMED` = decoded, rendered or read directly; `LIKELY` = strong 
 | `i-port.scr` | 64,768 | screen | Full-screen scene: 768-byte palette + 320x200 8bpp. | CONFIRMED (format) | E2 | `c3a06ba13a214f6a8b8054a5cfccaedf0f1cec312d987d1984c65860a446cf94` |
 | `income.voc` | 5,606 | sfx | Creative Voice File; see FORMATS.md for rate and codec (most are Creative ADPCM). | CONFIRMED (header) | E1, E2, E3 | `da3dbf367977aea9ebc440ae4fb2af06fdb6a6a1bcc1a18f40c13c70337d6b2e` |
 | `intro.cmf` | 9,096 | music | Creative Music File v1.01 (OPL2 FM), 96 ticks/s clock field. | CONFIRMED (header) | td1, intro, E2, E3 | `bfcc87cd05bea574a626e35d0f1aa492853e5c9e54b08ec726aec2191703369f` |
-| `intro.map` | 40,000 | map | Intro flyover map: 200 x 200 tile indices (40000 bytes). | LIKELY | intro | `b92c9293974edaeb08a3a1ed0a133f82ea3c42480b35dd493ee6eedc9030b862` |
+| `intro.map` | 40,000 | map | Intro flyover map: 20 x 2000 tile indices, column-major (a road strip; FORMATS §5). | CONFIRMED (loader + C-0047) | intro | `b92c9293974edaeb08a3a1ed0a133f82ea3c42480b35dd493ee6eedc9030b862` |
 | `intro0.scr` | 64,768 | screen | Full-screen scene: 768-byte palette + 320x200 8bpp. | CONFIRMED (format) | intro | `61bde6e677ed0b0e2cb1cde976955992cde9cf8b203416ef9e9f0b0dc7fab33c` |
 | `intro1.cmf` | 976 | music | Creative Music File v1.01 (OPL2 FM), 96 ticks/s clock field. | CONFIRMED (header) | intro | `61202a1baf23547bcd90e485bf3d5ad9d7f3d6a630b30836ecd06988e1241990` |
 | `intro1.scr` | 64,768 | screen | Full-screen scene: 768-byte palette + 320x200 8bpp. | CONFIRMED (format) | intro | `ff6d9b163ac04d1cf9d3a320477d8c46d7223deb26d7af9d171233830203f780` |
