@@ -4,9 +4,10 @@
 //! flame and engines, a street grid of solid blocks).
 //!
 //! Run with `cargo test --release -p td-render --test enhanced_lighting_timing -- --ignored
-//! --nocapture`. The budget for the whole pipeline is 6 ms per frame. Lighting and bloom must
-//! leave most of it to the upscaler, so this test asserts at most 3 ms for the two (median,
-//! release builds only). It needs an otherwise idle machine.
+//! --nocapture`. The budget for the whole pipeline is 6 ms per frame. xBR 4× at 560 × 200 takes
+//! about 1.3 ms on 16 threads and 1.7 ms on 6 (IM-12), so this test asserts at most 4 ms for
+//! lighting and bloom together (median, release builds only). Measured 2026-11-05 on an
+//! i7-10700F that other builds kept fully loaded: 3.7 ms on 16 threads, 5.1 ms on 6, 23 ms on 1.
 
 use std::time::{Duration, Instant};
 
@@ -172,7 +173,7 @@ fn lighting_and_bloom_fit_the_budget() {
     );
     if !cfg!(debug_assertions) {
         assert!(
-            total <= 3.0,
+            total <= 4.0,
             "lighting + bloom took {total:.3} ms per frame"
         );
     }

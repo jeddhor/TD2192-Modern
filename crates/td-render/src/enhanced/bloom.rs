@@ -45,6 +45,8 @@ pub struct Bloom {
     glow: Vec<[u32; 3]>,
     /// Quarter-resolution rows holding any glow.
     glowing: Vec<bool>,
+    /// Rows of the horizontal pass holding anything.
+    live: Vec<bool>,
     cols: Vec<Tap>,
     rows: Vec<Tap>,
     taps_for: (usize, usize),
@@ -143,23 +145,37 @@ impl Bloom {
             });
 
         // 2. Blur: horizontal into `tmp`, then vertical back into `down`; edges repeat.
+        // Most of the image is black: each non-zero pixel is spread to its nine neighbours,
+        // which adds the same terms in the same order as the gather (zero terms add nothing).
+        self.live.resize(qh, false);
         self.down
             .par_chunks(qw)
             .zip(self.tmp.par_chunks_mut(qw))
-            .for_each(|(src, dst)| {
-                for (x, d) in dst.iter_mut().enumerate() {
-                    let mut acc = [0.0f32; 3];
+            .zip(self.live.par_iter_mut())
+            .for_each(|((src, dst), live)| {
+                dst.fill([0.0; 3]);
+                *live = src.iter().any(|s| *s != [0.0; 3]);
+                if !*live {
+                    return;
+                }
+                for i in -4..qw as isize + 4 {
+                    let s = src[clamp(i, qw)];
+                    if s == [0.0; 3] {
+                        continue;
+                    }
                     for o in -4isize..=4 {
-                        let s = src[clamp(x as isize + o, qw)];
+                        let Some(d) = usize::try_from(i - o).ok().and_then(|x| dst.get_mut(x))
+                        else {
+                            continue;
+                        };
                         let g = GAUSS[o.unsigned_abs()];
                         for c in 0..3 {
-                            acc[c] += s[c] * g;
+                            d[c] += s[c] * g;
                         }
                     }
-                    *d = acc;
                 }
             });
-        let tmp = &self.tmp;
+        let (tmp, live) = (&self.tmp, &self.live);
         let scale = STRENGTH * LIN_MAX as f32;
         self.down
             .par_chunks_mut(qw)
@@ -169,7 +185,11 @@ impl Bloom {
             .for_each(|(y, ((down, glow), glowing))| {
                 down.fill([0.0; 3]);
                 for o in -4isize..=4 {
-                    let src = &tmp[clamp(y as isize + o, qh) * qw..][..qw];
+                    let j = clamp(y as isize + o, qh);
+                    if !live[j] {
+                        continue;
+                    }
+                    let src = &tmp[j * qw..][..qw];
                     let g = GAUSS[o.unsigned_abs()];
                     for (d, s) in down.iter_mut().zip(src) {
                         for c in 0..3 {
@@ -200,11 +220,15 @@ impl Bloom {
                     std::array::from_fn(|c| (p[c] * a + q[c] * b) >> 8)
                 };
                 let mut at = None;
-                let (mut v0, mut v1) = ([0; 3], [0; 3]);
+                let (mut v0, mut v1, mut dark) = ([0; 3], [0; 3], true);
                 for (px, ct) in row.chunks_exact_mut(4).zip(cols) {
                     if at != Some((ct.i0, ct.i1)) {
                         at = Some((ct.i0, ct.i1));
                         (v0, v1) = (column(ct.i0), column(ct.i1));
+                        dark = v0 == [0; 3] && v1 == [0; 3];
+                    }
+                    if dark {
+                        continue;
                     }
                     let (a, b) = (256 - u32::from(ct.f), u32::from(ct.f));
                     let g: [u32; 3] = std::array::from_fn(|c| (v0[c] * a + v1[c] * b) >> 8);

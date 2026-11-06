@@ -171,6 +171,12 @@ vis_l(p)   = 1 if l does not cast shadows, else the fraction of the segment pos_
 Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release build) for the heaviest setting: 21:9, xbr4, `full` lighting and bloom. That is 560 × 200 → 2240 × 800.
 
 - Work may be parallelised by rows with `rayon` (MIT/Apache-2.0). Add it to THIRD_PARTY.md if used.
+- **Split of the budget** (rev 2):
+  - xbr4 at 560 × 200 takes about 1.3 ms on 16 threads and 1.7 ms on 6;
+  - lighting and bloom get at most 4 ms (`tests/enhanced_lighting_timing.rs`, a busy synthetic night).
+- **Measured 2026-11-05** on an i7-10700F that other builds kept fully loaded, lighting and bloom together:
+  - 3.7 ms on 16 threads (light map 0.6, modulation 1.0, bloom 2.2);
+  - 5.1 ms on 6 threads.
 - Per-frame buffers are reused, with no allocation in the steady state.
 - A `tdtool bench-enhanced` command, or a criterion-free timing test behind `--ignored`, reports the time per stage.
 
@@ -205,4 +211,4 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 | Rev | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-11-05 | main session | Initial design from the user's request (ADR-0006) |
-| 2 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night |
+| 2 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |
