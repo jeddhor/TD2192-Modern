@@ -160,7 +160,7 @@ Starting an effect stops the one playing ([voc-and-adpcm](../audio/voc-and-adpcm
 
 ```text
 override := first parameter is /PC, /pc, /NOSOUND or /nosound
-if override: write the debug line "sound_override == True" in text mode (not ported)
+if override: write a one-line debug message in text mode (not ported)
 if not override: WORX_Init; card := WORX_SbInit (−1 = none) else card := −1
 if td.cfg opens and not override: music := td.cfg[0]; sfx := td.cfg[1]
 else: sfx := 2 if card ≠ −1 else 3; music := WORX_DetectAdLib + 1 (0 if override)
