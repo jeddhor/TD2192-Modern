@@ -18,9 +18,9 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use td_sim::flight::TickResult;
 use td_sim::replay::Replay;
-use td_sim::{FlightKey, TickControls, state_hash};
+use td_sim::{FlightKey, Modal, TickControls, state_hash};
 
-use crate::flight_setup::E1Flight;
+use crate::flight_setup::{FlightSetup, episode_number};
 
 /// A plan: one input word per tick.
 #[derive(Debug, Clone, Default)]
@@ -113,9 +113,9 @@ pub fn word(prev: &[FlightKey], down: &[FlightKey]) -> u64 {
     c.to_word()
 }
 
-/// The replay of a plan: E1, its flight, the session seed at program start, checkpoints every
-/// [`super::CHECKPOINT_INTERVAL`] ticks.
-pub fn replay(setup: &E1Flight, plan: &Plan) -> Replay {
+/// The replay of a plan: its episode and flight, the session seed at program start,
+/// checkpoints every [`super::CHECKPOINT_INTERVAL`] ticks.
+pub fn replay(setup: &FlightSetup, plan: &Plan) -> Replay {
     let mut f = setup.start();
     let mut checkpoints = vec![];
     for (i, &w) in plan.inputs.iter().enumerate() {
@@ -125,9 +125,9 @@ pub fn replay(setup: &E1Flight, plan: &Plan) -> Replay {
         }
     }
     Replay {
-        episode: 1,
+        episode: episode_number(setup.episode),
         mission: setup.number,
-        seed: td_sim::flight::Session::new().rng.seed(),
+        seed: setup.session().rng.seed(),
         inputs: plan.inputs.clone(),
         interval: super::CHECKPOINT_INTERVAL,
         checkpoints,
@@ -135,20 +135,47 @@ pub fn replay(setup: &E1Flight, plan: &Plan) -> Replay {
 }
 
 /// Ticks whose comm viewer opened, found by running the inputs.
-pub fn comm_ticks(setup: &E1Flight, inputs: &[u64]) -> Vec<u32> {
+pub fn comm_ticks(setup: &FlightSetup, inputs: &[u64]) -> Vec<u32> {
+    modal_ticks(setup, inputs)
+        .into_iter()
+        .filter(|&(_, m)| m == Modal::CommViewer)
+        .map(|(t, _)| t)
+        .collect()
+}
+
+/// Every modal screen the inputs open, with its tick (1-based), found by running them.
+pub fn modal_ticks(setup: &FlightSetup, inputs: &[u64]) -> Vec<(u32, Modal)> {
     let mut f = setup.start();
     let mut out = vec![];
     for (i, &w) in inputs.iter().enumerate() {
         let c = TickControls::from_word(w);
         let mut r = f.tick(&setup.world, &c, &mut vec![]);
         while let TickResult::Modal(m) = r {
-            if m == td_sim::Modal::CommViewer {
-                out.push(i as u32 + 1);
-            }
+            out.push((i as u32 + 1, m));
             r = f.resume(&setup.world, &TickControls::default(), &mut vec![]);
         }
     }
     out
+}
+
+/// The key that opens a pause, flight menu or tactical map, the key that closes it, the frame
+/// (after the tick began) of the closing press and its hold in frames. The opening key is
+/// released 12 frames after the tick began (after the step that reads it, before the 500 ms
+/// typematic delay; the screens clear the key bytes, and a key-up only clears one). The
+/// closing keys (flight-screens §4.1, §4.3, §4.4): Enter ends the pause (any key; Enter is no
+/// flight key, so it does nothing in the rest of the tick); Enter on the menu's first item
+/// (return), held 40 frames because the menu reads the key bytes only once per 32-frame
+/// cursor pulse (a 3-frame Esc came and went unseen in a trial run); Esc closes the map (read
+/// through the BIOS).
+fn modal_keys(m: Modal) -> Option<(FlightKey, &'static str, u64, u64)> {
+    match m {
+        Modal::Pause => Some((FlightKey::P, "enter", 40, 3)),
+        Modal::FlightMenu => Some((FlightKey::Esc, "enter", 200, 40)),
+        Modal::TacticalMap => Some((FlightKey::F5, "esc", 80, 3)),
+        // The E1 real-time screens read no keys (flight-screens §4.10); tools never stop for
+        // them (`Flight::stop_for_scenes` is off).
+        Modal::CommViewer | Modal::Scene => None,
+    }
 }
 
 /// Frames between the alternating Space and F6 presses while a comm viewer is open.
@@ -156,18 +183,27 @@ pub const COMM_STEP: u64 = 15;
 /// Presses scheduled per comm viewer (Space and F6 alternate): about 57 s of screen time.
 pub const COMM_PRESSES: u64 = 260;
 
-/// The oracle scenario lines of a plan (key transitions per tick, comm viewer presses).
-pub fn oracle_lines(inputs: &[u64], comm: &[u32]) -> Vec<String> {
+/// The oracle scenario lines of a plan (key transitions per tick, presses in the modal
+/// screens it opens).
+pub fn oracle_lines(inputs: &[u64], modals: &[(u32, Modal)]) -> Vec<String> {
+    let comm: Vec<u32> = modals
+        .iter()
+        .filter(|&&(_, m)| m == Modal::CommViewer)
+        .map(|&(t, _)| t)
+        .collect();
     let mut out = vec![];
     let mut prev = TickControls::default();
+    // Keys already released inside a modal screen of the previous tick.
+    let mut released: Vec<FlightKey> = vec![];
     for (i, &w) in inputs.iter().enumerate() {
         let t = i + 1;
         let c = TickControls::from_word(w);
         for &k in &FlightKey::ALL {
-            if prev.is_down(k) && !c.is_down(k) {
+            if prev.is_down(k) && !c.is_down(k) && !released.contains(&k) {
                 out.push(format!("tick:{t} up {}", key_name(k)));
             }
         }
+        released.clear();
         for &k in &FlightKey::ALL {
             if c.is_down(k) && !prev.is_down(k) {
                 out.push(format!("tick:{t} down {}", key_name(k)));
@@ -177,6 +213,13 @@ pub fn oracle_lines(inputs: &[u64], comm: &[u32]) -> Vec<String> {
             for n in 0..COMM_PRESSES {
                 let key = if n % 2 == 0 { "space" } else { "f6" };
                 out.push(format!("intick:{t}+{} press {key} 3", 20 + n * COMM_STEP));
+            }
+        }
+        for &(_, m) in modals.iter().filter(|&&(mt, _)| mt == t as u32) {
+            if let Some((open, close, at, hold)) = modal_keys(m) {
+                out.push(format!("intick:{t}+12 up {}", key_name(open)));
+                out.push(format!("intick:{t}+{at} press {close} {hold}"));
+                released.push(open);
             }
         }
         prev = c;
@@ -190,11 +233,11 @@ pub fn oracle_lines(inputs: &[u64], comm: &[u32]) -> Vec<String> {
     out
 }
 
-/// Writes `<out>/e1f<NN>.tdr`.
-pub fn write_outputs(setup: &E1Flight, plan: &Plan, out: &Path) -> Result<()> {
+/// Writes `<out>/e<E>f<NN><suffix>.tdr`.
+pub fn write_outputs(setup: &FlightSetup, plan: &Plan, out: &Path, suffix: &str) -> Result<()> {
     check(&plan.inputs)?;
     std::fs::create_dir_all(out).with_context(|| format!("create {}", out.display()))?;
-    let path = out.join(format!("e1f{:02}.tdr", setup.number));
+    let path = out.join(format!("{}{suffix}.tdr", setup.stem()));
     std::fs::write(&path, replay(setup, plan).to_bytes())
         .with_context(|| format!("write {}", path.display()))?;
     println!("wrote {}", path.display());

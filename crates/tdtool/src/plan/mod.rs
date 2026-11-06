@@ -1,6 +1,7 @@
-//! `tdtool plan`: finds inputs that complete an Episode 1 flight with success in td-sim, and
-//! writes them as a TDR replay with state-hash checkpoints plus the matching tick-keyed oracle
-//! scenario (VE-2, M9-21; `docs/parity/M9-playthrough.md`).
+//! `tdtool plan`: finds inputs that complete a flight of any episode with success in td-sim,
+//! and writes them as a TDR replay with state-hash checkpoints plus the matching tick-keyed
+//! oracle scenario (VE-2, M9-21, `docs/parity/M9-playthrough.md`; E2 and E3: VE-4, M10-45,
+//! `docs/parity/M10-playthrough.md`).
 //!
 //! This is a Verifier tool. It only drives the port's simulation (`td_sim::Flight` is `Clone`
 //! and deterministic) and never looks at the original program; the plan it finds is then flown
@@ -13,27 +14,78 @@ mod search;
 use std::path::Path;
 
 use anyhow::{Result, bail};
-use td_sim::flight::TickResult;
 use td_sim::flight::ships::SHIP_SLOTS;
+use td_sim::flight::{Episode, TickResult, logic};
 use td_sim::{Flight, TickControls};
 
-use crate::flight_setup::E1Flight;
+use crate::flight_setup::FlightSetup;
 pub use schedule::{
-    Plan, check as check_inputs, comm_ticks, oracle_lines, replay as replay_of, write_outputs,
+    Plan, check as check_inputs, comm_ticks, modal_ticks, oracle_lines, replay as replay_of,
+    write_outputs,
 };
 pub use search::BEAM;
 
 /// The state hash without shots on two-digit headings: those differ between muzzle tables
 /// (U-160) but live only until their first move; what they hit shows in the rest of the state.
 pub fn core_hash(f: &Flight) -> u64 {
+    td_sim::state_hash(&normalised(f))
+}
+
+/// The flight with every shot slot last used on a two-digit heading cleared (freed slots keep
+/// their old fields, so every such slot is normalised).
+pub fn normalised(f: &Flight) -> Flight {
     let mut c = f.clone();
-    // Freed slots keep their old fields, so normalise every slot last used on such a heading.
     for s in c.shots.0.iter_mut().filter(|s| s.heading > 9) {
         s.tile_x = 0xFF;
         s.off_x = 0;
         s.off_y = 0;
     }
-    td_sim::state_hash(&c)
+    c
+}
+
+/// The lines of the pretty debug output of two normalised flights that differ (at most `n`),
+/// with the path of enclosing fields, to see what a difference in [`core_hash`] is.
+pub fn debug_diff(a: &Flight, b: &Flight, n: usize) -> Vec<String> {
+    let (x, y) = (
+        format!("{:#?}", normalised(a)),
+        format!("{:#?}", normalised(b)),
+    );
+    let mut out = vec![];
+    let mut path: Vec<&str> = vec![];
+    for (la, lb) in x.lines().zip(y.lines()) {
+        let depth = la.len() - la.trim_start().len();
+        path.truncate(depth / 4);
+        if la != lb {
+            out.push(format!(
+                "{} | {} | {}",
+                path.join("."),
+                la.trim(),
+                lb.trim()
+            ));
+            if out.len() == n {
+                break;
+            }
+        }
+        if la.trim_end().ends_with('{') || la.trim_end().ends_with('[') {
+            path.push(
+                la.trim()
+                    .trim_end_matches(['{', '[', ' '])
+                    .trim_end_matches(':'),
+            );
+        }
+    }
+    out
+}
+
+/// True when the comm viewer has a transmission for the flight's current phase (the episode's
+/// table: mission-logic §4.6, e2-mission-logic and e3-mission-logic §4.6).
+pub fn transmission_waits(f: &Flight) -> bool {
+    let phase = f.mission.phase;
+    match f.episode {
+        Episode::E1 => logic::transmission(f.number, phase).is_some(),
+        Episode::E2 => logic::e2::transmission(f.number, phase).is_some(),
+        Episode::E3 => logic::e3::transmission(f.number, phase).is_some(),
+    }
 }
 
 /// Ticks between replay checkpoints.
@@ -41,8 +93,8 @@ pub const CHECKPOINT_INTERVAL: u32 = 100;
 
 /// Runs flight `number` with no input for `ticks` ticks and prints what happens (phase changes,
 /// spawns and removals, kills, damage, the end), to study a flight before planning it.
-pub fn probe(root: &Path, number: u8, ticks: u32) -> Result<()> {
-    let setup = E1Flight::load(root, number)?;
+pub fn probe(root: &Path, episode: Episode, number: u8, ticks: u32) -> Result<()> {
+    let setup = FlightSetup::load(root, episode, number)?;
     let mut f = setup.start();
     println!(
         "flight {number}: class {} view {:?} phase {} palette {} late {}",
@@ -85,6 +137,59 @@ pub fn probe(root: &Path, number: u8, ticks: u32) -> Result<()> {
         }
         prev = f.clone();
     }
+    Ok(())
+}
+
+/// Writes `<out>/e<E>f<NN>-idle.tdr`: no input at all until the flight ends (in the flights
+/// where the enemies destroy the parked ship: the death and the end sequence, which no success
+/// plan covers), at most `max_ticks` ticks. With `modals`, `e<E>f<NN>-modals.tdr`: the same with
+/// one tap each of P (pause) in tick 100, F5 (tactical map) in tick 200 and Esc (flight menu)
+/// in tick 300, which open their screens with no other key held (the oracle schedule closes
+/// them, [`schedule::oracle_lines`]).
+pub fn idle(
+    root: &Path,
+    episode: Episode,
+    number: u8,
+    out: &Path,
+    max_ticks: u32,
+    modals: bool,
+) -> Result<()> {
+    let setup = FlightSetup::load(root, episode, number)?;
+    let mut f = setup.start();
+    let mut inputs = vec![];
+    loop {
+        if inputs.len() as u32 == max_ticks {
+            bail!("flight {number}: still flying after {max_ticks} idle ticks");
+        }
+        let t = inputs.len() + 1;
+        let key = match t {
+            100 => Some(td_sim::FlightKey::P),
+            200 => Some(td_sim::FlightKey::F5),
+            300 => Some(td_sim::FlightKey::Esc),
+            _ => None,
+        };
+        let w = match key {
+            Some(k) if modals => schedule::word(&[], &[k]),
+            _ => 0,
+        };
+        inputs.push(w);
+        if td_sim::replay::step(&mut f, &setup.world, w) == TickResult::Finished {
+            break;
+        }
+    }
+    let plan = Plan {
+        comm_ticks: comm_ticks(&setup, &inputs),
+        inputs,
+    };
+    write_outputs(&setup, &plan, out, if modals { "-modals" } else { "-idle" })?;
+    println!(
+        "flight {number}: {} idle ticks; succeeded {} lost {} died {} outcome {}",
+        plan.inputs.len(),
+        f.succeeded,
+        f.lost,
+        f.died(),
+        f.outcome()
+    );
     Ok(())
 }
 
@@ -136,16 +241,19 @@ pub fn describe(t: u32, a: &Flight, b: &Flight) -> Vec<String> {
 }
 
 /// Plans flight `number` and writes the replay and the oracle scenario lines.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     root: &Path,
+    episode: Episode,
     number: u8,
     out: &Path,
     max_ticks: u32,
     verbose: bool,
     alt_muzzles: Option<&Path>,
     beam: usize,
+    dual: bool,
 ) -> Result<()> {
-    let setup = E1Flight::load(root, number)?;
+    let setup = FlightSetup::load(root, episode, number)?;
     let alt =
         match alt_muzzles {
             Some(p) => Some(setup.with_muzzles(
@@ -158,7 +266,7 @@ pub fn run(
         std::thread::Builder::new()
             .stack_size(256 << 20)
             .spawn_scoped(s, || {
-                search::plan(&setup, alt.as_ref(), max_ticks, verbose, beam)
+                search::plan(&setup, alt.as_ref(), max_ticks, verbose, beam, dual)
             })
             .map(|h| h.join())
     });
@@ -180,9 +288,24 @@ pub fn run(
     if !f.succeeded || f.died() || f.lost {
         bail!("flight {number}: re-run did not succeed");
     }
-    write_outputs(&setup, &plan, out)?;
+    // With the capture's muzzle bytes the flight must end the same way on the same tick.
+    let mut same = true;
+    if let Some(a) = &alt {
+        let mut g = a.start();
+        for (i, &w) in plan.inputs.iter().enumerate() {
+            let r = td_sim::replay::step(&mut g, &a.world, w);
+            if (r == TickResult::Finished) != (i + 1 == n) {
+                bail!("flight {number}: alt re-run ended at tick {} of {n}", i + 1);
+            }
+        }
+        if !g.succeeded || g.died() || g.lost {
+            bail!("flight {number}: alt re-run did not succeed");
+        }
+        same = core_hash(&g) == core_hash(&f);
+    }
+    write_outputs(&setup, &plan, out, "")?;
     println!(
-        "flight {number}: {} ticks, kills {}, outcome {}, comm viewers at {:?}",
+        "flight {number}: {} ticks, kills {}, outcome {}, comm viewers at {:?}, same course with the alt bytes {same}",
         n,
         f.kills,
         f.outcome(),
