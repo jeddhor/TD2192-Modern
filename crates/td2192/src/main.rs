@@ -21,6 +21,10 @@ struct Cli {
     /// Original game directory (overrides TD2192_DATA and settings).
     #[arg(long)]
     data: Option<PathBuf>,
+    /// Which episode's program to run: 1 (the default, `file0001.exe`) or 2 (`td2.exe`, which
+    /// the original starts directly).
+    #[arg(long, value_name = "N", default_value_t = 1)]
+    episode: u8,
     /// Developer map viewer for a map: e1, e2a, e2b, e3a, e3b or intro.
     #[arg(long, value_name = "MAP")]
     dev_mapview: Option<String>,
@@ -138,6 +142,19 @@ fn real_main() -> Result<()> {
         }
         return Ok(());
     }
+    let episode = match cli.episode {
+        1 => Episode::E1,
+        2 => Episode::E2,
+        n => bail!("--episode takes 1 or 2 (Episode 3 is not implemented yet), not {n}"),
+    };
+    if episode != Episode::E1 && !report.playable(episode) {
+        bail!(
+            "{} does not contain a complete Episode {} installation \
+             (run `tdtool inventory` for details).",
+            root.display(),
+            cli.episode
+        );
+    }
     if !report.playable(Episode::E1) {
         bail!(
             "{} does not contain a complete Traffic Department 2192 installation \
@@ -163,6 +180,12 @@ fn real_main() -> Result<()> {
         }
         (None, None) => match cli.dev_mapview.as_deref() {
             Some(map) => Box::new(mapview::MapView::new(&dir, map)?),
+            // The Episode 2 program (`td2.exe`, started directly in the original, U-005).
+            None if episode == Episode::E2 => Box::new(td_flow::Episode2::new(
+                &dir,
+                &resources,
+                Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
+            )?),
             // The Episode 1 program: script choice, menu, campaign, flights.
             None => Box::new(td_flow::Episode1::new(
                 &dir,

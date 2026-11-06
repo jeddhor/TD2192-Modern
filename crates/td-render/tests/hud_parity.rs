@@ -49,6 +49,7 @@ fn state(ds: &Ds<'_>, shots: [(u8, u8); 51]) -> HudState {
     }
     let ticker = ds.w(0x32BC);
     HudState {
+        episode: td_sim::flight::episode::Episode::E1,
         flight: 1,
         // Mission ticks only drive the low-armour pulse; armour stays above 6 in these runs.
         ticks: 0,
