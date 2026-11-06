@@ -19,8 +19,13 @@
 //! With every Enhanced key off, the output is the Classic RGBA ([`Framebuffer::to_rgba`]), which
 //! the tests check. [`Pipeline`] keeps its buffers between frames, so the steady state does not
 //! allocate.
+//!
+//! Fixed-colour marks ([`guidance`], the colour-blind guidance line, M12-04) are drawn into
+//! flight frames after stage 2 and again over the final image ([`Pipeline::set_marks`]); with
+//! none set the stages are as above.
 
 pub mod bloom;
+pub mod guidance;
 pub mod lighting;
 pub mod lights;
 pub mod scene;
@@ -116,9 +121,18 @@ pub struct Pipeline {
     base: Vec<[u8; 4]>,
     out: Vec<[u8; 4]>,
     scratch: upscale::Scratch,
+    /// Fixed-colour pixels of flight frames (base coordinates).
+    marks: Vec<guidance::Mark>,
 }
 
 impl Pipeline {
+    /// The fixed-colour marks drawn into the next flight frames (the colour-blind guidance
+    /// line; empty: none). Front-end frames never get them.
+    pub fn set_marks(&mut self, marks: &[guidance::Mark]) {
+        self.marks.clear();
+        self.marks.extend_from_slice(marks);
+    }
+
     /// Runs stages 2..4 on `frame`.
     ///
     /// # Panics
@@ -131,6 +145,11 @@ impl Pipeline {
     ) -> Rendered<'_> {
         let w = frame.width;
         palette_to_rgba(frame, &mut self.base);
+        let marks: &[guidance::Mark] = match frame.flight {
+            Some(_) => &self.marks,
+            None => &[],
+        };
+        guidance::draw(&mut self.base, w, 1, marks);
         let k = cfg.upscaler.factor();
         // HUD and playfield are filtered as separate images in flight frames (§5).
         let split = frame.flight.map(|_| HUD_Y as usize);
@@ -147,8 +166,13 @@ impl Pipeline {
             );
             &mut self.out
         };
-        if frame.flight.is_some() && (cfg.lighting.is_some() || cfg.bloom) {
+        let lit = frame.flight.is_some() && (cfg.lighting.is_some() || cfg.bloom);
+        if lit {
             post.apply(out.as_flattened_mut(), k, frame, cfg);
+        }
+        if lit || k > 1 {
+            // Full strength and sharp edges over whatever the later stages did.
+            guidance::draw(out, w, k, marks);
         }
         Rendered {
             rgba: out.as_flattened(),
@@ -322,6 +346,80 @@ mod tests {
         };
         pipe.render(&flight, &cfg, &mut post);
         assert_eq!((post.0, post.1), (1, 600));
+    }
+
+    #[test]
+    fn marks_change_only_their_pixels_and_only_in_flight_frames() {
+        use guidance::Mark;
+        let fb = test_frame(WIDTH);
+        let classic = fb.to_rgba();
+        let emissive = Emissive::default();
+        let flight = FrameInput {
+            indexed: &fb,
+            width: WIDTH,
+            flight: Some(FlightInput {
+                margin: 0,
+                scene: None,
+                emissive: &emissive,
+            }),
+        };
+        let marks = [
+            Mark {
+                x: 10,
+                y: 20,
+                rgb: [1, 2, 3],
+            },
+            Mark {
+                x: 11,
+                y: 20,
+                rgb: [4, 5, 6],
+            },
+        ];
+        let mut pipe = Pipeline::default();
+        pipe.set_marks(&marks);
+        let out = pipe.render(&flight, &Config::default(), &mut NoPost);
+        let changed: Vec<usize> = (0..WIDTH * HEIGHT)
+            .filter(|&i| out.rgba[i * 4..i * 4 + 4] != classic[i * 4..i * 4 + 4])
+            .collect();
+        assert_eq!(changed, [20 * WIDTH + 10, 20 * WIDTH + 11]);
+        assert_eq!(&out.rgba[(20 * WIDTH + 11) * 4..][..4], &[4, 5, 6, 255]);
+        // Front-end frames never get them.
+        let menu = FrameInput {
+            flight: None,
+            ..flight
+        };
+        assert_eq!(
+            pipe.render(&menu, &Config::default(), &mut NoPost).rgba,
+            classic.as_slice()
+        );
+        // Over a lit, upscaled frame they are full k x k blocks.
+        struct Darken;
+        impl PostStage for Darken {
+            fn apply(&mut self, out: &mut [u8], _: usize, _: &FrameInput<'_>, _: &Config) {
+                out.iter_mut().for_each(|v| *v /= 2);
+            }
+        }
+        let cfg = Config {
+            upscaler: Upscaler::Scale2x,
+            lighting: Some(LightMode::Full),
+            bloom: false,
+        };
+        let out = pipe.render(&flight, &cfg, &mut Darken);
+        for (sx, sy) in [(20, 40), (21, 41), (22, 40), (23, 41)] {
+            let i = (sy * 2 * WIDTH + sx) * 4;
+            let want = if sx < 22 {
+                [1, 2, 3, 255]
+            } else {
+                [4, 5, 6, 255]
+            };
+            assert_eq!(&out.rgba[i..i + 4], &want, "({sx}, {sy})");
+        }
+        // None set: the Classic output again.
+        pipe.set_marks(&[]);
+        assert_eq!(
+            pipe.render(&flight, &Config::default(), &mut NoPost).rgba,
+            classic.as_slice()
+        );
     }
 
     #[test]

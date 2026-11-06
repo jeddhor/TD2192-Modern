@@ -1,9 +1,15 @@
-//! The port's settings screens (M11-03): video, audio, controls, profile and accessibility.
+//! The port's settings screens (M11-03): video, audio, controls, profile, accessibility and
+//! game data.
 //!
 //! Reached from the start screen and, during play, with the host's options key (F2). Every
 //! change goes to the host through the [`SettingsPort`] at once; the host saves
 //! `settings.toml` and applies what it can live (window, volumes, SFX policy, Enhanced
 //! presentation; the flight reads the control bindings every tick).
+//!
+//! The game-data page shows the folder or ZIP in use, its check against the manifest and the
+//! playable episodes, and chooses another folder or ZIP or extracts the ZIP (see
+//! [`super::data`]); the first run opens it on its own ([`OptionsScreen::data_setup`]) to show
+//! what was found.
 //!
 //! The Classic profile forces every `[enhanced]` feature off (MDG §6.2, spec
 //! enhanced/presentation rev 2 §2), so their rows are shown but cannot be changed until the
@@ -20,6 +26,7 @@ use td_render::Framebuffer;
 use td_sim::FlightKey;
 
 use super::SettingsPort;
+use super::data::{DataInfo, DataRequest, DataSource};
 use super::ui::{
     Fader, INK_CURSOR, INK_DISABLED, INK_HEADING, INK_NOTE, INK_TEXT, INK_VALUE, Nav, PadNav,
     UiAssets, nav,
@@ -37,6 +44,7 @@ pub enum Page {
     Controls,
     Profile,
     Accessibility,
+    Data,
 }
 
 /// A row of a page.
@@ -56,15 +64,22 @@ pub enum Row {
     ColorblindGuidance,
     Binding(FlightKey),
     ResetControls,
+    /// Game data: choose an installed folder.
+    PickFolder,
+    /// Game data: choose the original ZIP.
+    PickZip,
+    /// Game data: extract the ZIP shown into the user data directory.
+    Extract,
     Back,
 }
 
-const MAIN_ROWS: [Row; 6] = [
+const MAIN_ROWS: [Row; 7] = [
     Row::Open(Page::Video),
     Row::Open(Page::Audio),
     Row::Open(Page::Controls),
     Row::Open(Page::Profile),
     Row::Open(Page::Accessibility),
+    Row::Open(Page::Data),
     Row::Back,
 ];
 const VIDEO_ROWS: [Row; 7] = [
@@ -79,6 +94,7 @@ const VIDEO_ROWS: [Row; 7] = [
 const AUDIO_ROWS: [Row; 4] = [Row::MusicVolume, Row::SfxVolume, Row::SfxMode, Row::Back];
 const PROFILE_ROWS: [Row; 2] = [Row::Profile, Row::Back];
 const ACCESSIBILITY_ROWS: [Row; 2] = [Row::ColorblindGuidance, Row::Back];
+const DATA_ROWS: [Row; 4] = [Row::PickFolder, Row::PickZip, Row::Extract, Row::Back];
 
 /// The rows of `page`, top to bottom.
 pub fn rows(page: Page) -> Vec<Row> {
@@ -93,6 +109,7 @@ pub fn rows(page: Page) -> Vec<Row> {
             .collect(),
         Page::Profile => PROFILE_ROWS.to_vec(),
         Page::Accessibility => ACCESSIBILITY_ROWS.to_vec(),
+        Page::Data => DATA_ROWS.to_vec(),
     }
 }
 
@@ -104,6 +121,17 @@ fn page_name(page: Page) -> &'static str {
         Page::Controls => "controls",
         Page::Profile => "profile",
         Page::Accessibility => "accessibility",
+        Page::Data => "game data",
+    }
+}
+
+/// True if the game-data row `row` can be chosen with `info` (`None`: the host has not
+/// described the data). Other rows are always true here.
+pub fn data_row_enabled(row: Row, info: Option<&DataInfo>) -> bool {
+    match row {
+        Row::PickFolder | Row::PickZip => info.is_some_and(DataInfo::changeable),
+        Row::Extract => info.is_some_and(|i| i.changeable() && i.shown().archive),
+        _ => true,
     }
 }
 
@@ -138,6 +166,9 @@ fn label(row: Row) -> String {
         Row::ColorblindGuidance => "colour-blind guidance line".into(),
         Row::Binding(k) => flight_key_action(k).into(),
         Row::ResetControls => "reset to defaults".into(),
+        Row::PickFolder => "choose a folder".into(),
+        Row::PickZip => "choose a zip file".into(),
+        Row::Extract => "extract the zip".into(),
         Row::Back => "back".into(),
     }
 }
@@ -194,7 +225,13 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
         }
         .into(),
         Row::ColorblindGuidance => on_off(s.accessibility.colorblind_guidance),
-        Row::Open(_) | Row::Binding(_) | Row::ResetControls | Row::Back => return None,
+        Row::Open(_)
+        | Row::Binding(_)
+        | Row::ResetControls
+        | Row::PickFolder
+        | Row::PickZip
+        | Row::Extract
+        | Row::Back => return None,
     })
 }
 
@@ -205,7 +242,10 @@ fn note(row: Row) -> Option<&'static str> {
         Row::Scale => Some("aspect keeps the original 4x3 shape"),
         Row::Upscaler => Some("smooths the pixel art"),
         Row::SfxMode => Some("polyphonic plays several effects at once"),
-        Row::ColorblindGuidance => Some("not drawn yet - saved for a later version"),
+        Row::ColorblindGuidance => Some("the guidance line in colours safe for colour blindness"),
+        Row::PickFolder => Some("an installed copy - used where it is"),
+        Row::PickZip => Some("the original zip - read where it is"),
+        Row::Extract => Some("copies the checked game files into"),
         _ => None,
     }
 }
@@ -261,7 +301,13 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
         Row::ColorblindGuidance => {
             s.accessibility.colorblind_guidance = !s.accessibility.colorblind_guidance;
         }
-        Row::Open(_) | Row::Binding(_) | Row::ResetControls | Row::Back => return false,
+        Row::Open(_)
+        | Row::Binding(_)
+        | Row::ResetControls
+        | Row::PickFolder
+        | Row::PickZip
+        | Row::Extract
+        | Row::Back => return false,
     }
     true
 }
@@ -299,6 +345,10 @@ pub struct OptionsScreen {
     leaving: bool,
     pad: PadNav,
     started: bool,
+    /// Opened on the game-data page alone (the first run): leaving the page leaves the screen.
+    standalone: bool,
+    /// The game data as last seen from the host (a new ZIP moves the cursor to extract).
+    data_seen: Option<DataInfo>,
 }
 
 impl OptionsScreen {
@@ -309,6 +359,7 @@ impl OptionsScreen {
             ui,
             seen: settings.clone(),
             settings,
+            data_seen: port.data_info(),
             port,
             page: Page::Main,
             cursor: 0,
@@ -319,7 +370,33 @@ impl OptionsScreen {
             leaving: false,
             pad: PadNav::default(),
             started: false,
+            standalone: false,
         }
+    }
+
+    /// The game-data page on its own: the first run shows what it found there (M13-02). The
+    /// cursor starts on `extract the zip` for an archive and on `continue` otherwise; leaving
+    /// the page closes the screen.
+    pub fn data_setup(ui: UiAssets, settings: Settings, port: SettingsPort) -> Self {
+        let mut s = Self::new(ui, settings, port);
+        s.standalone = true;
+        s.open(Page::Data);
+        s.cursor = s.data_cursor();
+        s
+    }
+
+    /// Where the cursor goes on the game-data page: extract for a ZIP that can be extracted,
+    /// else the last row.
+    fn data_cursor(&self) -> usize {
+        let rows = rows(Page::Data);
+        rows.iter()
+            .position(|&r| r == Row::Extract && self.enabled(r))
+            .unwrap_or(rows.len() - 1)
+    }
+
+    /// True if `row` can be chosen now.
+    fn enabled(&self, row: Row) -> bool {
+        row_enabled(row, &self.settings) && data_row_enabled(row, self.data_seen.as_ref())
     }
 
     /// The page shown.
@@ -366,7 +443,7 @@ impl OptionsScreen {
         let mut i = self.cursor as isize;
         for _ in 0..rows.len() {
             i = (i + dir).rem_euclid(n);
-            if row_enabled(rows[i as usize], &self.settings) {
+            if self.enabled(rows[i as usize]) {
                 break;
             }
         }
@@ -377,13 +454,13 @@ impl OptionsScreen {
         self.page = page;
         self.cursor = 0;
         self.column = Column::Keyboard;
-        if !row_enabled(self.row(), &self.settings) {
+        if !self.enabled(self.row()) {
             self.move_cursor(1);
         }
     }
 
     fn back(&mut self) {
-        if self.page == Page::Main {
+        if self.page == Page::Main || self.standalone {
             self.leaving = true;
             self.fader.fade_out();
         } else {
@@ -413,6 +490,30 @@ impl OptionsScreen {
             ));
         }
         self.submit();
+    }
+
+    /// Takes the host's latest description of the game data. When a new ZIP has been chosen
+    /// the cursor moves to `extract the zip`; a row that became unavailable is left.
+    fn follow_data(&mut self) {
+        let info = self.port.data_info();
+        if info == self.data_seen {
+            return;
+        }
+        let new_zip = info
+            .as_ref()
+            .and_then(|i| i.pending.as_ref())
+            .is_some_and(|p| {
+                p.archive && self.data_seen.as_ref().and_then(|s| s.pending.as_ref()) != Some(p)
+            });
+        self.data_seen = info;
+        if self.page != Page::Data {
+            return;
+        }
+        if new_zip {
+            self.cursor = self.data_cursor();
+        } else if !self.enabled(self.row()) {
+            self.move_cursor(1);
+        }
     }
 
     /// A binding capture's tick.
@@ -469,6 +570,7 @@ impl Screen for OptionsScreen {
             self.seen = ctx.settings.clone();
             self.settings = ctx.settings.clone();
         }
+        self.follow_data();
         if let Some((_, left)) = &mut self.message {
             *left -= 1;
             if *left == 0 {
@@ -526,6 +628,15 @@ impl Screen for OptionsScreen {
                     self.say("controls reset to the defaults".into());
                     self.submit();
                 }
+                Row::PickFolder | Row::PickZip | Row::Extract if self.enabled(row) => {
+                    // The host opens the dialog or extracts after this tick, then describes
+                    // the outcome in the data info.
+                    self.port.request_data(match row {
+                        Row::PickFolder => DataRequest::PickFolder,
+                        Row::PickZip => DataRequest::PickZip,
+                        _ => DataRequest::Extract,
+                    });
+                }
                 _ => {
                     if change(row, &mut self.settings, 1) {
                         self.submit();
@@ -541,9 +652,100 @@ impl Screen for OptionsScreen {
         fb.clear(0);
         match self.page {
             Page::Controls => self.draw_controls(fb),
+            Page::Data => self.draw_data(fb),
             _ => self.draw_list(fb),
         }
         self.fader.apply(&mut fb.palette, &self.ui.palette);
+    }
+}
+
+/// Where the values of the game-data page start.
+const DATA_VALUE_X: i32 = 72;
+
+impl OptionsScreen {
+    /// The game-data page: what is in use (or newly chosen), then the rows.
+    fn draw_data(&self, fb: &mut Framebuffer) {
+        let ui = &self.ui;
+        ui.heading(fb, page_name(Page::Data), 16);
+        let line = |fb: &mut Framebuffer, y: i32, label: &str, value: &str| {
+            ui.text(fb, label, (16, y), INK_HEADING);
+            ui.text_marked(
+                fb,
+                value,
+                (DATA_VALUE_X, y),
+                INK_VALUE,
+                320 - DATA_VALUE_X - 8,
+            );
+        };
+        match &self.data_seen {
+            None => {
+                ui.text_centred(fb, "no game data", 50, INK_DISABLED);
+            }
+            Some(info) => {
+                let shown = info.shown();
+                ui.text(
+                    fb,
+                    if shown.archive { "zip file" } else { "folder" },
+                    (16, 40),
+                    INK_HEADING,
+                );
+                ui.path(
+                    fb,
+                    &shown.path,
+                    (DATA_VALUE_X, 40),
+                    INK_VALUE,
+                    320 - DATA_VALUE_X - 8,
+                );
+                let source = match (info.pending.is_some(), info.source) {
+                    (true, _) | (false, DataSource::Chosen) => "chosen now",
+                    (false, DataSource::CommandLine) => "the command line --data",
+                    (false, DataSource::Environment) => "td2192_data",
+                    (false, DataSource::Settings) => "settings.toml",
+                };
+                line(fb, 50, "set by", source);
+                line(fb, 60, "files", &shown.files_line());
+                line(fb, 70, "playable", &shown.playable_line());
+                if info.pending.is_some() {
+                    ui.text_centred(fb, "used from the start screen on", 82, INK_NOTE);
+                }
+            }
+        }
+        let rows = rows(Page::Data);
+        for (i, &row) in rows.iter().enumerate() {
+            let y = 96 + i as i32 * 12;
+            let ink = if !self.enabled(row) {
+                INK_DISABLED
+            } else if i == self.cursor {
+                INK_CURSOR
+            } else {
+                INK_TEXT
+            };
+            let text = match row {
+                Row::Back if self.standalone => "continue".to_string(),
+                _ => label(row),
+            };
+            ui.text(fb, &text, (128, y), ink);
+        }
+        let info = self.data_seen.as_ref();
+        let locked = info.is_some_and(|i| !i.changeable());
+        if locked {
+            let by = match info.map(|i| i.source) {
+                Some(DataSource::CommandLine) => {
+                    "set by --data on the command line - change it there"
+                }
+                _ => "set by td2192_data - change it there",
+            };
+            ui.text_marked(fb, by, (8, 148), INK_NOTE, 304);
+        } else if let Some(n) = note(self.row()) {
+            ui.text_centred(fb, n, 148, INK_NOTE);
+            if let (Row::Extract, Some(i)) = (self.row(), info) {
+                ui.path(fb, &i.import_dir, (8, 157), INK_NOTE, 304);
+            }
+        }
+        if let Some(m) = info.and_then(|i| i.message.as_deref()) {
+            ui.text_marked(fb, m, (8, 166), INK_HEADING, 304);
+        }
+        ui.text_centred(fb, "enter chooses - escape goes back", 180, INK_NOTE);
     }
 }
 
@@ -595,7 +797,8 @@ impl OptionsScreen {
         }
         if main {
             let profile = value(Row::Profile, s).unwrap_or_default();
-            ui.text_centred(fb, &format!("profile - {profile}"), 148, INK_NOTE);
+            // Below the seventh row (game data, rev 2).
+            ui.text_centred(fb, &format!("profile - {profile}"), 158, INK_NOTE);
         } else {
             if let Some(n) = note(self.row()) {
                 ui.text_centred(fb, n, 148, INK_NOTE);
@@ -963,6 +1166,10 @@ mod tests {
         let dir = DataDir::open(&data).unwrap();
         let mut rig = Rig::new();
         rig.settings.profile = Profile::Enhanced;
+        let mut info = data_info(false, DataSource::Settings);
+        info.pending = Some(summary(true));
+        info.message = Some("saved to settings.toml".into());
+        rig.port.set_data_info(info);
         let mut s =
             OptionsScreen::new(UiAssets::load(&dir), rig.settings.clone(), rig.port.clone());
         rig.settle(&mut s);
@@ -974,8 +1181,12 @@ mod tests {
             Page::Controls,
             Page::Profile,
             Page::Accessibility,
+            Page::Data,
         ] {
             s.open(page);
+            if page == Page::Data {
+                s.cursor = 2; // extract, with its note and the import folder
+            }
             s.draw(&mut fb);
             let mut ppm = b"P6 320 200 255\n".to_vec();
             for &p in &fb.pixels {
@@ -991,6 +1202,8 @@ mod tests {
     fn every_page_draws() {
         let mut rig = Rig::new();
         rig.settings.profile = Profile::Enhanced;
+        rig.port
+            .set_data_info(data_info(false, DataSource::Settings));
         let mut s = rig.screen();
         rig.settle(&mut s);
         let mut fb = Framebuffer::new();
@@ -1001,10 +1214,122 @@ mod tests {
             Page::Controls,
             Page::Profile,
             Page::Accessibility,
+            Page::Data,
         ] {
             s.open(page);
             s.draw(&mut fb);
             assert!(fb.pixels.contains(&INK_CURSOR), "{page:?}");
         }
+    }
+
+    fn summary(archive: bool) -> super::super::data::DataSummary {
+        super::super::data::DataSummary {
+            path: std::path::PathBuf::from(if archive {
+                "C:\\Downloads\\TD2192.ZIP"
+            } else {
+                "C:\\Games\\TD2192"
+            }),
+            archive,
+            counts: td_assets::FileCounts {
+                ok: 218,
+                ..td_assets::FileCounts::default()
+            },
+            playable: [true; 3],
+        }
+    }
+
+    fn data_info(archive: bool, source: DataSource) -> DataInfo {
+        DataInfo {
+            current: summary(archive),
+            source,
+            pending: None,
+            message: None,
+            import_dir: std::path::PathBuf::from("C:\\Users\\x\\TD2192-Modern\\game"),
+        }
+    }
+
+    #[test]
+    fn the_game_data_page_asks_the_host_and_follows_it() {
+        let mut rig = Rig::new();
+        rig.port
+            .set_data_info(data_info(false, DataSource::Settings));
+        let mut s = rig.screen();
+        rig.settle(&mut s);
+        for _ in 0..5 {
+            rig.key(&mut s, Key::DOWN);
+        }
+        assert_eq!(s.row(), Row::Open(Page::Data));
+        rig.key(&mut s, Key::ENTER);
+        assert_eq!((s.page(), s.row()), (Page::Data, Row::PickFolder));
+        // A folder cannot be extracted: the row is skipped.
+        rig.key(&mut s, Key::DOWN);
+        rig.key(&mut s, Key::DOWN);
+        assert_eq!(s.row(), Row::Back);
+        rig.key(&mut s, Key::UP);
+        assert_eq!(s.row(), Row::PickZip);
+        rig.key(&mut s, Key::ENTER);
+        assert_eq!(rig.port.take_data_request(), Some(DataRequest::PickZip));
+        // The host found a usable ZIP: the cursor goes to extract.
+        let mut info = data_info(false, DataSource::Settings);
+        info.pending = Some(summary(true));
+        info.message = Some("saved to settings.toml".into());
+        rig.port.set_data_info(info);
+        rig.tick(&mut s, &TickInput::default());
+        assert_eq!(s.row(), Row::Extract);
+        rig.key(&mut s, Key::ENTER);
+        assert_eq!(rig.port.take_data_request(), Some(DataRequest::Extract));
+        let mut fb = Framebuffer::new();
+        s.draw(&mut fb);
+        assert!(fb.pixels.contains(&INK_HEADING), "the message is shown");
+        // Back to the main page.
+        rig.key(&mut s, Key::ESCAPE);
+        assert_eq!((s.page(), s.row()), (Page::Main, Row::Open(Page::Data)));
+    }
+
+    #[test]
+    fn an_override_locks_the_game_data_rows() {
+        let mut rig = Rig::new();
+        rig.port
+            .set_data_info(data_info(true, DataSource::Environment));
+        let mut s = rig.screen();
+        rig.settle(&mut s);
+        s.open(Page::Data);
+        assert_eq!(s.row(), Row::Back, "every other row is disabled");
+        rig.key(&mut s, Key::UP);
+        assert_eq!(s.row(), Row::Back);
+        assert_eq!(rig.port.take_data_request(), None);
+        // Without a description from the host the rows are disabled too.
+        let rig = Rig::new();
+        let mut s = rig.screen();
+        s.open(Page::Data);
+        assert_eq!(s.row(), Row::Back);
+    }
+
+    #[test]
+    fn the_first_run_page_stands_alone() {
+        let mut rig = Rig::new();
+        rig.port.set_data_info(data_info(true, DataSource::Chosen));
+        let mut s =
+            OptionsScreen::data_setup(UiAssets::blank(), rig.settings.clone(), rig.port.clone());
+        assert_eq!((s.page(), s.row()), (Page::Data, Row::Extract));
+        rig.settle(&mut s);
+        rig.key(&mut s, Key::DOWN);
+        assert_eq!(s.row(), Row::Back);
+        // "continue" leaves the screen, not to the main page.
+        rig.key(&mut s, Key::ENTER);
+        let mut popped = false;
+        for _ in 0..100 {
+            if matches!(rig.tick(&mut s, &TickInput::default()), Transition::Pop) {
+                popped = true;
+                break;
+            }
+        }
+        assert!(popped);
+        // A folder: the cursor starts on continue.
+        let rig = Rig::new();
+        rig.port.set_data_info(data_info(false, DataSource::Chosen));
+        let s =
+            OptionsScreen::data_setup(UiAssets::blank(), rig.settings.clone(), rig.port.clone());
+        assert_eq!(s.row(), Row::Back);
     }
 }

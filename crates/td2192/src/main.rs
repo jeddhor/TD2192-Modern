@@ -1,5 +1,6 @@
 //! TD2192-Modern: the game executable (composition root).
 
+mod data;
 mod enhanced;
 mod flight;
 mod mapview;
@@ -11,6 +12,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use td_assets::{DataDir, Episode, discover_data_dir, validate};
 use td_flow::Settings;
+use td_flow::front::DataSource;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -19,7 +21,7 @@ use td_flow::Settings;
     about = "Traffic Department 2192, reimplemented"
 )]
 struct Cli {
-    /// Original game directory (overrides TD2192_DATA and settings).
+    /// Original game folder, or the original ZIP file (overrides TD2192_DATA and settings).
     #[arg(long)]
     data: Option<PathBuf>,
     /// Start this episode's program directly: 1 (`file0001.exe`), 2 (`td2.exe`) or 3
@@ -75,34 +77,6 @@ fn main() {
     }
 }
 
-/// First run: ask for the original game folder until a valid one is chosen or the user cancels.
-fn first_run_pick() -> Result<PathBuf> {
-    td_platform::show_info(
-        "TD2192-Modern",
-        "Welcome! Please choose the folder where Traffic Department 2192 is installed \
-         (the one containing TD1.EXE and FILE0001.EXE).",
-    );
-    loop {
-        let Some(path) = td_platform::pick_folder()? else {
-            bail!("No game folder was chosen. Start again, or run with --data <folder>.");
-        };
-        let ok = DataDir::open(&path)
-            .map(|d| validate(&d).playable(Episode::E1))
-            .unwrap_or(false);
-        if ok {
-            return Ok(path);
-        }
-        td_platform::show_info(
-            "TD2192-Modern",
-            &format!(
-                "{} does not contain a complete Traffic Department 2192 installation. \
-                 Please choose another folder.",
-                path.display()
-            ),
-        );
-    }
-}
-
 fn real_main() -> Result<()> {
     let cli = Cli::parse();
     tracing_subscriber::fmt()
@@ -119,13 +93,30 @@ fn real_main() -> Result<()> {
         settings.save(&settings_path)?;
     }
 
-    let root = match discover_data_dir(cli.data.as_deref(), settings.data_dir.as_deref()) {
-        Some((root, _)) => root,
+    // MDG §8.8: --data > TD2192_DATA > settings.toml > the first-run choice (M13-02).
+    let mut found = discover_data_dir(cli.data.as_deref(), settings.data_dir.as_deref())
+        .map(|(root, source)| (root, DataSource::from(source)));
+    if let Some((root, DataSource::Settings)) = &found
+        && !DataDir::open(root).is_ok_and(|d| validate(&d).playable(Episode::E1))
+    {
+        // The saved choice was moved, deleted or changed: ask again.
+        td_platform::show_info(
+            "TD2192-Modern",
+            &format!(
+                "The game data saved in your settings ({}) can no longer be used. \
+                 Please choose it again.",
+                root.display()
+            ),
+        );
+        found = None;
+    }
+    let (root, source) = match found {
+        Some(found) => found,
         None => {
-            let root = first_run_pick()?;
+            let root = data::first_run()?;
             settings.data_dir = Some(root.clone());
             settings.save(&settings_path)?;
-            root
+            (root, DataSource::Chosen)
         }
     };
     let dir = DataDir::open(&root).with_context(|| format!("opening {}", root.display()))?;
@@ -135,6 +126,17 @@ fn real_main() -> Result<()> {
             "TD2192-Modern {} (SDL {})",
             env!("CARGO_PKG_VERSION"),
             td_platform::sdl_version()
+        );
+        let summary = td_flow::front::DataSummary::of(&dir, &report);
+        println!(
+            "data: {} ({}, {source:?}); {}",
+            root.display(),
+            if summary.archive {
+                "zip file"
+            } else {
+                "folder"
+            },
+            summary.files_line()
         );
         for ep in Episode::ALL {
             println!(
@@ -214,16 +216,33 @@ fn real_main() -> Result<()> {
     let options = run::RunOptions {
         exit_after_ticks: cli.dev_exit_after,
     };
+    let ui = td_flow::front::UiAssets::load(&dir);
+    let host = data::DataHost::new(
+        dir,
+        resources,
+        &report,
+        source,
+        td_assets::import_dir(&user_dir),
+    );
+    port.set_data_info(host.info().clone());
+    let mut flow = td_flow::Flow::new(first);
+    if source == DataSource::Chosen {
+        // The first run: what was found, in the game's own fonts; a ZIP can be extracted
+        // there (M13-02).
+        flow.push(Box::new(td_flow::front::OptionsScreen::data_setup(
+            ui,
+            settings.clone(),
+            port.clone(),
+        )));
+    }
     let rd = run::RunData {
-        data: &dir,
-        resources: &resources,
         settings: &settings,
         saved,
         user_dir: &user_dir,
         enhanced: view,
         port,
     };
-    run::run(td_flow::Flow::new(first), &rd, &options)
+    run::run(flow, &rd, host, &options)
 }
 
 /// An episode's program from its start. Saved games live in the user data directory, never in

@@ -47,7 +47,7 @@ use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_audio::{AudioCommand, Pcm8, decode_voc};
 use td_flow::flight_screens::{
     CommScreen, ComputerMenu, FlightModal, FlightScreenAssets, ModalStep, Pause, ShipDot,
-    TacticalMap, TargetBoard, draw_ir_notice, shows_ir_notice,
+    TacticalMap, TargetBoard, draw_ir_notice, draw_pause_line, shows_ir_notice,
 };
 use td_flow::{
     FLIGHT_TICK_HZ, FlightResult, FlightScreen, FlowContext, PlaceholderLauncher, RETRACE_HZ,
@@ -571,24 +571,37 @@ impl Screen for FlightArena {
 }
 
 impl FlightArena {
-    /// Composes the Enhanced frame when the run loop asked for one (module docs). The modal
-    /// screens keep their Classic picture, which the pipeline centres.
+    /// Composes the Enhanced frame when the run loop asked for one (module docs). The pause
+    /// is a text overlay, so it is drawn over the wide frame like the infra-red notice (spec
+    /// enhanced/presentation rev 4 §4.3); the other modal screens keep their Classic picture,
+    /// which the pipeline centres.
     fn compose_enhanced(&self) {
         let Some(view) = &self.enhanced else {
             return;
         };
-        if self.screen.is_some() {
-            return;
-        }
+        let paused = match &self.screen {
+            None => false,
+            Some(FlightModal::Pause(_)) => true,
+            Some(_) => return,
+        };
         // A draw from inside `compose` (none today) would find the view borrowed: skip it.
         let Ok(mut view) = view.try_borrow_mut() else {
             return;
         };
         let view: &mut EnhancedView = &mut view;
         view.compose(
-            |fb| self.draw_frame(fb),
+            |fb| {
+                self.draw_play(fb);
+                if paused {
+                    widescreen::overlay_centred(fb, |fb| draw_pause_line(fb, &self.screens));
+                }
+            },
             |margin, mode| self.light_scene(margin, mode),
             self.emissive(),
+            |margin, width| {
+                let display = self.hud.borrow();
+                td_render::enhanced::guidance::marks(&display.hud, margin, width)
+            },
         );
     }
 
@@ -599,6 +612,13 @@ impl FlightArena {
             screen.draw(fb);
             return;
         }
+        self.draw_play(fb);
+    }
+
+    /// The flight frame in `fb`'s width (Classic at 320, widescreen when wider). During the
+    /// pause it is the frame the pause was drawn over: the tick is suspended, so the state and
+    /// the instruments are those of that frame.
+    fn draw_play(&self, fb: &mut Framebuffer) {
         let vp = Viewport::of(fb);
         fb.clear(0);
         fb.palette = self.dac.current().clone();
@@ -1191,5 +1211,154 @@ mod tests {
         assert_eq!(&repeats[..9], &[false; 9]);
         assert!(repeats[9]);
         assert!(repeats[9..].iter().filter(|&&r| r).count() >= 2);
+    }
+
+    /// E1 flight 1 after `ticks` ticks (P pressed in the last one when `pause`), composing
+    /// Enhanced frames into the returned view.
+    fn flown_arena(
+        dir: &DataDir,
+        resources: &ExeResources,
+        ticks: u32,
+        pause: bool,
+    ) -> (FlightArena, crate::enhanced::SharedView) {
+        let view = crate::enhanced::SharedView::default();
+        let mut arena = FlightArena::new(dir, resources, Episode::E1, 1)
+            .unwrap()
+            .with_enhanced(Some(view.clone()));
+        let settings = td_flow::Settings::default();
+        let mut audio = Vec::new();
+        for t in 1..=ticks {
+            let mut input = TickInput::default();
+            if pause && t == ticks {
+                let p = Key::letter('p').unwrap();
+                input.held.insert(p);
+                input.pressed.push(p);
+            }
+            let mut ctx = FlowContext {
+                data: dir,
+                resources,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, &input);
+            audio.clear();
+        }
+        (arena, view)
+    }
+
+    /// The Enhanced output of `arena` for `settings` and the Classic frame drawn with it.
+    fn enhanced_output(
+        arena: &FlightArena,
+        view: &crate::enhanced::SharedView,
+        settings: &td_flow::Settings,
+    ) -> (Option<crate::enhanced::RgbaImage>, Framebuffer) {
+        let mut e = crate::enhanced::Enhanced::new(
+            settings,
+            view.clone(),
+            None,
+            Box::new(td_render::enhanced::NoPost),
+        );
+        let on = e.begin_frame((1280, 960), td_platform::ScaleMode::Aspect4x3);
+        let mut classic = Framebuffer::new();
+        arena.draw(&mut classic);
+        if !on {
+            return (None, classic);
+        }
+        // What `present` hands the window.
+        let out = e.render(&classic).unwrap();
+        let img = crate::enhanced::RgbaImage {
+            rgba: out.rgba.to_vec(),
+            width: out.size.0,
+            height: out.size.1,
+        };
+        (Some(img), classic)
+    }
+
+    /// M12-04: with the colour-blind guidance setting off the flight is presented as before
+    /// (Classic path); with it on, only the guidance line's pixels differ from the Classic
+    /// frame, the dots in the marker's core colour.
+    #[test]
+    fn colour_blind_guidance_changes_only_the_guidance_line() {
+        use td_render::enhanced::guidance::{self, OUTLINE};
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let resources = ExeResources::load(&dir).unwrap();
+        let (arena, view) = flown_arena(&dir, &resources, 30, false);
+        let mut settings = td_flow::Settings::default();
+        let (off, _) = enhanced_output(&arena, &view, &settings);
+        assert!(off.is_none(), "setting off: the Classic path");
+        settings.accessibility.colorblind_guidance = true;
+        let (on, classic) = enhanced_output(&arena, &view, &settings);
+        let img = on.expect("setting on: the RGBA path");
+        assert_eq!((img.width, img.height), (320, 200));
+        let rgba = img.rgba;
+        let display = arena.hud.borrow();
+        let marker = display.hud.guidance_marker().expect("a guidance line");
+        let core = guidance::colour(marker).unwrap();
+        let marks = guidance::marks(&display.hud, 0, 320);
+        let reference = classic.to_rgba();
+        let mut changed = 0;
+        for i in 0..320 * 200 {
+            let (x, y) = ((i % 320) as i32, (i / 320) as i32);
+            let px = &rgba[i * 4..i * 4 + 4];
+            if px != &reference[i * 4..i * 4 + 4] {
+                changed += 1;
+                let m = marks.iter().rev().find(|m| (m.x, m.y) == (x, y));
+                let m = m.unwrap_or_else(|| panic!("({x}, {y}) changed but is no mark"));
+                assert_eq!(px, &[m.rgb[0], m.rgb[1], m.rgb[2], 255]);
+            }
+        }
+        let dots = marks.iter().filter(|m| m.rgb == core).count();
+        assert_eq!(dots, 6);
+        assert!(changed >= 6, "{changed}");
+        assert!(marks.iter().any(|m| m.rgb == OUTLINE));
+    }
+
+    /// M12-09 follow-up: the pause line is drawn over the wide frame (centred like the
+    /// infra-red notice), not over a centred Classic picture.
+    #[test]
+    fn pause_is_drawn_over_the_wide_frame() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let resources = ExeResources::load(&dir).unwrap();
+        let (arena, view) = flown_arena(&dir, &resources, 30, true);
+        assert!(
+            matches!(arena.screen, Some(FlightModal::Pause(_))),
+            "paused"
+        );
+        let mut paused = Framebuffer::new();
+        arena.draw_frame(&mut paused);
+        let mut play = Framebuffer::new();
+        arena.draw_play(&mut play);
+        let line: Vec<(i32, i32)> = (0..320 * 200)
+            .filter(|&i| paused.pixels[i] != play.pixels[i])
+            .map(|i| ((i % 320) as i32, (i / 320) as i32))
+            .collect();
+        assert!(!line.is_empty(), "the pause line differs from the frame");
+        let mut settings = td_flow::Settings::default();
+        settings.profile = td_flow::settings::Profile::Enhanced;
+        settings.enhanced.widescreen = td_flow::settings::Widescreen::W16x9;
+        let mut e = crate::enhanced::Enhanced::new(
+            &settings,
+            view.clone(),
+            None,
+            Box::new(td_render::enhanced::NoPost),
+        );
+        assert!(e.begin_frame((1920, 1080), td_platform::ScaleMode::Aspect4x3));
+        let mut classic = Framebuffer::new();
+        arena.draw(&mut classic);
+        let v = view.borrow();
+        let wide = v.composed().expect("the pause composes the wide frame");
+        assert_eq!(wide.width(), 428);
+        let m = 54;
+        for &(x, y) in &line {
+            assert_eq!(
+                wide.get(x + m, y),
+                paused.get(x, y),
+                "pause pixel ({x}, {y})"
+            );
+        }
+        // The side panels show the city, not black.
+        assert!((0..160).any(|y| wide.get(0, y) != Some(0)));
     }
 }

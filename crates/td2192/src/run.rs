@@ -4,12 +4,18 @@
 //! Presentation takes one of two paths each frame (ADR-0006): the Classic path presents the
 //! indexed 320 × 200 framebuffer as before; when any Enhanced feature is on, the frame goes
 //! through the Enhanced pipeline ([`crate::enhanced`]) and is presented as RGBA.
+//!
+//! The game data belongs to the [`DataHost`], which answers the game-data page and switches to
+//! a new choice when the start screen asks (M11-03, M13-02).
+//!
+//! F12 saves the indexed frame as an indexed PNG and, when the Enhanced pipeline presented the
+//! frame, also the pipeline's RGBA output at its own size, (W·k) × (200·k), before the window
+//! scaling (`*.enhanced.png`).
 
 use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use td_assets::{DataDir, ExeResources};
 use td_audio::{AudioCommand, Mixer, SfxPolicy};
 use td_flow::front::{OptionsScreen, SettingsPort, UiAssets};
 use td_flow::settings::{Scale, SfxMode};
@@ -19,7 +25,8 @@ use td_platform::{InputSnapshot, Key, Platform, ScaleMode, WindowConfig};
 use td_render::Framebuffer;
 use td_render::enhanced::lighting::LightStage;
 
-use crate::enhanced::{Enhanced, SharedView};
+use crate::data::DataHost;
+use crate::enhanced::{Enhanced, RgbaImage, SharedView};
 
 /// Audio device rate.
 pub const AUDIO_RATE: u32 = 48_000;
@@ -41,11 +48,9 @@ pub struct RunOptions {
     pub exit_after_ticks: Option<u64>,
 }
 
-/// Shared data a run needs.
+/// Shared data a run needs (the game data itself is the [`DataHost`]'s).
 #[derive(Debug)]
 pub struct RunData<'a> {
-    pub data: &'a DataDir,
-    pub resources: &'a ExeResources,
     /// The session's settings: the file's, with the command-line overrides.
     pub settings: &'a Settings,
     /// The settings as in the file (what the options screen's changes are saved onto).
@@ -62,8 +67,13 @@ pub struct RunData<'a> {
 /// other host keys.
 pub const OPTIONS_KEY: Key = Key(59); // F2
 
-/// Runs `flow` until it ends or the window closes.
-pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()> {
+/// Runs `flow` on the game data of `host` until it ends or the window closes.
+pub fn run(
+    mut flow: Flow,
+    rd: &RunData<'_>,
+    mut host: DataHost,
+    options: &RunOptions,
+) -> Result<()> {
     let settings = rd.settings;
     let mut platform = Platform::new(&WindowConfig {
         fullscreen: settings.video.fullscreen,
@@ -104,7 +114,7 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         if snap.quit {
             break;
         }
-        handle_host_keys(&snap, &mut platform, &fb, rd.user_dir)?;
+        let shot = handle_host_keys(&snap, &mut platform)?;
         // F10/F11 change the session only; the options screen shows them.
         session.video.fullscreen = platform.is_fullscreen();
         session.video.scale = scale_of(platform.scale_mode());
@@ -117,7 +127,7 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         snap.pressed.extend(pad_keys.pressed);
         if snap.was_pressed(OPTIONS_KEY) && !rd.port.is_open() {
             flow.push(Box::new(OptionsScreen::new(
-                UiAssets::load(rd.data),
+                UiAssets::load(host.data()),
                 session.clone(),
                 rd.port.clone(),
             )));
@@ -140,8 +150,8 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
                 },
             );
             let mut ctx = FlowContext {
-                data: rd.data,
-                resources: rd.resources,
+                data: host.data(),
+                resources: host.resources(),
                 settings: &session,
                 audio: &mut commands,
             };
@@ -149,11 +159,11 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
             for c in commands.drain(..) {
                 mixer.command(c);
             }
+            let path = rd.user_dir.join("settings.toml");
             if let Some(new) = rd.port.take() {
                 // The options screen changed something: apply it live, save it (M11-03).
                 apply_settings(&session, &new, &mut platform, &mut mixer)?;
                 saved = saved.with_changes(&session, &new);
-                let path = rd.user_dir.join("settings.toml");
                 if let Err(e) = saved.save(&path) {
                     tracing::warn!("settings not saved: {e}");
                 }
@@ -163,6 +173,26 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
             total_ticks += 1;
             if options.exit_after_ticks == Some(total_ticks) {
                 return dev_capture(&flow, &mut fb, &mut platform, &mut enhanced, rd.user_dir);
+            }
+            if rd.port.take_data_switch() && host.switch() {
+                // The start screen is on top: the new game data from the next tick on.
+                rd.port.data_switched();
+                rd.port.set_data_info(host.info().clone());
+            }
+            if let Some(request) = rd.port.take_data_request() {
+                // The game-data page: a dialog or an extraction, then a check (M13-02).
+                if let Some(chosen) = host.handle(request, &mut platform) {
+                    saved.data_dir = Some(chosen.clone());
+                    session.data_dir = Some(chosen);
+                    if let Err(e) = saved.save(&path) {
+                        tracing::warn!("settings not saved: {e}");
+                    }
+                }
+                rd.port.set_data_info(host.info().clone());
+                // The dialog took wall time that must not turn into ticks.
+                last = Instant::now();
+                step = FixedStep::new(hz);
+                break;
             }
             // A screen change may change the pace; restart the clock at the new rate.
             if rate_of(&flow) != hz {
@@ -180,12 +210,46 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         let enhanced_frame = enhanced.begin_frame(platform.output_size(), platform.scale_mode());
         flow.draw(&mut fb);
         if enhanced_frame {
+            enhanced.keep_output(shot);
             enhanced.present(&fb, &mut platform, false)?;
         } else {
             platform.present(&fb)?;
         }
+        if shot {
+            save_screenshots(
+                &fb,
+                enhanced_frame.then(|| enhanced.take_output()).flatten(),
+                rd.user_dir,
+            );
+        }
     }
     Ok(())
+}
+
+/// F12: the indexed frame, and the Enhanced pipeline's output when it presented this frame.
+fn save_screenshots(fb: &Framebuffer, enhanced: Option<RgbaImage>, user_dir: &Path) {
+    let path = match screenshot(fb, user_dir) {
+        Ok(p) => {
+            tracing::info!("screenshot saved to {}", p.display());
+            p
+        }
+        Err(e) => {
+            tracing::warn!("screenshot failed: {e:#}");
+            return;
+        }
+    };
+    if let Some(img) = enhanced {
+        let epath = path.with_extension("enhanced.png");
+        match save_rgba(&epath, img.width, img.height, &img.rgba) {
+            Ok(()) => tracing::info!(
+                "enhanced screenshot ({}x{}) saved to {}",
+                img.width,
+                img.height,
+                epath.display()
+            ),
+            Err(e) => tracing::warn!("enhanced screenshot failed: {e:#}"),
+        }
+    }
 }
 
 /// The SFX policy of `s`.
@@ -231,13 +295,8 @@ fn apply_settings(
 }
 
 /// Keys handled by the host rather than the game: F2 options (in the run loop), F10 scale
-/// mode, F11 fullscreen, F12 shot.
-fn handle_host_keys(
-    snap: &InputSnapshot,
-    platform: &mut Platform,
-    fb: &Framebuffer,
-    user_dir: &Path,
-) -> Result<()> {
+/// mode, F11 fullscreen, F12 shot (returned: the run loop saves the frame it presents next).
+fn handle_host_keys(snap: &InputSnapshot, platform: &mut Platform) -> Result<bool> {
     if snap.was_pressed(Key::F11) {
         platform.toggle_fullscreen()?;
     }
@@ -249,13 +308,7 @@ fn handle_host_keys(
         };
         platform.set_scale_mode(next);
     }
-    if snap.was_pressed(Key::F12) {
-        match screenshot(fb, user_dir) {
-            Ok(p) => tracing::info!("screenshot saved to {}", p.display()),
-            Err(e) => tracing::warn!("screenshot failed: {e:#}"),
-        }
-    }
-    Ok(())
+    Ok(snap.was_pressed(Key::F12))
 }
 
 fn dev_capture(
@@ -270,9 +323,21 @@ fn dev_capture(
     let path = screenshot(fb, user_dir)?;
     println!("screenshot: {}", path.display());
     let cap = if enhanced_frame {
-        enhanced
+        enhanced.keep_output(true);
+        let cap = enhanced
             .present(fb, platform, true)?
-            .context("window capture")?
+            .context("window capture")?;
+        if let Some(img) = enhanced.take_output() {
+            let epath = path.with_extension("enhanced.png");
+            save_rgba(&epath, img.width, img.height, &img.rgba)?;
+            println!(
+                "enhanced output: {} ({}x{})",
+                epath.display(),
+                img.width,
+                img.height
+            );
+        }
+        cap
     } else {
         platform.present_and_capture(fb)?
     };
