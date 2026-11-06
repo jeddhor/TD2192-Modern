@@ -35,6 +35,10 @@ Exit at this emulated time in seconds (alternative to -Frames).
 .PARAMETER Record
 Also record with DOSBox-X's DX-CAPTURE: wav, video (ZMBV AVI), opl (DRO), av (video+wav), all.
 
+.PARAMETER OracleOption
+Extra 'key = value' lines for oracle.ini, for example 'tick_stall_ms = 150' (oracle build 2,
+ORACLE.md section 4).
+
 .EXAMPLE
 # 60 emulated seconds of the intro, a framebuffer every second, PNGs, registered as a capture
 pwsh tools/scripts/oracle-run.ps1 -Seconds 60 -FbEvery 70 -Png -Register `
@@ -70,6 +74,7 @@ param(
     [string]$SceneDesc = '',
     [string]$Description = '',
     [string[]]$Set = @(),
+    [string[]]$OracleOption = @(),
     [string]$Rework = $(if ($env:TD2192_REWORK) { $env:TD2192_REWORK } else { 'P:\msdos\TD2192\re-work' }),
     [string]$DosboxExe = 'P:\msdos\TD2192\dosbox-x\bin\x64\Release\dosbox-x.exe',
     [string]$Build = 'DOSBox-X 2026.10.01 f1c4414 +td2192-oracle 1'
@@ -143,6 +148,8 @@ $ini = @(
     "exit_ms = $([int]($Seconds * 1000))"
     "fixed_time = $FixedTime"
 )
+# Extra oracle.ini lines ('key = value'), e.g. 'tick_stall_ms = 150' (oracle 2, ORACLE.md 4).
+foreach ($o in $OracleOption) { $ini += $o }
 if ($Scenario) {
     $scenarioPath = (Resolve-Path $Scenario).Path
     Copy-Item $scenarioPath (Join-Path $Out 'scenario.txt')
