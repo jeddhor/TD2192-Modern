@@ -760,7 +760,7 @@ Use each playbook with the milestone's task table in MDG §12.
 |---|---|---|
 | 1 | Writing to the original directory | Read-only, always. DOSBox uses a copy. |
 | 2 | Committing PNG/WAV/text extracted from the game | Hashes only. Exports go to `re-work` or scratch. |
-| 3 | Map treated as 200×200 | Episode maps are **201×201**; `intro.map` is 200×200. |
+| 3 | Map treated as 200×200 | Episode maps are **201×201**; `intro.map` is 20 × 2000 (a road strip). |
 | 4 | 6-bit palette used as 8-bit | Convert with `(v<<2)|(v>>4)`; keep 6-bit internally for effects. |
 | 5 | Filename lookups fail (`helihangar.scr`) | 8.3 truncation + case-insensitive resolution. |
 | 6 | Pascal strings read as C strings | Length byte prefix; no terminator. |
@@ -879,7 +879,7 @@ See [spec/_TEMPLATE.md](spec/_TEMPLATE.md).
 | Ghidra language | `x86:LE:16:Real Mode` / loader `MzLoader` |
 | MZ header sizes | td1 544 · file0000 1600 · file0001 19136 · td2 16768 · td3 14544 bytes |
 | Screen | 320×200, 8bpp, 6-bit palette, pixel aspect 5:6 (display 4:3) |
-| Map | 201×201 tiles × 32×32 px (intro 200×200) |
+| Map | 201×201 tiles × 32×32 px (intro 20×2000) |
 | Sprites | 32×32 base ×20; rotation sets 40×40 ×24 (sc3 ≈22.5°, shr ≈45°, sc2 ≈67.5°) |
 | Mission file | 20080 bytes = 80 header + 20×500 X + 20×500 Y (hypothesis) |
 | Address notation | `<exe>:<relseg>:<off>` (§7.8) |

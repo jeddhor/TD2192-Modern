@@ -55,7 +55,7 @@ Conversion to 8-bit for presentation: `c8 = (c6 << 2) | (c6 >> 4)`. Keep 6-bit v
 |---|---|
 | Confidence | **CONFIRMED** for `td.map` (rendered with `td.blk`; coherent city) · LIKELY for the others |
 | Episode maps | `td.map`, `td2.map`, `td3.map`, `td4.map`: 40,401 bytes = **201 × 201** tile indices, **column-major** (`index = x*201 + y`), 1 byte each. CONFIRMED 2026-11-02 against oracle flight frame C-0002 f3500: with column-major indexing all 42 identifiable tiles in view match one map position (top-left visible tile (103, 104), tile-grid offset x 16 / y 0); with row-major indexing none does. The first survey's row-major render looked plausible only because a transposed city still looks like a city. |
-| Intro map | `intro.map`: 40,000 bytes = **200 × 200** |
+| Intro map | `intro.map`: 40,000 bytes = **20 columns × 2,000 rows**, column-major (`index = x*2000 + y`), CONFIRMED 2026-11-05 (RE-13): the intro indexes it as `array[1..20, 1..2000]` (stride 2000, `file0000:0000:1B86..1BC7`) and C-0047's flyover frames match pixel for pixel. Columns 7 and 10 (0-based) are road edges (56, 57), 8 and 9 the road (49, 50). See [spec/flow/intro.md](../spec/flow/intro.md) §3.2 |
 | World size | 201 × 32 = 6,432 pixels square |
 
 Observed statistics:
@@ -70,7 +70,7 @@ Observed statistics:
 
 Notes:
 - The E1 city is surrounded by desert (tile indices 15/16 alternate pseudo-randomly as desert texture). An approach road enters from the north edge (the west edge in the first, transposed survey render).
-- `intro.map` (200 × 200) is assumed to use the same column-major order; to be confirmed against an intro frame.
+- `intro.map` is not square: it is a 20-tile-wide road strip, 2,000 tiles long, column-major like the episode maps (confirmed above). The intro shows columns 4..13 (0-based). Its tiles 71..73 are `td.dun`, loaded over `td.blk`'s slots 71..73 (§12).
 - In flight the playfield is 320×160 with the player's ship drawn at its centre (oracle C-0002), and the HUD bar `td.win` occupies rows 160–191 of a 320×192 display (U-025).
 - `td3.map` and `td4.map` begin with near-identical bytes. Which episode uses which map (E3 has two settings: a mining station and Kolor) is U-006.
 - Which tile indices are solid (collision) is U-009.
@@ -258,7 +258,7 @@ Headerless 8bpp. Geometry from data analysis (row-similarity peak, exact size fi
 | `td.joy` | 1,600 | 40×40 | Joystick icon, drawn at (140, 70) on the calibration screen | CONFIRMED (visual + loader `0E8B:AF1F`) |
 | `td.h2` | 9,600 | 3 × 2 × 40×40 | The two `td.hel` helicopter bodies pre-rotated by 67.5°, 45° and 22.5° (§6.3) | CONFIRMED (loader + visual) |
 | `td.hel` | 2,048 | 2 × 32×32 | Helicopter bodies | CONFIRMED (visual) |
-| `td.dun` | 3,072 | 3 × 32×32 | Desert/dune tiles (intro only) | CONFIRMED (visual) |
+| `td.dun` | 3,072 | 3 × 32×32 | Desert/dune tiles (intro only). The intro writes them into VGA memory as **tile slots 71, 72, 73**, replacing `td.blk`'s tiles 71..73 for `intro.map` ([spec/flow/intro.md](../spec/flow/intro.md) §3.1) | CONFIRMED (visual + loader `file0000:0000:1593..1644` + C-0047) |
 | `td1.ccm`, `td2.ccm`, `td3.ccm` | 9,216 / 7,168 / 5,120 | 9 / 7 / 5 × 32×32 | **Comm portraits** (small faces for in-flight transmissions) | CONFIRMED (visual) |
 | `mine.td` | 1,024 | 32×32 | Mine | CONFIRMED (visual) |
 | `lander.td` | 5,120 | 5 × 32×32 | Lander pieces (a large craft built from tiles?) | CONFIRMED (visual) |
@@ -283,9 +283,9 @@ The main-menu loader also copies main-menu rows 84..115 (bytes 42,880..53,119) t
 
 ## 13. Configuration and saves
 
-### 13.1 `td.cfg` (3 bytes), LIKELY
+### 13.1 `td.cfg` (3 bytes), CONFIRMED
 
-`[music, sfx, controller]`. The shipped value is `02 02 02`. Probably 1-based menu choices from the config screen: music {1 none, 2 SB/AdLib}, SFX {1 none, 2 SB, 3 PC speaker}, controller {1 keyboard, 2 keyboard + joystick}. Confirm in M2-12.
+`[music, sfx, controller]`. The shipped value is `02 02 02`. 1-based choices of the configuration screen: music {1 none, 2 SB/AdLib}, SFX {1 none, 2 SB, 3 PC speaker}, controller {1 keyboard, 2 keyboard + joystick}. CONFIRMED 2026-11-05 (RE-13): `file0001`'s configuration screen writes exactly these values (C-0048: `01 03 01` after choosing no music, PC speaker, keyboard); the intro reads bytes 0..1 and `td1.exe` byte 0. When and how the screen chooses them: [spec/flow/launcher.md](../spec/flow/launcher.md) §4.9.
 
 Static (M1-05, 2026-11-02): `file0001` reads the three bytes into DS:12C6 (music), DS:12C7 (effects) and DS:12C8 (controller) at start-up (`0000:49C1`) and writes them back from the configuration screen (`0000:5044`). Music plays only when byte 0 = 2 (`0E8B:07ED`); the joystick is read only when byte 2 = 2; the effects start-up `1E2A:06C6` loads the VOC files for 2 and installs a PC-speaker tick handler for 3. This agrees with the meanings above.
 
@@ -301,9 +301,9 @@ Text file, 10 lines (CR LF), one name per slot, read with `ReadLn`. A name writt
 
 ### 13.4 `tdstatus.dat`
 
-Not shipped; written at runtime. Passes state between `td1.exe` and the episode program (U-004).
+Not shipped; written at runtime. Passes state between `td1.exe` and the episode program (U-004, RESOLVED). `td1.exe` creates it with one 00 byte if it is missing and reads byte 0 after each Episode 1 run (0 or empty = quit, 1 = run `order.exe`, 2 = run `aboutus.exe`, then Episode 1 again): [spec/flow/launcher.md](../spec/flow/launcher.md) §3.2.
 
-Static (M1-05): `file0001` start-up (`0000:45E1`) reads a 1-byte flag; if it is non-zero it reads 13 more bytes (word, byte, byte, word, word, word, word, byte; the last byte is the script choice, 1 = uncut, 2 = edited), then truncates the file to 0 bytes. `0000:3381` writes the same 14-byte record. The meaning of the other fields is open.
+Static (M1-05): `file0001` start-up (`0000:45E1`) reads a 1-byte flag; if it is non-zero it reads 13 more bytes (word, byte, byte, word, word, word, word, byte; the last byte is the script choice, 1 = uncut, 2 = edited), then truncates the file to 0 bytes. `0000:3381` writes the same 14-byte record. The fields are resolved in [spec/flow/episode-program-flow.md](../spec/flow/episode-program-flow.md) §4.6 (RE-2).
 
 ## 14. Creative Music File (`.cmf`), standard format
 

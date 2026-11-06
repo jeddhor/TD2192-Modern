@@ -188,7 +188,7 @@ The full inventory with SHA-256 for all 218 files is in [re/FILE_INVENTORY.md](r
 | Full-screen scenes | 44 × `.scr`, `city.td`, `javelin.td` | **Decoded:** 768-byte 6-bit palette + 320×200 linear |
 | Palettes | `td.pal`, `tdmen.pal` | **Decoded:** 256 × RGB, 0..63 |
 | Tilesets | `td.blk`, `td2.blk`, `td3.blk` | **Decoded** (E1): 80 × 32×32. E2/E3 have 864 extra trailing bytes |
-| Maps | `td.map`, `td2.map`, `td3.map`, `td4.map`, `intro.map` | **Decoded** (E1): 201×201 bytes. Intro map is 200×200 |
+| Maps | `td.map`, `td2.map`, `td3.map`, `td4.map`, `intro.map` | **Decoded** (E1): 201×201 bytes. Intro map is 20×2000 (column-major road strip, spec/flow/intro.md) |
 | Sprites | `td.shp`, `td.sc3`, `td.shr`, `td.sc2`, `mine.td`, `lander.td`, `td.exp`, `td.hel`, `td.h2` | **Partly decoded:** base 32×32 set and 40×40 rotation sets |
 | Missions | 20 × `.td`, 20 × `.td2`, 20 × `.td3` (20080 bytes each) | **Structure hypothesis:** 80-byte header + 20 X paths + 20 Y paths of 500 steps |
 | Dialogue | `dialogue.dat`, `dialogu2.dat`, `dialogu3.dat`, `safedial.dat`, `safedia2.dat`, `safedia3.dat` | **Partly decoded:** control-byte line script |
@@ -204,7 +204,7 @@ The full inventory with SHA-256 for all 218 files is in [re/FILE_INVENTORY.md](r
 ### 4.7 Quirks discovered so far
 
 1. **DOS 8.3 truncation is load-bearing.** The code asks for `helihangar.scr`, and DOS opens `helihang.scr`. The asset locator MUST resolve names by truncating base names to 8 characters and extensions to 3, case-insensitively.
-2. **Map width is 201**, not 200 (the intro map is 200). Off-by-one sizes are probably intentional (inclusive 0..200 coordinates).
+2. **Map width is 201**, not 200 (the intro map is 20 × 2000). Off-by-one sizes are probably intentional (inclusive 0..200 coordinates).
 3. **Text uses `"` as an apostrophe** and is all lowercase. The font decides how these glyphs look.
 4. **Objective strings are fixed-width** (about 80 characters, space-padded, Pascal length byte).
 5. **Most VOCs are ADPCM**, which the SB DSP decoded in hardware. The port needs software decoders for all three Creative ADPCM variants.

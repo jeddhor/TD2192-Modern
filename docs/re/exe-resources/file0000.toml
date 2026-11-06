@@ -1,7 +1,7 @@
 # Resource map for file0000.exe (intro). See README.md in this folder and ADR-0003.
 # Offsets are FILE offsets of the ShortString length byte. Never put the text itself here.
 # M1-11, RE-3, 2026-11-02. All strings are used by the intro's main program (file0000:0000:0FCA);
-# the order of display belongs to spec/narrative/intro.md (M5-08).
+# the order of display is in spec/flow/intro.md sections 3.3 and 3.5 (M1-10, RE-13).
 exe = "file0000.exe"
 sha256 = "f62eaed182d4dec0655bdb142a8d94950d8f1fc46470dcfbaca55b592da865de"
 

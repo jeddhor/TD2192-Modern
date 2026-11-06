@@ -77,7 +77,7 @@ The music has no fade or crossfade, and it is never resumed: every cue starts it
 | Flight start (every mission, also after a retry) | mission number mod 3 = 1 → `td01`, = 2 → `td03`, = 0 → `td02` | `0E8B:C8EA..C92B` |
 | Flight end | music stopped (no song until the next cue) | `0E8B:F9A7` |
 | Game over (three paths) | `death`, played once (loop off), then the loop flag is restored | `0000:2DA8`, `2DE5`, `2E28` |
-| Intro program | `intro1`, then `intro`, then `intro2` (loop off; each started when the previous one ends or is cut) | C-0001 capture |
+| Intro program | `intro1` (driver default loop) from the date card until the flyover; then loop off and `intro` once; then `intro2`, which the program restarts whenever no song is playing ([flow/intro](../flow/intro.md) §4.6, §7) | C-0001 capture; static (RE-13) |
 
 At flight start `Sim_FlyMission` stops the music and frees the song before the mission loads, then starts the flight song. The mapping by mission number gives: missions 1, 4, 7, 10, 13, 16, 19 → `td01`; 2, 5, 8, 11, 14, 17, 20 → `td03`; 3, 6, 9, 12, 15, 18, 21 → `td02`.
 
