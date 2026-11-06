@@ -119,6 +119,37 @@ pub fn redraw_overlays_e2(
     }
 }
 
+/// Episode 3's overlay tiles (tick-order step 12, `docs/spec/sim/e3-mission-setup.md` rev 1
+/// §3.6): every cell of the 11 × 6 window whose tile is 21h..=24h; in flight 8 also the cells
+/// x 21..=23, y 165..=166 and x 108..=110, y 113..=115; in flight 10 also x 21..=23,
+/// y 165..=166 and x 41..=42, y 57..=58 (cell coordinates are view tile + window index). The
+/// caller skips it while late draw is set (never in E3).
+pub fn redraw_overlays_e3(
+    fb: &mut Framebuffer,
+    map: &TileMap,
+    tiles: &Tileset,
+    view: ViewPos,
+    flight: u8,
+) {
+    let inside = |x: i32, y: i32, (x0, x1): (i32, i32), (y0, y1): (i32, i32)| {
+        (x0..=x1).contains(&x) && (y0..=y1).contains(&y)
+    };
+    for i in 0..11 {
+        for j in 0..6 {
+            let (x, y) = (view.tile_x + i, view.tile_y + j);
+            let overlay = tile_at(map, view, i, j).is_some_and(|t| (0x21..=0x24).contains(&t))
+                || (flight == 8
+                    && (inside(x, y, (21, 23), (165, 166))
+                        || inside(x, y, (108, 110), (113, 115))))
+                || (flight == 10
+                    && (inside(x, y, (21, 23), (165, 166)) || inside(x, y, (41, 42), (57, 58))));
+            if overlay {
+                draw_window_tile(fb, map, tiles, view, i, j);
+            }
+        }
+    }
+}
+
 /// Draws a ship frame (colour 0 transparent) at the player's screen position. `frame` is a
 /// square frame of `size` pixels centred like a 32 × 32 base frame (40 × 40 heading frames
 /// have the base frame at offset (4, 4)).
@@ -504,6 +535,44 @@ mod tests {
             "below the overpass the ship shows"
         );
         assert_eq!(fb.get(150, 160), Some(0), "playfield clip");
+    }
+
+    #[test]
+    fn e3_overlay_tiles_and_boxes() {
+        // e3-mission-setup §3.6: tiles 21h..24h anywhere in the window; flight 8's box
+        // (21..23, 165..166) around the base.
+        let mut blk = vec![0u8; 80 * 1024];
+        for t in 0..80 {
+            blk[t * 1024..(t + 1) * 1024].fill(t as u8);
+        }
+        let tiles = Tileset::parse(&blk).unwrap();
+        let mut cells = vec![1u8; 201 * 201];
+        let view = ViewPos {
+            tile_x: 17,
+            tile_y: 164,
+            sub_x: 32,
+            sub_y: 16,
+        };
+        // Window cell (0, 0) = map (17, 164): tile 23h; cell (5, 2) = map (22, 166): tile 1.
+        cells[17 * 201 + 164] = 0x23;
+        let map = TileMap::parse_episode(&cells).unwrap();
+        let paint = |flight| {
+            let mut fb = Framebuffer::new();
+            fb.clear(9);
+            redraw_overlays_e3(&mut fb, &map, &tiles, view, flight);
+            (fb.get(0, 0), fb.get(144, 64))
+        };
+        assert_eq!(paint(1), (Some(0x23), Some(9)), "flight 1: the tile only");
+        assert_eq!(
+            paint(8),
+            (Some(0x23), Some(1)),
+            "flight 8: the base box too"
+        );
+        assert_eq!(
+            paint(10),
+            (Some(0x23), Some(1)),
+            "flight 10: the base box too"
+        );
     }
 
     const VIEW: ViewPos = ViewPos {

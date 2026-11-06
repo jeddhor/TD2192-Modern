@@ -251,16 +251,139 @@ const TARGETS_E2: [(&str, &[Fixed]); 20] = [
     ),
 ];
 
+/// A fixed point with its flag: (entry, map x, map y, flag).
+type Point = (usize, u8, u8, bool);
+
+/// Episode 3 (`docs/spec/sim/e3-mission-setup.md` rev 1 §3.4, final state per flight; indices
+/// into `e3.target_info`; `-` = line not written). Index 19 is the dead flight-20 block, index
+/// 20 flight 21 (its own block, the same values as flight 11). Flight 9 stores entry 21's point
+/// and lines but no flag (OB-053, kept); flight 18 stores flag 0, and `Msn_E3TimedEvents` sets
+/// it at tick 2160 (`td_sim::Flight::e3_point_offered`, e3-mission-logic §4.9).
+const TARGETS_E3: [(&str, &[Point]); 21] = [
+    (
+        "0: 3 4 5 2 2; 2..4: 11 7 8 9 10; 5, 6, 11..14: 12 7 8 9 10; 7..10: 6 7 8 9 10; \
+         21: 0 1 2 2 2",
+        &[(21, 172, 68, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 2..7: 13 7 8 14 2; 9..12: 15 7 8 16 2; 15..17: 17 7 8 2 2; \
+         21: 0 1 2 2 2",
+        &[(21, 172, 68, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 2..4: 18 7 8 19 2; 6, 7: 15 7 8 20 2; 9..12: 21 7 8 22 23; \
+         21: 0 1 2 2 2",
+        &[(21, 172, 68, true)],
+    ),
+    (
+        "0: 24 4 5 2 2; 2, 3: 24 7 8 25 2; 5..7: 18 7 8 30 2; 9..11: 6 7 8 26 27; \
+         12, 13: 15 7 8 28 29; 21: 0 1 2 2 2",
+        &[(21, 172, 68, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 2: 18 4 33 34 35; 3: 3 4 36 25 2; 5..11: 17 7 8 31 32; 21: 0 1 2 2 2",
+        &[(21, 172, 68, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 2..5: 24 4 8 37 38; 6, 7: 3 4 8 37 38; 8: 17 4 8 37 38; \
+         9, 10: 18 4 8 37 38; 13, 14: 17 7 8 39 40; 15..17: 15 7 8 39 40; 21: 0 1 2 2 2",
+        &[(21, 172, 68, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 2..5: 24 4 8 37 43; 6, 7: 3 4 8 37 43; 8: 17 4 8 37 43; \
+         9, 10: 18 4 8 37 43; 12..14, 19, 20: 6 7 8 39 40; 15..18: 15 7 8 39 40; \
+         21: 41 42 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 15 4 5 2 2; 1: 49 4 52 50 51; 2: 49 4 53 50 51; 3: 49 4 54 50 51; \
+         4..10: 17 7 8 55 56; 15, 19: 6 - - - -; 21: 41 42 2 2 2; 22: 44 45 46 47 48",
+        &[(21, 22, 166, true), (22, 108, 115, true)],
+    ),
+    (
+        "0: 57 4 5 2 2; 1..3: 58 7 8 59 60; 4, 5, 8, 9: 61 7 8 62 63; 6, 7: 12 7 8 62 63; \
+         21: 41 42 2 2 2",
+        &[(21, 22, 166, false)],
+    ),
+    (
+        "0: 69 4 5 2 2; 3: 3 4 73 74 2; 4: 3 4 75 74 2; 5: 18 4 70 71 72; \
+         7, 8, 11, 13: 17 7 8 2 2; 9, 10, 12: 6 7 8 2 2; 21: 41 42 2 2 2; 22: 64 65 66 67 68",
+        &[(21, 22, 166, true), (22, 41, 58, true)],
+    ),
+    (
+        "0: 15 4 5 2 2; 3..8: 17 7 8 2 2; 9..13: 80 7 8 2 2; 14, 15: 81 7 8 2 2; \
+         21: 41 42 2 2 2; 22: 76 77 2 78 79",
+        &[(21, 22, 166, true), (22, 165, 77, true)],
+    ),
+    (
+        "0: 82 4 5 2 2; 1..6: 58 83 8 84 85; 8..15: 6 7 8 86 63; 21: 41 42 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 17 4 5 2 2; 3..6, 9, 10: 17 7 8 2 2; 7, 8: 90 7 8 2 2; 11, 12: 18 7 8 2 2; \
+         21: 87 2 2 88 89",
+        &[(21, 41, 46, true)],
+    ),
+    (
+        "0: 90 7 5 2 2; 3..8, 15..17: 61 7 8 2 2; 9..14: 17 7 8 2 2; 21: 41 42 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 1, 2: 58 7 8 91 92; 4..14: 80 7 8 93 2; 15: 15 7 94 95 2; \
+         21: 41 42 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 3 4 5 2 2; 2..4: 58 7 8 2 2; 6: 24 4 96 2 2; 7: 24 4 97 2 2; 9..14: 12 7 8 2 2; \
+         21: 41 42 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 90 7 5 2 2; 3..7: 17 7 99 100 101; 21: 98 2 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 90 7 5 2 2; 3..5, 9: 106 7 99 2 2; 6..8: 107 7 99 2 2; 21: 102 103 2 104 105",
+        &[(21, 28, 33, false)],
+    ),
+    (
+        "0: 17 7 5 2 2; 2: 6 7 108 109 110; 3, 4: 18 7 99 2 2; 21: 41 42 2 2 2",
+        &[(21, 22, 166, true)],
+    ),
+    (
+        "0: 111 4 5 2 2; 2..5: 24 4 99 2 2; 6..8: 3 4 99 2 2; 10, 11: 111 4 99 2 2; \
+         12..15: 17 7 99 112 113; 17, 18: 18 4 99 2 2; 19, 20: 49 4 99 2 2",
+        &[],
+    ),
+    (
+        "0: 15 4 5 2 2; 3..8: 17 7 8 2 2; 9..13: 80 7 8 2 2; 14, 15: 81 7 8 2 2; \
+         21: 41 42 2 2 2; 22: 76 77 2 78 79",
+        &[(21, 22, 166, true), (22, 165, 77, true)],
+    ),
+];
+
+/// The line index that shows nothing (the zero-length strings of start-up): no target-info
+/// list has 256 strings.
+pub const EMPTY_LINE: u8 = u8::MAX;
+
 /// Parses one flight's §3.4 line table into (entry, line indices) pairs.
 fn parse_lines(spec: &str) -> Vec<(usize, [u8; 5])> {
+    parse_partial_lines(spec)
+        .into_iter()
+        .map(|(e, l)| (e, l.map(|i| i.unwrap_or(0))))
+        .collect()
+}
+
+/// As [`parse_lines`], with `-` for a line the flight does not write.
+fn parse_partial_lines(spec: &str) -> Vec<(usize, [Option<u8>; 5])> {
     let mut out = Vec::new();
     for group in spec.split(';').map(str::trim).filter(|g| !g.is_empty()) {
         let Some((entries, idx)) = group.split_once(':') else {
             continue;
         };
-        let mut lines = [0u8; 5];
+        let mut lines = [None; 5];
         for (l, v) in lines.iter_mut().zip(idx.split_whitespace()) {
-            *l = v.parse().unwrap_or(0);
+            *l = v.parse().ok();
         }
         for part in entries.split(',').map(str::trim) {
             let (a, b) = part.split_once("..").unwrap_or((part, part));
@@ -300,11 +423,36 @@ impl TargetBoard {
     }
 
     /// `Msn_LoadTargetInfo` of `episode` (E2: `td2:1E0B:0DCC`, e2-mission-setup rev 1 §3.4,
-    /// §4.5; the lines index `e2.target_info`).
+    /// §4.5; E3: `td3:1BD8:0DCF`, e3-mission-setup rev 1 §3.4, §4.5; the lines index
+    /// `e2.target_info` / `e3.target_info`).
     pub fn load_episode(&mut self, episode: Episode, flight: u8) {
         match episode {
+            Episode::E1 => self.load(flight),
             Episode::E2 => self.load_table(&TARGETS_E2, flight),
-            _ => self.load(flight),
+            Episode::E3 => self.load_e3(flight),
+        }
+    }
+
+    /// E3: the flags of entries 1..30 cleared, then the flight's points (with their own flag,
+    /// OB-053) and lines; a line the flight does not write keeps what the entry had.
+    fn load_e3(&mut self, flight: u8) {
+        self.flags[1..=LAST_SELECTABLE].fill(false);
+        let Some((lines, points)) = usize::from(flight)
+            .checked_sub(1)
+            .and_then(|i| TARGETS_E3.get(i))
+        else {
+            return;
+        };
+        for &(e, x, y, flag) in *points {
+            self.flags[e] = flag;
+            self.pos[e] = (x, y);
+        }
+        for (e, l) in parse_partial_lines(lines) {
+            let Some(slot) = self.lines.get_mut(e) else {
+                continue;
+            };
+            let old = slot.unwrap_or([EMPTY_LINE; 5]);
+            *slot = Some(std::array::from_fn(|k| l[k].unwrap_or(old[k])));
         }
     }
 
@@ -549,6 +697,47 @@ mod tests {
             assert!(v.iter().any(|(e, _)| *e == 0), "flight {f}");
             for (e, l) in v {
                 assert!(e <= 21 && l.iter().all(|&i| i < 113), "flight {f}");
+            }
+        }
+    }
+
+    #[test]
+    fn e3_board() {
+        let mut b = TargetBoard::default();
+        // Flight 8: two fixed points; entries 15 and 19 get line 0 only (after start-up the
+        // other lines are empty).
+        b.load_episode(Episode::E3, 8);
+        assert!(b.flags[21] && b.pos[21] == (22, 166));
+        assert!(b.flags[22] && b.pos[22] == (108, 115));
+        assert_eq!(b.lines[1], Some([49, 4, 52, 50, 51]));
+        assert_eq!(
+            b.lines[15],
+            Some([6, EMPTY_LINE, EMPTY_LINE, EMPTY_LINE, EMPTY_LINE])
+        );
+        // Flight 9: entry 21's point and lines, no flag (OB-053); flags 22..30 cleared.
+        b.load_episode(Episode::E3, 9);
+        assert!(!b.flags[21] && b.pos[21] == (22, 166));
+        assert!(!b.flags[22]);
+        assert_eq!(b.lines[21], Some([41, 42, 2, 2, 2]));
+        // Flight 6 writes entry 15 in full; flight 8 then keeps lines 1..4 of it.
+        b.load_episode(Episode::E3, 6);
+        b.load_episode(Episode::E3, 8);
+        assert_eq!(b.lines[15], Some([6, 7, 8, 39, 40]));
+        // Flight 18: the point (28, 33) with flag 0; flight 21 as flight 11.
+        b.load_episode(Episode::E3, 18);
+        assert!(!b.flags[21] && b.pos[21] == (28, 33));
+        b.load_episode(Episode::E3, 21);
+        assert!(b.flags[22] && b.pos[22] == (165, 77));
+        assert_eq!(TARGETS_E3[20].0, TARGETS_E3[10].0);
+        // Every index is a valid e3.target_info line (114 strings); entry 0 is always written.
+        for f in 1..=21 {
+            let v = parse_partial_lines(TARGETS_E3[f - 1].0);
+            assert!(v.iter().any(|(e, _)| *e == 0), "flight {f}");
+            for (e, l) in v {
+                assert!(
+                    e <= 22 && l.iter().flatten().all(|&i| i < 114),
+                    "flight {f}"
+                );
             }
         }
     }
