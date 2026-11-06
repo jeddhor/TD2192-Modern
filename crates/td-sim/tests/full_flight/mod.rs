@@ -294,8 +294,8 @@ impl Dump<'_> {
     }
 }
 
-fn find_capture(oracle: &Path, l: &Layout, flight: u8) -> Option<PathBuf> {
-    let head = format!("# {}{flight}-plan ", l.tag);
+fn find_capture(oracle: &Path, tag: &str) -> Option<PathBuf> {
+    let head = format!("# {tag} ");
     let mut dirs: Vec<PathBuf> = fs::read_dir(oracle)
         .ok()?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -307,10 +307,10 @@ fn find_capture(oracle: &Path, l: &Layout, flight: u8) -> Option<PathBuf> {
     })
 }
 
-fn replay_path(l: &Layout, flight: u8) -> PathBuf {
+fn replay_path(l: &Layout, flight: u8, suffix: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/replays")
-        .join(format!("e{}f{flight:02}.tdr", l.number()))
+        .join(format!("e{}f{flight:02}{suffix}.tdr", l.number()))
 }
 
 type Fields = Vec<(String, i64, i64)>;
@@ -542,18 +542,23 @@ fn proj_file(cap: &Path) -> (PathBuf, usize) {
     (p, seg * 16)
 }
 
-/// Compares flight `flight` of `l`'s episode with its capture (skips without a replay or a
-/// capture). `data` and `oracle` are the installation and the oracle capture root.
+/// Compares flight `flight` of `l`'s episode (success replay `e<E>f<NN>.tdr`) with its
+/// capture (skips without a replay or a capture). `data` and `oracle` are the installation and
+/// the oracle capture root.
 pub fn check(l: &Layout, data: &Path, oracle: &Path, flight: u8) {
-    let Ok(bytes) = fs::read(replay_path(l, flight)) else {
-        eprintln!("SKIPPED: no replay for flight {flight}");
+    let tag = format!("{}{flight}-plan", l.tag);
+    check_replay(l, data, oracle, flight, "", &tag);
+}
+
+/// As [`check`] for the replay `e<E>f<NN><suffix>.tdr` and the capture whose scenario starts
+/// with `# <tag> `.
+pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: &str, tag: &str) {
+    let Ok(bytes) = fs::read(replay_path(l, flight, suffix)) else {
+        eprintln!("SKIPPED: no replay for flight {flight}{suffix}");
         return;
     };
-    let Some(cap) = find_capture(oracle, l, flight) else {
-        eprintln!(
-            "SKIPPED: no {}{flight}-plan capture under the oracle root",
-            l.tag
-        );
+    let Some(cap) = find_capture(oracle, tag) else {
+        eprintln!("SKIPPED: no {tag} capture under the oracle root");
         return;
     };
     let name = cap.file_name().unwrap().to_string_lossy().into_owned();
@@ -638,6 +643,12 @@ pub fn check(l: &Layout, data: &Path, oracle: &Path, flight: u8) {
         if ep == Episode::E1 && f.mission.scene == 17 {
             f.hit_flash = 0;
         }
+        // After the last tick the host fades the flight out (flight-screens §4.5.3), and every
+        // level of that fade zeroes g_HitFlash (hit-flash §4.2): the stall record, 150 ms
+        // later, shows 0 (E3 flight 8, C-0135: 8 in td-sim, 0 in the original).
+        if result == TickResult::Finished {
+            f.hit_flash = 0;
+        }
         // After the last tick: the stall record of that tick when the original stopped there
         // too, else the record of the tick it went on to fly.
         let idx = if t < n {
@@ -686,18 +697,25 @@ pub fn check(l: &Layout, data: &Path, oracle: &Path, flight: u8) {
         })
         .expect("the end240 dump");
     let end = fs::read(end).unwrap();
+    // g_PlayerDied follows g_MissionLost in every episode.
     assert_eq!(
-        (end[l.outcome] != 0, end[l.succeeded] != 0, end[l.lost] != 0),
-        (f.outcome(), f.succeeded, f.lost),
-        "{name} flight {flight}: (outcome, succeeded, lost) after teardown"
+        (
+            end[l.outcome] != 0,
+            end[l.succeeded] != 0,
+            end[l.lost] != 0,
+            end[l.lost + 1] != 0
+        ),
+        (f.outcome(), f.succeeded, f.lost, f.died()),
+        "{name} flight {flight}: (outcome, succeeded, lost, died) after teardown"
     );
     eprintln!(
-        "{name} flight {flight}: PASS {} ticks, {} slot-ticks, kills {}, outcome {}, comm {:?}, \
-         known divergences {known:?}, events {:?}",
+        "{name} flight {flight}: PASS {} ticks, {} slot-ticks, kills {}, outcome {}, died {}, \
+         comm {:?}, known divergences {known:?}, events {:?}",
         cov.ticks,
         cov.slot_ticks,
         f.kills,
         f.outcome(),
+        f.died(),
         cov.comm_viewers,
         cov.events
     );

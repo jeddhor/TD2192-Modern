@@ -190,11 +190,11 @@ pub fn oracle_lines(inputs: &[u64], comm: &[u32]) -> Vec<String> {
     out
 }
 
-/// Writes `<out>/e<E>f<NN>.tdr`.
-pub fn write_outputs(setup: &FlightSetup, plan: &Plan, out: &Path) -> Result<()> {
+/// Writes `<out>/e<E>f<NN><suffix>.tdr`.
+pub fn write_outputs(setup: &FlightSetup, plan: &Plan, out: &Path, suffix: &str) -> Result<()> {
     check(&plan.inputs)?;
     std::fs::create_dir_all(out).with_context(|| format!("create {}", out.display()))?;
-    let path = out.join(format!("{}.tdr", setup.stem()));
+    let path = out.join(format!("{}{suffix}.tdr", setup.stem()));
     std::fs::write(&path, replay(setup, plan).to_bytes())
         .with_context(|| format!("write {}", path.display()))?;
     println!("wrote {}", path.display());

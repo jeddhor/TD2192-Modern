@@ -28,10 +28,10 @@ fn number(ep: Episode) -> u8 {
     }
 }
 
-fn replay_path(ep: Episode, flight: u8) -> PathBuf {
+fn replay_path(ep: Episode, flight: u8, suffix: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/replays")
-        .join(format!("e{}f{flight:02}.tdr", number(ep)))
+        .join(format!("e{}f{flight:02}{suffix}.tdr", number(ep)))
 }
 
 fn world(data: &Path, ep: Episode, flight: u8) -> (World, Option<Mission>) {
@@ -49,7 +49,13 @@ fn world(data: &Path, ep: Episode, flight: u8) -> (World, Option<Mission>) {
 /// Runs the replay of `flight` of `ep` (skips without one): checkpoints, then success on the
 /// last tick.
 pub fn check(data: &Path, ep: Episode, flight: u8) {
-    let path = replay_path(ep, flight);
+    check_ending(data, ep, flight, "", false);
+}
+
+/// Runs the replay `e<E>f<NN><suffix>.tdr`: checkpoints, then the flight ends on the last
+/// tick, by success, or by the player's death (`death`: the end sequence ran its 35 ticks).
+pub fn check_ending(data: &Path, ep: Episode, flight: u8, suffix: &str, death: bool) {
+    let path = replay_path(ep, flight, suffix);
     let Ok(bytes) = std::fs::read(&path) else {
         eprintln!("SKIPPED: no replay {}", path.display());
         return;
@@ -93,7 +99,7 @@ pub fn check(data: &Path, ep: Episode, flight: u8) {
         "{ep} flight {flight}: still flying after tick {n}"
     );
     assert!(
-        f.succeeded && !f.lost && !f.died(),
+        (f.succeeded, f.lost, f.died()) == (!death, false, death),
         "{ep} flight {flight}: succeeded {} lost {} died {}",
         f.succeeded,
         f.lost,

@@ -76,6 +76,15 @@ struct Goals {
     start_hp: i32,
     /// The base test has no phase condition: steer home from the start.
     home_any_phase: bool,
+    /// The phase advances when the friends have left (escort flights whose friends drive to
+    /// an exit): fewer live friends is progress, and the player waits (no distance term)
+    /// instead of parking on their path before the phase is 100.
+    friends_leave: bool,
+}
+
+/// Escort flights whose phase advances when every friend has gone (E3 §5.6).
+fn friends_leave(ep: Episode, flight: u8) -> bool {
+    matches!((ep, flight), (Episode::E3, 6))
 }
 
 /// Flight 19's V.C.I. view tiles.
@@ -291,6 +300,7 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
                 target_hp += i64::from(sh.armour.max(0)) + i64::from(sh.shields.max(0));
                 targets.push(i);
             }
+            MARK_FRIEND if g.friends_leave => friend_hp -= 10,
             MARK_FRIEND => friend_hp += i64::from(sh.armour.max(0)) + i64::from(sh.shields.max(0)),
             _ => {}
         }
@@ -313,10 +323,12 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
     };
     let field = if let (Some(vci), 1) = (&g.vci_field, phase) {
         s -= view_term(&vci_views()) * 400 / 32;
-        vci
+        Some(vci)
+    } else if g.friends_leave && phase < 100 && targets.is_empty() {
+        None
     } else if phase >= 100 || targets.is_empty() || g.home_any_phase {
         s -= view_term(&home_views(f.episode, f.number)) * 400 / 32;
-        &g.home_field
+        Some(&g.home_field)
     } else {
         // Distance to the nearest cell with a line of fire on a target.
         let mut cells = vec![];
@@ -329,9 +341,11 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
             );
         }
         fire_field = Field::from_cells(world, &cells);
-        &fire_field
+        Some(&fire_field)
     };
-    s -= fine_distance(f, field) * 400 / 32;
+    if let Some(field) = field {
+        s -= fine_distance(f, field) * 400 / 32;
+    }
     if line_of_fire(f, world) == Some(MARK_TARGET) {
         s += 30_000;
     }
@@ -488,6 +502,7 @@ pub fn plan(
             .then(|| Field::from_cells(world, &vci_cells())),
         start_hp: i32::from(start.player.armour) * 4 + i32::from(start.player.shields),
         home_any_phase: home_any_phase(setup.episode, setup.number),
+        friends_leave: friends_leave(setup.episode, setup.number),
     };
     let mut arena: Vec<(usize, Vec<u64>)> = vec![(usize::MAX, vec![])];
     let mut beam = vec![Node {

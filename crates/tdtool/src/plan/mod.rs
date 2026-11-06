@@ -139,6 +139,38 @@ pub fn probe(root: &Path, episode: Episode, number: u8, ticks: u32) -> Result<()
     Ok(())
 }
 
+/// Writes `<out>/e<E>f<NN>-idle.tdr`: no input at all until the flight ends (in the flights
+/// where the enemies destroy the parked ship: the death and the end sequence, which no success
+/// plan covers), at most `max_ticks` ticks.
+pub fn idle(root: &Path, episode: Episode, number: u8, out: &Path, max_ticks: u32) -> Result<()> {
+    let setup = FlightSetup::load(root, episode, number)?;
+    let mut f = setup.start();
+    let mut inputs = vec![];
+    loop {
+        if inputs.len() as u32 == max_ticks {
+            bail!("flight {number}: still flying after {max_ticks} idle ticks");
+        }
+        inputs.push(0);
+        if td_sim::replay::step(&mut f, &setup.world, 0) == TickResult::Finished {
+            break;
+        }
+    }
+    let plan = Plan {
+        comm_ticks: comm_ticks(&setup, &inputs),
+        inputs,
+    };
+    write_outputs(&setup, &plan, out, "-idle")?;
+    println!(
+        "flight {number}: {} idle ticks; succeeded {} lost {} died {} outcome {}",
+        plan.inputs.len(),
+        f.succeeded,
+        f.lost,
+        f.died(),
+        f.outcome()
+    );
+    Ok(())
+}
+
 /// What changed from `a` to `b` in tick `t`.
 pub fn describe(t: u32, a: &Flight, b: &Flight) -> Vec<String> {
     let mut out = vec![];
@@ -249,7 +281,7 @@ pub fn run(
         }
         same = core_hash(&g) == core_hash(&f);
     }
-    write_outputs(&setup, &plan, out)?;
+    write_outputs(&setup, &plan, out, "")?;
     println!(
         "flight {number}: {} ticks, kills {}, outcome {}, comm viewers at {:?}, same course with the alt bytes {same}",
         n,
