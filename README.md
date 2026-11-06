@@ -15,7 +15,8 @@ A clean-room, modern reimplementation of **Traffic Department 2192** (Safari Sof
 You need an original Traffic Department 2192 installation: the v1.0 file set of 218 files, including `TD1.EXE` and `FILE0001.EXE`. On first start the game asks for that folder. You can also pass it with `--data <folder>` or set the `TD2192_DATA` environment variable.
 
 ```text
-td2192                     Episode 1: script choice, main menu, campaign
+td2192                     start screen: choose an episode, options, quit
+td2192 --episode N         start Episode N (1, 2 or 3) directly, as the original does
 td2192 --check             report whether the installation is complete
 td2192 --fullscreen
 ```
@@ -35,12 +36,15 @@ Building from source needs the Rust toolchain pinned in `rust-toolchain.toml`. S
 | P | Pause (any key resumes) |
 | Esc | Flight menu (for now: abort the flight) |
 
-A game controller works as the original joystick. Use the left stick or D-pad to steer, South (A) to fire and East (B) for the afterburner.
+A game controller works as the original joystick. Use the left stick or D-pad to steer, South (A) to fire and East (B) for the afterburner. By default Start opens the flight menu (and acts as Esc everywhere), Back the tactical map, North switches weapons, West toggles infra-red and the shoulder buttons read and repeat transmissions.
+
+Every flight key can be rebound to another key or controller button under Options, Controls (saved in the `[controls]` section of `settings.toml`). On the port's own screens the stick or D-pad moves, South confirms and East goes back.
 
 Host keys, available everywhere:
 
 | Key | Action |
 |---|---|
+| F2 | Options (video, audio, controls, profile, accessibility); the game waits meanwhile |
 | F10 | Change the scale mode |
 | F11 | Toggle fullscreen |
 | F12 | Save a screenshot |

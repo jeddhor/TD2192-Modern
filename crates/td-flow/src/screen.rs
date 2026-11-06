@@ -56,6 +56,12 @@ pub trait Screen: std::fmt::Debug {
 
     /// Draws the current state.
     fn draw(&self, fb: &mut Framebuffer);
+
+    /// True if a [`Transition::Quit`] from a screen above this one ends there and this screen
+    /// resumes (the port's start screen: quitting an episode program returns to it).
+    fn catches_quit(&self) -> bool {
+        false
+    }
 }
 
 /// The stack of active screens; the top one ticks and draws.
@@ -80,6 +86,12 @@ impl Flow {
         self.stack.last().map_or(RETRACE_HZ, |s| s.tick_hz())
     }
 
+    /// Shows `screen` on top (the host's options screen); the screen below resumes when it
+    /// pops.
+    pub fn push(&mut self, screen: Box<dyn Screen>) {
+        self.stack.push(screen);
+    }
+
     /// Ticks the top screen and applies its transition.
     pub fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) {
         let Some(top) = self.stack.last_mut() else {
@@ -95,7 +107,14 @@ impl Flow {
             Transition::Pop => {
                 self.stack.pop();
             }
-            Transition::Quit => self.stack.clear(),
+            Transition::Quit => {
+                // The quitting screen ends, and so does everything down to a screen that
+                // catches the quit.
+                self.stack.pop();
+                while self.stack.last().is_some_and(|s| !s.catches_quit()) {
+                    self.stack.pop();
+                }
+            }
         }
     }
 
@@ -172,6 +191,52 @@ mod tests {
             then: Some(|| Transition::Quit),
         }));
         assert!(flow.running());
+        flow.tick(&mut ctx, &input);
+        assert!(!flow.running());
+    }
+
+    #[derive(Debug)]
+    struct Catcher;
+
+    impl Screen for Catcher {
+        fn tick(&mut self, _: &mut FlowContext<'_>, _: &TickInput) -> Transition {
+            Transition::Quit
+        }
+        fn draw(&self, fb: &mut Framebuffer) {
+            fb.clear(7);
+        }
+        fn catches_quit(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn quit_returns_to_a_screen_that_catches_it() {
+        let (data, res, settings) = ctx_parts();
+        let mut audio = Vec::new();
+        let mut ctx = FlowContext {
+            data: &data,
+            resources: &res,
+            settings: &settings,
+            audio: &mut audio,
+        };
+        let input = TickInput::default();
+        let mut flow = Flow::new(Box::new(Catcher));
+        flow.push(Box::new(Counter {
+            id: 1,
+            ticks: 0,
+            then: None,
+        }));
+        flow.push(Box::new(Counter {
+            id: 2,
+            ticks: 0,
+            then: Some(|| Transition::Quit),
+        }));
+        let mut fb = Framebuffer::new();
+        flow.tick(&mut ctx, &input);
+        flow.draw(&mut fb);
+        assert_eq!(fb.get(0, 0), Some(7), "back at the catcher");
+        // The catcher's own quit ends the flow.
         flow.tick(&mut ctx, &input);
         assert!(!flow.running());
     }
