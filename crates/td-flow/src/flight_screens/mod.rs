@@ -92,8 +92,8 @@ pub struct FlightScreenAssets {
     pub panel: Vec<u8>,
     /// `td1.ccm` (E2: `td2.ccm`, E3: `td3.ccm`): comm portraits, 32 × 32 each.
     pub portraits: Vec<u8>,
-    /// Transmission screens 1.. as the comm loaders fill them ([`comm::transmission_for`]; E2
-    /// provisionally [`comm::e2_transmission`]); `None` for a screen the episode lacks (E3 4).
+    /// Transmission screens 1.. as the comm loaders fill them ([`comm::transmission_for`]);
+    /// `None` for a screen the episode lacks (E3 4).
     pub transmissions: Vec<Option<comm::Transmission>>,
     /// `ship_library`.
     pub ship_library: Vec<String>,
@@ -253,16 +253,8 @@ impl FlightScreenAssets {
             })
             .collect::<Result<_, _>>()?;
         let comm_prompts = texts(res, ids.comm_prompts)?;
-        let transmissions = comms
-            .iter()
-            .enumerate()
-            .map(|(i, run)| {
-                comm::transmission_for(episode, i + 1).or_else(|| {
-                    // E2 until its table is filled in (e2-flight-screens §3.1).
-                    (episode == Episode::E2)
-                        .then(|| comm::e2_transmission(i + 1, run, &comm_prompts))
-                })
-            })
+        let transmissions = (1..=comms.len())
+            .map(|n| comm::transmission_for(episode, n))
             .collect();
         Ok(Self {
             episode,

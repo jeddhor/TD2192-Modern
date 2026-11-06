@@ -9,7 +9,7 @@
 //!
 //! Episodes 2 and 3 (`docs/spec/flow/e2-flight-screens.md` rev 1 §3.1, §3.2, §4.1): the same
 //! screen; only the loaders' tables differ. Every episode's table is data in E1's notation
-//! ([`transmission_for`]).
+//! ([`transmission_for`]). E2 transmission 4 is T0-confirmed by C-0044 (RAM table and screen).
 
 use td_assets::Episode;
 use td_input::{Key, TickInput};
@@ -117,9 +117,50 @@ pub struct Transmission {
     pub lines: Vec<(Line, usize)>,
 }
 
-/// Episode 2 (e2-flight-screens rev 1 §3.1, screens 1..=7, runs `e2.comms.*`): not filled in
-/// yet (IM-11); until then [`e2_transmission`] reads the runs provisionally.
-const E2_SPECS: &[Option<Spec>] = &[];
+/// Episode 2 (e2-flight-screens rev 1 §3.1, loaders `td2:2555:01D4..158D`): screens 1..=7 on
+/// the runs `e2.comms.01` .. `.05`, `.06` + `.07` (one run of 12) and `.08`. The loaders reuse
+/// strings (screen 4 types its prompt four times); the speakers are the loaders' bytes, not
+/// anything in the text; box A shows `td2.ccm` record n, but record 5 for screen 7. Speaker
+/// bytes the loaders write past the last line (screen 2: 9, 10; screen 6: 11) are listed and
+/// have no effect; screen 5 writes none for its end marker (stale, read as B; the end marker is
+/// typed in both boxes anyway). Screen 4 CONFIRMED by C-0044, the others static.
+const E2_SPECS: &[Option<Spec>] = &[
+    Some(Spec {
+        portraits: (1, 0),
+        lines: "2 3 P 5 6 7 P 8 9 10 11 12 13 P 8 14 15 P 15 16 17 E",
+        speakers: "A 1..4, B 5..8, A 9..19, B 20..22",
+    }),
+    Some(Spec {
+        portraits: (2, 0),
+        lines: "2 3 4 5 P 7 8 E",
+        speakers: "A 1..6, B 7..10",
+    }),
+    Some(Spec {
+        portraits: (3, 0),
+        lines: "2 3 4 5 6 P 8 9 10 11 12 E",
+        speakers: "A 1..7, B 8..12",
+    }),
+    Some(Spec {
+        portraits: (4, 0),
+        lines: "2 3 4 5 P 7 8 9 P 10 11 12 13 14 P 15 16 17 18 19 P 15 20 21 22 23 E",
+        speakers: "A 1..6, B 7..10, A 11..22, B 23..27",
+    }),
+    Some(Spec {
+        portraits: (5, 0),
+        lines: "2 3 4 P 6 7 8 4 P 9 10 11 4 P 6 12 13 4 P 9 E",
+        speakers: "A 1..5, B 6..10, A 11..15, B 16..20",
+    }),
+    Some(Spec {
+        portraits: (6, 0),
+        lines: "2 3 4 5 6 7 8 9 10 E",
+        speakers: "A 1..5, B 6..11",
+    }),
+    Some(Spec {
+        portraits: (5, 0),
+        lines: "2 3 4 5 P 7 8 9 10 5 P 11 12 13 5 E",
+        speakers: "A 1..6, B 7..12, A 13..16",
+    }),
+];
 
 /// Episode 3 (e2-flight-screens rev 1 §3.2): screens 1, 2, 3 and 5 (there is no 4), runs
 /// `e3.comms.01`, `.02`, `.03` and `.04`. Static only (no E3 capture of a transmission).
@@ -162,7 +203,7 @@ pub fn transmission(n: usize) -> Option<Transmission> {
 }
 
 /// Transmission screen `n` of `episode` as its loader fills the table; `None` where the
-/// episode has no such screen (E3 4) or its table is not filled in (E2, see [`E2_SPECS`]).
+/// episode has no such screen (E3 4).
 pub fn transmission_for(episode: Episode, n: usize) -> Option<Transmission> {
     let spec = specs(episode).get(n.checked_sub(1)?)?.as_ref()?;
     let lines: Vec<Line> = spec
@@ -195,49 +236,6 @@ pub fn transmission_for(episode: Episode, n: usize) -> Option<Transmission> {
         portraits: spec.portraits,
         lines: lines.into_iter().zip(side).collect(),
     })
-}
-
-/// `td2.ccm` record of box A for E2 transmissions 1..=7. ASSUMPTION(U-310): record n for the
-/// caller (1 Kendrick, 2 Jarock, 3 Bryll, 4 Tol, 5 Glasya, 6 the Areo-2), Glasya's 5 again for
-/// transmission 7; record 0 (the player) in box B, as in E1.
-const E2_PORTRAIT_A: [usize; 7] = [1, 2, 3, 4, 5, 6, 5];
-
-/// An Episode 2 transmission `n` (1..=7) from its string run (`e2.comms.*`, episode-deltas
-/// rev 2 §10). The loaders `td2:2555:01D4..158D` are not specified yet (U-310); this
-/// provisional reading follows the E1 structure (flight-screens §3.3): headers 0 and 1, then
-/// the run's strings 2.. in order, markers recognised by content (`prompts`), up to the end
-/// marker. ASSUMPTION(U-310): a line that starts with two spaces right after a blank
-/// (spaces-only) line starts the other speaker's box; the first line is box A.
-pub fn e2_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmission {
-    let a = E2_PORTRAIT_A.get(n.wrapping_sub(1)).copied().unwrap_or(1);
-    later_transmission(a, run, prompts)
-}
-
-/// The provisional E2 reading with box A showing `td2.ccm` record `portrait_a`.
-fn later_transmission(portrait_a: usize, run: &[String], prompts: &[String]) -> Transmission {
-    let blank = |s: &str| s.trim().is_empty();
-    let mut lines = Vec::new();
-    let mut side = 0;
-    let mut prev_blank = false;
-    for (j, text) in run.iter().enumerate().skip(2) {
-        if prompts.get(1) == Some(text) {
-            lines.push((Line::End, side));
-            break;
-        }
-        if prompts.first() == Some(text) {
-            lines.push((Line::Prompt, side));
-            continue;
-        }
-        if prev_blank && text.starts_with("  ") && !lines.is_empty() {
-            side ^= 1;
-        }
-        prev_blank = blank(text);
-        lines.push((Line::Text(j), side));
-    }
-    Transmission {
-        portraits: (portrait_a, 0),
-        lines,
-    }
 }
 
 /// What the screen does after the current typing finishes.
@@ -496,25 +494,56 @@ mod tests {
     }
 
     #[test]
-    fn e2_provisional_reading() {
-        let s = |v: &[&str]| v.iter().map(|t| (*t).to_owned()).collect::<Vec<_>>();
-        let prompts = s(&["P", "E"]);
-        let run = s(&[
-            "a", "b", "  one", "two", "P", " ", "  three", "four", "  five", "E",
-        ]);
-        let t = e2_transmission(7, &run, &prompts);
-        assert_eq!(t.portraits, (5, 0));
-        let expected = [
-            (Line::Text(2), 0),
-            (Line::Text(3), 0),
-            (Line::Prompt, 0),
-            (Line::Text(5), 0),
-            (Line::Text(6), 1),
-            (Line::Text(7), 1),
-            (Line::Text(8), 1),
-            (Line::End, 1),
+    fn e2_table_shapes() {
+        // e2-flight-screens §3.1 and §6 vector 2: run sizes 19, 10, 14, 25, 15, 12 (.06 + .07),
+        // 15; with the marker indices (prompt, end) every string 2..count is used and the end
+        // marker is the last.
+        let runs = [
+            (19, Some(4), 18),
+            (10, Some(6), 9),
+            (14, Some(7), 13),
+            (25, Some(6), 24),
+            (15, Some(5), 14),
+            (12, None, 11),
+            (15, Some(6), 14),
         ];
-        assert_eq!(t.lines, expected);
+        for (n, (count, prompt, end)) in (1..=7).zip(runs) {
+            let t = transmission_for(Episode::E2, n).unwrap();
+            assert_eq!(t.lines.last().map(|l| l.0), Some(Line::End), "n = {n}");
+            assert_eq!(end, count - 1);
+            let mut used: Vec<usize> = t
+                .lines
+                .iter()
+                .filter_map(|l| match l.0 {
+                    Line::Text(j) => Some(j),
+                    Line::Prompt => prompt,
+                    Line::End => Some(end),
+                })
+                .collect();
+            assert_eq!(
+                t.lines.iter().any(|l| l.0 == Line::Prompt),
+                prompt.is_some(),
+                "n = {n}"
+            );
+            used.sort_unstable();
+            used.dedup();
+            assert_eq!(used, (2..count).collect::<Vec<_>>(), "n = {n}");
+            assert_eq!(t.portraits, ([1, 2, 3, 4, 5, 6, 5][n - 1], 0));
+        }
+        assert!(transmission_for(Episode::E2, 8).is_none());
+        // Screen 4 (C-0044): 27 lines, four prompts; A 1..6, B 7..10, A 11..22, B 23..27.
+        let t = transmission_for(Episode::E2, 4).unwrap();
+        assert_eq!(t.lines.len(), 27);
+        let prompts = t.lines.iter().filter(|l| l.0 == Line::Prompt).count();
+        assert_eq!(prompts, 4);
+        let side = |k: usize| t.lines[k - 1].1;
+        assert_eq!((side(6), side(7), side(10), side(11)), (0, 1, 1, 0));
+        assert_eq!((side(22), side(23), side(27)), (0, 1, 1));
+        // Screen 1 types string 8 twice and 15 twice.
+        let one = transmission_for(Episode::E2, 1).unwrap();
+        let eights = one.lines.iter().filter(|l| l.0 == Line::Text(8)).count();
+        assert_eq!(eights, 2);
+        assert_eq!((one.lines[3].1, one.lines[4].1), (0, 1));
     }
 
     #[test]
