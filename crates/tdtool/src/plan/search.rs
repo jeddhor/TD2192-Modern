@@ -5,7 +5,8 @@
 //! by a fixed rule whenever a hostile ship lies in the line of fire and no friend does. The
 //! clones are scored ([`score`]) and the best [`BEAM`] distinct ones are kept. A flight whose
 //! player is destroyed or whose mission is lost is dropped; the first one that succeeds ends
-//! the search.
+//! the search. Weapons mode ([`Options::weapons`], VE-5) adds Tab and afterburner taps and
+//! fires missiles by taps (see [`weapons_fire`]).
 
 use rayon::prelude::*;
 use td_sim::flight::{Episode, TickResult};
@@ -435,9 +436,9 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
             })
             .min()
             .unwrap_or(0);
-        if near < 256 {
-            s -= near * 20;
-        }
+        // Capped, not cut off: a cut-off makes entering the radius cost score, and the beam
+        // then parks just outside it (VE-5: E3 flight 7 at 261 px from `home17`).
+        s -= near.min(256) * 20;
         if let Some(max) = home_sub_y_max(f.episode, f.number)
             && home_views(f.episode, f.number).contains(&(v.tile_x, v.tile_y))
         {
@@ -531,10 +532,12 @@ fn expand(
         space_held = if fire { space_held + 1 } else { 0 };
         let w = schedule::word(&prev, &down);
         inputs.push(w);
-        let (missiles, burst) = (f.missiles, f.player.burst_frame);
+        // The bonus counts only what happens before the phase is 100: afterwards the way home
+        // must not compete with it.
+        let (missiles, burst, early) = (f.missiles, f.player.burst_frame, f.mission.phase < 100);
         let (r, comm) = step(&mut f, world, w);
-        missiles_fired += u32::from(f.missiles < missiles);
-        bursts += u32::from(burst == 0 && f.player.burst_frame != 0);
+        missiles_fired += u32::from(early && f.missiles < missiles);
+        bursts += u32::from(early && burst == 0 && f.player.burst_frame != 0);
         if let (Some(a), Some(aw)) = (alt.as_mut(), alt_world) {
             let (ra, comm_a) = step(a, aw, w);
             if !diverged && super::core_hash(a) != super::core_hash(&f) {
@@ -601,22 +604,27 @@ fn expand(
     Some(n)
 }
 
-/// The decisions offered from `f`: the nine direction sets, F6 when a transmission waits, and
-/// in weapons mode a Tab tap (class with a missile weapon, missiles left or the missile weapon
-/// selected) and afterburner taps (classes 2 and 5, no burst running, a principal heading;
-/// flight-model §4.7).
-fn actions(f: &Flight, weapons: bool) -> Vec<Action> {
+/// The decisions offered from `node`: the nine direction sets, F6 when a transmission waits,
+/// and in weapons mode, before the phase is 100: a Tab tap (class with a missile weapon, the
+/// missile weapon selected, or missiles left while fewer than [`BONUS_CAP`] were fired) and
+/// afterburner taps (classes 2 and 5, no burst running, a principal heading, fewer than
+/// [`BONUS_CAP`] bursts; flight-model §4.7).
+fn actions(node: &Node, weapons: bool) -> Vec<Action> {
+    let f = &node.flight;
     let mut v: Vec<Action> = DIRS.iter().map(|&d| Action::Keys(d)).collect();
     if f.mission.comm_pending && super::transmission_waits(f) && !f.comm_request {
         v.push(Action::Comm);
     }
-    if weapons && !f.mission_over {
-        if missile_weapon(f).is_some() && (f.weapon > 3 || f.missiles > 0) {
+    if weapons && !f.mission_over && f.mission.phase < 100 {
+        if missile_weapon(f).is_some()
+            && (f.weapon > 3 || (f.missiles > 0 && node.missiles_fired < BONUS_CAP))
+        {
             v.push(Action::Tab);
         }
         if matches!(f.player.class, 2 | 5)
             && f.player.burst_frame == 0
             && f.player.heading.is_principal()
+            && node.bursts < BONUS_CAP
         {
             v.extend(BURN_DIRS.iter().map(|&d| Action::Burn(d)));
         }
@@ -700,7 +708,7 @@ pub fn plan(setup: &FlightSetup, alt: Option<&FlightSetup>, opts: &Options) -> O
             .par_iter()
             .enumerate()
             .flat_map_iter(|(i, node)| {
-                actions(&node.flight, weapons)
+                actions(node, weapons)
                     .into_iter()
                     .filter_map(|a| {
                         expand(node, a, world, alt_world, &g, dual).map(|mut n| {

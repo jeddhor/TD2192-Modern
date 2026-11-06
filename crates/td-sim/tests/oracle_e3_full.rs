@@ -107,6 +107,68 @@ fn flight_19_full_matches_oracle() {
     check(19);
 }
 
+/// Two flights of one block in one program run (VE-5, oracle build 3): the first from its
+/// direct start, the second with the session the first left (e3-program-flow §4.4.1, §4.4.2).
+fn block_run(first: u8, second: u8, tag: &str) {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        tag,
+        &[
+            Leg {
+                flight: first,
+                suffix: "",
+                muzzles: Muzzles::Capture,
+                ends: true,
+            },
+            Leg {
+                flight: second,
+                suffix: "",
+                muzzles: Muzzles::Capture,
+                ends: true,
+            },
+        ],
+    );
+}
+
+/// Block 6: flight 6, the debrief (15 s), Esc at the middle part's maraud3 card, flight 7
+/// (M10-30).
+#[test]
+fn flights_06_and_07_in_one_run_match_oracle() {
+    block_run(6, 7, "ve5-e3f06-f07");
+}
+
+/// Block 11: flight 11, no debrief, Esc ends dialogue 64, flight 21 (M10-43).
+#[test]
+fn flights_11_and_21_in_one_run_match_oracle() {
+    block_run(11, 21, "ve5-e3f11-f21");
+}
+
+/// Flight 9 reached through its pre-flight story (VE-5): the keys of C-0180 (title card, kolorvci
+/// card, dialogue 53, mining2 card, dialogue 54, Space every 120 frames), then `e3f09.tdr`. The
+/// session comes from program start through the story; the muzzle bytes are the capture's
+/// (U-441: the story changes them; this replay takes the same course with either).
+#[test]
+fn flight_09_after_its_story_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        "ve5-e3f09-story",
+        &[Leg {
+            flight: 9,
+            suffix: "",
+            muzzles: Muzzles::Capture,
+            ends: true,
+        }],
+    );
+}
+
 /// U-430: the player leaves the home hangar of flight 10 and flies back in (RE-17's captures,
 /// tick-keyed input from their scenarios: `tdtool schedule-replay`). Part of the flight, every
 /// tick; the captures dump no projectiles (VE-5).

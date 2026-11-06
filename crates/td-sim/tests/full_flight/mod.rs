@@ -650,6 +650,41 @@ pub struct Leg<'a> {
     pub ends: bool,
 }
 
+/// The frame of the next generation's first record, if the capture flew a next flight.
+fn next_flight_frame(l: &Layout, cap: &Path, generation: usize) -> Option<u32> {
+    let p = mem_file(
+        cap,
+        "tick_",
+        &format!("-0000_{:X}_ds{}.bin", l.ds_len, gen_suffix(generation + 1)),
+    )?;
+    let mut head = [0u8; 8];
+    std::io::Read::read_exact(&mut fs::File::open(p).ok()?, &mut head).ok()?;
+    Some(u32::from_le_bytes([head[4], head[5], head[6], head[7]]))
+}
+
+/// The dump with the outcome after teardown: 240 frames after the last tick, or 120 when the
+/// next flight of the block had started by then (E3 flight 21 follows flight 11 with no
+/// debrief).
+fn end_dump(l: &Layout, cap: &Path, generation: usize) -> PathBuf {
+    let gs = gen_suffix(generation);
+    let frame = |p: &Path| -> u32 {
+        let n = p.file_name().unwrap().to_string_lossy();
+        n[1..9].parse().unwrap()
+    };
+    let next = next_flight_frame(l, cap, generation);
+    for tag in ["end240", "end120"] {
+        if let Some(p) = mem_file(cap, "f", &format!("_{tag}{gs}.bin"))
+            && next.is_none_or(|n| frame(&p) < n)
+        {
+            return p;
+        }
+    }
+    panic!(
+        "{}: no outcome dump of generation {generation}",
+        cap.display()
+    );
+}
+
 /// Compares flight `flight` of `l`'s episode (success replay `e<E>f<NN>.tdr`) with its
 /// capture (skips without a replay or a capture). `data` and `oracle` are the installation and
 /// the oracle capture root.
@@ -772,6 +807,19 @@ fn check_leg(
     let mission = episode::mission_file(ep, flight)
         .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
     let mut f = Flight::start(flight, mission.as_ref(), &world, session);
+    if generation > 1 {
+        // Known divergence copied (U-501, VE-5): flight setup does not write the player's turn
+        // direction `g_PlayerTurnDir`, so a later flight of the run starts with the value the
+        // flight before it left (E1 block 19: 2 after flight 19); td-sim starts every flight with
+        // 0 (flight-model §2 "starts at 0"). From a principal heading every steering input that
+        // changes the target also sets the direction (flight-model §4.6), so the stale value
+        // is not seen until then.
+        f.player.turn = match first.u8(l.turn) {
+            1 => Turn::CounterClockwise,
+            2 => Turn::Clockwise,
+            _ => Turn::None,
+        };
+    }
     let has_proj = proj.is_some();
 
     // Setup: the record of tick 1 holds the state after setup (plus tick 1's turn step).
@@ -869,8 +917,7 @@ fn check_leg(
     // The original flew no further tick, and its outcome is ours.
     let last = by_tick.keys().last().copied().unwrap();
     assert_eq!(last, n, "{name} flight {flight}: original's last tick");
-    let end = mem_file(cap, "f", &format!("_end240{gs}.bin")).expect("the end240 dump");
-    let end = fs::read(end).unwrap();
+    let end = fs::read(end_dump(l, cap, generation)).unwrap();
     // g_PlayerDied follows g_MissionLost in every episode.
     assert_eq!(
         (

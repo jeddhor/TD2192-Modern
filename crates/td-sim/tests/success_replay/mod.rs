@@ -63,10 +63,33 @@ pub fn check(data: &Path, ep: Episode, flight: u8) {
 /// Runs the replay `e<E>f<NN><suffix>.tdr`: checkpoints, then the flight ends on the last
 /// tick, by success, or by the player's death (`death`: the end sequence ran its 35 ticks).
 pub fn check_ending(data: &Path, ep: Episode, flight: u8, suffix: &str, death: bool) {
+    fly(data, ep, flight, suffix, death, Session::for_episode(ep));
+}
+
+/// Runs the replay of `prev` (success), then the replay `e<E>f<NN>.tdr` of `flight` with the
+/// session `prev` left, as the next flight of the same block (VE-5: E1 flight 21 after 19, E3
+/// flight 7 after 6, E3 flight 21 after 11): checkpoints, then the flight ends on its last
+/// tick by success, or by the end of a death (`death`).
+pub fn check_after(data: &Path, ep: Episode, prev: u8, flight: u8, death: bool) {
+    let Some(first) = fly(data, ep, prev, "", false, Session::for_episode(ep)) else {
+        return;
+    };
+    fly(data, ep, flight, "", death, first.session());
+}
+
+/// Runs one replay from `session`; `None` when there is no replay.
+fn fly(
+    data: &Path,
+    ep: Episode,
+    flight: u8,
+    suffix: &str,
+    death: bool,
+    session: Session,
+) -> Option<Flight> {
     let path = replay_path(ep, flight, suffix);
     let Ok(bytes) = std::fs::read(&path) else {
         eprintln!("SKIPPED: no replay {}", path.display());
-        return;
+        return None;
     };
     let r = Replay::from_bytes(&bytes).unwrap();
     assert_eq!(
@@ -74,8 +97,7 @@ pub fn check_ending(data: &Path, ep: Episode, flight: u8, suffix: &str, death: b
         (number(ep), flight),
         "replay header"
     );
-    let session = Session::for_episode(ep);
-    assert_eq!(r.seed, session.rng.seed(), "direct start");
+    assert_eq!(r.seed, session.rng.seed(), "the replay's session");
     assert_eq!(
         r.checkpoints.len(),
         r.inputs.len() / r.interval as usize,
@@ -119,4 +141,5 @@ pub fn check_ending(data: &Path, ep: Episode, flight: u8, suffix: &str, death: b
         f.kills,
         f.outcome()
     );
+    Some(f)
 }

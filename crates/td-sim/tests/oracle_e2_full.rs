@@ -115,3 +115,23 @@ fn flight_19_full_matches_oracle() {
 fn flight_20_full_matches_oracle() {
     check(20);
 }
+
+/// The homing missile (kind 6, player class 5), Tab and the afterburner (VE-5, `tdtool plan
+/// --weapons`): one Tab to the missile weapon, all four homing missiles, three bursts. C-0207
+/// diverges at tick 8 (BUG-9): the original moves a homing missile along the heading it had
+/// before the tick's steering (weapons §4.3 steps 6 and 8). With that order td-sim matches all
+/// 220 ticks; the replay must then be planned and captured again.
+#[test]
+#[ignore = "BUG-9: the original moves the homing missile along its previous heading (weapons §4.3 \
+            steps 6/8); first divergence at tick 8"]
+fn flight_20_weapons_matches_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E2,
+        &data,
+        &oracle,
+        20,
+        "-weapons",
+        "ve5-e2f20-weapons",
+    );
+}

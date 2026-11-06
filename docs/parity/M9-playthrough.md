@@ -13,9 +13,20 @@ Verifier: VE-2 (M9-21, the success replays of M9-01..M9-17, the replay check of 
 - The game increments the counter at step 1 of tick T, right after tick T − 1's input steps 23–33, which follow a vertical-retrace wait (tick-order rev 1 §4).
 - The oracle sees the new value within 1 ms (20,000 cycles at preset P1) and injects the transitions of `tick:T` in that millisecond; each scan-code byte reaches the INT 09h handler about 0.3 ms later. The game is then in steps 2–4 (drawing the 66-tile window takes several ms).
 - Tick T's input steps run after the tick wait and a retrace wait, at least ~12 ms later, so they see every transition of `tick:T`; tick T − 1's had already run. So port tick T gets: keys down = the keys down after `tick:T`, keys made = the keys that went down at `tick:T`.
-- Exception, not used by the plans: the afterburner keys are also read at step 5, early in the tick.
+- Exception: the afterburner keys are also read at step 5, early in the tick. VE-5 refined the rule for them below (**Step-5 keys**); VE-2's plans never pressed them.
 - Typematic repeat (DOSBox-X repeats the last key pressed after 500 ms, then every 33 ms) sets a byte the game has cleared, which a replay word cannot express. The plans hold the keys the game clears (afterburner, Tab, Alt, F6) for at most 5 ticks and never select missiles, so Space is never cleared.
 - **Comm viewer.** While the transmission screen is open the counter stays at the tick T that opened it. The schedule presses Space and F6 alternately every 15 frames from 20 frames after T with `intick:T+N` lines, which run only while the counter still shows T: Space answers each prompt, the first F6 after the last prompt closes the screen, and the presses that come later are skipped. No key reaches a flight tick, as in the replay semantics.
+
+**Step-5 keys: the afterburner (VE-5).** Keypad + and Ins (`kpplus`, `kp0`) are read at step 5 (flight-model §4.7): with class 2 or 5 and the mission not over, a set byte starts a burst when none runs and the heading is principal, and is cleared in every case (one burst per make code). Step 5 follows step 4, the 66-tile window, so the refined rule is:
+
+- A `tick:T down kpplus` reaches the key table before step 5 of tick T: the oracle sees the new counter value within 1 ms of step 1 and injects at once, the scan code (one byte, 4Eh or 52h) reaches INT 09h about 0.3 ms later, and steps 2–4 (the per-tick bytes, the turn step and 66 tile blits) take longer than that at preset P1. Port tick T therefore gets the make in its input word, and td-sim's step 5 consumes it in tick T, as the original does.
+- The game clears the byte when it reads it, whether or not a burst starts, so holding the key does not start another burst: only a new make does, or a typematic repeat (500 ms, then every 33 ms, for the last key pressed only), which a replay word cannot express. Plans therefore tap keypad + for one tick (it is in `CLEARABLE`, at most 5 ticks) and never hold it.
+- A key-up of keypad + changes nothing the game reads after step 5 of the tick that consumed the make.
+- Classes other than 2 and 5 never clear the byte: there it simply follows make and break like any key (no plan presses it there).
+
+Checked by C-0205 (E1 flight 8, three bursts): every burst starts in the port's tick, and the burst frame `g_BurstFrame` (E1 DS:1836, E2 DS:175A, E3 DS:1756; the burst heading while a burst runs) is compared after every tick in every whole-flight test since VE-5 (all earlier passes unchanged: 0 throughout).
+
+**Missiles and Tab (VE-5).** With the missile weapon selected a launch clears the Space byte (weapons §4.1), so a plan that presses Tab treats Space as clearable too (held at most 5 ticks; `schedule::check`); `tdtool plan --weapons` taps Space once per missile (never two ticks running) and releases it for a tick after 5 ticks of volley fire. Tab is a one-tick tap with every other key released.
 
 The rule was checked by the comparison itself: the test compares the port's key table after every tick with the original's key bytes (the record of tick t + 1 is taken before tick t + 1's transitions), and every tick of the flights below matches.
 
@@ -83,6 +94,21 @@ All comparisons are exact (T1). "Compared" counts the ticks after which the whol
 
 **Oracle checks.** Oracle 2 ran VE-1's frame-keyed scenario `ve1-e1f3-firstticks` (the scenario of C-0018) in the VE-2 rig, and all 3,010 output files are byte-identical to the oracle 1 run: `frames.tsv`, `int21.tsv`, `pit.tsv`, `events.tsv`, `io_sites.tsv` and every dump. A repeat of the flight-1 tick-keyed run gives 63 files byte-identical to C-0051.
 
+## VE-5 (2026-11-06): two flights in one run, flights reached through the front end, missiles and the afterburner
+
+Oracle build 3 (watcher generations, `re-work\dosbox\ORACLE.md` §5b; `re-work\dosbox\bin\oracle-3`, SHA-256 `67f8d9dd…`) keys each flight of a program run to its own `tickwatch`, and the second flight's dumps carry `_g2`. It is backward compatible: in a rig whose mount path is as long as VE-2's, C-0058's scenario gives all 44 output files of C-0058 byte for byte, and C-0156's scenario all 79 of C-0156 (`re-work\ve5\compat.py`). VE-5's rig and scripts: `re-work\ve5` (`run1.py` one flight, `run2.py` two flights of a block, `register.py`).
+
+**Harness.** `full_flight::check_run` compares a run's flights in order: the first from program start, each later one with the session the flight before it left (`Flight::session`), its muzzle bytes from its own tick-1 record (`Muzzles::Capture`), its records from its generation. `tdtool` flies a flight that only follows another in its block after the predecessor's replay (`flight_setup::predecessor`: E1 21 after 19, E3 7 after 6, E3 21 after 11), for `plan`, `replay --verify` and `--oracle-schedule`; the L4 tests do the same (`success_replay::check_after`). The projectile arrays are dumped through a 64 KB window that holds them wherever the heap put them.
+
+| Replay | Capture | Start | Ticks | Result | What it covers |
+|---|---|---|---:|---|---|
+| `e1f03.tdr` | C-0203 | `FILE0001.EXE` at mission 3, Enter, the story played (title and hangar cards, dialogue 11 with Space: C-0160's keys) | 1,651 | **PASS** | a flight reached through the front end: session from program start (RNG, class tables, `Session.weapon` 0), the muzzle bytes the screens left (OB-017). The test flies the capture's bytes; `td-flow/tests/front_end_state.rs` builds the port's bytes from its own screens and matches them against all 1,652 records of C-0203 |
+| `e1f08-weapons.tdr` | C-0205 | direct start | 387 | **PASS** | `tdtool plan 8 --weapons`: one Tab to the missile weapon, six missiles of kind 4, three afterburner bursts, the comm viewer at 318; every burst starts in the port's tick |
+| `e1f15-weapons.tdr` | C-0206 | direct start | 661 | **PASS** | class 3 (helicopter): one Tab, all twenty missiles of kind 5 |
+| `e1f19.tdr`, then `e1f21.tdr` | C-0200 | direct start at mission 19; after flight 19 the debrief times out (10 s), Esc 60 frames after `voffice.scr` opens jumps to flight 21 | 287 + 58 | flight 19 **PASS**; flight 21 **diverges at setup** (D6, test ignored) | block 19 in one run; flight 21 has no input and ends itself through the end sequence (58 ticks); its session (RNG seed after flight 19 and the setup draws, class tables, `g_Weapon`, the player) matches at setup; the slots do not (D6) |
+
+**Not covered (E1):** E1 flight 1 through `td1.exe` (the C-0002 path: no plan found that is neutral to both muzzle worlds; `--dual` not tried for lack of time), deaths in a later flight of a run, retries.
+
 ## Divergences
 
 | # | Flight | Tick | Field | Ours | Original | Events around it | Spec | Resolution |
@@ -91,6 +117,8 @@ All comparisons are exact (T1). "Compared" counts the ticks after which the whol
 | D2 | 14 | 163 | slot 13 record +415h (attackMode), +41Fh (targetSel) | 01, 00 | 00, FFh | t157 phase 2 and comm pending. t162 transmission 7 → phase 100, markers 0, then slots 1–6 = 32h. In tick 162 slot 13's hold schedule ends its attack, on both sides. Slot 13 at (151, 130) and the view at (147, 127) are within the 30 of `engage 13 → player`. In phase 2 the original re-ordered slot 13 every tick; afterwards it never does (ticks 163–301, always in range), nor slot 9 after tick 222 (`engage 9 → player, 25`) | mission-logic.md rev 2 §5.14 lists the engagement rules with no condition | U-390 resolved by RE-15 (mission-logic rev 3 §5.14: the five attacks on the player run only while phase < 100). **Fixed** by IM-18; `flight_14_full_matches_oracle` re-enabled and passing |
 | D3 | 19 | setup | `g_Weapon` (DS:1CB8) | 1 | 0 | direct start, class 0 (truck) | weapons.md rev 3 §3.2 (classes 0 and 1 keep the previous flight's weapon); the program-start value is not specified | **BUG-2**, U-391. **Fixed** by IM-18 (weapons rev 4 §3.2: `Session::weapon`); the test copies nothing |
 | D4 | 17 (trial run, test harness) | 107 | `g_HitFlash` | 17 | 0 | Amiel killed in step 6 (distance flash); cut-scene requested in step 18 | hit-flash.md rev 2 §4.2: every level of a flight fade zeroes it | Host behaviour. **Fixed** by IM-18: td2192 runs the cut-scene (BUG-3) and td-sim zeroes the hit flash when it reports the request (every viewer of the flight sees the same state) |
+| D6 | 21 after 19 (C-0200) | setup | every slot: tile, sub offsets, heading, target, speeds, record path bytes | flight 19's end states (td-sim keeps the session's ships) | tiles such as (0, 112), (69, 164), (145, 64), offsets (16, 16), heading 6, speeds 0, path bytes `70 93 70 35 …` | flight 19 PASS (287 ticks); the RNG seed, classes, armour and shields of flight 21's setup match | mission-ships §4.1 steps 3–4 run for every flight, but flight 21 loads no mission file: the arrays they copy do not hold m19.td's paths; mission-setup row 21 "slots keep the previous flight's data" | **U-500** (RE: where the path arrays live and what fills them in flight 21). Test `flights_19_and_21_in_one_run_match_oracle` ignored |
+| D7 | 21 after 19 (C-0200); E3 7 after 6, 21 after 11 (C-0201, C-0202) | setup | `g_PlayerTurnDir` (DS:1A5A); slot turn directions (DS:3B1A − 1 + s) | 0 | the previous flight's last values (2 after E1 flight 19) | — | flight-model §2 "starts at 0", mission-ships §2 "0 at setup"; mission-ships §4.1 step 4 writes no turn | **U-501.** Slots: **fixed** (`fix:` commit, `Ships::load_mission` keeps them; E3 flight 21 needed it). Player: **copied** by the harness at the setup of a run's second flight (td-sim needs a `Session` field, an IM task); from a principal heading the next steering input that changes the target sets it anyway |
 | D5 | 8, 15, 16 (trial runs, first plans) | — | the flight ends later in the original | — | — | two-digit-heading volleys: the player's while turning, and in flight 16 an enemy's | U-160 (port policy: offset (0, 0) past the muzzle table) | Not a td-sim bug: with the capture's DGROUP bytes td-sim matches the original exactly. Evidence added to U-160; the plans were made neutral to it (see Method) |
 
 ## Open questions for the coordinator
@@ -109,9 +137,12 @@ All comparisons are exact (T1). "Compared" counts the ticks after which the whol
 4. U-160: the bytes past the muzzle table are specified in [weapons](../spec/sim/weapons.md) rev 4 §3.3. They never change during a flight and are the same in every direct start, but differ after a played story (C-0002, C-0160). The replays are neutral only for direct-start bytes: with the bytes of C-0002 (start through `td1.exe`) or C-0160 (mission 3 with its story), 10 of the 20 replays take another course (flights 1, 4, 5, 8, 9, 10, 11, 16, 17, 18). Policy proposal: *preserve* (OB-017).
 5. BUG-3: both screens are specified in [flight-screens](../spec/flow/flight-screens.md) rev 4 §4.10.
 
+**Open questions (VE-5):** U-500 (D6), U-501 (D7, spec and `Session`), and for E2 U-502/BUG-9 ([M10-playthrough](M10-playthrough.md)).
+
 ## Reproducing
 
 - Plan: `cargo run --release -p tdtool -- plan N [--alt-muzzles BYTES] [--beam 40]` writes `tests/replays/e1fNN.tdr`.
 - Check: `cargo run --release -p tdtool -- replay tests/replays/e1fNN.tdr --verify [--alt-muzzles BYTES]`.
 - Oracle run: `python -I re-work\ve2\run_plan.py N <replay> <out>`. It calls `tdtool replay --oracle-schedule` and uses the private rig and the oracle 2 build; `re-work\ve2\register.py` registers the run. `re-work\ve2\extract_muzzles.py` writes a capture's muzzle bytes, which are game-derived and stay in re-work.
 - Compare: `cargo test --release -p td-sim --test oracle_e1_full -- --nocapture` with `TD2192_DATA` and `TD2192_ORACLE` set.
+- VE-5: `tdtool plan N --weapons --suffix=-weapons`; `tdtool plan 21 --idle --suffix=""` (after `e1f19.tdr`); `python -I re-work\ve5\run1.py <rig> <name> 1 N <tdr> [direct|e1-story3]`, `run2.py <rig> <name> 1 19 e1f19.tdr 21 e1f21.tdr`; `register.py`.

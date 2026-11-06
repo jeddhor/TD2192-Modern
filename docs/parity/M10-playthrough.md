@@ -164,11 +164,35 @@ All comparisons are exact (T1): every tick of the flight, the last one included 
 2. U-430: the original lets the player back into `home17` from below (C-0182, C-0183: out to view (17, 166) and back in at tick 70). At the home position sideways thrust does not move the ship (map row 166 is solid except the hangar tile (22, 166)), so re-entry needs the ship lined up under the one-tile opening. td-sim has not been compared with these captures: replay the C-0183 schedule (scenario `re17-e3f10-hangar-c.txt`, tick lines) in td-sim from the same start and compare every tick; if td-sim matches, the planner's failure is its alignment, not the collision.
 3. E3 flights 7 and 21: oracle 2 cannot re-arm its watcher; a backward-compatible change is designed in `re-work\re17\ORACLE-REARM.md` (U-481), not built.
 
+## VE-5 (2026-11-06): E3 flights 7 and 21, a flight after its story, U-430, the homing missile
+
+Method: [M9-playthrough](M9-playthrough.md) VE-5 section (oracle build 3, `full_flight::check_run`, `re-work\ve5`). Two flights of a block are flown in one program run from the first flight's direct start; the second flight's replay is planned with the session the first one's replay leaves (`tdtool plan 7 --episode 3` finds `e3f06.tdr` next to its output), strict against the muzzle bytes of a pre-run of the same two flights (the second flight's tick-1 record; not registered).
+
+| Replay | Capture | Run | Ticks | Result | Notes |
+|---|---|---|---:|---|---|
+| `e3f06.tdr` → `e3f07.tdr` | C-0201 | restore at block 6, Esc at the first `maraud3` card; after flight 6 the debrief times out (15 s), Esc 121 frames after the second `maraud3.scr` open skips the middle part (§4.4.1) | 1,062 + 479 | **PASS** both | flight 7 starts in phase 100 with flight 6's session and flies home with the convoy (the planner needed the near-goal fix below). Flight 6's DGROUP records are C-0156's byte for byte |
+| `e3f11.tdr` → `e3f21.tdr` | C-0202 | restore at block 11, Esc at the title card; after flight 11 (no debrief) one Esc 60 frames after `safedia3.dat` opens ends dialogue 64 at its first page break, flight 21 follows (§4.4.2) | 852 + 1,049 | **PASS** both | needs the U-501 fix (setup keeps the slots' turn directions); the outcome dump of flight 11 is the one 120 frames after its last tick (flight 21 has started by 240) |
+| `e3f09.tdr` | C-0204 | restore at block 9, the pre-flight story played with C-0180's keys (Space every 120 frames from f900 to f3060) | 1,560 | **PASS** | session from program start through the title card, two scene cards and dialogues 53 and 54; the story's muzzle bytes (U-441) leave this replay's course unchanged |
+| `e3f10-hangar-b.tdr` | C-0182 (RE-17) | the capture's own tick lines (`tdtool schedule-replay`) | 1..259 | **PASS** (part of the flight) | U-430: out of `home17` and back in at tick 71 |
+| `e3f10-hangar-c.tdr` | C-0183 (RE-17) | as above | 1..319 | **PASS** (part of the flight) | U-430: back in at tick 70; sideways thrust at home blocked; no projectile dumps in these captures |
+| `e2f20-weapons.tdr` | C-0207 | restore at block 20 | 220 | **diverges at tick 8** (BUG-9, test ignored) | `tdtool plan 20 --episode 2 --weapons`: Tab, four homing missiles (kind 6, class 5), three bursts |
+
+**U-430 answered.** td-sim lets the player out of and back into the flight-10 hangar exactly as the original (every compared tick of C-0182 and C-0183). The planner's failure was in its score: the near-goal term `−20 × pixels` applied only within 256 px, so the first step into that radius lost about 5,000 points and the beam parked just outside it (E3 flight 7 stalled 261 px from `home17` the same way). `tdtool plan` now caps the term (`−20 × min(pixels, 256)`), and flight 7's plan then reached home in 479 ticks. The committed replays are unaffected (planning only).
+
+### Divergences (VE-5)
+
+| # | Flight | Tick | Field | Ours | Original | Events around it | Spec | Resolution |
+|---|---:|---:|---|---|---|---|---|---|
+| V1 | E3 21 after 11 (pre-run of C-0202) | setup | slot turn directions (DS:3B1A − 1 + s), slots 1..15 | 0 | 1 or 2 (flight 11's) | — | mission-ships §2 "0 at setup"; §4.1 step 4 writes no turn | **Fixed** (`fix:` commit; U-501). C-0202 then passes |
+| V2 | E3 7, 21 (second flights) | setup | `g_PlayerTurnDir` | 0 | the previous flight's | — | flight-model §2 | Copied by the harness (U-501, M9-playthrough D7) |
+| V3 | E2 20 (C-0207) | 8 | projectile slot 40 (the first homing missile): tile | (92, 34) | (90, 32), heading 3 in both | launched in tick 7 at (91, 33) on heading 7 toward slot 10 at (93, 34) | weapons rev 5 §4.3: step 6 steers, step 8 moves along the heading | **BUG-9 / U-502.** The original moves along the heading the missile had before the tick's steering and computes the new heading from the tile before the move. A trial td-sim with that order matched all 220 ticks (the flight then goes on past the planned last tick, in both), not committed. Steering after the move instead fails at tick 11 |
+
 ## Planner notes
 
 - The E2/E3 base tests with a `viewSubY` limit and the narrow E3 hangar needed a goal term in pixels near the goal (offsets (32, 16)); the view tile alone left the ship stuck one tile short.
 - E3 flight 6 is an escort whose phase advances only when the convoy has left: friends count as progress when they leave, and the player waits instead of parking on the convoy's path (the first plan blocked the exit at (1, 108) and the phase never moved).
 - The strict search backs off when every branch fails; it found strict plans for 35 of the 38 flights.
+- VE-5: the near-goal pixel term is capped at 256 px instead of cut off there (U-430; the cut-off made the beam park just outside the radius). `--weapons` adds Tab and keypad + taps (before phase 100, at most three bursts and three bonus missiles) and a bonus for missiles and bursts before phase 100, so that the plan covers them.
 
 ## Reproducing
 
@@ -176,5 +200,6 @@ All comparisons are exact (T1): every tick of the flight, the last one included 
 - Plan: `cargo run --release -p tdtool -- plan N --episode E --alt-muzzles re-work\ve4\muzzles\eEfN.bin [--dual]` writes `tests/replays/eEfNN.tdr`.
 - Check: `cargo run --release -p tdtool -- replay tests/replays/eEfNN.tdr --verify [--alt-muzzles BYTES]`.
 - Death and screens: `tdtool plan 1 --idle [--modals]` writes `e1f01-idle.tdr` / `e1f01-modals.tdr`.
+- VE-5 two-flight runs: `tdtool plan 7 --episode 3 --alt-muzzles <pre-run bytes>` (after `e3f06.tdr` in the output directory); `python -I re-work\ve5\run2.py <rig> <name> 3 6 e3f06.tdr 7 <e3f07.tdr|pre>`; story start `run1.py <rig> e3f09-story 3 9 e3f09.tdr e3-story9`; U-430 `tdtool schedule-replay <scenario> tests/replays/e3f10-hangar-b.tdr --episode 3 --flight 10 --ticks 259`.
 - Oracle run: `python -I re-work\ve4\run_plan.py <rig a|b|c> <E> <N> [replay tag]`; `re-work\ve4\register.py` (or `reg_all.py`) registers it.
 - Compare: `cargo test --release -p td-sim --test oracle_e2_full --test oracle_e3_full -- --nocapture` with `TD2192_DATA` and `TD2192_ORACLE` set.

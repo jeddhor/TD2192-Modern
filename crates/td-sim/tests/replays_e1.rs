@@ -117,6 +117,28 @@ fn flight_01_idle_death_replay() {
     success_replay::check_ending(&data, Episode::E1, 1, "-idle", true);
 }
 
+/// Missiles (kind 4), Tab and the afterburner (VE-5, `tdtool plan --weapons`).
+#[test]
+fn flight_08_weapons_success_replay() {
+    let data = require_data!();
+    success_replay::check_ending(&data, Episode::E1, 8, "-weapons", false);
+}
+
+/// Missiles (kind 5) and Tab, class 3 (VE-5).
+#[test]
+fn flight_15_weapons_success_replay() {
+    let data = require_data!();
+    success_replay::check_ending(&data, Episode::E1, 15, "-weapons", false);
+}
+
+/// Flight 21 (no input; it ends itself through the end sequence) after flight 19's replay, as
+/// block 19 flies them in one program run (VE-5).
+#[test]
+fn flight_21_after_flight_19_replay() {
+    let data = require_data!();
+    success_replay::check_after(&data, Episode::E1, 19, 21, true);
+}
+
 #[test]
 fn flight_01_modal_screens_replay() {
     let data = require_data!();
