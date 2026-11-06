@@ -36,6 +36,7 @@ use td_flow::Settings;
 use td_flow::settings::{EnhancedSettings, Lighting, Profile, Upscaler, Widescreen};
 use td_platform::{InputSnapshot, Key, Platform, ScaleMode, WindowCapture};
 use td_render::Framebuffer;
+use td_render::enhanced::guidance::Mark;
 use td_render::enhanced::scene::{Emissive, LightMode, LightScene};
 use td_render::enhanced::{self, Config, FlightInput, FrameInput, Pipeline, PostStage};
 
@@ -49,6 +50,8 @@ pub struct Request {
     pub width: usize,
     /// The lighting mode, when lighting is on.
     pub lighting: Option<LightMode>,
+    /// The colour-blind guidance line (accessibility, M12-04).
+    pub guidance: bool,
 }
 
 /// The Enhanced frame of the current draw.
@@ -59,6 +62,8 @@ pub struct EnhancedView {
     fb: Framebuffer,
     scene: Option<LightScene>,
     emissive: Emissive,
+    /// The colour-blind guidance line's marks, when requested.
+    marks: Vec<Mark>,
     /// True once the flight screen composed this frame.
     filled: bool,
 }
@@ -70,12 +75,19 @@ impl Default for EnhancedView {
             fb: Framebuffer::new(),
             scene: None,
             emissive: Emissive::default(),
+            marks: Vec::new(),
             filled: false,
         }
     }
 }
 
 impl EnhancedView {
+    /// The frame the flight screen composed in this draw, if it did.
+    #[cfg(test)]
+    pub(crate) fn composed(&self) -> Option<&Framebuffer> {
+        self.filled.then_some(&self.fb)
+    }
+
     /// Starts a frame: what to compose (`None`: the Classic path, nothing to compose).
     fn begin(&mut self, request: Option<Request>) {
         self.request = request;
@@ -83,12 +95,14 @@ impl EnhancedView {
     }
 
     /// Composes the flight frame: `draw` draws the picture into the W-wide framebuffer, then
-    /// the light inputs are stored with it.
+    /// the light inputs and, when requested, the colour-blind guidance marks (from the margin
+    /// m and the width W) are stored with it.
     pub fn compose(
         &mut self,
         draw: impl FnOnce(&mut Framebuffer),
         scene: impl FnOnce(i32, LightMode) -> Option<LightScene>,
         emissive: &Emissive,
+        marks: impl FnOnce(i32, i32) -> Vec<Mark>,
     ) {
         let Some(req) = self.request else {
             return;
@@ -97,22 +111,39 @@ impl EnhancedView {
             self.fb = Framebuffer::with_width(req.width);
         }
         draw(&mut self.fb);
-        self.scene = req
-            .lighting
-            .and_then(|mode| scene(enhanced::margin(req.width) as i32, mode));
+        let margin = enhanced::margin(req.width) as i32;
+        self.scene = req.lighting.and_then(|mode| scene(margin, mode));
         self.emissive.clone_from(emissive);
+        self.marks = if req.guidance {
+            marks(margin, req.width as i32)
+        } else {
+            Vec::new()
+        };
         self.filled = true;
     }
+}
+
+/// An RGBA8 image (4 bytes per pixel, row-major).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RgbaImage {
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// The live Enhanced settings and the pipeline, owned by the run loop.
 pub struct Enhanced {
     profile: Profile,
     settings: EnhancedSettings,
+    /// The accessibility setting `colorblind_guidance` (not governed by the profile).
+    guidance: bool,
     view: SharedView,
     pipeline: Pipeline,
     post: Box<dyn PostStage>,
     reload: Option<Reload>,
+    /// Keep a copy of the next presented output (F12).
+    keep: bool,
+    output: Option<RgbaImage>,
 }
 
 impl std::fmt::Debug for Enhanced {
@@ -152,11 +183,26 @@ impl Enhanced {
         Self {
             profile: settings.profile,
             settings: settings.enhanced,
+            guidance: settings.accessibility.colorblind_guidance,
             view,
             pipeline: Pipeline::default(),
             post,
             reload,
+            keep: false,
+            output: None,
         }
+    }
+
+    /// Whether the next [`Self::present`] keeps a copy of its output for
+    /// [`Self::take_output`] (the F12 screenshot).
+    pub fn keep_output(&mut self, keep: bool) {
+        self.keep = keep;
+    }
+
+    /// The output kept by the last [`Self::present`]: the pipeline's (W·k) × (200·k) RGBA frame,
+    /// before the window scaling.
+    pub fn take_output(&mut self) -> Option<RgbaImage> {
+        self.output.take()
     }
 
     /// The features in effect: all off under the Classic profile.
@@ -221,20 +267,24 @@ impl Enhanced {
         }
     }
 
-    /// Takes the profile and `[enhanced]` from `settings` at once (the options screen, M11-03).
-    /// The settings file the host has just saved is not read again.
+    /// Takes the profile, `[enhanced]` and the colour-blind guidance setting from `settings` at
+    /// once (the options screen, M11-03). The settings file the host has just saved is not
+    /// read again.
     pub fn apply(&mut self, settings: &Settings) {
         self.profile = settings.profile;
         self.settings = settings.enhanced;
+        self.guidance = settings.accessibility.colorblind_guidance;
         if let Some(r) = &mut self.reload {
             r.modified = modified(&r.path);
         }
     }
 
-    /// Starts a frame for a window of `window` pixels; returns false for the Classic path.
+    /// Starts a frame for a window of `window` pixels; returns false for the Classic path. The
+    /// colour-blind guidance line needs the RGBA stage, so it takes the Enhanced path (with
+    /// every `[enhanced]` feature off that path gives the Classic picture plus the marks).
     pub fn begin_frame(&mut self, window: (u32, u32), mode: ScaleMode) -> bool {
         let s = self.effective();
-        let request = (!s.is_off()).then(|| Request {
+        let request = (!s.is_off() || self.guidance).then(|| Request {
             width: s.widescreen.width().unwrap_or_else(|| {
                 enhanced::auto_width(window.0, window.1, mode == ScaleMode::IntegerSquare)
             }),
@@ -243,6 +293,7 @@ impl Enhanced {
                 Lighting::Subtle => Some(LightMode::Subtle),
                 Lighting::Full => Some(LightMode::Full),
             },
+            guidance: self.guidance,
         });
         self.view.borrow_mut().begin(request);
         request.is_some()
@@ -256,6 +307,17 @@ impl Enhanced {
         platform: &mut Platform,
         capture: bool,
     ) -> Result<Option<WindowCapture>> {
+        let out = self.render(classic)?;
+        Ok(if capture {
+            Some(platform.present_rgba_and_capture(out.rgba, out.size, out.base)?)
+        } else {
+            platform.present_rgba(out.rgba, out.size, out.base)?;
+            None
+        })
+    }
+
+    /// Runs the pipeline on the frame begun by [`Self::begin_frame`].
+    pub(crate) fn render(&mut self, classic: &Framebuffer) -> Result<Output<'_>> {
         let s = self.effective();
         let cfg = Config {
             upscaler: upscaler(s.upscaler),
@@ -266,6 +328,11 @@ impl Enhanced {
         let Some(req) = view.request else {
             bail!("no Enhanced frame was begun");
         };
+        self.pipeline.set_marks(if view.filled {
+            view.marks.as_slice()
+        } else {
+            &[]
+        });
         let frame = if view.filled {
             FrameInput {
                 indexed: &view.fb,
@@ -286,13 +353,30 @@ impl Enhanced {
         let out = self.pipeline.render(&frame, &cfg, self.post.as_mut());
         let size = (out.width as u32, out.height as u32);
         let base = (req.width as u32, td_render::HEIGHT as u32);
-        Ok(if capture {
-            Some(platform.present_rgba_and_capture(out.rgba, size, base)?)
-        } else {
-            platform.present_rgba(out.rgba, size, base)?;
-            None
+        if std::mem::take(&mut self.keep) {
+            self.output = Some(RgbaImage {
+                rgba: out.rgba.to_vec(),
+                width: size.0,
+                height: size.1,
+            });
+        }
+        Ok(Output {
+            rgba: out.rgba,
+            size,
+            base,
         })
     }
+}
+
+/// The pipeline's output for one frame.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Output<'a> {
+    /// RGBA8 rows.
+    pub rgba: &'a [u8],
+    /// (W·k, 200·k).
+    pub size: (u32, u32),
+    /// The base frame, (W, 200).
+    pub base: (u32, u32),
 }
 
 /// F7 and F8 (USB HID scancodes).
@@ -380,9 +464,70 @@ mod tests {
             view.borrow().request,
             Some(Request {
                 width: 428,
-                lighting: Some(LightMode::Subtle)
+                lighting: Some(LightMode::Subtle),
+                guidance: false,
             })
         );
+    }
+
+    #[test]
+    fn colour_blind_guidance_takes_the_rgba_path_in_either_profile() {
+        let view = SharedView::default();
+        let mut settings = Settings::default();
+        let mut e = Enhanced::new(&settings, view.clone(), None, Box::new(enhanced::NoPost));
+        assert!(
+            !e.begin_frame((1920, 1080), ScaleMode::Aspect4x3),
+            "off: Classic"
+        );
+        settings.accessibility.colorblind_guidance = true;
+        e.apply(&settings);
+        assert!(e.begin_frame((1920, 1080), ScaleMode::Aspect4x3));
+        assert_eq!(
+            view.borrow().request,
+            Some(Request {
+                width: 320,
+                lighting: None,
+                guidance: true,
+            }),
+            "the Classic picture, with the marks"
+        );
+    }
+
+    #[test]
+    fn the_output_is_kept_only_when_asked() {
+        let settings = Settings {
+            profile: Profile::Enhanced,
+            enhanced: EnhancedSettings {
+                upscaler: Upscaler::Scale2x,
+                ..EnhancedSettings::default()
+            },
+            ..Settings::default()
+        };
+        let mut e = Enhanced::new(
+            &settings,
+            SharedView::default(),
+            None,
+            Box::new(enhanced::NoPost),
+        );
+        let mut classic = Framebuffer::new();
+        classic.put(5, 5, 7);
+        assert!(e.begin_frame((1280, 960), ScaleMode::Aspect4x3));
+        e.render(&classic).unwrap();
+        assert_eq!(e.take_output(), None);
+        e.keep_output(true);
+        let (rgba, size, base) = e
+            .render(&classic)
+            .map(|o| (o.rgba.to_vec(), o.size, o.base))
+            .unwrap();
+        assert_eq!(
+            (size, base),
+            ((640, 400), (320, 200)),
+            "before the window scaling"
+        );
+        let kept = e.take_output().unwrap();
+        assert_eq!((kept.width, kept.height, kept.rgba), (640, 400, rgba));
+        e.render(&classic).unwrap();
+        assert_eq!(e.take_output(), None, "one frame only");
     }
 
     #[test]
@@ -392,11 +537,13 @@ mod tests {
             |_| panic!("nothing requested"),
             |_, _| None,
             &Emissive::default(),
+            |_, _| panic!("nothing requested"),
         );
         assert!(!v.filled);
         v.begin(Some(Request {
             width: 560,
             lighting: Some(LightMode::Full),
+            guidance: false,
         }));
         let mut emissive = Emissive::default();
         emissive.0[0x3D] = true;
@@ -407,9 +554,31 @@ mod tests {
                 Some(LightScene::default())
             },
             &emissive,
+            |_, _| panic!("guidance not requested"),
         );
         assert!(v.filled);
         assert_eq!((v.fb.width(), v.fb.get(559, 0)), (560, Some(9)));
         assert!(v.scene.is_some() && v.emissive.0[0x3D]);
+        assert!(v.marks.is_empty());
+        v.begin(Some(Request {
+            width: 384,
+            lighting: None,
+            guidance: true,
+        }));
+        let mark = Mark {
+            x: 1,
+            y: 2,
+            rgb: [3, 4, 5],
+        };
+        v.compose(
+            |_| {},
+            |_, _| panic!("lighting off"),
+            &emissive,
+            |m, w| {
+                assert_eq!((m, w), (32, 384));
+                vec![mark]
+            },
+        );
+        assert_eq!(v.marks, [mark]);
     }
 }

@@ -12,7 +12,9 @@ A clean-room, modern reimplementation of **Traffic Department 2192** (Safari Sof
 
 ## Running it
 
-You need an original Traffic Department 2192 installation: the v1.0 file set of 218 files, including `TD1.EXE` and `FILE0001.EXE`. On first start the game asks for that folder. You can also pass it with `--data <folder>` or set the `TD2192_DATA` environment variable.
+**Players: see the [player guide](docs/player/README.md)** for installing, pointing the game at your copy, controls, options, Classic and Enhanced, and troubleshooting.
+
+You need an original Traffic Department 2192 installation: the v1.0 file set of 218 files, including `TD1.EXE` and `FILE0001.EXE`, as an installed folder or the original ZIP file. On first start the game asks for it; a ZIP is read in place and can be extracted into your user folder. You can also pass it with `--data <folder or zip>` or set the `TD2192_DATA` environment variable, and change it later under Options, game data.
 
 ```text
 td2192                     start screen: choose an episode, options, quit
@@ -32,9 +34,10 @@ Building from source needs the Rust toolchain pinned in `rust-toolchain.toml`. S
 | Tab | Switch between cannons and missiles |
 | Keypad + or keypad 0 (Ins) | Afterburner burst (Stiletto-class ships) |
 | Alt | Infra-red view on/off (where available) |
-| F5 / F6 | Ship switch / incoming transmissions |
+| F5 / F6 | Tactical map / incoming transmissions |
+| M | Repeat the last message |
 | P | Pause (any key resumes) |
-| Esc | Flight menu (for now: abort the flight) |
+| Esc | Computer menu (ship library, help, abort the flight) |
 
 A game controller works as the original joystick. Use the left stick or D-pad to steer, South (A) to fire and East (B) for the afterburner. By default Start opens the flight menu (and acts as Esc everywhere), Back the tactical map, North switches weapons, West toggles infra-red and the shoulder buttons read and repeat transmissions.
 
@@ -44,10 +47,10 @@ Host keys, available everywhere:
 
 | Key | Action |
 |---|---|
-| F2 | Options (video, audio, controls, profile, accessibility); the game waits meanwhile |
+| F2 | Options (video, audio, controls, profile, accessibility, game data); the game waits meanwhile |
 | F10 | Change the scale mode |
 | F11 | Toggle fullscreen |
-| F12 | Save a screenshot |
+| F12 | Save a screenshot (with Enhanced features on, also the Enhanced picture at its full size) |
 
 Developer views: `--dev-flight N` (fly flight N), `--dev-dialogue SCENE`, `--dev-mapview MAP`.
 
@@ -55,6 +58,7 @@ Developer views: `--dev-flight N` (fly flight N), `--dev-dialogue SCENE`, `--dev
 
 | Document | Purpose |
 |---|---|
+| [docs/player/README.md](docs/player/README.md) | Player guide: install, game data, controls, options, Classic and Enhanced, saves, troubleshooting |
 | [docs/MASTER_DESIGN_GUIDE.md](docs/MASTER_DESIGN_GUIDE.md) | Vision, scope, architecture, subsystem designs, milestones, risks, open decisions |
 | [docs/AGENT_DEVELOPMENT_GUIDE.md](docs/AGENT_DEVELOPMENT_GUIDE.md) | How AI agents (and humans) work on the project: roles, clean-room protocol, RE/spec/implementation/testing playbooks |
 | [AGENTS.md](AGENTS.md) | Always-on rules for agents (short) |

@@ -114,7 +114,9 @@ impl UiAssets {
         }
     }
 
-    /// Small-font text at pen (`x`, `y`); returns the pen after it.
+    /// Small-font text at pen (`x`, `y`). Returns what `small_text::draw` returns: the offset
+    /// after the text **relative to `x`** (1 + the advances), not an absolute pen; the pen
+    /// after the text is `x + offset - 1`.
     pub fn text(&self, fb: &mut Framebuffer, text: &str, (x, y): (i32, i32), ink: u8) -> i32 {
         small_text::draw(fb, &self.small, text, (x, y), ink)
     }
@@ -123,6 +125,57 @@ impl UiAssets {
     pub fn text_centred(&self, fb: &mut Framebuffer, text: &str, y: i32, ink: u8) {
         let w: i32 = text.chars().map(small_text::advance).sum();
         self.text(fb, text, (160 - w / 2, y), ink);
+    }
+
+    /// A file path in the small font: [`Self::text_marked`] of its display form.
+    pub fn path(
+        &self,
+        fb: &mut Framebuffer,
+        path: &std::path::Path,
+        pen: (i32, i32),
+        ink: u8,
+        max_w: i32,
+    ) -> i32 {
+        self.text_marked(fb, &path.display().to_string(), pen, ink, max_w)
+    }
+
+    /// Small-font text that may hold any character, at pen (`x`, `y`), at most `max_w` pixels
+    /// wide; returns the absolute pen after it. Letters are shown in lower case (the font has
+    /// none other), and the characters paths need that the font lacks (`\ / : _ ( ) + ' &`)
+    /// are drawn as the port's own marks; anything else becomes `?`. Text too wide keeps its
+    /// end, after `...` (the end of a path names the file).
+    pub fn text_marked(
+        &self,
+        fb: &mut Framebuffer,
+        text: &str,
+        (x, y): (i32, i32),
+        ink: u8,
+        max_w: i32,
+    ) -> i32 {
+        let text = path_chars(text);
+        let width = |s: &[char]| s.iter().map(|&c| path_advance(c)).sum::<i32>();
+        let mut shown: &[char] = &text;
+        let mut prefix = "";
+        if width(shown) > max_w {
+            prefix = "...";
+            let room = max_w - width(&['.'; 3]);
+            while !shown.is_empty() && width(shown) > room {
+                shown = &shown[1..];
+            }
+        }
+        // Absolute pens: a glyph drawn at pen p starts at p + 1 (`small_text`).
+        let mut pen = x + self.text(fb, prefix, (x, y), ink) - 1;
+        for &c in shown {
+            if let Some(marks) = path_marks(c) {
+                for &(col, row) in marks {
+                    fb.put(pen + 1 + col, y + 1 + row, ink);
+                }
+                pen += path_advance(c);
+            } else {
+                pen += self.text(fb, c.encode_utf8(&mut [0; 4]), (pen, y), ink) - 1;
+            }
+        }
+        pen
     }
 
     /// A title-font heading centred on the screen.
@@ -134,6 +187,48 @@ impl UiAssets {
             (title_text::centred_x(text), y),
             INK_HEADING,
         );
+    }
+}
+
+/// The characters of a path as [`UiAssets::path`] draws them: lower case; anything the font
+/// and the port's marks cannot show becomes `?`.
+fn path_chars(s: &str) -> Vec<char> {
+    s.chars()
+        .map(|c| c.to_ascii_lowercase())
+        .map(|c| {
+            if path_marks(c).is_some() || small_text::advance(c) > 0 {
+                c
+            } else {
+                '?'
+            }
+        })
+        .collect()
+}
+
+/// The port's marks for path characters the small font lacks: pixels (column, row) of a 5 × 5
+/// cell, drawn like a glyph (pen + 1).
+fn path_marks(c: char) -> Option<&'static [(i32, i32)]> {
+    Some(match c {
+        '\\' => &[(0, 0), (0, 1), (1, 2), (2, 3), (2, 4)],
+        '/' => &[(2, 0), (2, 1), (1, 2), (0, 3), (0, 4)],
+        ':' => &[(0, 1), (0, 3)],
+        '_' => &[(0, 4), (1, 4), (2, 4)],
+        '(' => &[(1, 0), (0, 1), (0, 2), (0, 3), (1, 4)],
+        ')' => &[(0, 0), (1, 1), (1, 2), (1, 3), (0, 4)],
+        '+' => &[(1, 1), (0, 2), (1, 2), (2, 2), (1, 3)],
+        '\'' => &[(0, 0), (0, 1)],
+        '&' => &[(1, 0), (0, 1), (1, 2), (0, 3), (2, 3), (1, 4), (2, 4)],
+        _ => return None,
+    })
+}
+
+/// How far the pen moves after a path character.
+fn path_advance(c: char) -> i32 {
+    match c {
+        '\'' => 2,
+        ':' | '(' | ')' => 3,
+        '\\' | '/' | '_' | '+' | '&' => 4,
+        _ => small_text::advance(c),
     }
 }
 
@@ -402,6 +497,33 @@ mod tests {
         let frames = (1..100).find(|_| f.step()).unwrap();
         assert_eq!(frames, 16 * FADE_FRAMES_PER_LEVEL);
         assert!(f.out() && f.done());
+    }
+
+    #[test]
+    fn paths_show_in_lower_case_with_the_ports_marks_and_keep_their_end() {
+        let ui = UiAssets::blank();
+        let mut fb = Framebuffer::new();
+        let path = std::path::Path::new("C:\\Games\\TD2192_v1 (orig)\\TD2192.ZIP");
+        assert_eq!(
+            path_chars(&path.display().to_string())
+                .iter()
+                .collect::<String>(),
+            "c:\\games\\td2192_v1 (orig)\\td2192.zip"
+        );
+        assert_eq!(path_chars("é~").iter().collect::<String>(), "??");
+        let end = ui.path(&mut fb, path, (0, 0), INK_VALUE, 1000);
+        let full: i32 = path_chars(&path.display().to_string())
+            .iter()
+            .map(|&c| path_advance(c))
+            .sum();
+        assert_eq!(end, full);
+        // The colon's mark: (pen + 1 + 0, 1 + 1) and (.., 1 + 3) after "c" (advance 4).
+        assert_eq!(fb.get(5, 2), Some(INK_VALUE));
+        assert_eq!(fb.get(5, 4), Some(INK_VALUE));
+        let mut fb = Framebuffer::new();
+        let end = ui.path(&mut fb, path, (10, 20), INK_VALUE, 60);
+        assert!(end - 10 <= 60, "{end}");
+        assert!(end - 10 > 50, "fills the room: {end}");
     }
 
     #[test]

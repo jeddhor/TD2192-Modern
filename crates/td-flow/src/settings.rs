@@ -217,9 +217,8 @@ impl EnhancedSettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AccessibilitySettings {
-    /// Colour-blind-safe colours for the guidance line (MDG §6.2). TODO(M12-04): not drawn yet;
-    /// the guidance dots need their own colours, apart from the palette entries they share
-    /// with the playfield.
+    /// Colour-blind-safe colours for the guidance line (MDG §6.2, M12-04): drawn at the RGBA
+    /// stage in a colour pair per marker (spec frontend/port-front-end rev 2 §3.3).
     pub colorblind_guidance: bool,
 }
 

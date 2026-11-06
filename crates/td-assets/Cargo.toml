@@ -14,6 +14,9 @@ thiserror.workspace = true
 tracing.workspace = true
 serde.workspace = true
 toml.workspace = true
+zip.workspace = true
+# Enables the pure-Rust deflate back end for `zip`.
+flate2.workspace = true
 
 [dev-dependencies]
 td-test-support.workspace = true
