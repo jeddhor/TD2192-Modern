@@ -412,6 +412,10 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:0D2E,data,g_Palette,u8[768],u8[768] scene/dialogue palette used by the fades,CONFIRMED,M1-05
 3C43:102E,data,g_ScreenLit,,"1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M5-04
 3C43:1032,data,g_FontTitle,farptr,"farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M2-08
+3C43:1036,data,g_DlgLineCode,u8,"Dlg_PlayScene: first byte (code) of the last script line read; during the scene search the first byte of each line and then the scene id; 64h after a scene played to its d line, 05 when Esc ended it (weapons.md 3.3)",CONFIRMED,RE-15
+3C43:103A,data,g_DlgField,u8[3],"Dlg_PlayScene: field bytes of the last 01/02/06 line (01: slot, remapped face, then the allocated text entry; 02: ignored byte, colour; 06: id)",CONFIRMED,RE-15
+3C43:103E,data,g_DlgText,string[255],"Dlg_PlayScene: name of the last 01 line or text of the last 02 line (Read(f, s)); residue of longer earlier strings survives past its length; read by two-digit muzzle offsets on heading 62h (weapons.md 3.3)",CONFIRMED,RE-15
+3C43:113E,data,g_DlgFile,u8[256],"TextRec: text file variable of Dlg_PlayScene (dialogue.dat / safedial.dat; 128-byte buffer at DS:11BE)",CONFIRMED,RE-15
 3C43:123E,data,g_UiFile,FileRec,"untyped file variable of unit 051A (td.lt2, td.sav, td.sss in the save screens)",LIKELY,U-301
 3C43:12BE,data,g_UiI,u16,"shared loop counter of unit 051A (fades, portraits, save screens)",CONFIRMED,U-301
 3C43:12C0,data,g_UiJ,u16,second shared loop counter of unit 051A,CONFIRMED,U-301

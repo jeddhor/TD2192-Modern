@@ -235,7 +235,7 @@ Notes:
 | `td1-14.pic` | 200×200 | yes | `051A:4113` (3) | (1, 0) | Character dissolving (teleport) |
 | `td1-15.pic` | 255×121 | yes | `051A:4979` | (32, 30) | Shooting scene |
 | `td1-16.pic` | 150×170 | yes | `051A:4113` (1) | (86, 0) | Character in a chair |
-| `td1-17.pic` | 320×90 | **no** (current flight palette, `td.pal`) | `0E8B:9860` | (0, 67) of the flight page | Cockpit/bridge scene |
+| `td1-17.pic` | 320×90 | **no** (current flight palette, `td.pal`) | `0E8B:9860` | (0, VGA row 67) = page-0 row 35, shown as screen rows 35..124 (C-0067, 0 differing pixels; flow/flight-screens §4.10.1) | Cockpit/bridge scene |
 | `td1-18.pic` | 170×104 | yes | `051A:471B` | (76, 20) | Clone tube |
 | `td1-19.pic` | 320×72 | **no** (correct with `td.pal`) | none in E1 | — | Ship over clouds |
 | `td1-20.pic` | 320×100 | yes (byte-identical to `td.pal`); **the game skips it** and keeps `td.pal`, so the result is the same | `051A:4113` (2) | (0, 50) | Laser scene |

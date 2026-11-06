@@ -101,6 +101,14 @@ All comparisons are exact (T1). "Compared" counts the ticks after which the whol
 4. **U-160 policy.** The (0, 0) offsets change the course and the end tick of flights in which the player fires while turning (D5). The original's offsets are the DGROUP bytes from DS:035C on. The bytes in a capture's first tick reproduced every two-digit volley of these 20 flights.
 5. **BUG-3**: td2192 does not show the flight-17 cut-scene or the flight-19 V.C.I. screen.
 
+**Answers (RE-15, 2026-11-06):**
+
+1. U-390: the five rules "slots 8, 9, 10, 12, 13 attack the player" of the flight-14 block run only while phase < 100 (`2404:501F`): [mission-logic](../spec/sim/mission-logic.md) rev 3 §5.14. With that gate `flight_14_full_matches_oracle` can be re-enabled.
+2. U-391 / BUG-2: `g_Weapon` is 0 at program start; only flight setup and Tab write it (classes 2..8); the session carries it from flight to flight: [weapons](../spec/sim/weapons.md) rev 4 §3.2. HUD icon for weapon 0: OB-090.
+3. hit-flash §4.2: corrected in rev 3 (main session) and rev 4 (RE-15: the flight-19 V.C.I. screen fades too).
+4. U-160: the bytes past the muzzle table are specified in [weapons](../spec/sim/weapons.md) rev 4 §3.3. They never change during a flight and are the same in every direct start, but differ after a played story (C-0002, C-0160). The replays are neutral only for direct-start bytes: with the bytes of C-0002 (start through `td1.exe`) or C-0160 (mission 3 with its story), 10 of the 20 replays take another course (flights 1, 4, 5, 8, 9, 10, 11, 16, 17, 18). Policy proposal: *preserve* (OB-017).
+5. BUG-3: both screens are specified in [flight-screens](../spec/flow/flight-screens.md) rev 4 §4.10.
+
 ## Reproducing
 
 - Plan: `cargo run --release -p tdtool -- plan N [--alt-muzzles BYTES] [--beam 40]` writes `tests/replays/e1fNN.tdr`.
