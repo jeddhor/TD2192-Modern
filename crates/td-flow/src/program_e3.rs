@@ -17,9 +17,9 @@
 //! - `order.scr` waits 45 s (`crate::scenes_e3`).
 //!
 //! Not ported, as in E2: the configuration screen, switches, memory gate, joystick
-//! calibration and exit notice. Save and restore (`td3.sav`/`td3.stt`, D3) show the "not yet"
-//! notice until the port's save files exist; [`LaterEpisode::restored`] applies a restore's
-//! menu bookkeeping.
+//! calibration and exit notice. Save and restore are E1's screens on the port's own
+//! `td3.sav`/`td3.stt` (save-screens rev 1 §4.5, e3-program-flow §4.7; the slot format is E1's:
+//! mission, then kills to date; missions 1..20 count as used, so 7 and 20 restore, OB-051).
 
 use td_assets::Episode;
 use td_input::TickInput;
@@ -29,6 +29,7 @@ use crate::campaign_e2::BlockResult;
 use crate::campaign_e3::CampaignE3;
 use crate::program::Program;
 use crate::program_e2::{BlockStart, EpisodeCampaign, FrontEnd, LaterEpisode};
+use crate::save_screens::SaveFiles;
 use crate::scenes_e3::{self, Bg};
 use crate::screen::FlowContext;
 use crate::story::{StoryError, StoryScreen};
@@ -46,6 +47,12 @@ pub const E3_FRONT: FrontEnd = FrontEnd {
     complete_at: 20,
     menu_song_at_entry: false,
     loader_flushes: true,
+    saves: SaveFiles {
+        sav: "td3.sav",
+        stt: "td3.stt",
+    },
+    save_labels: "e3.saves.save",
+    restore_labels: "e3.saves.restore",
 };
 
 impl EpisodeCampaign for CampaignE3 {

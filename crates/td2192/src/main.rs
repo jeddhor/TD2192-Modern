@@ -182,17 +182,23 @@ fn real_main() -> Result<()> {
         (None, None) => match cli.dev_mapview.as_deref() {
             Some(map) => Box::new(mapview::MapView::new(&dir, map)?),
             // The Episode 2 program (`td2.exe`, started directly in the original, U-005).
-            None if episode == Episode::E2 => Box::new(td_flow::Episode2::new(
-                &dir,
-                &resources,
-                Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
-            )?),
+            None if episode == Episode::E2 => Box::new(
+                td_flow::Episode2::new(
+                    &dir,
+                    &resources,
+                    Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
             // The Episode 3 program (`td3.exe`, started directly, e3-program-flow §8).
-            None if episode == Episode::E3 => Box::new(td_flow::Episode3::new(
-                &dir,
-                &resources,
-                Box::new(flight::ArenaLauncher::for_episode(Episode::E3)),
-            )?),
+            None if episode == Episode::E3 => Box::new(
+                td_flow::Episode3::new(
+                    &dir,
+                    &resources,
+                    Box::new(flight::ArenaLauncher::for_episode(Episode::E3)),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
             // The Episode 1 program: script choice, menu, campaign, flights. Saved games live
             // in the user data directory, never in the game folder.
             None => Box::new(

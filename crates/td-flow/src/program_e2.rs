@@ -11,9 +11,11 @@
 //!
 //! Not ported (T3 or decided elsewhere): the text-mode configuration screen, command-line
 //! switches, the memory gate, joystick calibration and the exit notice (the port has its own
-//! settings and shell). Save and restore (`td2.stt`/`td2.sav`, D3) show a "not yet" notice
-//! until the port's save files exist; [`Episode2::restored`] applies the menu bookkeeping of a
-//! restore for them.
+//! settings and shell). Save and restore (menu items 1 and 2) are E1's screens
+//! (`crate::save_screens`, save-screens rev 1 §4.5) on the port's own `td2.sav`/`td2.stt`
+//! (E3: `td3.*`) in the directory given to [`LaterEpisode::with_save_dir`] (none: the restore
+//! screen shows empty slots and a save is not written); [`LaterEpisode::restored`] applies the
+//! menu bookkeeping of a restore.
 //!
 //! The menu is shown without its fades and highlight ramps (T2); the colours of entries
 //! 224..233 are the ramps' end states, kept as the original keeps them: the palette buffer
@@ -24,6 +26,7 @@
 //! [`FrontEnd`] constants (e3-program-flow rev 1 §4.1, §4.2 list the E3 deltas).
 
 use std::fmt;
+use std::path::PathBuf;
 
 use td_assets::{DataDir, Episode, ExeResources};
 use td_audio::AudioCommand;
@@ -37,6 +40,7 @@ use crate::campaign_e2::{BlockResult, CampaignE2};
 use crate::dialogue::ScriptChoice;
 use crate::flight_screens::{KEY_KP2, KEY_KP8};
 use crate::program::{Program, line};
+use crate::save_screens::{SaveFiles, SaveKind, SaveOutcome, SaveScreen, SaveSet};
 use crate::scenes_e2::{self, Bg};
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::story::{self, Hold, StoryError, StoryScreen};
@@ -61,6 +65,10 @@ pub struct FrontEnd {
     /// E3: `UI_LoadMainMenu` flushes the keyboard, so keys typed after the script choice do
     /// not reach the menu (e3-program-flow §4.1).
     pub loader_flushes: bool,
+    /// The saved-game files (save-screens §4.5) and the resources of the two screens' labels.
+    pub saves: SaveFiles,
+    pub save_labels: &'static str,
+    pub restore_labels: &'static str,
 }
 
 /// What the menu hands a mission block.
@@ -104,6 +112,12 @@ pub const E2_FRONT: FrontEnd = FrontEnd {
     complete_at: 21,
     menu_song_at_entry: true,
     loader_flushes: false,
+    saves: SaveFiles {
+        sav: "td2.sav",
+        stt: "td2.stt",
+    },
+    save_labels: "e2.saves.save",
+    restore_labels: "e2.saves.restore",
 };
 
 impl EpisodeCampaign for CampaignE2 {
@@ -179,13 +193,15 @@ enum Stage<C> {
     Sub(StoryScreen, Back, SkipRule),
     /// A confirmation box (1 = quit, 2 = current game lost) for an item.
     Confirm(u8, u8),
+    /// The save or restore screen.
+    Saves(Box<SaveScreen>),
     Quit,
 }
 
 /// How a menu sub-screen treats the skip flag (e3-program-flow §3.5; only E3 reads it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SkipRule {
-    /// Help and the port's notices: not touched.
+    /// Help: not touched.
     Keep,
     /// About and order pictures: cleared on entry, set by Esc.
     Card,
@@ -214,6 +230,8 @@ pub struct LaterEpisode<C: EpisodeCampaign> {
     dac: [Rgb6; 10],
     /// Keys typed after the script choice (no flush in E2, §4.1).
     typed_ahead: Vec<Key>,
+    /// Where the port keeps the episode's saved games.
+    save_dir: Option<PathBuf>,
 }
 
 /// The Episode 2 program.
@@ -260,9 +278,18 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
             buffer: [DIM; 10],
             dac: [DIM; 10],
             typed_ahead: Vec::new(),
+            save_dir: None,
         };
         ep.load_menu_colours();
         Ok(ep)
+    }
+
+    /// Keeps the saved games in `dir` (the user data directory's `saves`), in the original
+    /// format with the episode's file names; the game folder is never written.
+    #[must_use]
+    pub fn with_save_dir(mut self, dir: PathBuf) -> Self {
+        self.save_dir = Some(dir);
+        self
     }
 
     /// Mission (0 = no game), kills to date and cursor.
@@ -392,9 +419,58 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         }
     }
 
-    fn notice(&mut self, text: &str) {
-        let s = self.prog.page(&[text.to_owned()], Hold::Key);
-        self.stage = Stage::Sub(s, Back::FadeIn, SkipRule::Keep);
+    /// The save (item 1) or restore (item 2) screen over the files as they are now; it gets
+    /// the menu's palette buffer (save-screens §4.1).
+    fn open_saves(&mut self, item: u8) {
+        let (kind, labels) = if item == SAVE {
+            let kind = SaveKind::Save {
+                mission: self.mission,
+                kills: self.kills_to_date,
+            };
+            (kind, C::FRONT.save_labels)
+        } else {
+            (SaveKind::Restore, C::FRONT.restore_labels)
+        };
+        let mut pal = self
+            .menu
+            .as_ref()
+            .map(|(_, _, pal)| pal.clone())
+            .unwrap_or_default();
+        for (i, &c) in self.buffer.iter().enumerate() {
+            pal.colors[ITEM_ENTRY + i] = c;
+        }
+        let set = SaveSet::load(self.save_dir.as_deref(), C::FRONT.saves);
+        let s = SaveScreen::open(
+            kind,
+            &self.prog.data,
+            &self.prog.assets.small,
+            &self.prog.texts(labels),
+            &pal,
+            set,
+        );
+        self.stage = Stage::Saves(Box::new(s));
+    }
+
+    /// The menu after the save or restore screen (§4.2 items 1 and 2): a restore sets the game
+    /// and, whenever a game is in progress afterwards (Esc included), the cursor goes to item
+    /// 3; a save writes the files and the menu comes back with the cursor on item 1.
+    fn saves_done(&mut self, outcome: SaveOutcome) {
+        match outcome {
+            SaveOutcome::Left => self.restored(self.mission, self.kills_to_date),
+            SaveOutcome::Restored { mission, kills } => self.restored(mission, kills),
+            SaveOutcome::Saved(set) => {
+                match &self.save_dir {
+                    Some(dir) => {
+                        if let Err(e) = set.store(dir, C::FRONT.saves) {
+                            tracing::warn!("saving to {} failed: {e}", dir.display());
+                        }
+                    }
+                    None => tracing::warn!("no save directory; the game was not saved"),
+                }
+                self.load_menu_colours();
+                self.stage = Stage::Menu;
+            }
+        }
     }
 
     /// E3's timed waits flush the keyboard when they start (e3-program-flow §3.5).
@@ -408,7 +484,7 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
             0 => self.start_block(1, 0, 0),
             NEXT_MISSION => self.start_block(self.mission, self.kills_to_date, NEXT_MISSION),
             RESTORE if self.in_game() => self.stage = Stage::Confirm(RESTORE, 2),
-            SAVE | RESTORE => self.notice("save and restore are not available yet"),
+            SAVE | RESTORE => self.open_saves(self.cursor),
             4 => {
                 let s = story::help(&self.prog.data);
                 self.sub(s, Back::FadeIn, SkipRule::Keep, "help");
@@ -580,7 +656,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                                 self.cursor = QUIT;
                                 self.stage = Stage::Quit;
                             }
-                            RESTORE => self.notice("save and restore are not available yet"),
+                            RESTORE => self.open_saves(RESTORE),
                             _ => self.start_block(1, 0, 0),
                         }
                     }
@@ -597,6 +673,13 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     self.menu_key(ctx, k);
                 }
             }
+            Stage::Saves(s) => {
+                s.step(input);
+                if let Some(o) = s.outcome() {
+                    let o = o.clone();
+                    self.saves_done(o);
+                }
+            }
             Stage::Quit => return Transition::Quit,
         }
         Transition::None
@@ -606,6 +689,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
         match &self.stage {
             Stage::ScriptChoice(s) | Stage::Sub(s, ..) => s.draw(fb),
             Stage::Campaign(c, _) => c.draw(fb),
+            Stage::Saves(s) => s.draw(fb),
             Stage::Menu | Stage::Confirm(..) | Stage::Start | Stage::Quit => {
                 let Some((image, boxes, pal)) = &self.menu else {
                     fb.clear(0);

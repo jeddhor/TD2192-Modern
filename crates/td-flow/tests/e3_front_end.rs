@@ -820,3 +820,39 @@ fn maraud3_card_matches_c0041() {
         "f00000946_320x200_maraud3.vga",
     );
 }
+
+#[test]
+fn restore_screen_and_menu_match_c0041() {
+    // §8 (C-0041): the shipped td3.sav with slot 1 := 08 00 00; Down, Enter at the menu; the
+    // restore screen (f576); Enter on slot 1; the menu with mission 8 and the cursor on item 3.
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let saves = std::env::temp_dir().join(format!("td2192-e3-restore-{}", std::process::id()));
+    fs::create_dir_all(&saves).unwrap();
+    let mut sav = fs::read(data.join("td3.sav")).unwrap();
+    sav[..3].copy_from_slice(&[8, 0, 0]);
+    fs::write(saves.join("td3.sav"), sav).unwrap();
+    fs::copy(data.join("td3.stt"), saves.join("td3.stt")).unwrap();
+    let mut ep = program(Scripted::default()).with_save_dir(saves.clone());
+    let two = Key::digit(2).unwrap();
+    run(
+        &mut ep,
+        100,
+        |f| if f == 10 { vec![two] } else { Vec::new() },
+    );
+    run(&mut ep, 60, |f| match f {
+        0 => vec![Key::DOWN],
+        1 => vec![Key::ENTER],
+        _ => Vec::new(),
+    });
+    let mut fb = Framebuffer::new();
+    ep.draw(&mut fb);
+    compare(&fb, &oracle, "C-0041", "f00000576_320x200_restore.vga");
+    run(&mut ep, 60, |f| {
+        if f == 0 { vec![Key::ENTER] } else { Vec::new() }
+    });
+    assert_eq!(ep.state(), (8, 0, 3));
+    let c = ep.item_colours();
+    assert_eq!((c[2], c[3]), (DIM, RED));
+    fs::remove_dir_all(&saves).unwrap();
+}
