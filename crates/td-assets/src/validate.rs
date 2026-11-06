@@ -3,12 +3,10 @@
 //! A modified file (hash mismatch) is a warning, not an error: patched or alternative releases
 //! exist. An episode is playable when every required file it uses is present.
 
-use std::fs;
-
 use sha2::{Digest, Sha256};
 
-use crate::DataDir;
 use crate::manifest::{self, Episode, ManifestEntry, Usage};
+use crate::{AssetError, DataDir};
 
 /// Outcome for one manifest file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +71,25 @@ impl ValidationReport {
             .all(|c| c.status == FileStatus::Ok)
     }
 
+    /// The episodes that are playable, in order.
+    pub fn playable_episodes(&self) -> [bool; 3] {
+        Episode::ALL.map(|ep| self.playable(ep))
+    }
+
+    /// File counts by outcome.
+    pub fn counts(&self) -> FileCounts {
+        let mut c = FileCounts::default();
+        for check in &self.checks {
+            match check.status {
+                FileStatus::Ok => c.ok += 1,
+                FileStatus::SizeMismatch { .. } | FileStatus::HashMismatch => c.modified += 1,
+                FileStatus::Missing => c.missing += 1,
+                FileStatus::Unreadable(_) => c.unreadable += 1,
+            }
+        }
+        c
+    }
+
     /// True if the intro sequence's files are all present.
     pub fn intro_available(&self) -> bool {
         self.checks
@@ -85,6 +102,24 @@ impl ValidationReport {
         self.checks
             .iter()
             .filter(move |c| c.entry.required && c.entry.used_by.contains(usage))
+    }
+}
+
+/// How many manifest files had each outcome ([`ValidationReport::counts`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FileCounts {
+    /// Present with the expected size and SHA-256.
+    pub ok: usize,
+    /// Present with another size or hash (patched or other releases; a warning).
+    pub modified: usize,
+    pub missing: usize,
+    pub unreadable: usize,
+}
+
+impl FileCounts {
+    /// Manifest files found (matching or modified).
+    pub fn present(&self) -> usize {
+        self.ok + self.modified
     }
 }
 
@@ -106,11 +141,9 @@ pub fn validate(dir: &DataDir) -> ValidationReport {
 }
 
 fn check_file(dir: &DataDir, entry: &ManifestEntry) -> FileStatus {
-    let Some(path) = dir.resolve(entry.name) else {
-        return FileStatus::Missing;
-    };
-    let bytes = match fs::read(path) {
+    let bytes = match dir.read(entry.name) {
         Ok(b) => b,
+        Err(AssetError::NotFound(_)) => return FileStatus::Missing,
         Err(e) => return FileStatus::Unreadable(e.to_string()),
     };
     if bytes.len() as u64 != entry.size {
@@ -130,6 +163,7 @@ fn check_file(dir: &DataDir, entry: &ManifestEntry) -> FileStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn empty_directory_has_nothing_playable() {
@@ -146,6 +180,16 @@ mod tests {
             assert!(!report.playable(ep));
         }
         assert!(!report.intro_available());
+        assert_eq!(
+            report.counts(),
+            FileCounts {
+                ok: 1,
+                modified: 0,
+                missing: 217,
+                unreadable: 0
+            }
+        );
+        assert_eq!(report.playable_episodes(), [false; 3]);
     }
 
     #[test]
@@ -159,5 +203,29 @@ mod tests {
             assert!(report.exact(ep), "{ep} should be exact");
         }
         assert!(report.intro_available());
+        assert_eq!(report.counts().present(), 218);
+    }
+
+    #[test]
+    fn an_archive_validates_like_a_folder() {
+        use zip::CompressionMethod::Stored;
+        let dir =
+            std::env::temp_dir().join(format!("td-assets-validate-zip-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("td.zip");
+        // td.cfg as shipped (matches), td.pal of the right size with other bytes (modified),
+        // and a file that is not in the manifest (extra), all in a folder of the archive.
+        let pal = vec![0u8; manifest::entry("td.pal").unwrap().size as usize];
+        let bytes = crate::archive::zip_of(&[
+            ("game/td.cfg", &[2, 2, 2], Stored),
+            ("game/td.pal", &pal, Stored),
+            ("game/readme.txt", b"x", Stored),
+        ]);
+        fs::write(&path, bytes).unwrap();
+        let report = validate(&DataDir::open(&path).unwrap());
+        fs::remove_dir_all(&dir).unwrap();
+        let c = report.counts();
+        assert_eq!((c.ok, c.modified, c.missing), (1, 1, 216));
+        assert_eq!(report.extra, ["readme.txt"]);
     }
 }

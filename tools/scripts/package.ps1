@@ -4,7 +4,8 @@ Builds a portable release folder and zip of TD2192-Modern for Windows x64 (M13-0
 
 .DESCRIPTION
 1. cargo build --release -p td2192 (and tdtool unless -NoTools).
-2. Copies the binaries, LICENSE, README.md and THIRD_PARTY.md into
+2. Copies the binaries, LICENSE, README.md, THIRD_PARTY.md and the player guide
+   (docs\player\README.md, as PLAYER-GUIDE.md) into
    <Out>\TD2192-Modern-<version>-windows-x64\, and generates THIRD_PARTY_NOTICES.txt with
    tools\scripts\gen-notices.py (licence texts of every linked third-party component).
 3. Zips the folder next to it.
@@ -46,6 +47,7 @@ try {
     Copy-Item target\release\td2192.exe $dir
     if (-not $NoTools) { Copy-Item target\release\tdtool.exe $dir }
     Copy-Item LICENSE, README.md, THIRD_PARTY.md $dir
+    Copy-Item docs\player\README.md (Join-Path $dir 'PLAYER-GUIDE.md')
     python tools\scripts\gen-notices.py --out (Join-Path $dir 'THIRD_PARTY_NOTICES.txt')
     if ($LASTEXITCODE -ne 0) { throw 'gen-notices.py failed' }
 

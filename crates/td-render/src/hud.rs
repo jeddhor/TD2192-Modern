@@ -324,6 +324,8 @@ pub struct Hud {
     entries: Vec<(u8, [u8; 3])>,
     /// Guidance pixels (screen x, y, colour) in drawing order.
     dots: Vec<(i32, i32, u8)>,
+    /// The marker the guidance line points at (`MARKER_*`), when its six dots are drawn.
+    marker: Option<u8>,
 }
 
 impl Hud {
@@ -338,6 +340,7 @@ impl Hud {
             bar_red: 0,
             entries,
             dots: Vec::new(),
+            marker: None,
         }
     }
 
@@ -417,9 +420,17 @@ impl Hud {
         &self.entries
     }
 
-    /// Guidance pixels of the last step (screen x, y, colour), in drawing order.
+    /// Guidance pixels of the last step (screen x, y, colour), in drawing order: the three
+    /// shadow pixels of each dot (colour 0), then the six dots.
     pub fn dots(&self) -> &[(i32, i32, u8)] {
         &self.dots
+    }
+
+    /// The marker the guidance line of the last step points at ([`MARKER_TARGET`],
+    /// [`MARKER_FRIEND`] or [`MARKER_HOME`]); `None` when its dots were not drawn. The
+    /// colour-blind guidance (`enhanced::guidance`) colours the line by it.
+    pub fn guidance_marker(&self) -> Option<u8> {
+        self.marker
     }
 
     fn put(&mut self, x: usize, y: usize, c: u8) {
@@ -595,6 +606,7 @@ impl Hud {
             .map(|j| (160 + round(cos, j + 20), 85 + round(sin, j + 20)))
             .collect();
         self.dots.clear();
+        self.marker = None;
         for &(x, y) in &pos {
             self.dots
                 .extend([(x + 1, y, 0), (x + 1, y + 1, 0), (x, y + 1, 0)]);
@@ -614,6 +626,7 @@ impl Hud {
             MARKER_HOME => DOTS_HOME,
             _ => return,
         };
+        self.marker = Some(marker);
         self.dots
             .extend(pos.iter().zip(colours).map(|(&(x, y), c)| (x, y, c)));
     }
@@ -768,6 +781,7 @@ mod tests {
             assert_eq!(fb.get(x, y), Some(c), "dot at ({x}, {y})");
         }
         assert_eq!(fb.get(173, 63), Some(0), "shadow right of the last dot");
+        assert_eq!(hud.guidance_marker(), Some(MARKER_TARGET));
         // Vector 3: NE lamp red 40, N lamp blue 63 (home), the rest black; missile lamp.
         let e = |n| hud.entries().iter().rev().find(|x| x.0 == n).unwrap().1;
         assert_eq!(e(0xC1), [40, 0, 0]);

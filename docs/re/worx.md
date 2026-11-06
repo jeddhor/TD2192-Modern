@@ -36,11 +36,11 @@ The handler (`2C37:34EE`) increments a busy counter (CS:42DC), saves the registe
 | 05h | `6221` | | — |
 | 06h | `62D5` | yes | **Play VOC from memory** (DX:DI). Stops the digital sound that is playing first, then starts the new one ([voc §2.1](../spec/audio/voc-and-adpcm.md#21-how-worx-plays-a-voc-for-reference)). CONFIRMED |
 | 07h | `4B49` | | stop digital sound (DSP `D0h`, DMA mask) |
-| 08h | `49ED` | yes | digital sound playing? (bit 0 of CS:31F2) |
+| 08h | `49ED` | yes | digital sound playing? (bit 0 of CS:31F2; file0000 CS:3211). Set when a VOC starts, cleared by a stop or when the streaming code next finds the end of the data, so it stays set 0.1..0.38 s after the last sample at preset P1 (measured: [flow/intro](../spec/flow/intro.md) §3.6, C-0081; U-410) |
 | 09h–0Bh | `34A2`, `34C9`, `34E3` | | — |
 | 0Ch | `466D` | | start a song of another format (the loop restart calls it when the song type is not CMF; HYPOTHESIS: Standard MIDI File) |
 | 0Dh | `427F` | yes | **Stop music** ([cmf §4.9](../spec/audio/cmf.md#49-stop-worx-function-0dh-and-loop-control)). CONFIRMED |
-| 0Eh | `49E5` | | music playing? (CS:316A) |
+| 0Eh | `49E5` | | music playing? (CS:316A; file0000 CS:3189). Cleared by a stop or an end of track with looping off; a loop restart sets it again inside the same interrupt, so a caller never reads 0 at a loop (U-370; [flow/intro](../spec/flow/intro.md) §4.6). Used only by the intro |
 | 0Fh | `3B9A` | | copy one instrument from an SBI-format record in memory (checks the `SB` signature, skips 24h bytes) into bank entry BX |
 | 10h, 11h | `41D3`, `41DB` | | — |
 | 12h | `4233` | | program change: channel AL, program BL (same code as a CMF `Cx` event) |

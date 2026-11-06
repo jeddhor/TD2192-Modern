@@ -3,16 +3,16 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/episode-program-flow` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 for the order of screens, scenes, dialogue, music and flights (the player sees it); T1 for the state that flows between missions (mission number, kills, outcome flags); T3 for the text-mode configuration screen and the `tdstatus.dat` hand-off (replaced by the port's own shell) |
 | **Confidence** | LIKELY overall (static analysis of the complete sequencer and menu). The mission-1 path is CONFIRMED by capture C-0002 (config → script choice → menu → title card → hangar card → dialogue → hint → flight → retry) |
 | **Tasks** | M1-04 (feeds M5-03, M5-07, M8-09, M9-18, M11) |
-| **Unknowns** | U-004, U-010, U-026 (answered here for E1), U-038, U-044 |
+| **Unknowns** | U-004, U-010, U-026 (answered here for E1), U-038, U-044; U-081 and U-207 resolved (RE-14) |
 
 ## 1. Summary
 
-The episode program starts, initialises its units and the WORX sound driver, restores state handed back by the launcher through `tdstatus.dat` (if any), shows the text-mode configuration screen when needed, asks which dialogue script to use, offers joystick calibration, and then runs the **main menu** until the player quits. The menu has nine items. *Start new game* and *Next mission* call `Main_CampaignLoop`, which plays **exactly one mission block** for the current mission number: a scripted sequence of text cards, scene cards, music changes and dialogue scenes, one flight (with a retry loop), the debriefing, and the post-mission story. Control then returns to the menu, which advances the mission number and the kill total when the mission was completed. After mission 20 the episode ends with a closing text card (`0000:0E51`) and the menu resets. Three game-over endings exist (death, and two mission-specific catastrophes).
+The episode program starts, initialises its units and the WORX sound driver, restores state handed back by the launcher through `tdstatus.dat` (if any), shows the text-mode configuration screen when needed, asks which dialogue script to use, offers joystick calibration, and then runs the **main menu** until the player quits. The menu has nine items. *Start new game* and *Next mission* call `Main_CampaignLoop`, which plays **exactly one mission block** for the current mission number: a scripted sequence of text cards, scene cards, music changes and dialogue scenes, one flight (with a retry loop), the debriefing (none after mission 20), and the post-mission story. Control then returns to the menu, which advances the mission number and the kill total when the mission was completed. After mission 20 the episode ends with a closing text card (`0000:0E51`) and the menu resets. Three game-over endings exist (death, and two mission-specific catastrophes).
 
 All dialogue scene IDs (103 in `dialogue.dat`) are referenced by the sequencer exactly once each; the music index table, scene catalogue and text-card list below are complete for E1.
 
@@ -158,8 +158,9 @@ select the block for g_MissionNumber (tests 1..20 in turn):
   if g_MissionLost (missions 18, 20 only): ending C
   if g_PlayerDied: ending A
   if g_MissionAborted: return (no debrief; g_MissionAdvance := 0)
-  Snd_PlayMusic(8); Flow_Debrief(mission kills, kills to date, g_MissionOutcome)
+  unless mission 20: Snd_PlayMusic(8); Flow_Debrief(mission kills, kills to date, g_MissionOutcome)
   post-flight story steps; after every step: if g_SkipStory then return
+      (mission 19: before flight 21 a set flag jumps to the flight 21 call instead, §4.4)
 return (if g_MissionAborted then g_MissionAdvance := 0)
 ```
 
@@ -169,7 +170,7 @@ Esc during the pre-flight story skips to the flight; Esc during the post-flight 
 
 Notation: `T[a]` text card with string `0000:a`; `Mn` music n (§3.1); `M0` stop music; `C:bg[a/b/c]` scene card with background bg and strings `0000:a`, `0000:b`, `0000:c`; `Dn` dialogue scene n; `Hn` hint screen n; `O` orders printout; `A` enemy-ace dossier; `Pn[...]` story-still set n; `P15` still `td1-15.pic`; `F n` flight with `Sim_FlyMission(n)`; `R` retry rule; `B` debrief. Retry rule is "retry offered when the player died" unless stated.
 
-| Mission | Pre-flight | Flight | Post-flight (after `M8 B`) |
+| Mission | Pre-flight | Flight | Post-flight (after `M8 B`, except mission 20) |
 |---:|---|---|---|
 | 1 | T[0478] M3 C:hangar[0494/04A1/04C1] D1 M8 H1 | F 1 | M3 C:hangar[0494/04A1/04D0] D2 M4 C:soffice[04E0/04A1/04F9] D3 |
 | 2 | T[050A] M6 C:pic4[052A/0542/0549] D4 O D5 M8 H2 | F 2 | M3 C:hangar[0494/04A1/0552] D6 M4 C:soffice[04E0/04A1/04D0] D7 M5 T[0560] C:voffice[056D/058A/05A4] D8 |
@@ -189,12 +190,14 @@ Notation: `T[a]` text card with string `0000:a`; `Mn` music n (§3.1); `M0` stop
 | 16 | T[0BC1] M13 C:vlab[0787/058A/05C0] D68 M5 C:voffice[056D/058A/0BDB] D69 M12 P1[0BF5/0C16/05A4] M4 C:soffice[0C45/04A1/0C64] D70 M3 C:hangar[0494/04A1/04F9] D71 | F 16 | M5 C:voffice[056D/058A/0898] then outcome=1 → D72, else D105 |
 | 17 | T[0C74] M4 C:soffice[0C45/04A1/0618] D73 M3 C:hangar[0494/04A1/0C91] D74 | F 17; retry offered when died **or outcome = 0** | outcome=0 → M5 C:voffice[056D/058A/0898] D75 then ending B; outcome=1 → M11 C:sbar[0913/0549/05A4] D76 M5 C:voffice[056D/058A/0898] D77 |
 | 18 | T[0CA5] M5 C:voffice[056D/058A/0898] D78 M3 C:hangar[0494/04A1/0CBF] D80 M4 C:soffice[0C45/04A1/0607] D81 | F 18; retry offered when died **or lost**; declined while lost → ending C | M3 C:hangar[0494/04A1/07E3] D82 M5 T[0560] C:voffice[056D/058A/05A4] D83 P15 D84 M13 C:vlab[0560/0CCD/05A4] C:td1-18[0CE7/0CFC/05A4] |
-| 19 | T[0D27] M6 C:briefing[05E3/0D47/05A4] D85 M4 C:soffice[0C45/04A1/0898] D86 M3 C:hangar[0494/04A1/0AF2] D87 | F 19 | M5 C:voffice[056D/058A/0898] D88 M3 C:hangar[0494/04A1/07E3] D89, **then F 21** (no retry, no debrief; abort → return), then M13 T[0D54] C:tdlab[0D69/0D89/05A4] D91 M5 T[0560] C:marauder[0D98/0DB0/0DC7] D90 |
-| 20 | T[0DD3] M4 C:soffice[0C45/04A1/0DED] D92 M11 C:sbar[0913/0549/05A4] D93 M4 C:soffice[0C45/04A1/0DFE] D110 M13 C:tdlab[0E10/0E20/05A4] D94 M3 C:hangar[0494/04A1/05C0] D95 | F 20; as mission 18 | M13 C:tdlab[0E10/0552/05A4] D96 M4 C:soffice[0C45/04A1/04D0] D97 M6 C:tdlab[0E10/0549/05A4] D98 M9 C:velsroom[0E37/07B8/05A4] D99 P2[05A4/05A4/05A4] T[0E51] (episode end card) |
+| 19 | T[0D27] M6 C:briefing[05E3/0D47/05A4] D85 M4 C:soffice[0C45/04A1/0898] D86 M3 C:hangar[0494/04A1/0AF2] D87 | F 19 | M5 C:voffice[056D/058A/0898] D88 M3 C:hangar[0494/04A1/07E3] D89, **then F 21** (no retry, no debrief; a set skip flag after C:voffice, D88 or C:hangar jumps straight to F 21; after F 21 only the abort flag is tested: abort → return, mission not advanced), then M13 T[0D54] C:tdlab[0D69/0D89/05A4] D91 M5 T[0560] C:marauder[0D98/0DB0/0DC7] D90 |
+| 20 | T[0DD3] M4 C:soffice[0C45/04A1/0DED] D92 M11 C:sbar[0913/0549/05A4] D93 M4 C:soffice[0C45/04A1/0DFE] D110 M13 C:tdlab[0E10/0E20/05A4] D94 M3 C:hangar[0494/04A1/05C0] D95 | F 20; as mission 18 | **no `M8 B`**: straight to M13 C:tdlab[0E10/0552/05A4] D96 M4 C:soffice[0C45/04A1/04D0] D97 M6 C:tdlab[0E10/0549/05A4] D98 M9 C:velsroom[0E37/07B8/05A4] D99 P2[05A4/05A4/05A4] T[0E51] (episode end card) |
 
 In mission 10 the two scene cards follow each other without a skip test between them. In mission 19 the scene `C:soffice[0C45/04A1/0898]` is followed by D86 without a skip test. String `0000:05A4` is a single space (a blank line).
 
-**Flight 21** is a scripted flight without a mission file (`m21.td` does not exist in E1; `Sim_FlyMission` skips the file load for 21 and loads the helicopter sprites, §4.3 of [tick-order](../sim/tick-order.md)). It ends itself after 25 ticks (`0E8B:CC9A`). U-044.
+**Flight 21** is a scripted flight without a mission file (`m21.td` does not exist in E1; `Sim_FlyMission` skips the file load for 21 and loads the helicopter sprites, §4.3 of [tick-order](../sim/tick-order.md)). It ends itself after 25 ticks (`0E8B:CC9A`) through the end sequence ([mission-logic](../sim/mission-logic.md) §5.21), so it always returns with `g_PlayerDied` = 1. The mission-19 block tests only `g_MissionAborted` after it (`0000:2AA4`): died is ignored, there is no retry prompt, no `M8` and no debrief, and an abort from the Esc menu ends the block with `g_MissionAdvance` := 0 (`0000:2E69`), so mission 19 is played again from its start next time. Its flight song is `td02` ([music-cues](../audio/music-cues.md) §4). What the flight shows on screen is U-044 (P3). U-081.
+
+**Mission 20 has no debrief** (`0000:2C87..2CA5`): after flight 20 the block tests lost (ending C), died (ending A) and aborted (return), then plays music 13 and the first post-flight scene. There is no `Snd_PlayMusic(8)` and no `Flow_Debrief` call. The mission's kills still count (the menu adds them when the block returns with `g_MissionAdvance` = 1). U-207.
 
 ### 4.5 Endings and debrief
 
@@ -248,6 +251,7 @@ flowchart TD
   DB --> POST[Post-flight story]
   POST -- M17 outcome 0 --> GB[Ending B]
   POST -- M19 --> F21[Flight 21, then more story]
+  OUT -- completed M20 --> POST
   POST -- M20 --> END[Episode end card]
   POST --> MENU
   F21 --> MENU
@@ -314,3 +318,4 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 | 2 | 2026-11-02 | RE-8 | `td1-15.pic` is a plain still (U-122); retry prompt calls `Random` (U-124); skip tests per step in [screens](screens.md) §3.12 (U-125); Q1 answered (U-123) |
 | 3 | 2026-11-05 | RE-10 (Spec author, U-252) | §4.2: items 0 and 3 flush the BIOS keyboard buffer after `Main_CampaignLoop` returns (`0000:390A..391D`, `3B97..3BAA`; keys typed during the block do not reach the menu) |
 | 4 | 2026-11-05 | RE-13 | §4.6 and Q3: which extra the launcher runs per status ([launcher](launcher.md)); no behaviour change |
+| 5 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | U-207: mission 20 has no `M8` and no debrief (`0000:2C87..2CA5`). U-081: flight 21 outcome handling (only abort tested, died ignored, abort → mission not advanced); in mission 19 the skip tests before flight 21 jump to flight 21, not to the block end (`0000:2A45..2A9D`) |

@@ -71,20 +71,89 @@ pub fn show_info(title: &str, message: &str) {
     }
 }
 
-/// Shows the system folder picker and waits for the user. Returns `None` if they cancel.
-pub fn pick_folder() -> Result<Option<PathBuf>, PlatformError> {
-    let sdl = sdl3::init().map_err(sdl_err)?;
-    let _video = sdl.video().map_err(sdl_err)?;
-    let mut events = sdl.event_pump().map_err(sdl_err)?;
-    let (tx, rx) = std::sync::mpsc::channel();
-    sdl3::dialog::show_open_folder_dialog(
-        None::<&std::path::Path>,
-        false,
+/// Shows a message box with `buttons` (left to right) and waits for the user. Returns the
+/// index of the button chosen, or `None` if the box was closed. The first button is the Enter
+/// default and the last the Escape default. Use before the window opens (first run); falls
+/// back to the first button if SDL cannot show the box.
+pub fn ask(title: &str, message: &str, buttons: &[&str]) -> Option<usize> {
+    use sdl3::messagebox::{
+        ButtonData, ClickedButton, MessageBoxButtonFlag, MessageBoxFlag, show_message_box,
+    };
+    let last = buttons.len().saturating_sub(1);
+    let data: Vec<ButtonData<'_>> = buttons
+        .iter()
+        .enumerate()
+        .map(|(i, &text)| ButtonData {
+            flags: match i {
+                0 => MessageBoxButtonFlag::RETURNKEY_DEFAULT,
+                i if i == last => MessageBoxButtonFlag::ESCAPEKEY_DEFAULT,
+                _ => MessageBoxButtonFlag::NOTHING,
+            },
+            button_id: i as i32,
+            text,
+        })
+        .collect();
+    match show_message_box(
+        MessageBoxFlag::INFORMATION,
+        &data,
+        title,
+        message,
         None,
-        Box::new(move |result, _| {
-            let _ = tx.send(result.ok().and_then(|mut v| v.pop()));
-        }),
-    );
+        None,
+    ) {
+        Ok(ClickedButton::CustomButton(b)) => usize::try_from(b.button_id).ok(),
+        Ok(ClickedButton::CloseButton) => None,
+        Err(e) => {
+            println!("{title}: {message}");
+            tracing::warn!("message box unavailable: {e}");
+            (!buttons.is_empty()).then_some(0)
+        }
+    }
+}
+
+/// What a file dialog asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pick {
+    Folder,
+    Zip,
+}
+
+/// Shows a folder or ZIP-file dialog and waits for the user, pumping `events` meanwhile (SDL
+/// delivers the result through its event loop on some platforms).
+fn pick(
+    events: &mut EventPump,
+    window: Option<&sdl3::video::Window>,
+    what: Pick,
+) -> Result<Option<PathBuf>, PlatformError> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let callback: sdl3::dialog::DialogCallback = Box::new(move |result, _| {
+        let _ = tx.send(result.ok().and_then(|mut v| v.pop()));
+    });
+    match what {
+        Pick::Folder => {
+            sdl3::dialog::show_open_folder_dialog(None::<&std::path::Path>, false, window, callback)
+        }
+        Pick::Zip => {
+            let filters = [
+                sdl3::dialog::DialogFileFilter {
+                    name: "ZIP archives",
+                    pattern: "zip",
+                },
+                sdl3::dialog::DialogFileFilter {
+                    name: "All files",
+                    pattern: "*",
+                },
+            ];
+            sdl3::dialog::show_open_file_dialog(
+                &filters,
+                None::<&std::path::Path>,
+                false,
+                window,
+                callback,
+            )
+            .map_err(sdl_err)?;
+        }
+    }
     loop {
         for _ in events.poll_iter() {}
         match rx.try_recv() {
@@ -95,6 +164,24 @@ pub fn pick_folder() -> Result<Option<PathBuf>, PlatformError> {
             Err(std::sync::mpsc::TryRecvError::Disconnected) => return Ok(None),
         }
     }
+}
+
+/// Shows the system folder picker and waits for the user. Returns `None` if they cancel. Use
+/// before the window opens; while it is open use [`Platform::pick_folder`].
+pub fn pick_folder() -> Result<Option<PathBuf>, PlatformError> {
+    let sdl = sdl3::init().map_err(sdl_err)?;
+    let _video = sdl.video().map_err(sdl_err)?;
+    let mut events = sdl.event_pump().map_err(sdl_err)?;
+    pick(&mut events, None, Pick::Folder)
+}
+
+/// Shows the system file picker for a ZIP archive and waits for the user. Returns `None` if
+/// they cancel. Use before the window opens; while it is open use [`Platform::pick_zip`].
+pub fn pick_zip() -> Result<Option<PathBuf>, PlatformError> {
+    let sdl = sdl3::init().map_err(sdl_err)?;
+    let _video = sdl.video().map_err(sdl_err)?;
+    let mut events = sdl.event_pump().map_err(sdl_err)?;
+    pick(&mut events, None, Pick::Zip)
 }
 
 /// Window configuration.
@@ -234,6 +321,35 @@ impl Platform {
         }
         self.input.pad = self.pads.first().map(read_pad);
         self.input.snapshot()
+    }
+
+    /// Shows the system folder picker over the window and waits for the user (`None` if they
+    /// cancel). Keys held when it opened count as released afterwards.
+    pub fn pick_folder(&mut self) -> Result<Option<PathBuf>, PlatformError> {
+        self.pick_modal(Pick::Folder)
+    }
+
+    /// Shows the system file picker for a ZIP archive over the window and waits for the user
+    /// (`None` if they cancel).
+    pub fn pick_zip(&mut self) -> Result<Option<PathBuf>, PlatformError> {
+        self.pick_modal(Pick::Zip)
+    }
+
+    fn pick_modal(&mut self, what: Pick) -> Result<Option<PathBuf>, PlatformError> {
+        // Leave fullscreen meanwhile: some platforms cannot show a dialog over it.
+        let fullscreen = self.fullscreen;
+        if fullscreen {
+            self.toggle_fullscreen()?;
+        }
+        let choice = pick(&mut self.events, Some(self.canvas.window()), what);
+        // The dialog took the key releases; start the input afresh.
+        let quit = self.input.quit;
+        self.input = td_input::InputState::default();
+        self.input.quit = quit;
+        if fullscreen {
+            self.toggle_fullscreen()?;
+        }
+        choice
     }
 
     /// Toggles fullscreen (desktop resolution).

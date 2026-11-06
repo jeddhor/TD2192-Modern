@@ -23,6 +23,11 @@ address,kind,name,signature,comment,confidence,source_task
 02FA:03DC,func,WORX_StopMusic,,driver fn 0Dh,CONFIRMED,M1-10
 02FA:03F2,func,WORX_VocPlaying,word far pascal(void),driver fn 08h,CONFIRMED,M1-10
 02FA:0411,func,WORX_SetTimerStreaming,"word far pascal(On: Word)",driver fn 3Eh; 1 when effects = 2,CONFIRMED,M1-10
+02FA:2447,data,k_WorxFnTable,word[80],"WORX driver function table (file0001 2C37:2428 + 1Fh: the intro links the same driver 1Fh bytes later)",CONFIRMED,RE-14
+02FA:3189,data,g_WorxMusicPlaying,u8,"WORX: song playing (bit 0); fn 0Eh; cleared by stop or end of track without loop (file0001 CS:316A)",CONFIRMED,RE-14
+02FA:3211,data,g_WorxVocPlaying,u8,"WORX: digital sound playing (bit 0); fn 08h; stays set 0.1..0.38 s past the sample (flow/intro.md 3.6, U-410; file0001 CS:31F2)",CONFIRMED,RE-14
+02FA:4A04,func,WORX_FnMusicPlaying,,"driver fn 0Eh: AX := g_WorxMusicPlaying and 1",CONFIRMED,RE-14
+02FA:4A0C,func,WORX_FnVocPlaying,,"driver fn 08h: AX := g_WorxVocPlaying and 1",CONFIRMED,RE-14
 0957:0000,func,Gfx_DrawSpriteFlipped,"void far pascal(X: Word; Y: Word; Sprite: Byte; Page: Byte)",32x32 td.shp record; vertically flipped; reads one column right (OB-059); y low byte only (OB-058); 0 transparent,CONFIRMED,M1-10
 0957:0170,func,Gfx_ClearPage,"void far pascal(Offset: Word; Width: Word; Page: Byte)",232 rows from 0B00h (page 0) or 5AC0h (page 1),CONFIRMED,M1-10
 0957:01B3,func,Gfx_SetDac,"void far pascal(Index: Byte; R: Byte; G: Byte; B: Byte)",,CONFIRMED,M1-10
