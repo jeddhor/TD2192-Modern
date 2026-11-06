@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Spec ID** | `render/text` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
-| **Fidelity tier** | T0 (pixel-exact glyph shapes, advances and positions) |
+| **Fidelity tier** | T0 (pixel-exact glyph shapes, advances and positions); T2 for the timing of §4.3 and §4.5.2 |
 | **Confidence** | CONFIRMED (static analysis of every text routine in `file0001`; three oracle frames matched with 0 pixel differences, §6) |
 | **Tasks** | M2-08, M5-01 |
 | **Unknowns** | U-037 (resolved by this spec), U-061, U-062 |
@@ -164,6 +164,15 @@ No routine wraps text. Callers place lines explicitly:
 
 "Entry *n* = (r, g, b)" means the screen writes that 6-bit RGB into its palette buffer before the fade-in, so the ink colour is independent of the image's palette.
 
+#### 4.5.2 Mission title card timing (BUG-6)
+
+`Scene_MissionTitle` (`051A:5852`) does not load a palette: it sets only entry 85 in `g_Palette` and then uses the ordinary scene fades and a 5-second DOS-time wait (`Gfx_FadeInScene`, `Flow_WaitSecondsOrKey(5)`, `Gfx_FadeOutScene`). Its fade therefore runs over whatever the previous screen left in `g_Palette`, and its speed follows [screens §2.1](../flow/screens.md#21-fades):
+
+- **1 frame per level** (17–18 frames per fade at P1) while `g_Palette` is still nearly black: the first title card after program start, reached from the script choice (C-0002 f1063..1080 in, f1409..1428 out) or from a direct start with a restored game (C-0160 f342..359, f689..706).
+- **2 frames per level** (33–34 frames) once any picture palette has been loaded: every later title card, including the first one after "story so far" (C-0170 f1003..1036, f1364..1397; 677 non-zero components left by `city.td`).
+
+The hold between the fades is 5 s of DOS time: 328 frames measured with music playing (C-0002, C-0170; [timing §4.4](../core/timing.md#44-clocks-outside-flight-bug-7)).
+
 #### 4.5.1 Episode 1 scene cards
 
 Each card routine takes three caption strings A, B, C, plots its `.scr` image (320 × 200 at x + 1, OB-003; `marauder` also 15 rows down, see below), draws the captions (transparent small font), sets one palette entry, fades in, waits, fades out. Captions are three lines at y0, y0 + 10, y0 + 20 with the same x, except where noted. Before the ink copy, black (colour 0) copies are drawn at these offsets from each line's pen:
@@ -225,12 +234,12 @@ All from C-0002 (preset P1), compared pixel by pixel with a scratch renderer wri
 
 ## 7. Presentation and audio hooks
 
-None. Typed text paces itself on vertical retrace (§4.3); it makes no sound.
+None. Typed text paces itself on vertical retrace (§4.3): one character per frame in the oracle (C-0002 f2463..2573, 110 characters in 110 frames); it makes no sound.
 
 ## 8. Open questions
 
 - [ ] U-061: what lies before the font block in practice (only matters for exactness of unsupported characters).
-- [ ] U-062: frames per typed character on hardware and in the oracle.
+- [ ] U-062: frames per typed character on hardware (the oracle: one per frame, §7).
 - [ ] Episode 2/3 copies of these routines were not compared byte for byte (the dialogue players use the same calls).
 
 ## 9. Provenance
@@ -252,3 +261,4 @@ None. Typed text paces itself on vertical retrace (§4.3); it makes no sound.
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-3 | Initial, from static analysis of `file0001` and C-0002 frames |
 | 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author) | §4.5.1: the 14 E1 scene cards do not share one caption layout: per-card pens, shadow styles, inks and waits; `marauder` (15 rows down, one joined caption line) and `voffice` (centred, outlined, entry 216). The rev-1 row applied the hangar layout to all of them (U-311) |
+| 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.2: title-card fade speed depends on the palette left in `g_Palette` (1 or 2 frames per level, BUG-6; C-0002, C-0160, C-0170); 5 s DOS-time hold; typed text one character per frame in the oracle (§7) |

@@ -3,16 +3,16 @@
 | | |
 |---|---|
 | **Spec ID** | `core/timing` |
-| **Revision** | 3 (draft, static analysis only) |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for simulation steps per game tick (one fixed step per tick); T2 for the wall-clock tick rate and frame pacing |
-| **Confidence** | LIKELY (static). Needs the dynamic measurements in §8 before it can be CONFIRMED |
-| **Tasks** | M1-06 (static part done; dynamic part for VE), feeds M4-02, M6-01 |
-| **Unknowns** | U-001, U-007, U-032, U-033 |
+| **Confidence** | CONFIRMED: the tick mechanism and the three rates of §4.2 by static reading and measurement (§6 vectors 3–6, C-0074, C-0010); the clocks outside flight (§4.4) by static reading and C-0002, C-0067, C-0170. The canonical Classic rate is a decision, proposed in [ADR-0007](../../adr/0007-classic-tick-rate.md) (19.2015 Hz) and pending the user's acceptance |
+| **Tasks** | M1-06, M12-02; feeds M4-02, M6-01 |
+| **Unknowns** | U-001, U-007, U-032 (resolved), U-033 |
 
 ## 1. Summary
 
-In flight, Episode 1 runs one simulation-and-render iteration per **game tick** and paces ticks by **busy-waiting on the DOS clock**. At the end of each iteration, `Sim_FlyMission` (`file0001:0E8B:B880`) calls DOS Get Time (INT 21h AH=2Ch) repeatedly until the time in hundredths has moved more than 4 past the previous tick's timestamp. DOS time only advances when the BIOS timer tick fires, so in practice **one game tick = one BIOS timer tick**. The BIOS tick is nominally 18.2065 Hz, but the WORX sound library reprograms the PIT and chains the BIOS handler at a slightly different average rate (≈ 18.52 Hz when WORX is idle, ≈ 19.20 Hz while a 96 Hz CMF song plays). Nothing compensates for a slow CPU: if an iteration takes longer than a tick, the game simply runs slower. Rendering happens once per iteration and is shown by a page flip that waits for vertical retrace (70.086 Hz), so the display updates at the tick rate, not at 70 Hz.
+In flight, Episode 1 runs one simulation-and-render iteration per **game tick** and paces ticks by **busy-waiting on the DOS clock**. At the end of each iteration, `Sim_FlyMission` (`file0001:0E8B:B880`) calls DOS Get Time (INT 21h AH=2Ch) repeatedly until the time in hundredths has moved more than 4 past the previous tick's timestamp. DOS time only advances when the BIOS timer tick fires, so in practice **one game tick = one BIOS timer tick**. The BIOS tick is nominally 18.2065 Hz, but the WORX sound library reprograms the PIT and chains the BIOS handler at a slightly different average rate: measured 19.21 Hz while a 96 Hz CMF song plays (the shipped configuration), 18.52 Hz when WORX is idle (music off) and 18.21 Hz under `/nosound` (§4.2, §6). Nothing compensates for a slow CPU: if an iteration takes longer than a tick, the game simply runs slower. Rendering happens once per iteration and is shown by a page flip that waits for vertical retrace (70.086 Hz), so the display updates at the tick rate, not at 70 Hz.
 
 ## 2. Definitions and units
 
@@ -96,7 +96,7 @@ So the effective BIOS tick (and with it DOS time and the game tick) runs at `1,1
 | Song with clock = 96 ticks/s | 12428 | 96.01 Hz | 5 | 19.202 Hz | 52.08 ms |
 | Song tempo changes (`2C37:48BB`) | varies | | `65535 div d` | varies | |
 
-The game's tick rate therefore depends on the **sound state**: the Classic port must choose one canonical rate (see §5). The clock is CMF header word 0x0C (U-007, resolved): every shipped song gives the 19.20 Hz row.
+The game's tick rate therefore depends on the **sound state**: the Classic port must choose one canonical rate (see §5). Measured at preset P1 from 8,000 to 60,000 cycles (C-0074, C-0010): 19.21 Hz (19.208 over 378.5 s), 18.52 Hz and 18.21 Hz for the three rows, equal to the divisor products within the oracle's clock error. CONFIRMED. The clock is CMF header word 0x0C (U-007, resolved): every shipped song gives the 19.20 Hz row.
 
 Which row applies in flight (static, `file0001:0000:4585..47FF`, `0E8B:B898..C92B`; U-032):
 
@@ -112,11 +112,61 @@ The in-flight song is started after the mission set-up and runs for the whole mi
 
 Drawing goes to a hidden page of the unchained VGA memory. `Gfx_FlipPage` (`386E:1A6C`) then waits for display-enable to go low, sets the CRTC start address, and waits for the start of vertical retrace. `Sim_FlyMission` calls it 3 times and `Gfx_SetSplitLine` (`386E:19A0`, which also waits for a full retrace) once, so a tick costs at least one retrace wait (≤ 14.3 ms). That fits easily within a 52–55 ms tick, so on a fast machine the retrace wait does not reduce the tick rate. It only phase-aligns presentation. **Display rate = tick rate ≈ 18–19 Hz.**
 
-### 4.4 Outside flight
+### 4.4 Clocks outside flight (BUG-7)
 
-- Screens, menus and story sequences (`051A`, `0000`) pace themselves with Crt `Delay` (calibrated busy loop, `3A1C:02A8`, 30 call sites) and retrace-synchronised fade loops (one palette step per retrace: `0000:0000`/`0124`, `051A:0016`/`013F`, `0E8B:01F6`/`0426`).
-- `051A:1AA3` calls DOS Get Time 3 times (purpose unknown, U-033).
-- The sound-effect unit (`1E2A`) hooks INT 1Ch, so its handler runs at the BIOS tick rate above, not at a fixed 18.2 Hz.
+Every timed wait outside the flight loop uses one of three clocks. Which one matters, because they scale differently: DOS time follows the BIOS tick of §4.2, `Crt.Delay` is CPU time calibrated in real milliseconds, and retrace waits follow the 70.086 Hz display.
+
+**1. DOS time.** `Flow_WaitSecondsOrKey(n)` (`file0001:051A:1AA3`; the E2 and E3 copies, E3 at `04A0:0269`) polls DOS Get Time until the centisecond clock has advanced by 100·n or a key or button arrives ([screens §2.2](../flow/screens.md#22-waits-u-123)). DOS time is derived from the BIOS tick count: in the oracle, centiseconds of the day = floor(ticks × 6,553,600 / 1,193,182) (5.4925 per tick, in steps of 5 or 6), and it moves only when a BIOS tick arrives. So:
+
+```text
+a wait of n DOS seconds started during BIOS tick T0 ends at the first BIOS tick T with
+    cs(T) − cs(T0) ≥ 100·n,      cs(T) = floor(T × 6,553,600 / 1,193,182)
+=> T − T0 = ceil(n × 18.2065) or one less: 91 or 92 ticks for 5 s, 182 or 183 for 10 s
+=> wall time ≈ n × 18.2065 / f_BIOS seconds; with the Classic clock f_BIOS = 19.2015 Hz (ADR-0007):
+   n × 0.94818 s   (5 s ≈ 4.74 s ≈ 332 frames; 10 s ≈ 9.48 s ≈ 664 frames)
+```
+
+A port either keeps a free-running BIOS tick counter at f_BIOS from program start and evaluates `cs` from it (exact, including the 91/92 variation; the intro already models this clock for its flyover, [intro](../flow/intro.md)), or waits round(n × 18.2065) ticks of 1/f_BIOS (within one tick). Measured: 5 s holds of 328 frames between the fades (C-0002 f1081..1408 and C-0170 f1036..1364, `menu.cmf` playing) and a 10 s hold of 664 frames (C-0002 f1483..2146, `hangar.cmf`), against 4.69..4.74 s and 9.43..9.48 s predicted.
+
+The flight loop's tick limiter (§4.1) reads the same clock. In the original, with music off these waits run at 18.52 Hz (n × 0.983 s) and under `/nosound` at 18.21 Hz (n s); Classic uses 19.2015 Hz for all (ADR-0007; a T2 deviation, §5). The 16-bit wrap quirk of the wait (OB-034) is unchanged.
+
+**2. `Crt.Delay(ms)`** (Borland Crt, `3A1C:02A8`): a busy loop calibrated once, at Crt's unit initialisation, against one BIOS tick. That runs before WORX installs its timer (and `td1` puts the PIT back to 65535 before it starts a child: C-0002 `pit.tsv`, frame 430), so the calibration sees the standard 18.2 Hz tick and `Crt.Delay(ms)` lasts ms real milliseconds (T2). It does **not** scale with the BIOS tick. C-0067: the flight-17 cut-scene (7,300 ms of delays, four 34-frame fades, 28,800 one-byte file reads) takes 673 frames (9.60 s), 7.66 s besides the fades: real milliseconds plus the reads.
+
+**3. Vertical retrace** (70.086 Hz). Palette fades wait for the retrace bit once per level, and how many frames a level takes depends on the work per level ([screens §2.1](../flow/screens.md#21-fades): 2 frames for a full palette, 1 for a nearly black one, at P1). Typed text waits once per character (one character per frame, C-0002). The menu highlight ramps wait once per step but the wait returns at once while the bit is still set, so they make 11 steps per frame (C-0002, C-0120, C-0125). The flight menu's item fade behaves the same way: 32 steps in 3 frames (C-0012 f3628..3630, one retrace-bit hit per step).
+
+Every timed wait in Episode 1, by clock (E2 and E3 use the same routines: [e2-program-flow](../flow/e2-program-flow.md), [e3-program-flow](../flow/e3-program-flow.md)):
+
+| Wait | Clock | Length | Site |
+|---|---|---|---|
+| Mission title card | DOS time | 5 s | `051A:5940` |
+| Scene cards (13 backgrounds) | DOS time | 10 s | `051A:2029` … `5EC2` ([text §4.5.1](../render/text.md#451-episode-1-scene-cards)) |
+| `eggbase` scene card | DOS time | 15 s | `051A:40BD` |
+| Story-still sets (`td1-13`, `td1-14`, `td1-16`, `td1-20`) | DOS time | 25 s | `051A:46ED` |
+| `td1-18` still | DOS time | 15 s | `051A:4952` |
+| `td1-15` still | DOS time | 10 s | `051A:4A49` |
+| Assignment orders | DOS time | 5 s | `051A:6516` |
+| Enemy-ace dossier | DOS time | 10 s | `051A:67FA` |
+| Debrief, after its line delays | DOS time | 10 s | `051A:73FF` |
+| Pilot dossier (end of game), after its line delays | DOS time | 25 s | `051A:7686` |
+| Story so far, pages 1 and 2 | DOS time | 30 s, 45 s | `051A:903F`, `9223` |
+| Flight tick | DOS time | one BIOS tick | `0E8B:E05C` (§4.1) |
+| Debrief lines | `Crt.Delay` | 4 × 500 ms | `051A:715C`, `71E8`, `723D`, `73E8` |
+| Pilot dossier lines | `Crt.Delay` | 5 × 500 ms and 1 × 2000 ms | `051A:75C5` … `766F` |
+| Save and restore screens | `Crt.Delay` | 200 ms (two sites each) | `051A:7BD6`, `7CB1`, `83D6`, `84B1` |
+| Main menu, joystick up or down | `Crt.Delay` | 200 ms | `0000:34C5`, `352B` |
+| Configuration screen (text mode, not ported) | `Crt.Delay` | 100 ms, 5000 ms | `0000:4D13`, `4D1F` |
+| Joystick calibration | `Crt.Delay` | 10 ms | `0E8B:B167` |
+| Flight Esc menu, key poll | `Crt.Delay` | 100 ms per poll | `0E8B:7B4C` |
+| Flight 19 V.C.I. screen | `Crt.Delay` | 2000 ms | `0E8B:A167` |
+| Flight 17 cut-scene | `Crt.Delay` | 5 × 1000, 3 × 100 and 1 × 2000 ms | `0E8B:A529` … `A6B1` |
+| Scene, menu and flight fades | retrace | 17 levels, 1 or 2 frames per level | screens §2.1, [flight-screens §4.5.3](../flow/flight-screens.md#453-flight-fades) |
+| Typed text, dialogue lines, comm screen | retrace | one character per frame | [text §4.3](../render/text.md#43-typed-text-txt_typestring-051a1269-flight-0e8b4c9f), flight-screens §4.2 |
+| Menu highlight ramps (E1, E2, E3) | retrace | 11 steps per frame | screens §3.1 |
+| Flight menu item fade | retrace | 11 steps per frame, 32 steps | flight-screens §4.1 |
+
+All other screens and keys wait without a timeout. `051A:1AA3` is the only routine outside flight that reads DOS time (U-033's three Get Time calls are its own).
+
+The sound-effect unit (`1E2A`) hooks INT 1Ch, so its PC-speaker handler runs at the BIOS tick rate above, not at a fixed 18.2 Hz.
 
 ### 4.5 Per tick vs per frame
 
@@ -127,7 +177,7 @@ There is one frame per tick: draw, flip and simulate all happen once per loop it
 | Quirk | Original behaviour | Port policy (proposal; MDG §6.3) |
 |---|---|---|
 | Speed depends on CPU when the CPU is too slow | Game slows down, no catch-up | Classic: fixed tick, never slows (fix-all); slowdown is not a "feel" players rely on |
-| Tick rate depends on WORX state (≈ 18.2 / 18.5 / 19.2 Hz) | Slightly different game speed with music, without music, and without sound hardware | Classic: one canonical rate. Proposal: the rate measured in the most common configuration (SB + music), expected ≈ 19.20 Hz. Decide after §8 measurements (ADR) |
+| Tick rate depends on WORX state (measured 19.21 / 18.52 / 18.21 Hz) | Slightly different game speed with music, without music, and without sound hardware; DOS-time waits scale the same way | Classic: one canonical rate for flight ticks and DOS-time waits, 1,193,182 / 62,140 = 19.2015 Hz (SB + music), **proposed in ADR-0007, pending the user**. The music-off and `/nosound` rates are not reproduced (T2 deviation). `Crt.Delay` stays in real milliseconds and retrace waits at 70.086 Hz |
 | 16-bit timestamp wrap every 655.36 s | One short tick about every 11 minutes | Do not reproduce (no state effect beyond one early tick) |
 | Display updates at tick rate (~19 Hz) | Visible stepping on scrolling | Classic: present at the tick rate. Enhanced: optional interpolation, presentation only |
 
@@ -141,6 +191,9 @@ There is one frame per tick: draw, flip and simulate all happen once per loop it
 | 4 | Dynamic: same with `/nosound` | 18.21 / 18.22 per second at 20,000 / 60,000: WORX does not install its timer (IRQ 0 stays at 18.21 Hz) | C-0074 (VE-3) |
 | 5 | Dynamic: SB, music device ≠ 2 (`td.cfg` 01 02 02) | 18.52 / 18.53 per second at 20,000 / 60,000 (IRQ 0 500.28 Hz) | C-0072, C-0074 (VE-3) |
 | 6 | Dynamic: cycles 3,000 | 13.35 (music), 13.39 (no music), 13.90 (`/nosound`) per second: CPU-bound, no catch-up | C-0074 (VE-3) |
+| 7 | `Flow_WaitSecondsOrKey(5)`, music playing (§4.4) | 91 or 92 BIOS ticks: 4.69..4.79 s at 19.2015 Hz; measured hold 328 frames between the fades | C-0002, C-0170 |
+| 8 | `Flow_WaitSecondsOrKey(10)`, music playing | 182 or 183 BIOS ticks: 9.43..9.53 s; measured 664 frames | C-0002 |
+| 9 | `Crt.Delay`: flight-17 cut-scene (7,300 ms of delays) | 673 frames including four 34-frame fades | C-0067 |
 
 ## 7. Presentation and audio hooks
 
@@ -172,7 +225,10 @@ Results (VE-3, 2026-11-06; method: `g_MissionTicks` and the BIOS data area dumpe
 | WORX divisors 0952h / 1234DCh div clock / FFFFh | `2C37:330B`, `2C37:47F2`, `2C37:4270` | static | CONFIRMED |
 | Page flip waits for retrace | `file0001:386E:1A6C..1A93` | static | CONFIRMED |
 | One frame per tick, no elapsed-time scaling | `0E8B:B880` structure | static | HYPOTHESIS (loop body not fully mapped) |
-| Rates in §4.2 | arithmetic from the divisors | derived | LIKELY |
+| Rates in §4.2 | arithmetic from the divisors; C-0074, C-0010 | derived + measured | CONFIRMED |
+| DOS-time waits: one routine, centiseconds of DOS time | `051A:1AA3` and its timed callers (§4.4 table); C-0002, C-0170 | static + capture | CONFIRMED |
+| DOS clock from the BIOS tick count | the oracle's INT 21h AH=2Ch (DOSBox-X, read as a tool); [dynamic-observations](../../re/dynamic-observations.md) | static (oracle) | CONFIRMED for the oracle |
+| `Crt.Delay` calibrated before WORX starts; 31 call sites | Crt init in the unit chain before `0000:47C2`; C-0002 `pit.tsv`; call sites from RE-7's listings | static + capture | CONFIRMED |
 
 ## 10. Revision history
 
@@ -182,3 +238,4 @@ Results (VE-3, 2026-11-06; method: `g_MissionTicks` and the BIOS data area dumpe
 | 2 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Names for `0E8B:9860`/`8E87`; per-tick order moved to `sim/tick-order.md` (U-033); `g_MissionTicks` confirmed per tick |
 | 3 | 2026-11-02 | RE-4 (Archaeologist) | U-007 resolved (header 0x0C); which tick rate applies in which sound configuration (U-032, static) |
 | 3 + evidence | 2026-11-06 | VE-3 (Verifier) | §6 vectors 3–6 and §8 M1–M7 measured (no rule changed). The canonical Classic rate is a proposal in parity/M12-timing.md §3, for an SP revision and ADR |
+| 4 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | Measured rates CONFIRMED (§1, §4.2); §4.4 rewritten: the three clocks outside flight, the exact DOS-time rule with the ADR-0007 clock (BUG-7), `Crt.Delay` in real ms, retrace-paced work, and every timed wait of E1 by clock; §5 policy points to ADR-0007 (proposed, pending); vectors 7–9 |
