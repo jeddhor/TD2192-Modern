@@ -92,6 +92,33 @@ pub fn redraw_overpasses(fb: &mut Framebuffer, map: &TileMap, tiles: &Tileset, v
     }
 }
 
+/// Episode 2's overlay tiles (tick-order step 12, `docs/spec/sim/e2-mission-setup.md` rev 1
+/// §3.6): every cell of the 11 × 6 window. Map set 1 (`td.map`): E1's tiles 42h, 44h, 45h,
+/// 46h and the cells x 7Ah..=7Fh at y 47h; map set 2 (`td2.map`): tiles 33h..=3Bh, 1Eh, 1Fh,
+/// 20h. The caller skips it while late draw is set.
+pub fn redraw_overlays_e2(
+    fb: &mut Framebuffer,
+    map: &TileMap,
+    tiles: &Tileset,
+    view: ViewPos,
+    map_set: u8,
+) {
+    for i in 0..11 {
+        for j in 0..6 {
+            let tile = tile_at(map, view, i, j);
+            let overlay = if map_set == 2 {
+                tile.is_some_and(|t| (0x33..=0x3B).contains(&t) || (0x1E..=0x20).contains(&t))
+            } else {
+                let special = (0x7A..=0x7F).contains(&(view.tile_x + i)) && view.tile_y + j == 0x47;
+                special || tile.is_some_and(|t| OVERPASS_TILES.contains(&t))
+            };
+            if overlay {
+                draw_window_tile(fb, map, tiles, view, i, j);
+            }
+        }
+    }
+}
+
 /// Draws a ship frame (colour 0 transparent) at the player's screen position. `frame` is a
 /// square frame of `size` pixels centred like a 32 × 32 base frame (40 × 40 heading frames
 /// have the base frame at offset (4, 4)).

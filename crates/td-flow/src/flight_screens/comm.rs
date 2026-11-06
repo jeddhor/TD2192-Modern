@@ -146,6 +146,44 @@ pub fn transmission(n: usize) -> Option<Transmission> {
     })
 }
 
+/// `td2.ccm` record of box A for E2 transmissions 1..=7. ASSUMPTION(U-310): record n for the
+/// caller (1 Kendrick, 2 Jarock, 3 Bryll, 4 Tol, 5 Glasya, 6 the Areo-2), Glasya's 5 again for
+/// transmission 7; record 0 (the player) in box B, as in E1.
+const E2_PORTRAIT_A: [usize; 7] = [1, 2, 3, 4, 5, 6, 5];
+
+/// An Episode 2 transmission `n` (1..=7) from its string run (`e2.comms.*`, episode-deltas
+/// rev 2 §10). The loaders `td2:2555:01D4..158D` are not specified yet (U-310); this
+/// provisional reading follows the E1 structure (flight-screens §3.3): headers 0 and 1, then
+/// the run's strings 2.. in order, markers recognised by content (`prompts`), up to the end
+/// marker. ASSUMPTION(U-310): a line that starts with two spaces right after a blank
+/// (spaces-only) line starts the other speaker's box; the first line is box A.
+pub fn e2_transmission(n: usize, run: &[String], prompts: &[String]) -> Transmission {
+    let blank = |s: &str| s.trim().is_empty();
+    let mut lines = Vec::new();
+    let mut side = 0;
+    let mut prev_blank = false;
+    for (j, text) in run.iter().enumerate().skip(2) {
+        if prompts.get(1) == Some(text) {
+            lines.push((Line::End, side));
+            break;
+        }
+        if prompts.first() == Some(text) {
+            lines.push((Line::Prompt, side));
+            continue;
+        }
+        if prev_blank && text.starts_with("  ") && !lines.is_empty() {
+            side ^= 1;
+        }
+        prev_blank = blank(text);
+        lines.push((Line::Text(j), side));
+    }
+    let a = E2_PORTRAIT_A.get(n.wrapping_sub(1)).copied().unwrap_or(1);
+    Transmission {
+        portraits: (a, 0),
+        lines,
+    }
+}
+
 /// What the screen does after the current typing finishes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum After {
@@ -191,10 +229,11 @@ pub fn scroll_box(fb: &mut Framebuffer, side: usize, bg: u8) {
 }
 
 impl CommScreen {
-    /// Opens transmission `n` (1..=9) over `shown`, the frame on screen (page 0 with this
-    /// tick's world; the DAC stays the flight's). `None` if `n` is not a transmission.
+    /// Opens transmission `n` (E1 1..=9, E2 1..=7) over `shown`, the frame on screen (page 0
+    /// with this tick's world; the DAC stays the flight's). `None` if `n` is not a
+    /// transmission.
     pub fn new(mut shown: Framebuffer, assets: &FlightScreenAssets, n: usize) -> Option<Self> {
-        let tx = transmission(n)?;
+        let tx = assets.transmissions.get(n.checked_sub(1)?)?.clone();
         for (cell, pixels) in assets.panel.chunks_exact(1024).enumerate() {
             let (col, row) = ((cell % 8) as i32, (cell / 8) as i32);
             let pos = (PANEL_ORIGIN.0 + 32 * col, PANEL_ORIGIN.1 + 32 * row);
@@ -371,6 +410,28 @@ mod tests {
         assert_eq!((side(8, 20), side(8, 21)), (0, 1));
         assert_eq!((side(9, 6), side(9, 7)), (1, 0));
         assert_eq!(transmission(9).unwrap().portraits, (0, 8));
+    }
+
+    #[test]
+    fn e2_provisional_reading() {
+        let s = |v: &[&str]| v.iter().map(|t| (*t).to_owned()).collect::<Vec<_>>();
+        let prompts = s(&["P", "E"]);
+        let run = s(&[
+            "a", "b", "  one", "two", "P", " ", "  three", "four", "  five", "E",
+        ]);
+        let t = e2_transmission(7, &run, &prompts);
+        assert_eq!(t.portraits, (5, 0));
+        let expected = [
+            (Line::Text(2), 0),
+            (Line::Text(3), 0),
+            (Line::Prompt, 0),
+            (Line::Text(5), 0),
+            (Line::Text(6), 1),
+            (Line::Text(7), 1),
+            (Line::Text(8), 1),
+            (Line::End, 1),
+        ];
+        assert_eq!(t.lines, expected);
     }
 
     #[test]

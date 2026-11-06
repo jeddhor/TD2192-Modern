@@ -14,5 +14,5 @@ pub mod sound;
 
 pub use cmf_player::{CmfDriver, CmfPlayer, OplSink, OplWrite};
 pub use mixer::{AudioCommand, Mixer, SfxPolicy};
-pub use music_cues::{CueRestart, MusicCues};
+pub use music_cues::{CueRestart, CueTable, MusicCues};
 pub use sound::{Pcm8, SoundError, decode_voc};

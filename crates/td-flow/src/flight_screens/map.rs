@@ -6,6 +6,7 @@
 //! Port policy (U-220): the map reads the BIOS keyboard, whose typematic repeat of a held F5
 //! can close it again at once; the port takes only new key presses.
 
+use td_assets::Episode;
 use td_formats::map::TileMap;
 use td_input::{Key, TickInput};
 use td_render::small_text;
@@ -146,6 +147,110 @@ const TARGETS: [(&str, &[Fixed]); 21] = [
     ("", &[]),
 ];
 
+/// Episode 2 (`docs/spec/sim/e2-mission-setup.md` rev 1 §3.4, final state per flight; indices
+/// into `e2.target_info`). Flight 20 writes no fixed point.
+const TARGETS_E2: [(&str, &[Fixed]); 20] = [
+    (
+        "0: 2 3 4 1 1; 1: 2 3 5 1 1; 3: 6 3 7 8 1; 4: 6 3 9 8 1; 6..8: 10 11 12 13 14; \
+         9..13: 15 11 12 13 14; 15, 16: 16 17 12 18 19; 21: 0 1 1 1 1",
+        &[(21, 107, 104)],
+    ),
+    (
+        "0: 2 3 4 1 1; 1, 2: 2 3 12 1 1; 4..8: 20 21 12 22 1; 12..18: 15 23 12 22 1; \
+         21: 0 1 1 1 1",
+        &[(21, 107, 104)],
+    ),
+    (
+        "0: 2 3 4 1 1; 1: 24 25 12 1 1; 3..5, 7, 8: 15 21 12 26 1; 6: 10 21 12 26 1; \
+         21: 0 1 1 1 1",
+        &[(21, 107, 104)],
+    ),
+    (
+        "0: 6 3 4 1 1; 1..3: 27 23 12 26 1; 8..11: 15 23 12 28 29; 14..16: 20 21 12 30 1; \
+         21: 0 1 1 1 1",
+        &[(21, 107, 104)],
+    ),
+    (
+        "0: 32 23 4 1 1; 1..3: 27 21 12 33 1; 5..9: 20 21 12 34 35; 11: 32 23 36 30 1; \
+         21: 31 1 1 1 1",
+        &[(21, 184, 36)],
+    ),
+    (
+        "0: 32 23 4 1 1; 2..11: 10 11 12 39 40; 13: 32 23 41 30 1; 15, 16: 20 21 12 42 43; \
+         21: 37 1 1 38 1",
+        &[(21, 125, 73)],
+    ),
+    (
+        "0: 2 3 4 1 1; 1: 44 11 45 46 47; 2..12: 48 49 1 50 1; 13, 14: 10 11 45 51 1; \
+         21: 0 1 1 1 1",
+        &[(21, 107, 104)],
+    ),
+    (
+        "0: 52 3 4 1 1; 2, 3, 5, 6, 8..10: 53 3 12 54 55; 4, 7, 11: 56 3 12 54 55; \
+         15, 19: 10 11 12 51 1; 16..18: 15 11 12 51 1; 21: 0 1 1 1 1",
+        &[(21, 107, 104)],
+    ),
+    (
+        "0: 57 3 4 1 1; 2, 3: 58 3 12 1 1; 5: 53 11 12 59 60; 8..10, 12..14: 15 11 12 61 62; \
+         11, 15: 10 11 12 61 62; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 63 3 4 1 1; 2: 16 3 64 65 66; 3: 2 3 67 68 1; 4, 6..14: 15 11 12 1 1; \
+         5: 10 11 12 1 1; 15, 16: 53 11 12 69 1; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 70 3 4 1 1; 2, 6, 11: 73 11 12 71 72; 3: 10 11 12 71 72; \
+         4, 5, 7..10, 12: 15 11 12 71 72; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 70 3 4 1 1; 2..4: 74 75 12 76 77; 8..13: 15 11 12 78 79; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 70 3 4 1 1; 2: 70 3 80 1 1; 4..8, 10..12, 14, 15: 15 11 12 81 82; \
+         9, 13: 10 11 12 81 82; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 2 3 4 1 1; 2: 2 3 83 1 1; 4..8: 15 11 12 81 82; 10..13: 84 11 12 81 82; \
+         21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 2 3 4 1 1; 2: 70 3 91 92 1; 4, 5: 85 11 12 86 62; 6, 7: 87 11 12 86 62; \
+         10..12: 88 17 12 89 90; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 2 3 4 1 1; 2: 16 3 93 94 1; 5, 6: 87 11 12 96 97; 7: 85 11 12 96 97; \
+         8..10: 95 11 12 96 97; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 2 3 4 1 1; 2..4: 16 3 45 98 99; 5: 6 3 100 98 99; 6: 6 3 101 98 99; \
+         8, 9: 87 11 45 102 103; 10, 11, 14: 85 11 45 102 103; 12, 13: 95 11 45 102 103; \
+         21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 2 3 4 1 1; 2: 6 3 104 1 1; 3: 6 3 105 1 1; 4: 6 3 106 1 1; \
+         6..11: 85 11 45 102 107; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 2 3 4 1 1; 2: 10 11 108 109 110; 3..7: 15 11 45 1 1; 21: 0 1 1 1 1",
+        &[(21, 92, 30)],
+    ),
+    (
+        "0: 70 3 4 1 1; 2..5: 6 3 45 1 1; 6..8: 2 3 45 1 1; 10, 11: 70 3 45 1 1; \
+         12..15: 15 11 45 111 112; 17, 18: 16 3 45 1 1; 19, 20: 53 3 45 1 1",
+        &[],
+    ),
+];
+
 /// Parses one flight's §3.4 line table into (entry, line indices) pairs.
 fn parse_lines(spec: &str) -> Vec<(usize, [u8; 5])> {
     let mut out = Vec::new();
@@ -187,13 +292,27 @@ impl Default for TargetBoard {
 }
 
 impl TargetBoard {
-    /// `Msn_LoadTargetInfo` at the start of `flight` (1..=21): clear the flags of entries
-    /// 1..30, write the flight's lines and fixed points; other entries keep their lines.
+    /// `Msn_LoadTargetInfo` at the start of Episode 1 flight `flight` (1..=21): clear the flags
+    /// of entries 1..30, write the flight's lines and fixed points; other entries keep their
+    /// lines.
     pub fn load(&mut self, flight: u8) {
+        self.load_table(&TARGETS, flight);
+    }
+
+    /// `Msn_LoadTargetInfo` of `episode` (E2: `td2:1E0B:0DCC`, e2-mission-setup rev 1 §3.4,
+    /// §4.5; the lines index `e2.target_info`).
+    pub fn load_episode(&mut self, episode: Episode, flight: u8) {
+        match episode {
+            Episode::E2 => self.load_table(&TARGETS_E2, flight),
+            _ => self.load(flight),
+        }
+    }
+
+    fn load_table(&mut self, table: &[(&str, &[Fixed])], flight: u8) {
         self.flags[1..=LAST_SELECTABLE].fill(false);
         let Some((lines, fixed)) = usize::from(flight)
             .checked_sub(1)
-            .and_then(|i| TARGETS.get(i))
+            .and_then(|i| table.get(i))
         else {
             return;
         };
@@ -403,6 +522,33 @@ mod tests {
         for f in 1..=21 {
             for (_, l) in parse_lines(TARGETS[f - 1].0) {
                 assert!(l.iter().all(|&i| i < 118), "flight {f}");
+            }
+        }
+    }
+
+    #[test]
+    fn e2_board() {
+        let mut b = TargetBoard::default();
+        b.load_episode(Episode::E2, 1);
+        assert_eq!(b.lines[16], Some([16, 17, 12, 18, 19]));
+        assert!(b.flags[21] && b.pos[21] == (107, 104));
+        b.load_episode(Episode::E2, 5);
+        assert_eq!(b.pos[21], (184, 36));
+        assert_eq!(b.lines[21], Some([31, 1, 1, 1, 1]));
+        b.load_episode(Episode::E2, 20);
+        assert!(!b.flags[21], "flight 20 writes no fixed point");
+        assert_eq!(
+            b.lines[16],
+            Some([16, 17, 12, 18, 19]),
+            "kept from flight 1"
+        );
+        // Every index is a valid e2.target_info line (113 strings); every slot 1..20 that a
+        // flight writes, and entry 0, has five lines.
+        for f in 1..=20 {
+            let v = parse_lines(TARGETS_E2[f - 1].0);
+            assert!(v.iter().any(|(e, _)| *e == 0), "flight {f}");
+            for (e, l) in v {
+                assert!(e <= 21 && l.iter().all(|&i| i < 113), "flight {f}");
             }
         }
     }

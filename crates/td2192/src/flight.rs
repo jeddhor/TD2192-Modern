@@ -9,10 +9,14 @@
 //! screens and palettes are `td_flow::flight_screens` and `td_render::flight_palette`,
 //! flight-screens.md rev 1). Debug builds only: F9 completes the mission.
 //!
-//! [`ArenaLauncher`] hands these flights to the Episode 1 campaign (`td_flow::Episode1`) and
-//! keeps what the original carries from one flight of a program run to the next: the
-//! `td_sim` [`Session`] (RNG, class tables, ship records, mission state) and the F5 target
-//! entries.
+//! [`ArenaLauncher`] hands these flights to the campaign (`td_flow::Episode1`,
+//! `td_flow::Episode2`) and keeps what the original carries from one flight of a program run
+//! to the next: the `td_sim` [`Session`] (RNG, class tables, ship records, mission state) and
+//! the F5 target entries.
+//!
+//! Episode 2 presentation (M10-44.b): the E2 F5 entries and texts, `td2.ccm` transmissions,
+//! the radar table of map set 2, the overlay tiles of e2-mission-setup rev 1 §3.6 and the
+//! flight-8 `td.hel`/`td.h2` sprites (§4.1 step 6).
 //!
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
 //! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8.
@@ -223,16 +227,33 @@ impl FlightArena {
             None => None,
             Some(file) => Some(Mission::parse(&dir.read(&file)?)?),
         };
-        let base = SpriteSheet::parse_base(&dir.read("td.shp")?)?;
+        let mut shp = dir.read("td.shp")?;
+        let (mut sc3, mut shr, mut sc2) = (
+            dir.read("td.sc3")?,
+            dir.read("td.shr")?,
+            dir.read("td.sc2")?,
+        );
+        if ep == Episode::E2 && number == 8 {
+            // E2 flight 8 (e2-mission-setup rev 1 §4.1 step 6): td.hel into the sprite bank at
+            // +800h (slots 2..3), td.h2 into +C80h of the rotation buffers td.sc2, td.shr,
+            // td.sc3 (cells 2..3, C80h bytes each; FORMATS §6.3).
+            overwrite(&mut shp, 0x800, &dir.read("td.hel")?)?;
+            let h2 = dir.read("td.h2")?;
+            for (k, set) in [&mut sc2, &mut shr, &mut sc3].into_iter().enumerate() {
+                let part = h2.get(k * 0xC80..(k + 1) * 0xC80);
+                overwrite(set, 0xC80, part.unwrap_or_default())?;
+            }
+        }
+        let base = SpriteSheet::parse_base(&shp)?;
         let rot = [
-            SpriteSheet::parse_rotation_set(&dir.read("td.sc3")?)?,
-            SpriteSheet::parse_rotation_set(&dir.read("td.shr")?)?,
-            SpriteSheet::parse_rotation_set(&dir.read("td.sc2")?)?,
+            SpriteSheet::parse_rotation_set(&sc3)?,
+            SpriteSheet::parse_rotation_set(&shr)?,
+            SpriteSheet::parse_rotation_set(&sc2)?,
         ];
         let Some(ships) = HeadingSprites::build(&base, [&rot[0], &rot[1], &rot[2]], 20) else {
             bail!("sprite sheets are inconsistent");
         };
-        let mut bank_bytes = dir.read("td.shp")?;
+        let mut bank_bytes = shp;
         bank_bytes.extend(dir.read("td.exp")?);
         let bank = SpriteSheet::parse(&bank_bytes, 32)?;
         let mut effects = BTreeMap::new();
@@ -280,12 +301,12 @@ impl FlightArena {
                 ticker_texts.insert(id, texts);
             }
         }
-        let screens = FlightScreenAssets::load(dir, resources)?;
+        let screens = FlightScreenAssets::load_episode(dir, resources, ep, flight.radar_set2)?;
         let board = {
             let mut fresh = TargetBoard::default();
             let mut shared = run.as_ref().map(|r| r.borrow_mut());
             let board = shared.as_mut().map_or(&mut fresh, |r| &mut r.board);
-            board.load(number);
+            board.load_episode(ep, number);
             board.clone()
         };
         let palette = Palette::parse(&dir.read("td.pal")?)?;
@@ -473,9 +494,15 @@ impl Screen for FlightArena {
         }
         // 10. Mission ships.
         self.draw_mission_ships(fb, view);
-        // 12. Overpasses.
+        // 12. Overpasses (E2: overlay tiles of the whole window, e2-mission-setup §3.6).
         if !late {
-            flight::redraw_overpasses(fb, map, &self.tiles, view);
+            match self.flight.episode {
+                Episode::E2 => {
+                    let set = episode::map_set(Episode::E2, self.flight.number);
+                    flight::redraw_overlays_e2(fb, map, &self.tiles, view, set);
+                }
+                _ => flight::redraw_overpasses(fb, map, &self.tiles, view),
+            }
         }
         // 13. Explosions: bank slot 19 + frame (flight-screens §4.7).
         let page = self.drawn_page();
@@ -557,6 +584,20 @@ const TICKER_RESOURCES: [&str; 10] = [
     "e2.jurisdiction.warnings",
     "e2.flight_events",
 ];
+
+/// Writes `bytes` into `buf` at `at` (a mission's extra sprites over the loaded sheets).
+fn overwrite(buf: &mut [u8], at: usize, bytes: &[u8]) -> Result<()> {
+    match buf.get_mut(at..at + bytes.len()) {
+        Some(dst) if !bytes.is_empty() => {
+            dst.copy_from_slice(bytes);
+            Ok(())
+        }
+        _ => bail!(
+            "sprite overlay of {} bytes at {at:#X} does not fit",
+            bytes.len()
+        ),
+    }
+}
 
 /// The tile a shot was drawn at: `Flight::drawn` holds the shots after step 6, whose last part
 /// moves every live shot one tile along its heading (weapons.md §4.3 step 8) after drawing it.
@@ -689,6 +730,20 @@ impl FlightScreen for FlightArena {
 pub struct ArenaLauncher {
     run: Rc<RefCell<RunState>>,
     fallback: PlaceholderLauncher,
+}
+
+impl ArenaLauncher {
+    /// The flights of `episode`'s program run (program start of that executable).
+    pub fn for_episode(episode: Episode) -> Self {
+        let run = RunState {
+            session: Session::for_episode(episode),
+            board: TargetBoard::default(),
+        };
+        Self {
+            run: Rc::new(RefCell::new(run)),
+            fallback: PlaceholderLauncher::default(),
+        }
+    }
 }
 
 impl td_flow::FlightLauncher for ArenaLauncher {

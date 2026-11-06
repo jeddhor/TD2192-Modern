@@ -18,6 +18,7 @@ use td_formats::font::{Font, FontKind};
 use td_formats::map::TileMap;
 use td_formats::palette::Rgb6;
 use td_sim::Flight;
+use td_sim::flight::episode::Episode;
 use td_sim::real48::Real48;
 
 use crate::flight::{HUD_H, HUD_W, HUD_Y, PLAYFIELD, ViewPos};
@@ -169,6 +170,8 @@ impl SlotMark {
 /// The game state `UI_DrawInstruments` reads at tick step 19.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HudState {
+    /// The program (home points and the infra-red dots differ in E2, episode-deltas rev 2 §6).
+    pub episode: Episode,
     /// Flight number 1..=21 (home point, §3.6).
     pub flight: u8,
     /// Ticks since flight start (`missionTicks`, the low-armour pulse).
@@ -222,6 +225,7 @@ impl HudState {
             *d = (s.tile_x, s.tile_y);
         }
         Self {
+            episode: f.episode,
             flight: f.number,
             ticks: f.ticks,
             view: ViewPos {
@@ -267,6 +271,29 @@ pub fn home_point(flight: u8, phase: u8) -> (i16, i16) {
         19 if phase < 100 => (123, 72),
         _ => (107, 104),
     }
+}
+
+/// The Episode 2 home point (`docs/spec/sim/e2-mission-setup.md` rev 1 §3.7, a later rule
+/// wins): flight 8 points west of the view, flight 20 straight up from the player.
+pub fn home_point_e2(flight: u8, view: ViewPos) -> (i16, i16) {
+    let low = |v: i32| i16::from(v as u8);
+    let mut home = (107, 104);
+    if flight == 5 {
+        home = (189, 37);
+    }
+    if flight == 6 {
+        home = (125, 68);
+    }
+    if flight == 8 {
+        home = (1, low(view.tile_y + 2));
+    }
+    if flight > 8 {
+        home = (92, 28);
+    }
+    if flight == 20 {
+        home = (low(view.tile_x + 5), 0);
+    }
+    home
 }
 
 /// The off-screen ticker strip, addressed like VGA memory: a pixel past x = 351 lands in the
@@ -526,7 +553,10 @@ impl Hud {
     /// Compass lamps and guidance dots (§4.3).
     fn guidance(&mut self, s: &HudState) {
         let p = ((s.view.tile_x + 5) as i16, (s.view.tile_y + 3) as i16);
-        let home = home_point(s.flight, s.phase);
+        let home = match s.episode {
+            Episode::E2 => home_point_e2(s.flight, s.view),
+            _ => home_point(s.flight, s.phase),
+        };
         let live = || {
             s.slots
                 .iter()
@@ -566,6 +596,8 @@ impl Hud {
                 .extend([(x + 1, y, 0), (x + 1, y + 1, 0), (x, y + 1, 0)]);
         }
         let colours = match marker {
+            // E2: in palette mode 2 the six 39h dots are colour 90h (episode-deltas rev 2 §6).
+            MARKER_FRIEND if s.episode == Episode::E2 && s.palette_mode == 2 => [0x90; 6],
             MARKER_TARGET => DOTS_TARGET,
             MARKER_FRIEND => DOTS_FRIEND,
             MARKER_HOME if s.palette_mode == 2 => {
@@ -684,6 +716,7 @@ mod tests {
             ..slots[0]
         };
         HudState {
+            episode: Episode::E1,
             flight: 1,
             ticks: 70,
             view: ViewPos {
