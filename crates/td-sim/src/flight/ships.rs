@@ -393,9 +393,10 @@ impl Ships {
             s.record.waypoint = s.record.path[0];
             s.record.return_pt = s.record.waypoint;
             (s.tile_x, s.tile_y) = s.record.path[0];
+            // Step 4 does not write the turn direction: it keeps the previous flight's value
+            // (0 at program start; E3 flight 21 after flight 11, U-501).
             s.heading = 6;
             s.target_heading = 6;
-            s.turn = 0;
             s.sub_x = 16;
             s.sub_y = 16;
             s.speed = [0; 4];
