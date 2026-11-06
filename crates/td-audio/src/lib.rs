@@ -11,8 +11,10 @@ pub mod mixer;
 pub mod music_cues;
 pub mod sfx;
 pub mod sound;
+pub mod worx;
 
 pub use cmf_player::{CmfDriver, CmfPlayer, OplSink, OplWrite};
 pub use mixer::{AudioCommand, Mixer, SfxPolicy};
 pub use music_cues::{CueRestart, CueTable, MusicCues};
-pub use sound::{Pcm8, SoundError, decode_voc};
+pub use sfx::DigitalVoice;
+pub use sound::{DmaStream, Pcm8, SoundError, decode_voc, dsp_rate};

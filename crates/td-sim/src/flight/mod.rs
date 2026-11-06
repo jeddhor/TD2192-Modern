@@ -257,6 +257,13 @@ pub struct Flight {
     /// Shots, ships and explosions as the last tick drew them (steps 6, 10 and 13); not part
     /// of the state hash.
     pub drawn: DrawnObjects,
+    /// Where tick-order step 26 (the Sound Blaster priority reset, sfx-policy rev 3 §4.2) fell
+    /// among the events of the last [`Flight::tick`] or [`Flight::resume`] call: the number
+    /// of entries `events` held when the step ran, or `None` if that call did not run it (it
+    /// stopped at a modal screen first, or resumed after it). The sounds before it were
+    /// requested before the reset, the rest after; the host's model of WORX's playing status
+    /// needs the order. Not part of the state hash.
+    pub sound_reset_at: Option<usize>,
     /// Step to continue at after a modal screen.
     resume_at: u8,
 }
@@ -438,6 +445,7 @@ impl Flight {
             missile_cooldown: 0,
             palette_mode: 0,
             player,
+            sound_reset_at: None,
             resume_at: 1,
         }
     }
@@ -479,6 +487,7 @@ impl Flight {
         events: &mut Vec<Event>,
         from: u8,
     ) -> TickResult {
+        self.sound_reset_at = None;
         if from <= 1 {
             // 1. Tick counter; E1 flight 21 ends itself after 25 ticks.
             self.ticks = self.ticks.wrapping_add(1);
@@ -647,7 +656,10 @@ impl Flight {
                 Episode::E2 => self.e2_flight_events(events),
                 Episode::E3 => self.e3_timed_events(),
             }
-            // 26 is audio. 27. Shields and destruction.
+            // 26. Audio: the host resets the Sound Blaster priority here when WORX reports no
+            // sound playing (sfx-policy §4.2); the sim only marks the place.
+            self.sound_reset_at = Some(events.len());
+            // 27. Shields and destruction.
             if self.player.shields_step(&self.classes, self.mission_over) {
                 self.end_mission();
             }
