@@ -337,7 +337,10 @@ mod tests {
         assert_eq!(v.pixel(140, 492), 5);
         let mut v = VgaMemory::new();
         draw_hoverskid(&mut v, &sheet, 1, 4, 300, 142, Hoverskid::Clipped);
-        assert!(inked(&v, 0..800, 5).is_empty(), "rows past the page are clipped");
+        assert!(
+            inked(&v, 0..800, 5).is_empty(),
+            "rows past the page are clipped"
+        );
     }
 
     #[test]

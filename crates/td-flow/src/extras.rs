@@ -30,8 +30,13 @@ pub fn about_or_order(
     ctx: &mut FlowContext<'_>,
     item: u8,
 ) -> Result<StoryScreen, StoryError> {
-    let bg = if item == ORDER { Bg::Order } else { Bg::Aboutus };
-    let screen = crate::scene_card::scene_card(&prog.data, &prog.assets, &bg.layout(), ["", "", ""])?;
+    let bg = if item == ORDER {
+        Bg::Order
+    } else {
+        Bg::Aboutus
+    };
+    let screen =
+        crate::scene_card::scene_card(&prog.data, &prog.assets, &bg.layout(), ["", "", ""])?;
     // The menu song stops; the launcher plays intro.cmf under the extra (launcher §4.1).
     prog.cues.stop(ctx.audio);
     if let Some(song) = load_song(&prog.data, "intro.cmf") {

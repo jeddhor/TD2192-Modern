@@ -40,7 +40,11 @@ fn run(
             audio: &mut audio,
         };
         let input = TickInput {
-            pressed: if f == 0 { key.into_iter().collect() } else { Vec::new() },
+            pressed: if f == 0 {
+                key.into_iter().collect()
+            } else {
+                Vec::new()
+            },
             ..TickInput::default()
         };
         screen.tick(&mut ctx, &input);
@@ -119,7 +123,11 @@ fn the_intro_hands_over_to_episode_1_and_esc_skips_it() {
     let mut fb = Framebuffer::new();
     // Esc during the date card: its hold ends, the fade-out, the exit fade (about 80 frames).
     for f in 0..160 {
-        let pressed = if f == 30 { vec![Key::ESCAPE] } else { Vec::new() };
+        let pressed = if f == 30 {
+            vec![Key::ESCAPE]
+        } else {
+            Vec::new()
+        };
         flow.tick(
             &mut ctx,
             &TickInput {
@@ -134,7 +142,10 @@ fn the_intro_hands_over_to_episode_1_and_esc_skips_it() {
         flow.tick(&mut ctx, &TickInput::default());
     }
     flow.draw(&mut fb);
-    assert!(fb.palette.colors.iter().any(|c| c.r + c.g + c.b > 0), "script choice shown");
+    assert!(
+        fb.palette.colors.iter().any(|c| c.r + c.g + c.b > 0),
+        "script choice shown"
+    );
     assert!(
         ctx.audio
             .iter()

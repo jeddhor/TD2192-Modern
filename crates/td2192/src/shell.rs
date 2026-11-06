@@ -55,7 +55,11 @@ pub fn episode1_start(
 }
 
 /// `--dev-intro`: the intro alone.
-pub fn dev_intro(dir: &DataDir, res: &ExeResources, settings: &Settings) -> Result<Box<dyn Screen>> {
+pub fn dev_intro(
+    dir: &DataDir,
+    res: &ExeResources,
+    settings: &Settings,
+) -> Result<Box<dyn Screen>> {
     Ok(Box::new(
         Intro::load(dir, res, intro_options(settings)).context("loading the intro")?,
     ))

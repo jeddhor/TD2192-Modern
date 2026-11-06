@@ -45,10 +45,12 @@ fn fly_assets() -> FlyoverAssets {
     sprites[4 * 1024..5 * 1024].fill(200);
     let mut td_pal = Palette::default();
     td_pal.colors[200] = Rgb6 { r: 1, g: 2, b: 3 };
-    let pcm = |n: usize| Some(Arc::new(Pcm8 {
-        rate: 11_025,
-        samples: vec![128; n],
-    }));
+    let pcm = |n: usize| {
+        Some(Arc::new(Pcm8 {
+            rate: 11_025,
+            samples: vec![128; n],
+        }))
+    };
     FlyoverAssets {
         font: Font::parse(&font, FontKind::Small).unwrap(),
         sprites,
@@ -61,7 +63,13 @@ fn fly_assets() -> FlyoverAssets {
         intro_song: Some(song(8000)),
         intro2_song: Some(song(4000)),
         // whoosh, pulse, ric3, scratch, home: about 1, 0.5, 2, 1, 1 s.
-        effects: [pcm(11_025), pcm(5_512), pcm(22_050), pcm(11_025), pcm(11_025)],
+        effects: [
+            pcm(11_025),
+            pcm(5_512),
+            pcm(22_050),
+            pcm(11_025),
+            pcm(11_025),
+        ],
     }
 }
 
@@ -81,11 +89,7 @@ fn assets() -> IntroAssets {
 }
 
 /// Runs until the end (or `limit` frames), pressing `keys` at the given frames.
-fn run(
-    intro: &mut Intro,
-    keys: &[(u64, Key)],
-    limit: u64,
-) -> Vec<(u64, AudioCommand)> {
+fn run(intro: &mut Intro, keys: &[(u64, Key)], limit: u64) -> Vec<(u64, AudioCommand)> {
     let mut out = Vec::new();
     while !intro.finished() && intro.frame() < limit {
         let next = intro.frame() + 1;
@@ -128,15 +132,39 @@ fn timeline_follows_the_p1_frame_counts() {
     assert_eq!(
         kinds[..10],
         [
-            C { entry: 52, up: true },
-            C { entry: 52, up: false },
+            C {
+                entry: 52,
+                up: true
+            },
+            C {
+                entry: 52,
+                up: false
+            },
             F { up: true },
-            C { entry: 52, up: true },
-            C { entry: 52, up: false },
-            C { entry: 92, up: true },
-            C { entry: 92, up: false },
-            C { entry: 195, up: true },
-            C { entry: 195, up: false },
+            C {
+                entry: 52,
+                up: true
+            },
+            C {
+                entry: 52,
+                up: false
+            },
+            C {
+                entry: 92,
+                up: true
+            },
+            C {
+                entry: 92,
+                up: false
+            },
+            C {
+                entry: 195,
+                up: true
+            },
+            C {
+                entry: 195,
+                up: false
+            },
             F { up: false },
         ]
     );
@@ -165,16 +193,40 @@ fn timeline_follows_the_p1_frame_counts() {
         tail,
         [
             F { up: true },
-            C { entry: 45, up: true },
-            C { entry: 45, up: false },
-            C { entry: 45, up: true },
-            C { entry: 45, up: false },
+            C {
+                entry: 45,
+                up: true
+            },
+            C {
+                entry: 45,
+                up: false
+            },
+            C {
+                entry: 45,
+                up: true
+            },
+            C {
+                entry: 45,
+                up: false
+            },
             F { up: false },
             F { up: true },
-            C { entry: 140, up: false },
-            C { entry: 140, up: true },
-            C { entry: 141, up: false },
-            C { entry: 141, up: true },
+            C {
+                entry: 140,
+                up: false
+            },
+            C {
+                entry: 140,
+                up: true
+            },
+            C {
+                entry: 141,
+                up: false
+            },
+            C {
+                entry: 141,
+                up: true
+            },
             F { up: false },
             Mark::End,
         ]
@@ -199,13 +251,36 @@ fn spec_vector_8_esc_esc() {
         5_000,
     );
     let f = fades(&intro);
-    assert_eq!(f[3], (ours(346), Mark::ColourFade { entry: 52, up: true }));
-    assert_eq!(f[4], (ours(353), Mark::ColourFade { entry: 52, up: false }));
+    assert_eq!(
+        f[3],
+        (
+            ours(346),
+            Mark::ColourFade {
+                entry: 52,
+                up: true
+            }
+        )
+    );
+    assert_eq!(
+        f[4],
+        (
+            ours(353),
+            Mark::ColourFade {
+                entry: 52,
+                up: false
+            }
+        )
+    );
     assert_eq!(f[5], (ours(360), Mark::FullFade { up: false }));
     assert_eq!(f[6], (ours(425), Mark::End));
     assert!(intro.keys.is_empty());
     assert!(matches!(audio.last(), Some((_, AudioCommand::StopMusic))));
-    assert!(intro.marks().iter().all(|(_, m)| !matches!(m, Mark::Step(_))));
+    assert!(
+        intro
+            .marks()
+            .iter()
+            .all(|(_, m)| !matches!(m, Mark::Step(_)))
+    );
 }
 
 #[test]
@@ -219,7 +294,16 @@ fn other_keys_skip_cards_and_the_flyover() {
     run(&mut intro, &[(d + 20, space)], 1_000);
     let f = fades(&intro);
     // The date hold ended 20 − 6 frames into it: fade-out right away.
-    assert_eq!(f[1], (d + 20, Mark::ColourFade { entry: 52, up: false }));
+    assert_eq!(
+        f[1],
+        (
+            d + 20,
+            Mark::ColourFade {
+                entry: 52,
+                up: false
+            }
+        )
+    );
     // The next hold runs its full length (the key was consumed).
     let card1 = f[3].0;
     run(&mut intro, &[], card1 + 400);
@@ -234,7 +318,11 @@ fn other_keys_skip_cards_and_the_flyover() {
     let f = fades(&intro);
     assert!(intro.flyover().s <= s + 2, "loop left at once");
     assert!(
-        f.iter().any(|&(_, m)| m == Mark::ColourFade { entry: 45, up: true }),
+        f.iter().any(|&(_, m)| m
+            == Mark::ColourFade {
+                entry: 45,
+                up: true
+            }),
         "intro1 follows"
     );
 }
@@ -248,7 +336,11 @@ fn esc_in_the_flyover_exits() {
     let kinds: Vec<Mark> = fades(&intro).iter().map(|&(_, m)| m).collect();
     assert_eq!(
         kinds[kinds.len() - 3..],
-        [Mark::FullFade { up: true }, Mark::FullFade { up: false }, Mark::End]
+        [
+            Mark::FullFade { up: true },
+            Mark::FullFade { up: false },
+            Mark::End
+        ]
     );
 }
 
@@ -284,7 +376,10 @@ fn music_cues_and_the_intro2_restart() {
         .iter()
         .position(|(_, c)| matches!(c, AudioCommand::SetMusicLoop(false)))
         .unwrap();
-    assert!(matches!(audio[loop_off + 1].1, AudioCommand::PlayMusic { .. }));
+    assert!(matches!(
+        audio[loop_off + 1].1,
+        AudioCommand::PlayMusic { .. }
+    ));
     assert!(matches!(audio.last(), Some((_, AudioCommand::StopMusic))));
 }
 
@@ -362,7 +457,11 @@ fn flyover_only_ends_with_a_fade_and_stops_the_music() {
     let kinds: Vec<Mark> = fades(&s).iter().map(|&(_, m)| m).collect();
     assert_eq!(
         kinds,
-        [Mark::FullFade { up: true }, Mark::FullFade { up: false }, Mark::End]
+        [
+            Mark::FullFade { up: true },
+            Mark::FullFade { up: false },
+            Mark::End
+        ]
     );
     assert!(matches!(audio[0].1, AudioCommand::StopMusic));
     assert!(matches!(more.last(), Some((_, AudioCommand::StopMusic))));

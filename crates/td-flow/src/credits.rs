@@ -17,8 +17,8 @@ use td_formats::cmf::Cmf;
 use td_formats::font::{Font, FontKind};
 use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
-use td_render::intro::{self as draw, TextStyle};
 use td_render::Framebuffer;
+use td_render::intro::{self as draw, TextStyle};
 
 use crate::intro::{FlyoverAssets, Intro, IntroError, IntroOptions, load_song};
 use crate::screen::{FlowContext, Screen, Transition};
@@ -113,11 +113,7 @@ impl Pages {
             })
             .collect();
         let mut working = Palette::default();
-        working.colors[usize::from(PAGE_INK)] = Rgb6 {
-            r: 0,
-            g: 63,
-            b: 63,
-        };
+        working.colors[usize::from(PAGE_INK)] = Rgb6 { r: 0, g: 63, b: 63 };
         Self {
             pages,
             working,
@@ -194,7 +190,7 @@ impl Pages {
 
 enum Inner {
     Flyover(Box<Intro>),
-    Pages(Pages),
+    Pages(Box<Pages>),
 }
 
 /// The credits screen.
@@ -247,7 +243,7 @@ impl Credits {
     #[must_use]
     pub fn pages(font: &Font, credits: &[String], song: Option<Arc<Cmf>>) -> Self {
         Self {
-            inner: Inner::Pages(Pages::new(font, credits, song)),
+            inner: Inner::Pages(Box::new(Pages::new(font, credits, song))),
             then: None,
         }
     }

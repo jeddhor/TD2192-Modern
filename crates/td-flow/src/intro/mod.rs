@@ -28,6 +28,7 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use td_assets::{AssetError, DataDir, ExeResources};
 use td_audio::{AudioCommand, Pcm8};
 use td_formats::FormatError;
@@ -38,7 +39,6 @@ use td_formats::screen::Screen as ScrImage;
 use td_input::{Key, TickInput};
 use td_render::intro::{self as draw, Hoverskid, TextStyle};
 use td_render::vga::VgaMemory;
-use serde::{Deserialize, Serialize};
 use td_render::{Framebuffer, WIDTH};
 use thiserror::Error;
 
@@ -303,9 +303,15 @@ enum Op {
     /// Set start (`0957:0343`): waits for the next retrace, then shows from `start`.
     SetStart(u16),
     /// A full fade (65 levels, one per frame).
-    FullFade { up: bool },
+    FullFade {
+        up: bool,
+    },
     /// A colour fade of one DAC entry, 64 levels.
-    ColourFade { entry: u8, ink: Ink, up: bool },
+    ColourFade {
+        entry: u8,
+        ink: Ink,
+        up: bool,
+    },
     /// `Hold(n)`: `n` frames, or until a key is waiting.
     Hold(u32),
     /// Reads a waiting key; Esc goes to the exit.
@@ -323,7 +329,11 @@ enum Op {
     PlayIntro1,
     /// A still: its palette to the working palette, its pixels from VGA row `row`, and the
     /// strip of image rows `strip..strip + 7`.
-    LoadScr { pic: Pic, row: u16, strip: usize },
+    LoadScr {
+        pic: Pic,
+        row: u16,
+        strip: usize,
+    },
     /// Clear page 0 or 1 (232 rows).
     ClearPage(u8),
     /// The saved strip back to VGA row `row` (x 0..319).
@@ -607,14 +617,7 @@ impl Intro {
             Op::FlySetup,
             Op::SetStart(START_PAGE0),
             Op::FullFade { up: true },
-            Op::SetDac(
-                flyover::CAPTION_INK,
-                Rgb6 {
-                    r: 0,
-                    g: 63,
-                    b: 63,
-                },
-            ),
+            Op::SetDac(flyover::CAPTION_INK, Rgb6 { r: 0, g: 63, b: 63 }),
             Op::FlySteps,
         ]
     }

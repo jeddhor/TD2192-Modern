@@ -183,8 +183,8 @@ const CAPTIONS: [(u16, Caption); 37] = {
 pub fn caption(s: u16) -> Caption {
     CAPTIONS
         .iter()
-        .filter(|&&(t, _)| s > t)
-        .last()
+        .rev()
+        .find(|&&(t, _)| s > t)
         .map_or(Caption::Blank, |&(_, c)| c)
 }
 
