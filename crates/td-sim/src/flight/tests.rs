@@ -310,6 +310,24 @@ fn weapons_vector_1_volleys_every_second_tick() {
     assert!(f.shots.0[41].alive() && !f.shots.0[40].alive());
 }
 
+/// weapons.md rev 3 §2, §4.3 step 8: headings 0 and 5 neither move nor delete a shot (E1
+/// flight 20's third bomb takes heading `Random(9)`; VE-2 C-0070 tick 14); above 9 deletes it.
+#[test]
+fn shots_on_headings_0_and_5_stay_in_place() {
+    let w = open_world();
+    let mut f = Flight::new(1);
+    f.shots.0[10] = shot_at(2, 1, (60 * 32 + 16, 60 * 32 + 16), 5);
+    f.shots.0[11] = shot_at(2, 1, (64 * 32 + 16, 60 * 32 + 16), 0);
+    f.shots.0[12] = shot_at(2, 1, (68 * 32 + 16, 60 * 32 + 16), 12);
+    f.tick(&w, &TickControls::default(), &mut vec![]);
+    for (i, x) in [(10, 60), (11, 64)] {
+        let s = f.shots.0[i];
+        assert!(s.alive(), "shot {i}");
+        assert_eq!((s.tile_x, s.tile_y, s.life), (x, 60, 2), "shot {i}");
+    }
+    assert!(!f.shots.0[12].alive());
+}
+
 #[test]
 fn weapons_vector_2_shields_absorb() {
     let w = open_world();
