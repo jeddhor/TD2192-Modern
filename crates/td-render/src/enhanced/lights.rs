@@ -15,7 +15,7 @@ use td_sim::{Flight, World};
 
 use super::lighting::{CELL, LIT_ROWS, linear_rgb};
 use super::scene::{Light, LightMode, LightScene, Occluders};
-use crate::flight::{self, SHIP_POS, ShipMark, ShotLook, ViewPos};
+use crate::flight::{self, SHIP_POS, ShipMark, ShotLook, ViewPos, Viewport};
 
 /// One row of the §6.1 light table: colour (linear RGB), radius (px), intensity, shadows.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,7 +53,7 @@ pub const SHOT_COLOUR: [u8; 3] = [0x3D, 0x33, 0x35];
 /// Cannon shot radius by kind.
 pub const SHOT_RADIUS: [f32; 3] = [12.0, 14.0, 18.0];
 /// Cannon shot intensity.
-pub const SHOT_INTENSITY: f32 = 0.9;
+pub const SHOT_INTENSITY: f32 = 0.5;
 /// Missiles (kinds 4..=6).
 pub const MISSILE: Source = Source {
     color: [1.0, 0.8, 0.5],
@@ -78,15 +78,15 @@ pub const FLAME: Source = Source {
 /// The player's engine glow, behind the ship.
 pub const PLAYER_ENGINE: Source = Source {
     color: [0.5, 0.7, 1.0],
-    radius: 20.0,
-    intensity: 0.35,
+    radius: 22.0,
+    intensity: 0.5,
     shadows: false,
 };
 /// A mission ship's engine glow, behind it.
 pub const SHIP_ENGINE: Source = Source {
     color: [1.0, 0.6, 0.4],
-    radius: 16.0,
-    intensity: 0.25,
+    radius: 18.0,
+    intensity: 0.4,
     shadows: false,
 };
 /// Distance of the engine glows behind the ship's centre (px).
@@ -140,6 +140,19 @@ fn shot_window(view: ViewPos, s: &Shot) -> (i32, i32) {
         (i32::from(tx) - view.tile_x) * 32 + i32::from(s.off_x),
         (i32::from(ty) - view.tile_y) * 32 + i32::from(s.off_y),
     )
+}
+
+/// Whether a cannon shot (kinds 0..=2) is drawn: `flight::shot_look_in` without building its
+/// pixel list (a principal heading, the centre within the playfield rows, and the Classic
+/// window test or, in a wider frame, the wider window).
+fn cannon_drawn(view: ViewPos, s: &Shot, vp: Viewport) -> bool {
+    if s.kind > 2 || !matches!(s.heading, 1..=4 | 6..=9) {
+        return false;
+    }
+    let (x, y) = shot_window(view, s);
+    let classic = (0..352).contains(&(x + 16));
+    let wide = !vp.is_classic() && vp.spans(x + 16 - view.page_origin().0 - 3, 6);
+    (34..192).contains(&(y + 16)) && (classic || wide)
 }
 
 /// Screen centre (classic coordinates) of a cannon shot's pixel pattern: the pattern's (0, 0)
@@ -202,6 +215,7 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
     lights.clear();
     let m = ctx.margin;
     let width = 320 + 2 * m;
+    let vp = Viewport::new(width.max(320) as usize);
     let mut push = |src: Source, (x, y): (f32, f32)| {
         let r = src.radius;
         let reach = (-r..width as f32 + r).contains(&x) && (-r..LIT_ROWS as f32 + r).contains(&y);
@@ -238,12 +252,8 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
         let (centre, first) = match s.kind {
             k @ 0..=2 => {
                 let k = usize::from(k);
-                let drawn = matches!(
-                    flight::shot_look(view, s.kind, s.heading, tile, off),
-                    Some(ShotLook::Pixels(_))
-                );
                 let centre = cannon_centre(view, s);
-                if drawn {
+                if cannon_drawn(view, s, vp) {
                     let rgb = ctx.palette.colors[usize::from(SHOT_COLOUR[k])].to_rgb8();
                     let src = Source {
                         color: linear_rgb(rgb),
@@ -258,7 +268,7 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
             }
             4..=6 => {
                 let drawn = matches!(
-                    flight::shot_look(view, s.kind, s.heading, tile, off),
+                    flight::shot_look_in(view, s.kind, s.heading, tile, off, vp),
                     Some(ShotLook::Sprite { .. })
                 );
                 let centre = missile_centre(view, s);
@@ -302,7 +312,7 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
             sub_y: s.sub_y,
             marker: s.marker,
         };
-        let Some((x, y)) = flight::mission_ship_pos(view, ctx.page, &mark) else {
+        let Some((x, y)) = flight::mission_ship_pos_in(view, ctx.page, &mark, vp) else {
             continue;
         };
         let (x, y) = at(((x & !3) + 16, y + 16));
@@ -484,6 +494,49 @@ mod tests {
         assert!(near(nose(Heading::E), (1.0, 0.0)));
         let ne = nose(Heading::NE);
         assert!(ne.0 > 0.7 && ne.1 < -0.7);
+    }
+
+    #[test]
+    fn cannon_visibility_matches_the_shot_look() {
+        let view = drawn_view(&flight());
+        for width in [320, 428, 560] {
+            let vp = Viewport::new(width);
+            for kind in 0..=3 {
+                for heading in [8, 3, 4, 0x24, 5] {
+                    for tx in 92..=118u8 {
+                        for ty in 100..=112u8 {
+                            for off in [-20i16, 0, 16, 31, 45] {
+                                let s = Shot {
+                                    tile_x: tx,
+                                    tile_y: ty,
+                                    off_x: off,
+                                    off_y: off / 2,
+                                    heading,
+                                    kind,
+                                    life: 3,
+                                    owner: 0,
+                                };
+                                let look = flight::shot_look_in(
+                                    view,
+                                    kind,
+                                    heading,
+                                    drawn_shot_tile(&s),
+                                    (s.off_x, s.off_y),
+                                    vp,
+                                );
+                                let want = matches!(look, Some(ShotLook::Pixels(_)));
+                                assert_eq!(cannon_drawn(view, &s, vp), want, "{s:?} in {width}");
+                                if let Some(ShotLook::Pixels(p)) = look {
+                                    let c = cannon_centre(view, &s);
+                                    let at = p.iter().any(|&(x, y, _)| (x, y) == c);
+                                    assert!(at, "the centre is one of the shot's pixels");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

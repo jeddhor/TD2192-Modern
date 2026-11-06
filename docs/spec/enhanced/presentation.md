@@ -97,12 +97,12 @@ Upscaling works on the composed RGBA image. The factor *k* is the scale in the f
 | Source | Colour | *r* | *I* | Shadows |
 |---|---|---:|---|---|
 | Explosion, frames 1..6 | (1.0, 0.55, 0.15) | 56 | 1.6, 1.4, 1.1, 0.8, 0.5, 0.25 by frame | yes |
-| Shot kind 0 / 1 / 2 | the kind's palette colour (3Dh / 33h / 35h) | 12 / 14 / 18 | 0.9 | no |
+| Shot kind 0 / 1 / 2 | the kind's palette colour (3Dh / 33h / 35h) | 12 / 14 / 18 | 0.5 | no |
 | Missile (kinds 4..6) | (1.0, 0.8, 0.5) | 20 | 1.0 | no |
 | Muzzle flash (the tick a shot spawns) | (1.0, 0.9, 0.6) | 24 | 1.2 | no |
 | Afterburner flame | (0.6, 0.8, 1.0) | 32 | 1.3 | yes |
-| Player engine glow | (0.5, 0.7, 1.0) | 20 | 0.35 | no |
-| Mission ship engine glow | (1.0, 0.6, 0.4) | 16 | 0.25 | no |
+| Player engine glow | (0.5, 0.7, 1.0) | 22 | 0.5 | no |
+| Mission ship engine glow | (1.0, 0.6, 0.4) | 18 | 0.4 | no |
 
 - **Where each source sits** (base pixels, screen position + *m*; implementation `td_render::enhanced::lights`):
   - explosions, missiles and the flame: the centre of their 32 × 32 frame (top-left + 16), from the same mapping as the sprite blit;
@@ -119,7 +119,7 @@ Upscaling works on the composed RGBA image. The factor *k* is the scale in the f
 - **Emissive palette indices**: pixels in these colours glow at full brightness whatever the light map says, and feed bloom. They are:
   - the shot colours 3Ch, 3Dh, 32h, 33h, 35h and BEh;
   - the HUD lamp entries: compass lamps 31h, C1h, 86h, 85h, 2Fh, 2Eh, 30h and 24h, and the missile lamp 26h;
-  - the explosion sprite colours, that is, the indices used by the `td.exp` frames (bank slots 20..27), collected when the sprite bank loads (no fixed list).
+  - the explosion sprite colours, that is, the indices used by the `td.exp` frames (bank slots 20..26), collected when the sprite bank loads (no fixed list).
 
   Colour 0 is never emissive.
 - **Ambient** comes from the mode:
@@ -195,10 +195,14 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 - [ ] Q1: tune the light table in §6.1 by eye in the arena. The values above are starting points, and changing them needs no spec revision beyond this table.
 - [ ] Q2: should widescreen widen the radar or the F5 map? Proposal: no, they stay original.
 - [ ] Q3: should a GPU backend (SDL3 GPU) follow once the CPU reference is done (ADR-0006 alternatives)?
+- [ ] Q4 (IM-12, M12-09): §4.2's relaxed visibility and its centre invariant conflict at the Classic window's edges. The Classic tests leave out some objects that already overlap the 320-wide window: a mission ship whose tile is one column left of the view, or one in the right column with offset ≥ view offset; explosions likewise. In a wide frame those objects are drawn, so their pixels inside columns *m* .. *m* + 319 differ from Classic until Classic draws them too. The implementation draws them, which avoids objects popping in at the old window edge. It holds the invariant for the tile window, the player ship and the overpass redraw (tested at C-0002 f3500/f3543). Proposal: state the invariant for the static playfield (tiles, player, overpasses) only.
+- [ ] Q5 (IM-12): §4.3 "mirroring … repeated" is implemented as a mirrored repeat (bar columns 0, 1, .., 15, 15, .., 0, 0, 1, ..), which is continuous at every seam.
+- [ ] Q6 (IM-12): §5 leaves the xBR sub-pixel blend weights open. They are implemented as the exact area of each output sub-pixel beyond the edge line, which reproduces the published 2× and 3× weights for diagonal and single-slope edges. For an edge that is both shallow and steep, each sub-pixel takes the larger of the two weights.
+- [ ] Q7 (IM-12): §2 "the Classic profile forces every key off" needs a profile setting. It is implemented as a top-level `profile = "classic" | "enhanced"` key, default `classic` (MDG §6.2), so a user sets `profile = "enhanced"` as well as the `[enhanced]` keys. It governs only `[enhanced]` for now; `audio.sfx_mode` is unchanged.
 
 ## 10. Revision history
 
 | Rev | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-11-05 | main session | Initial design from the user's request (ADR-0006) |
-| 2 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows |
+| 2 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night |

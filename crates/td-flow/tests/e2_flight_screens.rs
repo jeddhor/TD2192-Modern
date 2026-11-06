@@ -43,6 +43,7 @@ fn e2_transmissions_play_to_the_end() {
     assert_eq!(a.transmissions.len(), 7);
     for (i, t) in a.transmissions.iter().enumerate() {
         let n = i + 1;
+        let t = t.as_ref().unwrap();
         assert_eq!(t.lines.last().map(|l| l.0), Some(Line::End), "comm {n}");
         assert!(t.portraits.0 < 7 && t.portraits.1 < 7);
         // Space at every prompt, then F6 at the end.

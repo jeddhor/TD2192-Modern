@@ -16,7 +16,9 @@ use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
+use super::bloom::Bloom;
 use super::scene::{Emissive, Light, LightMode, LightScene, Occluders};
+use super::{Config, FrameInput, PostStage};
 
 /// Rows of the flight playfield; the HUD rows below are never lit (§3).
 pub const LIT_ROWS: usize = 160;
@@ -410,6 +412,36 @@ impl LightMap {
     }
 }
 
+/// The lighting and bloom stage of the pipeline (§3 steps 3 and 5): the light map, then bloom,
+/// applied in place to the upscaled image of a flight frame. Holds the scratch buffers of both,
+/// so the steady state does not allocate.
+#[derive(Debug, Default)]
+pub struct LightStage {
+    map: LightMap,
+    bloom: Bloom,
+}
+
+impl PostStage for LightStage {
+    fn apply(&mut self, out: &mut [u8], k: usize, frame: &FrameInput<'_>, cfg: &Config) {
+        let Some(flight) = frame.flight else {
+            return;
+        };
+        let fb = frame.indexed;
+        let w = fb.width();
+        // Flight frames are composed at the output width; anything else is not lit.
+        if w != frame.width {
+            return;
+        }
+        if let (Some(_), Some(scene)) = (cfg.lighting, flight.scene) {
+            self.map.build(scene, w);
+            self.map.apply(out, w, k, &fb.pixels, flight.emissive);
+        }
+        if cfg.bloom {
+            self.bloom.apply(out, w, k, &fb.pixels, flight.emissive);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,6 +503,46 @@ mod tests {
         }
         assert!(t.lin.windows(2).all(|p| p[0] < p[1]), "strictly increasing");
         assert!(t.enc.windows(2).all(|p| p[0] <= p[1]), "monotonic");
+    }
+
+    #[test]
+    fn the_stage_lights_flight_frames_only() {
+        let w = 428;
+        let fb = crate::Framebuffer::with_width(w);
+        let rgba = [200u8, 150, 100, 255].repeat(w * FRAME_ROWS);
+        let night = scene(LightMode::Full, vec![]);
+        let em = Emissive::default();
+        let mut cfg = Config {
+            lighting: Some(LightMode::Full),
+            ..Config::default()
+        };
+        let flight = super::super::FlightInput {
+            margin: 54,
+            scene: Some(&night),
+            emissive: &em,
+        };
+        let frame = |flight| FrameInput {
+            indexed: &fb,
+            width: w,
+            flight,
+        };
+        let mut stage = LightStage::default();
+        let mut out = rgba.clone();
+        stage.apply(&mut out, 1, &frame(None), &cfg);
+        assert_eq!(out, rgba, "front-end frames are not lit");
+        stage.apply(&mut out, 1, &frame(Some(flight)), &cfg);
+        let hud = LIT_ROWS * w * 4;
+        assert!(
+            out[..hud].chunks(4).all(|p| p[0] < 200 && p[3] == 255),
+            "night"
+        );
+        assert_eq!(&out[hud..], &rgba[hud..], "HUD rows");
+        // Bloom alone leaves a frame without bright or emissive pixels as it is.
+        cfg.lighting = None;
+        cfg.bloom = true;
+        let mut out = rgba.clone();
+        stage.apply(&mut out, 1, &frame(Some(flight)), &cfg);
+        assert_eq!(out, rgba);
     }
 
     #[test]

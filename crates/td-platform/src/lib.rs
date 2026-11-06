@@ -3,7 +3,8 @@
 //!
 //! SDL types never leave this crate (MDG §8.2): keys are reported as USB HID scancode numbers
 //! ([`Key`]), audio is pulled through a plain callback, and frames are taken as
-//! [`td_render::Framebuffer`]s. Everything here is thin glue; game logic lives elsewhere.
+//! [`td_render::Framebuffer`]s (Classic) or RGBA images of any size (Enhanced,
+//! [`Platform::present_rgba`]). Everything here is thin glue; game logic lives elsewhere.
 
 mod present;
 
@@ -259,6 +260,37 @@ impl Platform {
         self.presenter
             .present(&mut self.canvas, fb, false)
             .map(|_| ())
+    }
+
+    /// Window size in pixels (for `widescreen = "auto"`).
+    pub fn output_size(&self) -> (u32, u32) {
+        self.canvas.output_size().unwrap_or((1, 1))
+    }
+
+    /// Shows an Enhanced frame (waits for vertical sync): `rgba` is RGBA8 with `size` =
+    /// (W·k, 200·k) pixels, a base frame `base` = (W, 200) upscaled k times. The scale mode and
+    /// the 5:6 pixel aspect apply to the base frame.
+    pub fn present_rgba(
+        &mut self,
+        rgba: &[u8],
+        size: (u32, u32),
+        base: (u32, u32),
+    ) -> Result<(), PlatformError> {
+        self.presenter
+            .present_rgba(&mut self.canvas, rgba, size, base, false)
+            .map(|_| ())
+    }
+
+    /// [`Self::present_rgba`], returning what the window displays.
+    pub fn present_rgba_and_capture(
+        &mut self,
+        rgba: &[u8],
+        size: (u32, u32),
+        base: (u32, u32),
+    ) -> Result<WindowCapture, PlatformError> {
+        self.presenter
+            .present_rgba(&mut self.canvas, rgba, size, base, true)?
+            .ok_or_else(|| PlatformError::Sdl("capture failed".into()))
     }
 
     /// Shows a frame and returns what the window displays (developer checks of scaling).

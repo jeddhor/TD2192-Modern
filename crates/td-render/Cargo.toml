@@ -11,8 +11,8 @@ publish.workspace = true
 td-formats.workspace = true
 td-assets.workspace = true
 td-sim.workspace = true
-thiserror.workspace = true
 rayon.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 td-test-support.workspace = true

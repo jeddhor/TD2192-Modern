@@ -2,7 +2,7 @@
 //! help pages and the text-only screens.
 //!
 //! Spec: `docs/spec/flow/episode-program-flow.md` (rev 1) §3.3, `docs/re/asset-load-sites.md`
-//! §3–§4 (files, positions, waits), `docs/spec/render/text.md` (rev 1) §4.5 (caption positions
+//! §3–§4 (files, positions, waits), `docs/spec/render/text.md` (rev 2) §4.5 (caption positions
 //! and colours), `docs/re/FORMATS.md` §2, §3, §11; OB-003 (`.scr` scenes and `secret.pic`
 //! plotted one pixel to the right). Fidelity: T0 for images and spec'd captions; T2 for fades
 //! and waits.
@@ -25,10 +25,11 @@ use td_formats::picture::Picture;
 use td_formats::screen::Screen as ScrImage;
 use td_input::{Key, TickInput};
 use td_render::small_text::{self, Typewriter};
-use td_render::{Framebuffer, WIDTH, fade, title_text};
+use td_render::{Framebuffer, fade, title_text};
 use thiserror::Error;
 
 use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
+use crate::scene_card::{Captions, Layout, Shadow, lines, rgb};
 use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
 
 /// Errors while preparing a story screen.
@@ -115,6 +116,9 @@ pub struct StoryScreen {
     /// Hint screens (screens §3.3): the key buffer is flushed after the fade-in, and a key
     /// waiting after a line skips the remaining lines.
     hint_skip: bool,
+    /// E3 (`Flow_WaitSecondsOrKey` `td3:04A0:0269`): every timed wait flushes the keyboard
+    /// when it starts, so keys typed during the fade-in or the typing are lost.
+    flush_waits: bool,
     /// Second page (help, story so far): shown after the first wait, then held again.
     next_page: Option<(Box<[u8]>, Palette, Hold)>,
     phase: Phase,
@@ -175,6 +179,7 @@ impl StoryScreen {
             items: Vec::new(),
             font: None,
             hint_skip: false,
+            flush_waits: false,
             next_page: None,
             phase: Phase::FadeIn(0),
             wait: FADE_FRAMES_PER_LEVEL,
@@ -212,6 +217,14 @@ impl StoryScreen {
     /// True once the screen has faded out.
     pub fn finished(&self) -> bool {
         self.phase == Phase::Done
+    }
+
+    /// With `on`, every timed wait of this screen flushes the keys typed before it starts (E3,
+    /// e3-program-flow rev 1 §3.5).
+    #[must_use]
+    pub fn flushing_waits(mut self, on: bool) -> Self {
+        self.flush_waits = on;
+        self
     }
 
     /// Lines to show after the fade-in, before the wait.
@@ -328,9 +341,14 @@ impl StoryScreen {
         }
     }
 
-    fn hold_phase(&self) -> Phase {
+    fn hold_phase(&mut self) -> Phase {
         Phase::Hold(match self.hold {
-            Hold::Seconds(s) => seconds(s),
+            Hold::Seconds(s) => {
+                if self.flush_waits {
+                    self.keys.clear();
+                }
+                seconds(s)
+            }
             Hold::Key => u32::MAX,
         })
     }
@@ -385,43 +403,65 @@ fn plot(fb: &mut Framebuffer, pixels: &[u8], w: usize, (x, y): (i32, i32)) {
     }
 }
 
-/// Caption entry of the `.scr` scene cards and its colour. Spec: text.md §4.5.
-pub const SCENE_CAPTION_ENTRY: u8 = 210;
-const SCENE_CAPTION_RGB: Rgb6 = Rgb6 {
-    r: 14,
-    g: 63,
-    b: 63,
-};
 /// Title card ink entry. Spec: text.md §4.5; colour (3Fh, 0, 0) from episode-program-flow §2.
 pub const TITLE_ENTRY: u8 = 85;
 const TITLE_RGB: Rgb6 = Rgb6 { r: 63, g: 0, b: 0 };
 
-/// A scene card (`051A:1E5A` and siblings): a `.scr` background plotted at x = 1..320 (OB-003)
-/// and three caption lines at pens (10, 170/180/190), each first drawn black at (9, y + 1).
-/// Waits 10 s (`eggbase.scr` 15 s) or a key. Spec: asset-load-sites §4; text.md §4.5.
+/// The 14 E1 scene-card routines (`051A:1E5A` .. `596F`), one per `.scr` background: caption
+/// pen, black copies, ink entry and colour, wait. Spec: text.md rev 2 §4.5.1.
+pub const E1_SCENE_CARDS: [Layout; 14] = {
+    use Shadow::*;
+    [
+        lines("hangar.scr", (10, 170), S1, (210, rgb(14, 63, 63)), 10),
+        lines("vlab.scr", (180, 170), S3, (32, rgb(14, 38, 63)), 10),
+        lines("intro2.scr", (50, 90), Plain, (140, rgb(0, 0, 0)), 10),
+        lines("shooting.scr", (10, 170), Plain, (28, rgb(14, 14, 63)), 10),
+        lines("vhang.scr", (20, 170), S3, (165, rgb(14, 38, 63)), 10),
+        // 15 rows down; the captions joined into one line at (10, 10), black at (9, 10).
+        Layout {
+            file: "marauder.scr",
+            captions: Captions::Joined((10, 10)),
+            shadow: L,
+            ink: (255, rgb(63, 5, 5)),
+            secs: 10,
+            down: 15,
+        },
+        lines("briefing.scr", (10, 170), S3, (250, rgb(10, 10, 63)), 10),
+        lines("tdlab.scr", (10, 170), S3, (109, rgb(10, 10, 63)), 10),
+        lines("velsroom.scr", (10, 20), S3, (12, rgb(40, 40, 63)), 10),
+        // Opened as `helihangar.scr` (8.3: `helihang.scr`).
+        lines("helihang.scr", (180, 20), Plain, (255, rgb(10, 0, 0)), 10),
+        lines("eggbase.scr", (10, 170), S3, (255, rgb(15, 63, 15)), 15),
+        lines("soffice.scr", (180, 170), O6, (74, rgb(14, 50, 63)), 10),
+        lines("sbar.scr", (10, 10), S1, (90, rgb(48, 38, 63)), 10),
+        // Each line centred on its own length, y = 10, 20, 30, outlined.
+        Layout {
+            file: "voffice.scr",
+            captions: Captions::Centred([10, 20, 30]),
+            shadow: O4,
+            ink: (216, rgb(63, 63, 63)),
+            secs: 10,
+            down: 0,
+        },
+    ]
+};
+
+/// The layout of the E1 scene card on `background` (a `.scr` file name), if there is one.
+pub fn e1_scene_layout(background: &str) -> Option<&'static Layout> {
+    E1_SCENE_CARDS.iter().find(|l| l.file == background)
+}
+
+/// An E1 scene card (`051A:1E5A` and siblings): the `.scr` background plotted at x = 1..320
+/// (OB-003), its captions per text.md rev 2 §4.5.1, then 10 s (`eggbase.scr` 15 s) or a key.
 pub fn scene_card(
     data: &DataDir,
     assets: &StoryAssets,
     background: &str,
     lines: [&str; 3],
 ) -> Result<StoryScreen, StoryError> {
-    let scr = ScrImage::parse(&data.read(background)?)?;
-    let secs = if background == "eggbase.scr" { 15 } else { 10 };
-    let mut s = StoryScreen::blank(Hold::Seconds(secs));
-    s.pal = scr.palette.clone();
-    plot(&mut s.screen, &scr.pixels, WIDTH, (1, 0));
-    s.pal.colors[usize::from(SCENE_CAPTION_ENTRY)] = SCENE_CAPTION_RGB;
-    for (line, y) in lines.iter().zip([170, 180, 190]) {
-        small_text::draw(&mut s.screen, &assets.small, line, (9, y + 1), 0);
-        small_text::draw(
-            &mut s.screen,
-            &assets.small,
-            line,
-            (10, y),
-            SCENE_CAPTION_ENTRY,
-        );
-    }
-    Ok(s)
+    let layout =
+        e1_scene_layout(background).ok_or_else(|| AssetError::NotFound(background.to_owned()))?;
+    crate::scene_card::scene_card(data, assets, layout, lines)
 }
 
 /// The `pic4.td` card (`051A:4F5A`): the still at (11, 16) and captions at (150, 90/100/110)
@@ -720,6 +760,52 @@ pub fn story_so_far(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_e1_background_has_its_own_card_layout() {
+        use crate::campaign::Bg;
+        let all = [
+            Bg::Hangar,
+            Bg::Vlab,
+            Bg::Intro2,
+            Bg::Shooting,
+            Bg::Vhang,
+            Bg::Marauder,
+            Bg::Briefing,
+            Bg::Tdlab,
+            Bg::Velsroom,
+            Bg::Helihang,
+            Bg::Eggbase,
+            Bg::Soffice,
+            Bg::Sbar,
+            Bg::Voffice,
+        ];
+        for bg in all {
+            let file = bg.file().unwrap();
+            assert!(e1_scene_layout(file).is_some(), "{file}");
+        }
+        // text.md rev 2 §4.5.1: only hangar has the (10, 170) s1 entry-210 layout.
+        let hangar = e1_scene_layout("hangar.scr").unwrap();
+        assert_eq!(hangar.captions, Captions::Lines((10, 170)));
+        assert_eq!((hangar.shadow, hangar.ink.0), (Shadow::S1, 210));
+        let same = E1_SCENE_CARDS
+            .iter()
+            .filter(|l| {
+                (l.captions, l.shadow, l.ink) == (hangar.captions, hangar.shadow, hangar.ink)
+            })
+            .count();
+        assert_eq!(same, 1);
+        let secs: Vec<_> = E1_SCENE_CARDS.iter().filter(|l| l.secs == 15).collect();
+        assert_eq!(secs.len(), 1);
+        assert_eq!(secs[0].file, "eggbase.scr");
+        let v = e1_scene_layout("voffice.scr").unwrap();
+        assert_eq!(
+            (v.captions, v.shadow, v.ink.0),
+            (Captions::Centred([10, 20, 30]), Shadow::O4, 216)
+        );
+        assert_eq!(e1_scene_layout("marauder.scr").unwrap().down, 15);
+        assert!(e1_scene_layout("hyde.scr").is_none());
+    }
 
     fn press(k: Key) -> TickInput {
         TickInput {

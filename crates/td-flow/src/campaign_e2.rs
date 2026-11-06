@@ -15,6 +15,7 @@
 
 use std::fmt;
 
+use td_assets::Episode;
 use td_input::{Key, TickInput};
 use td_render::Framebuffer;
 
@@ -25,12 +26,12 @@ use crate::scenes_e2::{self, Bg};
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::story::{StoryError, StoryScreen};
 
-/// A caption (e2-program-flow §2 notation).
+/// A caption (e2-program-flow §2 notation; the same in E3, e3-program-flow §2, with `e3.` ids).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cap {
-    /// `m.k`: `e2.mission.MM.cards[k]`.
+    /// `m.k`: `e2.mission.MM.cards[k]` (E3: `e3.mission.MM.cards[k]`).
     C(u8, u8),
-    /// `p.k`: `e2.story.preamble[k]`.
+    /// `p.k`: `e2.story.preamble[k]` (E3: `e3.story.preamble[k]`).
     P(u8),
 }
 
@@ -38,11 +39,17 @@ pub enum Cap {
 pub const BLANK: Cap = Cap::C(1, 2);
 
 impl Cap {
-    /// The resource list and index.
+    /// The resource list and index (Episode 2).
     pub fn resource(self) -> (String, usize) {
+        self.resource_in(Episode::E2)
+    }
+
+    /// The resource list and index in `episode` (E2 or E3).
+    pub fn resource_in(self, episode: Episode) -> (String, usize) {
+        let e = if episode == Episode::E3 { "e3" } else { "e2" };
         match self {
-            Cap::C(m, k) => (format!("e2.mission.{m:02}.cards"), usize::from(k)),
-            Cap::P(k) => ("e2.story.preamble".to_owned(), usize::from(k)),
+            Cap::C(m, k) => (format!("{e}.mission.{m:02}.cards"), usize::from(k)),
+            Cap::P(k) => (format!("{e}.story.preamble"), usize::from(k)),
         }
     }
 }
@@ -629,18 +636,22 @@ const ENDING_B: &[Step] = &[M(12), LoopOff, S(In2, [C(20, 6), C(20, 7), B]), Loo
 /// Ending C (`0000:2E5E`): death once, `intro2` with 20.8.
 const ENDING_C: &[Step] = &[M(12), LoopOff, S(In2, [C(20, 8), B, B]), LoopOn];
 
-/// What a block hands back to the menu (§4.6).
+/// What a block hands back to the menu (§4.6; E3: e3-program-flow §4.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockResult {
     /// `g_MissionAdvance`.
     pub advance: bool,
     /// `g_GameOver` (endings A, B, C).
     pub game_over: bool,
-    /// Kills of the last flight.
+    /// Kills of the last flight (`g_MissionKills`).
     pub mission_kills: i16,
     /// Blocks 8, 17: the outcome retry was declined, mission −= 1 before the return, so the
     /// menu's mission += 1 offers the same block again (kills are still added, OB-027).
     pub replay: bool,
+    /// E3 block 6: `g_MissionNumber` := 7 before the return (e3-program-flow §4.4.1).
+    pub set_mission: Option<u8>,
+    /// E3: the skip flag at the return (`Main_CampaignLoop` no longer clears it, OB-050).
+    pub skip: bool,
 }
 
 /// Which retry prompt is showing.
@@ -668,10 +679,50 @@ enum Pos {
     Return,
 }
 
-enum Child {
+/// The screen a block step is showing (shared by the E2 and E3 sequencers).
+pub(crate) enum Child {
     Story(Box<StoryScreen>),
     Dialogue(Box<DialogueScene>),
     Flight(Box<dyn FlightScreen>),
+}
+
+impl Child {
+    /// Runs the screen for one frame; true when it is over.
+    pub(crate) fn step(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> bool {
+        match self {
+            Child::Story(s) => {
+                s.step(input);
+                s.finished()
+            }
+            Child::Dialogue(d) => {
+                d.step(input);
+                d.finished()
+            }
+            Child::Flight(f) => matches!(f.tick(ctx, input), Transition::Pop),
+        }
+    }
+
+    /// True if Esc ended a story screen or a dialogue scene.
+    pub(crate) fn skipped(&self) -> bool {
+        match self {
+            Child::Story(s) => s.skipped(),
+            Child::Dialogue(d) => d.skipped(),
+            Child::Flight(_) => false,
+        }
+    }
+
+    /// Draws the screen; `None` draws the black between screens.
+    pub(crate) fn draw(child: Option<&Self>, fb: &mut Framebuffer) {
+        match child {
+            Some(Child::Story(s)) => s.draw(fb),
+            Some(Child::Dialogue(d)) => d.draw(fb),
+            Some(Child::Flight(f)) => f.draw(fb),
+            None => {
+                fb.clear(0);
+                fb.palette = Default::default();
+            }
+        }
+    }
 }
 
 /// One Episode 2 mission block in progress.
@@ -696,9 +747,9 @@ impl fmt::Debug for CampaignE2 {
     }
 }
 
-/// The text of a caption ("" if unavailable).
+/// The text of a caption ("" if unavailable), in the program's episode.
 pub fn caption(prog: &Program, cap: Cap) -> String {
-    let (id, k) = cap.resource();
+    let (id, k) = cap.resource_in(prog.episode);
     line(&prog.texts(&id), k)
 }
 
@@ -772,18 +823,7 @@ impl CampaignE2 {
         loop {
             if let Some(child) = &mut self.child {
                 let inp = input.take()?;
-                let done = match child {
-                    Child::Story(s) => {
-                        s.step(inp);
-                        s.finished()
-                    }
-                    Child::Dialogue(d) => {
-                        d.step(inp);
-                        d.finished()
-                    }
-                    Child::Flight(f) => matches!(f.tick(ctx, inp), Transition::Pop),
-                };
-                if !done {
+                if !child.step(ctx, inp) {
                     return None;
                 }
                 let child = self.child.take();
@@ -799,15 +839,7 @@ impl CampaignE2 {
 
     /// Draws the current child (black between screens).
     pub fn draw(&self, fb: &mut Framebuffer) {
-        match &self.child {
-            Some(Child::Story(s)) => s.draw(fb),
-            Some(Child::Dialogue(d)) => d.draw(fb),
-            Some(Child::Flight(f)) => f.draw(fb),
-            None => {
-                fb.clear(0);
-                fb.palette = Default::default();
-            }
-        }
+        Child::draw(self.child.as_ref(), fb);
     }
 
     fn steps(&self) -> &'static [Step] {
@@ -826,11 +858,7 @@ impl CampaignE2 {
         ctx: &mut FlowContext<'_>,
         child: Option<Child>,
     ) {
-        let skipped = match &child {
-            Some(Child::Story(s)) => s.skipped(),
-            Some(Child::Dialogue(d)) => d.skipped(),
-            _ => false,
-        };
+        let skipped = child.as_ref().is_some_and(Child::skipped);
         let step = self.child_step.take();
         self.pos = match (self.pos, child) {
             (Pos::Fly, Some(Child::Flight(f))) => {

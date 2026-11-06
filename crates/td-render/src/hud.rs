@@ -554,8 +554,12 @@ impl Hud {
     fn guidance(&mut self, s: &HudState) {
         let p = ((s.view.tile_x + 5) as i16, (s.view.tile_y + 3) as i16);
         let home = match s.episode {
+            Episode::E1 => home_point(s.flight, s.phase),
             Episode::E2 => home_point_e2(s.flight, s.view),
-            _ => home_point(s.flight, s.phase),
+            Episode::E3 => {
+                let (x, y) = td_sim::flight::episode::e3_home_point(s.flight);
+                (i16::from(x), i16::from(y))
+            }
         };
         let live = || {
             s.slots
@@ -596,8 +600,9 @@ impl Hud {
                 .extend([(x + 1, y, 0), (x + 1, y + 1, 0), (x, y + 1, 0)]);
         }
         let colours = match marker {
-            // E2: in palette mode 2 the six 39h dots are colour 90h (episode-deltas rev 2 §6).
-            MARKER_FRIEND if s.episode == Episode::E2 && s.palette_mode == 2 => [0x90; 6],
+            // E2, E3: in palette mode 2 the six 39h dots are colour 90h (episode-deltas rev 3
+            // §6; E3 never enters mode 2).
+            MARKER_FRIEND if s.episode != Episode::E1 && s.palette_mode == 2 => [0x90; 6],
             MARKER_TARGET => DOTS_TARGET,
             MARKER_FRIEND => DOTS_FRIEND,
             MARKER_HOME if s.palette_mode == 2 => {

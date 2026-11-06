@@ -1,30 +1,35 @@
 //! Timing of the lighting and bloom stages at the heaviest setting of
 //! `docs/spec/enhanced/presentation.md` rev 2 §7: 21:9 (W = 560), 4× output (2240 × 800),
-//! `full` lighting with a busy scene, and bloom.
+//! `full` lighting and bloom, on a busy synthetic night (25 explosions, 20 shots, flashes, the
+//! flame and engines, a street grid of solid blocks).
 //!
 //! Run with `cargo test --release -p td-render --test enhanced_lighting_timing -- --ignored
-//! --nocapture`. The budget for the whole pipeline is 6 ms per frame; lighting and bloom must
-//! leave most of it to the upscaler, so this test asserts at most 3 ms for the two (release
-//! builds only).
+//! --nocapture`. The budget for the whole pipeline is 6 ms per frame. Lighting and bloom must
+//! leave most of it to the upscaler, so this test asserts at most 3 ms for the two (median,
+//! release builds only). It needs an otherwise idle machine.
 
 use std::time::{Duration, Instant};
 
 use td_render::enhanced::bloom::Bloom;
-use td_render::enhanced::lighting::{FRAME_ROWS, LightMap, flight_emissive};
+use td_render::enhanced::lighting::{FRAME_ROWS, LIT_ROWS, LightMap, flight_emissive};
 use td_render::enhanced::scene::{Light, LightMode, LightScene, Occluders};
 
 const W: usize = 560;
 const K: usize = 4;
 const FRAMES: u32 = 60;
+/// Explosions in the scene.
+const BLASTS: usize = 25;
 
-/// A busy night: five ships' explosions (25 lights), twenty shots, two muzzle flashes, the
-/// flame, engines, and a street grid of solid blocks.
+/// Centre of explosion `e` (base pixels).
+fn blast(e: usize) -> (f32, f32) {
+    (40.0 + 21.0 * e as f32, 20.0 + (e * 37 % 120) as f32)
+}
+
 fn heavy_scene() -> LightScene {
     let mut lights = Vec::new();
-    for e in 0..25 {
-        let (x, y) = (40.0 + 21.0 * e as f32, 20.0 + (e * 37 % 120) as f32);
+    for e in 0..BLASTS {
         lights.push(Light {
-            pos: (x, y),
+            pos: blast(e),
             color: [1.0, 0.55, 0.15],
             radius: 56.0,
             intensity: 1.6 - 0.25 * (e % 6) as f32,
@@ -70,14 +75,68 @@ fn heavy_scene() -> LightScene {
     }
 }
 
-#[test]
-#[ignore = "timing: run in release with --ignored"]
-fn lighting_and_bloom_fit_the_budget() {
-    let indexed: Vec<u8> = (0..W * FRAME_ROWS).map(|i| (i * 31 % 251) as u8).collect();
-    let emissive = flight_emissive([[0x40u8, 0x50, 0x60, 0x70].as_slice()]);
-    let base: Vec<u8> = (0..W * K * FRAME_ROWS * K)
-        .flat_map(|i| [(i % 256) as u8, (i / 7 % 256) as u8, 200, 255])
+/// The indexed frame: city-like colours 100..=199, explosion sprites (half their pixels in
+/// explosion colours), shot dots and lit HUD lamps.
+fn heavy_frame() -> Vec<u8> {
+    let mut f: Vec<u8> = (0..W * FRAME_ROWS)
+        .map(|i| 100 + ((i % W) / 7 + (i / W) / 5) as u8 % 100)
         .collect();
+    for e in 0..BLASTS {
+        let (cx, cy) = blast(e);
+        let (cx, cy) = (cx as usize, cy as usize);
+        for y in cy.saturating_sub(16)..(cy + 16).min(LIT_ROWS) {
+            for x in cx.saturating_sub(16)..(cx + 16).min(W) {
+                if (x + y) % 2 == 0 {
+                    f[y * W + x] = [0x44, 0x60, 0xF7][(x / 3 + y) % 3];
+                }
+            }
+        }
+    }
+    for s in 0..20 {
+        let (x, y) = (30 + 26 * s, 10 + s * 53 % 140);
+        for d in 0..3 {
+            f[(y + d) * W + x] = 0x3D;
+        }
+    }
+    for (i, lamp) in [0x31u8, 0x86, 0x2F, 0x26].into_iter().enumerate() {
+        for y in 168..174 {
+            for x in 0..6 {
+                f[y * W + 194 + 12 * i + x] = lamp;
+            }
+        }
+    }
+    f
+}
+
+#[test]
+#[ignore = "timing: run in release with --ignored on an idle machine"]
+fn lighting_and_bloom_fit_the_budget() {
+    let indexed = heavy_frame();
+    let emissive = flight_emissive([[0x44u8, 0x60, 0xF7].as_slice()]);
+    let mut pal = [[0u8; 4]; 256];
+    for (i, p) in pal.iter_mut().enumerate() {
+        *p = [
+            (i * 5 % 256) as u8,
+            (i * 3 % 256) as u8,
+            (i * 7 % 256) as u8,
+            255,
+        ];
+    }
+    for (c, rgb) in [
+        (0x44, [255, 60, 60]),
+        (0x60, [255, 156, 12]),
+        (0xF7, [255, 255, 255]),
+        (0x3D, [255, 40, 40]),
+    ] {
+        pal[c] = [rgb[0], rgb[1], rgb[2], 255];
+    }
+    // Nearest-neighbour stands in for the upscaler's output.
+    let mut base = Vec::with_capacity(W * K * FRAME_ROWS * K * 4);
+    for y in 0..FRAME_ROWS * K {
+        for x in 0..W * K {
+            base.extend_from_slice(&pal[usize::from(indexed[(y / K) * W + x / K])]);
+        }
+    }
     let scene = heavy_scene();
     let (mut map, mut bloom) = (LightMap::default(), Bloom::default());
     let mut out = base.clone();
@@ -98,14 +157,14 @@ fn lighting_and_bloom_fit_the_budget() {
         }
     }
     // Medians: other processes share the machine.
-    let [build, apply, bloom] = times.map(|mut v: Vec<Duration>| {
+    let [build, apply, glow] = times.map(|mut v: Vec<Duration>| {
         v.sort();
         v[v.len() / 2].as_secs_f64() * 1000.0
     });
-    let total = build + apply + bloom;
+    let total = build + apply + glow;
     println!(
         "{W}x200 -> {}x{}, {} lights, {} threads: build {build:.3} ms, apply {apply:.3} ms, \
-         bloom {bloom:.3} ms, total {total:.3} ms (medians of {FRAMES})",
+         bloom {glow:.3} ms, total {total:.3} ms (medians of {FRAMES})",
         W * K,
         FRAME_ROWS * K,
         scene.lights.len(),

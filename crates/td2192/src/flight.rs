@@ -18,8 +18,22 @@
 //! the radar table of map set 2, the overlay tiles of e2-mission-setup rev 1 §3.6 and the
 //! flight-8 `td.hel`/`td.h2` sprites (§4.1 step 6).
 //!
+//! Episode 3 presentation (M10-44.c): the E3 F5 entries (flight 18's point offered from tick
+//! 2160), texts and `td3.ccm` transmissions, the overlay tiles of e3-mission-setup rev 1 §3.6,
+//! the flight-12 cells drawn as tile 26h until tick 6480 (`Flight::map_tile`), and flight 16's
+//! magenta fade and tint (e3-mission-logic rev 1 §4.6.4, §4.7; OB-049 kept): five retraces of
+//! fade after the tick in which the tint starts, then the half tint in the DAC until a white
+//! flash ends, re-applied to every entry after the Esc menu.
+//!
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
 //! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8.
+//!
+//! Enhanced presentation (`docs/spec/enhanced/presentation.md` rev 1): `draw_frame` draws into a
+//! framebuffer of any width W ≥ 320, a widescreen frame when W > 320 (`td_render::flight`
+//! viewport rules). When the run loop asks for it through the shared [`EnhancedView`], the
+//! arena also composes that frame and its light inputs (`lights`) each time it is drawn.
+
+mod lights;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -43,7 +57,8 @@ use td_formats::palette::Palette;
 use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::Tileset;
 use td_input::{Key, TickInput};
-use td_render::flight::{self, ShotLook, ViewPos};
+use td_render::enhanced::widescreen;
+use td_render::flight::{self, ShotLook, ViewPos, Viewport};
 use td_render::flight_palette::FlightDac;
 use td_render::hud::{Hud, HudAssets, HudState, TickerFont};
 use td_render::{Framebuffer, HeadingSprites};
@@ -53,6 +68,8 @@ use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
 use td_sim::flight::heading::Heading;
 use td_sim::flight::player::Event;
 use td_sim::{Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
+
+use crate::enhanced::{EnhancedView, SharedView};
 
 /// Typematic delay and repeat period of an AT keyboard at its power-on defaults (500 ms,
 /// 10.9 characters per second). The original's key bytes are re-set by every repeated make
@@ -166,6 +183,12 @@ pub struct FlightArena {
     binds: Vec<(Key, FlightKey)>,
     typematic: Typematic,
     events: Vec<Event>,
+    /// E3 flight 16: the magenta fade step on screen (1..=5), while it runs.
+    magenta: Option<u8>,
+    /// The Enhanced frame shared with the run loop.
+    enhanced: Option<SharedView>,
+    /// Enhanced lighting: the colours that glow (`lights`).
+    emissive: td_render::enhanced::scene::Emissive,
 }
 
 /// What one program run keeps across its flights.
@@ -315,6 +338,7 @@ impl FlightArena {
             board.clone()
         };
         let palette = Palette::parse(&dir.read("td.pal")?)?;
+        let emissive = lights::emissive_of(&bank);
         Ok(Self {
             world,
             tiles: Tileset::parse(&dir.read(episode::tileset_file(ep, number))?)?,
@@ -339,14 +363,25 @@ impl FlightArena {
             binds: bindings(),
             typematic: Typematic::default(),
             events: Vec::new(),
+            magenta: None,
+            enhanced: None,
+            emissive,
         })
+    }
+
+    /// Composes Enhanced frames into `view` when the run loop asks for them.
+    #[must_use]
+    pub fn with_enhanced(mut self, view: Option<SharedView>) -> Self {
+        self.enhanced = view;
+        self
     }
 }
 
 impl Screen for FlightArena {
     fn tick_hz(&self) -> f64 {
-        // The modal screens step once per vertical retrace (fades, pulses, typing).
-        if self.screen.is_some() {
+        // The modal screens and E3's magenta fade step once per vertical retrace (fades,
+        // pulses, typing).
+        if self.screen.is_some() || self.magenta.is_some() {
             RETRACE_HZ
         } else {
             FLIGHT_TICK_HZ
@@ -358,6 +393,13 @@ impl Screen for FlightArena {
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
         self.events.clear();
+        if let Some(step) = self.magenta {
+            // E3 flight 16 (§4.6.4): one fade step per retrace; no tick runs meanwhile.
+            self.dac.magenta_step(&self.palette, step);
+            self.magenta = (step < FlightDac::MAGENTA_STEPS).then_some(step + 1);
+            return Transition::None;
+        }
+        let tinted = self.flight.mission.tint;
         let mode = self.flight.palette_mode;
         let mut result = if let Some(screen) = &mut self.screen {
             match screen.tick(&self.screens, input) {
@@ -372,7 +414,17 @@ impl Screen for FlightArena {
                     } else if menu {
                         // The menu's last FadeIn restored the mode (flight-screens §4.1); every
                         // fade level zeroed g_HitFlash (hit-flash.md §4.2).
-                        self.dac.faded_in(&self.palette, self.flight.palette_mode);
+                        if self.flight.episode == Episode::E3 {
+                            // E3's FadeIn includes entry 0; flight 16 re-tints every entry
+                            // after it (e3-mission-logic §4.7.2, OB-049).
+                            self.dac
+                                .faded_in_from_0(&self.palette, self.flight.palette_mode);
+                            if self.flight.mission.tint {
+                                self.dac.magenta_tint_all(&self.palette);
+                            }
+                        } else {
+                            self.dac.faded_in(&self.palette, self.flight.palette_mode);
+                        }
                         self.flight.hit_flash = 0;
                     }
                     let c = self.typematic.controls(input, &self.binds);
@@ -409,6 +461,10 @@ impl Screen for FlightArena {
         if self.flight.palette_mode != mode {
             self.dac.toggle(&self.palette, self.flight.palette_mode);
         }
+        // E3 flight 16: the event routine (after step 24) started the tint in this tick.
+        if !tinted && self.flight.mission.tint && self.screen.is_none() {
+            self.magenta = Some(1);
+        }
         let v = self.flight.player.view;
         for &Event::Sound { kind, source } in &self.events {
             ctx.audio.push(AudioCommand::PlayEffect {
@@ -431,10 +487,41 @@ impl Screen for FlightArena {
     }
 
     fn draw(&self, fb: &mut Framebuffer) {
+        self.draw_frame(fb);
+        self.compose_enhanced();
+    }
+}
+
+impl FlightArena {
+    /// Composes the Enhanced frame when the run loop asked for one (module docs). The modal
+    /// screens keep their Classic picture, which the pipeline centres.
+    fn compose_enhanced(&self) {
+        let Some(view) = &self.enhanced else {
+            return;
+        };
+        if self.screen.is_some() {
+            return;
+        }
+        // A draw from inside `compose` (none today) would find the view borrowed: skip it.
+        let Ok(mut view) = view.try_borrow_mut() else {
+            return;
+        };
+        let view: &mut EnhancedView = &mut view;
+        view.compose(
+            |fb| self.draw_frame(fb),
+            |margin, mode| self.light_scene(margin, mode),
+            self.emissive(),
+        );
+    }
+
+    /// The picture: the modal screen, or the flight frame in `fb`'s width (Classic at 320,
+    /// widescreen when wider).
+    fn draw_frame(&self, fb: &mut Framebuffer) {
         if let Some(screen) = &self.screen {
             screen.draw(fb);
             return;
         }
+        let vp = Viewport::of(fb);
         fb.clear(0);
         fb.palette = self.dac.current().clone();
         let f = &self.flight.frame;
@@ -444,7 +531,8 @@ impl Screen for FlightArena {
             sub_x: i32::from(f.view.sub_x),
             sub_y: i32::from(f.view.sub_y),
         };
-        let map = &self.world.map;
+        let patched = self.drawn_map();
+        let map = patched.as_ref().unwrap_or(&self.world.map);
         flight::draw_tile_window(fb, map, &self.tiles, view);
         let drawn = &self.flight.drawn;
         let heading_frame = |sprite: usize, code: u8| {
@@ -465,19 +553,18 @@ impl Screen for FlightArena {
         }
         // 6. Shots (flight-screens §4.8), where they were drawn: before their move.
         for s in drawn.shots.0.iter().filter(|s| s.alive()) {
-            let look = flight::shot_look(
+            let look = flight::shot_look_in(
                 view,
                 s.kind,
                 s.heading,
                 drawn_shot_tile(s),
                 (s.off_x, s.off_y),
+                vp,
             );
             match look {
                 Some(ShotLook::Pixels(pixels)) => {
                     for (x, y, c) in pixels {
-                        if (0..flight::PLAYFIELD.h).contains(&y) {
-                            fb.put(x, y, c);
-                        }
+                        flight::put_playfield(fb, x, y, c);
                     }
                 }
                 Some(ShotLook::Sprite { slot, heading, at }) => {
@@ -510,13 +597,17 @@ impl Screen for FlightArena {
                     let set = episode::map_set(Episode::E2, self.flight.number);
                     flight::redraw_overlays_e2(fb, map, &self.tiles, view, set);
                 }
-                _ => flight::redraw_overpasses(fb, map, &self.tiles, view),
+                Episode::E3 => {
+                    flight::redraw_overlays_e3(fb, map, &self.tiles, view, self.flight.number);
+                }
+                Episode::E1 => flight::redraw_overpasses(fb, map, &self.tiles, view),
             }
         }
         // 13. Explosions: bank slot 19 + frame (flight-screens §4.7).
         let page = self.drawn_page();
         for e in drawn.explosions.0.iter().filter(|e| e.frame < IDLE) {
-            let at = flight::explosion_sprite(view, page, (e.tile_x, e.tile_y), (e.sub_x, e.sub_y));
+            let (tile, off) = ((e.tile_x, e.tile_y), (e.sub_x, e.sub_y));
+            let at = flight::explosion_sprite_in(view, page, tile, off, vp);
             if let (Some(at), Some(frame)) =
                 (at, self.bank.frame(usize::from(FIRST_SPRITE + e.frame)))
             {
@@ -561,10 +652,10 @@ impl Screen for FlightArena {
                 ticker_blit: (ticker.window != 0).then_some(ticker.window),
                 ..HudState::from_flight(f)
             };
-            display.hud.step(&self.hud_assets, &self.world.map, &state);
+            display.hud.step(&self.hud_assets, map, &state);
             display.tick = Some(f.ticks);
         }
-        display.hud.draw(fb);
+        widescreen::draw_hud(fb, &display.hud);
         drop(display);
         self.draw_overlays(fb);
     }
@@ -632,6 +723,24 @@ fn drawn_shot_tile(s: &td_sim::flight::shots::Shot) -> (u8, u8) {
 }
 
 impl FlightArena {
+    /// The map as the flight shows it when it differs from the loaded one: E3 flight 12's
+    /// cells are tile 26h until tick 6480 (`Flight::map_tile`, e3-mission-logic §4.6.3).
+    fn drawn_map(&self) -> Option<TileMap> {
+        if !self.flight.cells_off {
+            return None;
+        }
+        let map = &self.world.map;
+        let size = map.size();
+        let mut cells = map.cells().to_vec();
+        for &(x, y, _) in &td_sim::flight::setup::e3::FLIGHT12_CELLS {
+            let (x, y) = (usize::from(x), usize::from(y));
+            if let Some(t) = self.flight.map_tile(&self.world, x, y) {
+                cells[x * size + y] = t;
+            }
+        }
+        TileMap::parse_episode(&cells).ok()
+    }
+
     /// The back page the last tick drew into: the tick toggles it at step 24, unless it is
     /// suspended by a modal screen before that step.
     fn drawn_page(&self) -> i32 {
@@ -658,7 +767,7 @@ impl FlightArena {
                 sub_y: s.sub_y,
                 marker: s.marker,
             };
-            let Some(pos) = flight::mission_ship_pos(view, page, &mark) else {
+            let Some(pos) = flight::mission_ship_pos_in(view, page, &mark, Viewport::of(fb)) else {
                 continue;
             };
             let heading = Heading::from_code(s.heading).unwrap_or(Heading::N);
@@ -673,7 +782,7 @@ impl FlightArena {
     /// Text the tick draws over the finished picture: the infra-red notice (step 21).
     fn draw_overlays(&self, fb: &mut Framebuffer) {
         if shows_ir_notice(self.flight.palette_mode, self.flight.ticks) {
-            draw_ir_notice(fb, &self.screens);
+            widescreen::overlay_centred(fb, |fb| draw_ir_notice(fb, &self.screens));
         }
     }
 
@@ -681,7 +790,7 @@ impl FlightArena {
     /// to show.
     fn open_screen(&self, m: Modal) -> Option<FlightModal> {
         let mut shown = Framebuffer::new();
-        self.draw(&mut shown);
+        self.draw_frame(&mut shown);
         let f = &self.flight;
         Some(match m {
             Modal::Pause => FlightModal::Pause(Box::new(Pause::new(shown, &self.screens))),
@@ -704,17 +813,24 @@ impl FlightArena {
                     .map(|s| ShipDot {
                         class: s.class,
                         tile: (s.tile_x, s.tile_y),
-                        marked: s.marker != 0,
+                        // E2/E3 show every live ship, marked or not (episode-deltas §6).
+                        marked: s.marker != 0 || f.episode != Episode::E1,
                     })
                     .collect();
+                let mut board = self.board.clone();
+                if f.episode == Episode::E3 && f.number == 18 {
+                    // DS:1EAD, set at tick 2160 (e3-mission-logic §4.9).
+                    board.flags[21] = f.e3_point_offered();
+                }
                 let v = f.player.view;
+                let map = self.drawn_map();
                 FlightModal::Map(Box::new(TacticalMap::new(
                     &shown.palette,
                     &self.screens,
-                    &self.world.map,
+                    map.as_ref().unwrap_or(&self.world.map),
                     (i32::from(v.tile_x), i32::from(v.tile_y)),
                     &dots,
-                    &self.board,
+                    &board,
                 )))
             }
         })
@@ -743,6 +859,8 @@ impl FlightScreen for FlightArena {
 pub struct ArenaLauncher {
     run: Rc<RefCell<RunState>>,
     fallback: PlaceholderLauncher,
+    /// The Enhanced frame shared with the run loop.
+    enhanced: Option<SharedView>,
 }
 
 impl ArenaLauncher {
@@ -755,14 +873,22 @@ impl ArenaLauncher {
         Self {
             run: Rc::new(RefCell::new(run)),
             fallback: PlaceholderLauncher::default(),
+            enhanced: None,
         }
+    }
+
+    /// Flights compose Enhanced frames into `view` (see [`FlightArena::with_enhanced`]).
+    #[must_use]
+    pub fn with_enhanced(mut self, view: SharedView) -> Self {
+        self.enhanced = Some(view);
+        self
     }
 }
 
 impl td_flow::FlightLauncher for ArenaLauncher {
     fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
         match FlightArena::start(ctx.data, ctx.resources, flight, Some(self.run.clone())) {
-            Ok(arena) => Box::new(arena),
+            Ok(arena) => Box::new(arena.with_enhanced(self.enhanced.clone())),
             Err(e) => {
                 tracing::error!("flight {flight} could not start: {e:#}");
                 self.fallback.launch(ctx, flight)

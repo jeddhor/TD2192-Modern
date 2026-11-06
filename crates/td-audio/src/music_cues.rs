@@ -6,7 +6,8 @@
 //! business; this module only knows the cue numbers.
 //!
 //! Episode 2 (`td2.exe`) has its own index table (`docs/spec/flow/e2-program-flow.md` rev 1
-//! §3.1): [`CueTable::E2`].
+//! §3.1): [`CueTable::E2`]; Episode 3 (`td3.exe`) too (`docs/spec/flow/e3-program-flow.md` rev 1
+//! §3.1): [`CueTable::E3`].
 
 use std::sync::Arc;
 
@@ -78,6 +79,14 @@ pub const E2_TD03: u8 = 45;
 /// E2 cue of `intro.cmf` (menu items 6 and 7, e2-program-flow §3.1).
 pub const E2_INTRO: u8 = 69;
 
+/// E3 cue of `td03.cmf` (e3-program-flow §3.1).
+pub const E3_TD03: u8 = 44;
+/// E3 cue of `intro.cmf` (menu items 6 and 7, e3-program-flow §3.1; 45 also maps to it but is
+/// never passed).
+pub const E3_INTRO: u8 = 69;
+/// E3 index 45: `intro.cmf` as well, never requested by `td3.exe`.
+pub const E3_INTRO_UNUSED: u8 = 45;
+
 /// Which program's `Snd_PlayMusic` index table the cues follow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CueTable {
@@ -87,6 +96,9 @@ pub enum CueTable {
     /// `td2.exe` (e2-program-flow §3.1): 1..=13 as E1, 45 = `td03`, 69 = `intro.cmf`; 14 and
     /// every other index load nothing.
     E2,
+    /// `td3.exe` (e3-program-flow §3.1): 1..=13 as E1, 44 = `td03`, 45 and 69 = `intro.cmf`;
+    /// 14 and every other index load nothing.
+    E3,
 }
 
 impl CueTable {
@@ -100,14 +112,21 @@ impl CueTable {
                 E2_INTRO => Some("intro.cmf"),
                 _ => None,
             },
+            CueTable::E3 => match n {
+                1..=13 => song_file(n),
+                E3_TD03 => Some("td03.cmf"),
+                E3_INTRO | E3_INTRO_UNUSED => Some("intro.cmf"),
+                _ => None,
+            },
         }
     }
 
     /// The flight song of flight `flight` (E1: music-cues §4.2; E2: e2-program-flow §3.1, mod 3
-    /// = 1 → 1, = 2 → 45, = 0 → 2, the same songs as E1).
+    /// = 1 → 1, = 2 → 45, = 0 → 2, the same songs as E1; E3: e3-program-flow §3.1, = 2 → 44).
     pub fn flight_cue(self, flight: u8) -> u8 {
         match (self, flight_cue(flight)) {
             (CueTable::E2, TD03) => E2_TD03,
+            (CueTable::E3, TD03) => E3_TD03,
             (_, n) => n,
         }
     }
@@ -115,11 +134,12 @@ impl CueTable {
     /// Whether cue `n` starts with the loop flag set. E1 switches looping off only around
     /// `death`, which [`cue_loops`] folds into the cue. E2 plays `death` looping in the block-20
     /// end sequence (e2-program-flow §4.4 notes) and switches looping off explicitly in its
-    /// endings ([`MusicCues::set_loop`]), so every E2 cue starts with the flag on.
+    /// endings ([`MusicCues::set_loop`]), so every E2 cue starts with the flag on. E3 does the
+    /// same around its one ending (e3-program-flow §4.5).
     pub fn cue_loops(self, n: u8) -> bool {
         match self {
             CueTable::E1 => cue_loops(n),
-            CueTable::E2 => true,
+            CueTable::E2 | CueTable::E3 => true,
         }
     }
 }
@@ -320,6 +340,28 @@ mod tests {
         assert!(c.play_cue(DEATH, |_| Some(dummy()), &mut out));
         assert_eq!(requested(&out), [true], "E2 death starts looping");
         assert_eq!(CueTable::E1.song_file(E2_INTRO), None);
+    }
+
+    #[test]
+    fn episode_3_table() {
+        // e3-program-flow §6 vectors 1 and 2.
+        let t = CueTable::E3;
+        assert_eq!(t.song_file(E3_TD03), Some("td03.cmf"));
+        assert_eq!(t.song_file(45), Some("intro.cmf"));
+        assert_eq!(t.song_file(E3_INTRO), Some("intro.cmf"));
+        assert_eq!(t.song_file(MOOD3), Some("mood3.cmf"));
+        assert_eq!(t.song_file(TD03), None, "14 loads nothing in E3");
+        let songs: Vec<_> = [1, 2, 3, 6, 7, 11, 21]
+            .iter()
+            .map(|&f| t.song_file(t.flight_cue(f)).unwrap())
+            .collect();
+        assert_eq!(
+            songs,
+            [
+                "td01.cmf", "td03.cmf", "td02.cmf", "td02.cmf", "td01.cmf", "td03.cmf", "td02.cmf"
+            ]
+        );
+        assert!(t.cue_loops(DEATH), "ending A switches looping off itself");
     }
 
     #[test]

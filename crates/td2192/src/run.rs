@@ -1,5 +1,9 @@
 //! The main loop: fixed-timestep ticks at the current screen's rate, decoupled presentation,
 //! and audio rendered on the main thread in step with the game.
+//!
+//! Presentation takes one of two paths each frame (ADR-0006): the Classic path presents the
+//! indexed 320 × 200 framebuffer as before; when any Enhanced feature is on, the frame goes
+//! through the Enhanced pipeline ([`crate::enhanced`]) and is presented as RGBA.
 
 use std::path::Path;
 use std::time::Instant;
@@ -12,6 +16,9 @@ use td_flow::{FixedStep, Flow, FlowContext, Settings};
 use td_input::TickInput;
 use td_platform::{InputSnapshot, Key, Platform, ScaleMode, WindowConfig};
 use td_render::Framebuffer;
+use td_render::enhanced::lighting::LightStage;
+
+use crate::enhanced::{Enhanced, SharedView};
 
 /// Audio device rate.
 pub const AUDIO_RATE: u32 = 48_000;
@@ -40,6 +47,8 @@ pub struct RunData<'a> {
     pub resources: &'a ExeResources,
     pub settings: &'a Settings,
     pub user_dir: &'a Path,
+    /// The Enhanced frame the flight screens compose.
+    pub enhanced: SharedView,
 }
 
 /// Runs `flow` until it ends or the window closes.
@@ -64,6 +73,13 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
         tracing::warn!("audio unavailable: {e}");
     }
     let mut audio_buf: Vec<f32> = Vec::new();
+    let mut enhanced = Enhanced::new(
+        settings,
+        rd.enhanced.clone(),
+        Some(rd.user_dir.join("settings.toml")),
+        // The lighting and bloom stage (M12-11, M12-12).
+        Box::new(LightStage::default()),
+    );
 
     let rate_of = |flow: &Flow| settings.dev.tick_hz.unwrap_or_else(|| flow.tick_hz());
     let mut hz = rate_of(&flow);
@@ -74,11 +90,13 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
     let mut commands = Vec::new();
     let mut last = Instant::now();
     while flow.running() {
-        let snap: InputSnapshot = platform.poll();
+        let mut snap: InputSnapshot = platform.poll();
         if snap.quit {
             break;
         }
         handle_host_keys(&snap, &mut platform, &fb, rd.user_dir)?;
+        enhanced.hotkeys(&mut snap);
+        enhanced.poll_settings();
         pending.held = snap.held.clone();
         pending.pad = snap.pad;
         pending.pressed.extend(snap.pressed);
@@ -107,7 +125,7 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
             }
             total_ticks += 1;
             if options.exit_after_ticks == Some(total_ticks) {
-                return dev_capture(&flow, &mut fb, &mut platform, rd.user_dir);
+                return dev_capture(&flow, &mut fb, &mut platform, &mut enhanced, rd.user_dir);
             }
             // A screen change may change the pace; restart the clock at the new rate.
             if rate_of(&flow) != hz {
@@ -122,8 +140,13 @@ pub fn run(mut flow: Flow, rd: &RunData<'_>, options: &RunOptions) -> Result<()>
             mixer.render(&mut audio_buf);
             platform.queue_audio(&audio_buf)?;
         }
+        let enhanced_frame = enhanced.begin_frame(platform.output_size(), platform.scale_mode());
         flow.draw(&mut fb);
-        platform.present(&fb)?;
+        if enhanced_frame {
+            enhanced.present(&fb, &mut platform, false)?;
+        } else {
+            platform.present(&fb)?;
+        }
     }
     Ok(())
 }
@@ -159,12 +182,20 @@ fn dev_capture(
     flow: &Flow,
     fb: &mut Framebuffer,
     platform: &mut Platform,
+    enhanced: &mut Enhanced,
     user_dir: &Path,
 ) -> Result<()> {
+    let enhanced_frame = enhanced.begin_frame(platform.output_size(), platform.scale_mode());
     flow.draw(fb);
     let path = screenshot(fb, user_dir)?;
     println!("screenshot: {}", path.display());
-    let cap = platform.present_and_capture(fb)?;
+    let cap = if enhanced_frame {
+        enhanced
+            .present(fb, platform, true)?
+            .context("window capture")?
+    } else {
+        platform.present_and_capture(fb)?
+    };
     let wpath = path.with_extension("window.png");
     save_rgba(&wpath, cap.width, cap.height, &cap.rgba)?;
     println!(

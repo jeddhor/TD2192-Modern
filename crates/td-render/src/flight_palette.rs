@@ -228,6 +228,53 @@ impl FlightDac {
         write_fade_step(&mut self.dac, &target, FADE_STEPS, 1);
         self.hit_flash = 0;
     }
+
+    /// E3's `FadeIn` writes entries **0**..=255 (episode-deltas rev 3 §6): as
+    /// [`FlightDac::faded_in`], with entry 0 at the target too.
+    pub fn faded_in_from_0(&mut self, p: &Palette, mode: u8) {
+        let target = fade_target(p, mode);
+        write_fade_step(&mut self.dac, &target, FADE_STEPS, 0);
+        self.hit_flash = 0;
+    }
+
+    /// One step of E3 flight 16's magenta fade (`Msn_E3TimedEvents`, e3-mission-logic rev 1
+    /// §4.6.4): step 1..=5 writes entries 1..=255 from the flight palette `p` as half, quarter,
+    /// flat (63, 0, 63), quarter, half; entry 0 keeps its colour. Step 5 is the tint the game
+    /// then runs in (OB-049).
+    ///
+    /// # Panics
+    /// If `step` is not 1..=5.
+    pub fn magenta_step(&mut self, p: &Palette, step: u8) {
+        let shift = match step {
+            1 | 5 => Some(1),
+            2 | 4 => Some(2),
+            3 => None,
+            _ => panic!("magenta fade step {step} out of range"),
+        };
+        for (d, c) in self.dac.colors.iter_mut().zip(&p.colors).skip(1) {
+            *d = shift.map_or(rgb(63, 0, 63), |k| magenta(*c, k));
+        }
+    }
+
+    /// E3 flight 16 after phase 5: `UI_FlightMenu` re-tints every DAC entry, 0 included, after
+    /// its closing fade-in (e3-mission-logic §4.7.2).
+    pub fn magenta_tint_all(&mut self, p: &Palette) {
+        for (d, c) in self.dac.colors.iter_mut().zip(&p.colors) {
+            *d = magenta(*c, 1);
+        }
+    }
+}
+
+/// (63 − (63 − R) >> k, G >> k, 63 − (63 − B) >> k): the magenta wash of E3 flight 16
+/// (k = 1 half, k = 2 quarter; unsigned arithmetic on 0..=63 components).
+fn magenta(c: Rgb6, k: u32) -> Rgb6 {
+    let up = |v: u8| 63 - ((63 - u16::from(v.min(63))) >> k);
+    rgb(up(c.r), u16::from(c.g) >> k, up(c.b))
+}
+
+impl FlightDac {
+    /// The number of magenta fade steps (one per vertical retrace).
+    pub const MAGENTA_STEPS: u8 = 5;
 }
 
 #[cfg(test)]
@@ -339,6 +386,40 @@ mod tests {
         assert_eq!(dac.colors[1], c(32, 1, 5));
         write_fade_step(&mut dac, &target, 16, 0);
         assert_eq!(dac, target);
+    }
+
+    #[test]
+    fn magenta_fade_and_tint() {
+        // e3-mission-logic §4.6.4 examples: (0, 0, 0) and (63, 40, 10).
+        let p = pal(&[(0, (0, 0, 0)), (1, (0, 0, 0)), (2, (63, 40, 10))]);
+        let mut d = FlightDac::start(&p, 0);
+        let want = [
+            (c(32, 0, 32), c(63, 20, 37)),
+            (c(48, 0, 48), c(63, 10, 50)),
+            (c(63, 0, 63), c(63, 0, 63)),
+            (c(48, 0, 48), c(63, 10, 50)),
+            (c(32, 0, 32), c(63, 20, 37)),
+        ];
+        for (k, w) in (1..=FlightDac::MAGENTA_STEPS).zip(want) {
+            d.magenta_step(&p, k);
+            assert_eq!(
+                (d.current().colors[1], d.current().colors[2]),
+                w,
+                "step {k}"
+            );
+            assert_eq!(
+                d.current().colors[0],
+                c(0, 0, 0),
+                "entry 0 is never written"
+            );
+        }
+        // The white flash's last frame restores the untinted colours (§4.7.3).
+        d.step(&p, 0, 1);
+        assert_eq!(d.current(), &p);
+        // After the Esc menu the tint covers entry 0 as well (OB-049).
+        d.faded_in_from_0(&p, 0);
+        d.magenta_tint_all(&p);
+        assert_eq!(d.current().colors[0], c(32, 0, 32));
     }
 
     #[test]

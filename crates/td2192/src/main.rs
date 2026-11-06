@@ -1,5 +1,6 @@
 //! TD2192-Modern: the game executable (composition root).
 
+mod enhanced;
 mod flight;
 mod mapview;
 mod run;
@@ -21,8 +22,8 @@ struct Cli {
     /// Original game directory (overrides TD2192_DATA and settings).
     #[arg(long)]
     data: Option<PathBuf>,
-    /// Which episode's program to run: 1 (the default, `file0001.exe`) or 2 (`td2.exe`, which
-    /// the original starts directly).
+    /// Which episode's program to run: 1 (the default, `file0001.exe`), 2 (`td2.exe`) or 3
+    /// (`td3.exe`; the original starts both directly).
     #[arg(long, value_name = "N", default_value_t = 1)]
     episode: u8,
     /// Developer map viewer for a map: e1, e2a, e2b, e3a, e3b or intro.
@@ -44,6 +45,10 @@ struct Cli {
     /// Developer: save a screenshot and exit after this many simulation ticks.
     #[arg(long, value_name = "TICKS")]
     dev_exit_after: Option<u64>,
+    /// Developer: Enhanced presentation for this run, as `key=value` pairs of the `[enhanced]`
+    /// settings (e.g. `widescreen=16:9,upscaler=xbr3`); implies `profile = "enhanced"`.
+    #[arg(long, value_name = "SPEC")]
+    dev_enhanced: Option<String>,
 }
 
 /// Parses `--dev-flight`: `N` (Episode 1) or `eN:N`.
@@ -145,7 +150,8 @@ fn real_main() -> Result<()> {
     let episode = match cli.episode {
         1 => Episode::E1,
         2 => Episode::E2,
-        n => bail!("--episode takes 1 or 2 (Episode 3 is not implemented yet), not {n}"),
+        3 => Episode::E3,
+        n => bail!("--episode takes 1, 2 or 3, not {n}"),
     };
     if episode != Episode::E1 && !report.playable(episode) {
         bail!(
@@ -165,12 +171,20 @@ fn real_main() -> Result<()> {
     if cli.fullscreen {
         settings.video.fullscreen = true;
     }
+    if let Some(spec) = cli.dev_enhanced.as_deref() {
+        settings.profile = td_flow::settings::Profile::Enhanced;
+        settings.enhanced = enhanced::parse_spec(spec).context("--dev-enhanced")?;
+    }
+    let view = enhanced::SharedView::default();
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
         (Some(spec), _) => {
             let (episode, n) = parse_flight_spec(&spec)?;
-            Box::new(flight::FlightArena::new(&dir, &resources, episode, n)?)
+            Box::new(
+                flight::FlightArena::new(&dir, &resources, episode, n)?
+                    .with_enhanced(Some(view.clone())),
+            )
         }
         (None, Some(spec)) => {
             let (episode, choice, id) = td_flow::dialogue::parse_scene_spec(spec)?;
@@ -181,18 +195,34 @@ fn real_main() -> Result<()> {
         (None, None) => match cli.dev_mapview.as_deref() {
             Some(map) => Box::new(mapview::MapView::new(&dir, map)?),
             // The Episode 2 program (`td2.exe`, started directly in the original, U-005).
-            None if episode == Episode::E2 => Box::new(td_flow::Episode2::new(
-                &dir,
-                &resources,
-                Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
-            )?),
+            None if episode == Episode::E2 => Box::new(
+                td_flow::Episode2::new(
+                    &dir,
+                    &resources,
+                    Box::new(
+                        flight::ArenaLauncher::for_episode(Episode::E2).with_enhanced(view.clone()),
+                    ),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
+            // The Episode 3 program (`td3.exe`, started directly, e3-program-flow §8).
+            None if episode == Episode::E3 => Box::new(
+                td_flow::Episode3::new(
+                    &dir,
+                    &resources,
+                    Box::new(
+                        flight::ArenaLauncher::for_episode(Episode::E3).with_enhanced(view.clone()),
+                    ),
+                )?
+                .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
+            ),
             // The Episode 1 program: script choice, menu, campaign, flights. Saved games live
             // in the user data directory, never in the game folder.
             None => Box::new(
                 td_flow::Episode1::new(
                     &dir,
                     &resources,
-                    Box::new(flight::ArenaLauncher::default()),
+                    Box::new(flight::ArenaLauncher::default().with_enhanced(view.clone())),
                 )?
                 .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
             ),
@@ -206,6 +236,7 @@ fn real_main() -> Result<()> {
         resources: &resources,
         settings: &settings,
         user_dir: &user_dir,
+        enhanced: view,
     };
     run::run(td_flow::Flow::new(first), &rd, &options)
 }

@@ -1,8 +1,9 @@
 //! The Esc computer menu (`UI_FlightMenu`), the ship library and the in-flight help.
 //!
-//! Spec: `docs/spec/flow/flight-screens.md` rev 1 §3.1, §3.2, §3.5, §4.1. Fidelity: T0 for
-//! the pictures and DAC values (C-0012), T1 for the abort flag and the keys (OB-030 kept),
-//! T2 for the pacing.
+//! Spec: `docs/spec/flow/flight-screens.md` rev 1 §3.1, §3.2, §3.5, §4.1; the E2/E3 ship
+//! library `docs/spec/flow/e2-flight-screens.md` rev 1 §3.3, §4.2. Fidelity: T0 for the
+//! pictures and DAC values (C-0012), T1 for the abort flag and the keys (OB-030 kept), T2 for
+//! the pacing.
 //!
 //! The routine is a straight-line program with fades, highlight pulses and key waits. The port
 //! runs it as a queue of steps, one retrace per waiting step; a key poll appends the steps of
@@ -10,6 +11,7 @@
 
 use std::collections::VecDeque;
 
+use td_assets::Episode;
 use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
 use td_render::flight_palette::{FADE_STEPS, fade_target, write_fade_step};
@@ -39,51 +41,178 @@ pub const POLL_FRAMES: u8 = 7;
 /// Flights from which the library shows the fourth player ship (sprite 8) unhatched (§3.2).
 pub const LIBRARY_SHIP_8_FROM: u8 = 4;
 
-/// One ship of the library (§3.2): `td.shp` record, text pen x and the lines
-/// (pen y, `ship_library` index, ink).
-struct LibraryShip {
+/// One text block of the library (§3.2; E2/E3 e2-flight-screens §3.3): the `td.shp` record it
+/// describes, text pen x, the lines (pen y, `ship_library` index, ink) and the first flight
+/// that draws it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LibraryBlock {
+    pub sprite: usize,
+    pub pen_x: i32,
+    pub lines: [(i32, usize, u8); 4],
+    /// The text is drawn when the flight number is at least this.
+    pub text_from: u8,
+}
+
+/// The library of an episode: its text blocks and its hatch rule, (record, hatched while the
+/// flight number is below this; [`ALWAYS`] = in every flight).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LibraryLayout {
+    pub blocks: &'static [LibraryBlock],
+    pub hatch: &'static [(usize, u8)],
+}
+
+/// "Hatched in every flight" (no flight number reaches it).
+pub const ALWAYS: u8 = u8::MAX;
+
+const fn block(
     sprite: usize,
     pen_x: i32,
     lines: [(i32, usize, u8); 4],
+    text_from: u8,
+) -> LibraryBlock {
+    LibraryBlock {
+        sprite,
+        pen_x,
+        lines,
+        text_from,
+    }
 }
 
-const LIBRARY: [LibraryShip; 7] = [
-    LibraryShip {
-        sprite: 0,
-        pen_x: 40,
-        lines: [(12, 0, 96), (18, 1, 92), (24, 2, 92), (32, 3, 94)],
-    },
-    LibraryShip {
-        sprite: 1,
-        pen_x: 40,
-        lines: [(49, 4, 96), (55, 1, 92), (61, 5, 92), (69, 6, 94)],
-    },
-    LibraryShip {
-        sprite: 7,
-        pen_x: 40,
-        lines: [(92, 7, 96), (98, 8, 92), (104, 9, 92), (112, 10, 94)],
-    },
-    LibraryShip {
-        sprite: 8,
-        pen_x: 40,
-        lines: [(123, 11, 96), (129, 12, 92), (135, 13, 92), (143, 14, 94)],
-    },
-    LibraryShip {
-        sprite: 2,
-        pen_x: 200,
-        lines: [(28, 15, 96), (34, 12, 92), (40, 16, 92), (48, 17, 94)],
-    },
-    LibraryShip {
-        sprite: 3,
-        pen_x: 200,
-        lines: [(71, 18, 96), (77, 19, 92), (83, 16, 92), (91, 20, 94)],
-    },
-    LibraryShip {
-        sprite: 4,
-        pen_x: 200,
-        lines: [(109, 21, 96), (115, 22, 92), (121, 16, 92), (129, 23, 94)],
-    },
-];
+/// Episode 1 (flight-screens §3.2): seven blocks; sprites 5 and 6 always hatched, sprite 8
+/// hatched and without text before flight 4.
+pub const E1_LIBRARY: LibraryLayout = LibraryLayout {
+    blocks: &[
+        block(
+            0,
+            40,
+            [(12, 0, 96), (18, 1, 92), (24, 2, 92), (32, 3, 94)],
+            0,
+        ),
+        block(
+            1,
+            40,
+            [(49, 4, 96), (55, 1, 92), (61, 5, 92), (69, 6, 94)],
+            0,
+        ),
+        block(
+            7,
+            40,
+            [(92, 7, 96), (98, 8, 92), (104, 9, 92), (112, 10, 94)],
+            0,
+        ),
+        block(
+            8,
+            40,
+            [(123, 11, 96), (129, 12, 92), (135, 13, 92), (143, 14, 94)],
+            LIBRARY_SHIP_8_FROM,
+        ),
+        block(
+            2,
+            200,
+            [(28, 15, 96), (34, 12, 92), (40, 16, 92), (48, 17, 94)],
+            0,
+        ),
+        block(
+            3,
+            200,
+            [(71, 18, 96), (77, 19, 92), (83, 16, 92), (91, 20, 94)],
+            0,
+        ),
+        block(
+            4,
+            200,
+            [(109, 21, 96), (115, 22, 92), (121, 16, 92), (129, 23, 94)],
+            0,
+        ),
+    ],
+    hatch: &[(6, ALWAYS), (5, ALWAYS), (8, LIBRARY_SHIP_8_FROM)],
+};
+
+/// The nine E2/E3 blocks (e2-flight-screens §3.3, one table for both programs); sprite 6's
+/// text from flight `from6`, sprite 5's from `from5`.
+const fn later_blocks(from6: u8, from5: u8) -> [LibraryBlock; 9] {
+    [
+        block(
+            0,
+            40,
+            [(12, 0, 96), (18, 1, 92), (24, 2, 92), (32, 3, 94)],
+            0,
+        ),
+        block(
+            1,
+            40,
+            [(49, 4, 96), (55, 1, 92), (61, 5, 92), (69, 6, 94)],
+            0,
+        ),
+        block(
+            7,
+            40,
+            [(92, 7, 96), (98, 8, 92), (104, 9, 92), (112, 10, 94)],
+            0,
+        ),
+        block(
+            8,
+            40,
+            [(123, 11, 96), (129, 12, 92), (135, 13, 92), (143, 14, 94)],
+            0,
+        ),
+        block(
+            6,
+            40,
+            [(154, 15, 96), (160, 16, 92), (166, 17, 92), (174, 3, 94)],
+            from6,
+        ),
+        block(
+            2,
+            200,
+            [(28, 18, 96), (34, 12, 92), (40, 19, 92), (48, 20, 94)],
+            0,
+        ),
+        block(
+            3,
+            200,
+            [(71, 21, 96), (77, 22, 92), (83, 19, 92), (91, 23, 94)],
+            0,
+        ),
+        block(
+            4,
+            200,
+            [(109, 24, 96), (115, 25, 92), (121, 19, 92), (129, 26, 94)],
+            0,
+        ),
+        block(
+            5,
+            200,
+            [(147, 27, 96), (153, 28, 92), (159, 29, 92), (167, 30, 94)],
+            from5,
+        ),
+    ]
+}
+
+const E2_BLOCKS: [LibraryBlock; 9] = later_blocks(15, 11);
+const E3_BLOCKS: [LibraryBlock; 9] = later_blocks(0, 0);
+
+/// Episode 2 (e2-flight-screens §3.3): sprite 6 hatched and without text before flight 15,
+/// sprite 5 before flight 11.
+pub const E2_LIBRARY: LibraryLayout = LibraryLayout {
+    blocks: &E2_BLOCKS,
+    hatch: &[(6, 15), (5, 11)],
+};
+
+/// Episode 3 (e2-flight-screens §3.3): all nine blocks, nothing hatched (no mask is built).
+pub const E3_LIBRARY: LibraryLayout = LibraryLayout {
+    blocks: &E3_BLOCKS,
+    hatch: &[],
+};
+
+/// The library of `episode`.
+pub fn library_layout(episode: Episode) -> &'static LibraryLayout {
+    match episode {
+        Episode::E1 => &E1_LIBRARY,
+        Episode::E2 => &E2_LIBRARY,
+        Episode::E3 => &E3_LIBRARY,
+    }
+}
 
 /// Library positions of all nine records (§3.2), in record order.
 const LIBRARY_POS: [(i32, i32); 9] = [
@@ -98,18 +227,18 @@ const LIBRARY_POS: [(i32, i32); 9] = [
     (4, 123),
 ];
 
-/// Draws the ship library (`UI_ShipLibrary`, §4.1.2) for flight `flight`.
+/// Draws the ship library (`UI_ShipLibrary`, §4.1.2) of the assets' episode for flight
+/// `flight`.
 pub fn draw_ship_library(fb: &mut Framebuffer, assets: &FlightScreenAssets, flight: u8) {
+    let layout = library_layout(assets.episode);
     fb.clear(0);
     for (rec, &(x, y)) in assets.library.iter().zip(&LIBRARY_POS) {
         fb.blit(Image::new(rec, 32, 32), x, y, Rect::SCREEN, Some(0));
     }
-    // The hatch: colour 1 where row + column is even (a one-pixel checkerboard).
-    let mut hatched = vec![6, 5];
-    if flight < LIBRARY_SHIP_8_FROM {
-        hatched.push(8);
-    }
-    for r in hatched {
+    // The hatch: colour 1 where row + column is even (a one-pixel checkerboard), before the
+    // text.
+    let hatched = layout.hatch.iter().filter(|&&(_, below)| flight < below);
+    for &(r, _) in hatched {
         let (x, y) = LIBRARY_POS[r];
         for row in 0..32 {
             for col in (0..32).filter(|c| (row + c) % 2 == 0) {
@@ -117,10 +246,7 @@ pub fn draw_ship_library(fb: &mut Framebuffer, assets: &FlightScreenAssets, flig
             }
         }
     }
-    for ship in &LIBRARY {
-        if ship.sprite == 8 && flight < LIBRARY_SHIP_8_FROM {
-            continue;
-        }
+    for ship in layout.blocks.iter().filter(|b| flight >= b.text_from) {
         for &(y, i, ink) in &ship.lines {
             let text = FlightScreenAssets::text(&assets.ship_library, i);
             small_text::draw_opaque(fb, &assets.font, text, (ship.pen_x, y), ink, 0);
