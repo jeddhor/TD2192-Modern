@@ -23,5 +23,8 @@ td-audio.workspace = true
 png.workspace = true
 toml.workspace = true
 
+[dev-dependencies]
+td-test-support.workspace = true
+
 [lints]
 workspace = true

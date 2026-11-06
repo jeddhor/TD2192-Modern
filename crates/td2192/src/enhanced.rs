@@ -210,8 +210,7 @@ impl Enhanced {
         r.modified = now;
         match Settings::load(&r.path) {
             Ok(s) => {
-                self.profile = s.profile;
-                self.settings = s.enhanced;
+                self.apply(&s);
                 tracing::info!(
                     "settings reloaded: profile {:?}, {:?}",
                     s.profile,
@@ -219,6 +218,16 @@ impl Enhanced {
                 );
             }
             Err(e) => tracing::warn!("settings not reloaded: {e}"),
+        }
+    }
+
+    /// Takes the profile and `[enhanced]` from `settings` at once (the options screen, M11-03).
+    /// The settings file the host has just saved is not read again.
+    pub fn apply(&mut self, settings: &Settings) {
+        self.profile = settings.profile;
+        self.settings = settings.enhanced;
+        if let Some(r) = &mut self.reload {
+            r.modified = modified(&r.path);
         }
     }
 
