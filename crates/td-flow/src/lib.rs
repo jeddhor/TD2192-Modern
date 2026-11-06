@@ -6,8 +6,10 @@
 pub mod campaign;
 pub mod campaign_e2;
 pub mod campaign_e3;
+pub mod controls;
 pub mod dialogue;
 pub mod flight_screens;
+pub mod front;
 pub mod main_menu;
 pub mod program;
 pub mod program_e2;

@@ -30,7 +30,7 @@ use std::collections::VecDeque;
 
 use td_assets::DataDir;
 use td_formats::palette::{Palette, Rgb6};
-use td_input::{Key, Pad, TickInput};
+use td_input::{Key, Pad, PadButton, TickInput};
 use td_render::{Framebuffer, WIDTH, fade};
 
 use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
@@ -308,6 +308,8 @@ impl MainMenu {
                 self.keys.push(k);
             }
         }
+        let buttons = input.pad.map_or(0, |p| p.buttons);
+        let pad_pressed = buttons & !self.pad.map_or(0, |p| p.buttons);
         self.pad = input.pad;
         self.wait = self.wait.saturating_sub(1);
         let mut pulse_steps = PULSE_STEPS_PER_FRAME;
@@ -374,16 +376,30 @@ impl MainMenu {
                     self.wait = 1;
                 }
                 Phase::BoxKey { n, item } => {
-                    if self.keys.is_empty() {
-                        return None;
-                    }
-                    let k = self.keys.remove(0);
+                    // Port addition (M11-04): a controller answers the box, South yes, East
+                    // no, so a controller alone never gets stuck here. The keys a press's
+                    // binding stands for are dropped with it.
+                    let pad_answer = if pad_pressed & PadButton::South.bit() != 0 {
+                        Some(true)
+                    } else if pad_pressed & PadButton::East.bit() != 0 {
+                        Some(false)
+                    } else {
+                        None
+                    };
+                    let yes = match pad_answer {
+                        Some(yes) => {
+                            self.keys.clear();
+                            yes
+                        }
+                        None if self.keys.is_empty() => return None,
+                        None => Some(self.keys.remove(0)) == Key::letter('y'),
+                    };
                     self.show_box(0);
                     self.phase = Phase::BoxUndim {
                         n,
                         k: 16,
                         item,
-                        yes: Some(k) == Key::letter('y'),
+                        yes,
                     };
                 }
                 Phase::BoxUndim { n, k, item, yes } => {
@@ -717,6 +733,32 @@ mod tests {
         m.step(&press(Key::SPACE));
         idle(&mut m, 17);
         m.step(&press(Key::letter('y').unwrap()));
+        assert_eq!(idle(&mut m, 60), Some(0));
+    }
+
+    #[test]
+    fn a_controller_answers_the_boxes() {
+        // M11-04: South yes, East no; the Space that South's default binding stands for is
+        // dropped with it.
+        let pad = |b: PadButton, keys: Vec<Key>| TickInput {
+            pressed: keys,
+            pad: Some(Pad {
+                buttons: b.bit(),
+                ..Pad::default()
+            }),
+            ..TickInput::default()
+        };
+        let mut m = MainMenu::new(Some(gfx()));
+        m.enter(0, true, Reentry::Loader { first: false });
+        idle(&mut m, 40);
+        m.step(&press(Key::SPACE));
+        idle(&mut m, 17);
+        m.step(&pad(PadButton::East, vec![]));
+        assert_eq!(idle(&mut m, 60), None, "cancelled");
+        assert!(m.waiting());
+        m.step(&press(Key::SPACE));
+        idle(&mut m, 17);
+        m.step(&pad(PadButton::South, vec![Key::SPACE]));
         assert_eq!(idle(&mut m, 60), Some(0));
     }
 

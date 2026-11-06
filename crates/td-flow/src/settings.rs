@@ -23,6 +23,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub use crate::controls::ControlsSettings;
+
 /// Errors loading or saving settings.
 #[derive(Debug, Error)]
 pub enum SettingsError {
@@ -209,6 +211,17 @@ impl EnhancedSettings {
     }
 }
 
+/// Accessibility options (`[accessibility]`, MDG §11). Enhanced features: the Classic profile
+/// forces them off ([`Settings::effective_accessibility`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AccessibilitySettings {
+    /// Colour-blind-safe colours for the guidance line (MDG §6.2). TODO(M12-04): not drawn yet;
+    /// the guidance dots need their own colours, apart from the palette entries they share
+    /// with the playfield.
+    pub colorblind_guidance: bool,
+}
+
 /// Developer overrides (ignored unless set).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -229,6 +242,9 @@ pub struct Settings {
     pub audio: AudioSettings,
     /// Enhanced presentation (spec enhanced/presentation §2).
     pub enhanced: EnhancedSettings,
+    /// Host keys and controller buttons for the original's flight keys (M11-03).
+    pub controls: ControlsSettings,
+    pub accessibility: AccessibilitySettings,
     pub dev: DevSettings,
 }
 
@@ -238,6 +254,76 @@ impl Settings {
         match self.profile {
             Profile::Classic => EnhancedSettings::default(),
             Profile::Enhanced => self.enhanced,
+        }
+    }
+
+    /// The SFX policy in effect: polyphonic SFX is an Enhanced feature (MDG §6.2), so the
+    /// Classic profile always mixes the original's one effect at a time.
+    pub fn effective_sfx_mode(&self) -> SfxMode {
+        match self.profile {
+            Profile::Classic => SfxMode::Classic,
+            Profile::Enhanced => self.audio.sfx_mode,
+        }
+    }
+
+    /// The accessibility options in effect: all off under the Classic profile.
+    pub fn effective_accessibility(&self) -> AccessibilitySettings {
+        match self.profile {
+            Profile::Classic => AccessibilitySettings::default(),
+            Profile::Enhanced => self.accessibility,
+        }
+    }
+
+    /// `self` (the file's settings) with every value that differs between `before` and
+    /// `after` taken from `after`. The options screen edits the session's settings, which may
+    /// hold command-line overrides (`--fullscreen`, `--dev-enhanced`); only what the player
+    /// changed goes to the file.
+    pub fn with_changes(&self, before: &Settings, after: &Settings) -> Settings {
+        fn merge(file: &mut toml::Value, before: Option<&toml::Value>, after: &toml::Value) {
+            match (file, after) {
+                (toml::Value::Table(f), toml::Value::Table(a)) => {
+                    for (k, av) in a {
+                        let bv = before.and_then(|b| b.get(k));
+                        match f.get_mut(k) {
+                            Some(fv) if av.is_table() => merge(fv, bv, av),
+                            Some(fv) => {
+                                if bv != Some(av) {
+                                    *fv = av.clone();
+                                }
+                            }
+                            None => {
+                                if bv != Some(av) {
+                                    f.insert(k.clone(), av.clone());
+                                }
+                            }
+                        }
+                    }
+                    // Keys `after` dropped (an option set to none).
+                    let gone: Vec<String> = f
+                        .keys()
+                        .filter(|k| {
+                            !a.contains_key(*k) && before.is_some_and(|b| b.get(*k).is_some())
+                        })
+                        .cloned()
+                        .collect();
+                    for k in gone {
+                        f.remove(&k);
+                    }
+                }
+                (f, a) => {
+                    if before != Some(a) {
+                        *f = a.clone();
+                    }
+                }
+            }
+        }
+        let value = |s: &Settings| toml::Value::try_from(s).ok();
+        match (value(self), value(before), value(after)) {
+            (Some(mut f), Some(b), Some(a)) => {
+                merge(&mut f, Some(&b), &a);
+                f.try_into().unwrap_or_else(|_| after.clone())
+            }
+            _ => after.clone(),
         }
     }
 
@@ -328,6 +414,119 @@ mod tests {
             let t = format!("[enhanced]\nwidescreen = \"{w}\"\n");
             assert!(toml::from_str::<Settings>(&t).is_ok(), "{w}");
         }
+    }
+
+    #[test]
+    fn every_section_round_trips_through_a_file() {
+        use td_input::{Key, PadButton};
+        use td_sim::FlightKey;
+        let mut s = Settings {
+            data_dir: Some(PathBuf::from("C:/games/td")),
+            profile: Profile::Enhanced,
+            video: VideoSettings {
+                scale: Scale::Stretch,
+                fullscreen: true,
+            },
+            audio: AudioSettings {
+                music_volume: 0.25,
+                sfx_volume: 1.0,
+                sfx_mode: SfxMode::Polyphonic,
+            },
+            enhanced: EnhancedSettings {
+                widescreen: Widescreen::Auto,
+                upscaler: Upscaler::Scale2x,
+                lighting: Lighting::Subtle,
+                bloom: true,
+            },
+            accessibility: AccessibilitySettings {
+                colorblind_guidance: true,
+            },
+            ..Settings::default()
+        };
+        s.controls.keyboard.bind(FlightKey::Space, Some(Key::LCTRL));
+        s.controls
+            .gamepad
+            .bind(FlightKey::P, Some(PadButton::Guide));
+        let dir = std::env::temp_dir().join(format!("td2192-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        s.save(&path).unwrap();
+        let back = Settings::load(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(back, s);
+        assert_eq!(back.effective_sfx_mode(), SfxMode::Polyphonic);
+        assert!(back.effective_accessibility().colorblind_guidance);
+    }
+
+    #[test]
+    fn only_the_players_changes_reach_the_file() {
+        use td_input::Key;
+        use td_sim::FlightKey;
+        let file = Settings {
+            data_dir: Some(PathBuf::from("C:/games/td")),
+            ..Settings::default()
+        };
+        // The session: --fullscreen and --dev-enhanced on top of the file.
+        let mut session = file.clone();
+        session.video.fullscreen = true;
+        session.profile = Profile::Enhanced;
+        session.enhanced.upscaler = Upscaler::Xbr3;
+        // The player changes the scaling, the music volume and a key.
+        let mut after = session.clone();
+        after.video.scale = Scale::Integer;
+        after.audio.music_volume = 0.3;
+        after
+            .controls
+            .keyboard
+            .bind(FlightKey::Space, Some(Key::LCTRL));
+        let saved = file.with_changes(&session, &after);
+        assert_eq!(saved.video.scale, Scale::Integer);
+        assert_eq!(saved.audio.music_volume, 0.3);
+        assert_eq!(saved.controls, after.controls);
+        assert!(
+            !saved.video.fullscreen,
+            "the override stays out of the file"
+        );
+        assert_eq!(saved.profile, Profile::Classic);
+        assert_eq!(saved.enhanced, EnhancedSettings::default());
+        assert_eq!(saved.data_dir, file.data_dir);
+        // Turning an override off is a change too.
+        let mut off = session.clone();
+        off.video.fullscreen = false;
+        let mut file_fs = file.clone();
+        file_fs.video.fullscreen = true;
+        assert!(!file_fs.with_changes(&session, &off).video.fullscreen);
+        // Unchanged: the file as it is.
+        assert_eq!(file.with_changes(&session, &session), file);
+    }
+
+    #[test]
+    fn classic_forces_every_enhanced_feature_off() {
+        let s = Settings {
+            profile: Profile::Classic,
+            audio: AudioSettings {
+                sfx_mode: SfxMode::Polyphonic,
+                ..AudioSettings::default()
+            },
+            enhanced: EnhancedSettings {
+                widescreen: Widescreen::W21x9,
+                upscaler: Upscaler::Xbr4,
+                lighting: Lighting::Full,
+                bloom: true,
+            },
+            accessibility: AccessibilitySettings {
+                colorblind_guidance: true,
+            },
+            ..Settings::default()
+        };
+        assert!(s.effective_enhanced().is_off());
+        assert_eq!(s.effective_sfx_mode(), SfxMode::Classic);
+        assert_eq!(
+            s.effective_accessibility(),
+            AccessibilitySettings::default()
+        );
+        // The choices themselves are kept for when the profile changes back.
+        assert_eq!(s.enhanced.lighting, Lighting::Full);
     }
 
     #[test]
