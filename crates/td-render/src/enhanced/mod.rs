@@ -20,6 +20,9 @@
 //! the tests check. [`Pipeline`] keeps its buffers between frames, so the steady state does not
 //! allocate.
 
+pub mod bloom;
+pub mod lighting;
+pub mod lights;
 pub mod scene;
 pub mod upscale;
 pub mod widescreen;

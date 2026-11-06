@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `enhanced/presentation` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, intentional deviation, Enhanced profile only. The Classic profile is unaffected |
 | **Decision** | [ADR-0006](../../adr/0006-enhanced-presentation-pipeline.md); requested by the user, 2026-11-05 |
@@ -100,15 +100,31 @@ Upscaling works on the composed RGBA image. The factor *k* is the scale in the f
 | Source | Colour | *r* | *I* | Shadows |
 |---|---|---:|---|---|
 | Explosion, frames 1..6 | (1.0, 0.55, 0.15) | 56 | 1.6, 1.4, 1.1, 0.8, 0.5, 0.25 by frame | yes |
-| Shot kind 0 / 1 / 2 | the kind's palette colour (3Dh / 33h / 35h) | 12 / 14 / 18 | 0.9 | no |
+| Shot kind 0 / 1 / 2 | the kind's palette colour (3Dh / 33h / 35h) | 12 / 14 / 18 | 0.5 | no |
 | Missile (kinds 4..6) | (1.0, 0.8, 0.5) | 20 | 1.0 | no |
 | Muzzle flash (the tick a shot spawns) | (1.0, 0.9, 0.6) | 24 | 1.2 | no |
 | Afterburner flame | (0.6, 0.8, 1.0) | 32 | 1.3 | yes |
-| Player engine glow | (0.5, 0.7, 1.0) | 20 | 0.35 | no |
-| Mission ship engine glow | (1.0, 0.6, 0.4) | 16 | 0.25 | no |
+| Player engine glow | (0.5, 0.7, 1.0) | 22 | 0.5 | no |
+| Mission ship engine glow | (1.0, 0.6, 0.4) | 18 | 0.4 | no |
 
-- **Occluder grid**: the solid flag (`World::solid`) of every map cell in the drawn window. Each cell is 32 × 32 px at its screen position.
-- **Emissive palette indices**: pixels in these colours glow at full brightness whatever the light map says, and feed bloom. They are the shot colours (3Ch, 3Dh, 32h, 33h, 35h, BEh), the HUD lamp entries, and the explosion sprite colours. That last set is the indices used by `td.exp` frames, collected when the sprite bank loads (no fixed list).
+- **Where each source sits** (base pixels, screen position + *m*; implementation `td_render::enhanced::lights`):
+  - explosions, missiles and the flame: the centre of their 32 × 32 frame (top-left + 16), from the same mapping as the sprite blit;
+  - cannon shots: the pattern's (0, 0) pixel + 0.5;
+  - muzzle flash: one per owner (player or mission slot), at the mean centre of the shots it fired on the tick they are first drawn. That is a cannon shot of age 2 or a missile (kinds 4, 5) of age 1, because spawning sets age 1 (0 for missiles) and the next step 6 ages the shot before drawing it. Homing missiles (kind 6) keep no age and get no flash, and kind 3 is never drawn and gets none;
+  - engine glows: behind the ship's centre, against its heading, by 10 px (player) or 8 px (mission ship).
+- **Which sources are added:**
+  - explosions whenever their light circle reaches the playfield, drawn or not (OB-033 page rule, window edge), so that their light does not flicker;
+  - shots and missiles only when they are drawn;
+  - mission-ship glows only for drawn ships;
+  - the player glow while the ship is drawn;
+  - the flame while it is drawn.
+- **Occluder grid**: the solid flag (`World::solid`) of every map cell in the drawn window, plus one cell on each side, widened by ⌈*m* / 32⌉ cells. Each cell is 32 × 32 px at its screen position. Cells outside the grid are open.
+- **Emissive palette indices**: pixels in these colours glow at full brightness whatever the light map says, and feed bloom. They are:
+  - the shot colours 3Ch, 3Dh, 32h, 33h, 35h and BEh;
+  - the HUD lamp entries: compass lamps 31h, C1h, 86h, 85h, 2Fh, 2Eh, 30h and 24h, and the missile lamp 26h;
+  - the explosion sprite colours, that is, the indices used by the `td.exp` frames (bank slots 20..26), collected when the sprite bank loads (no fixed list).
+
+  Colour 0 is never emissive.
 - **Ambient** comes from the mode:
   - `subtle`: ambient (1.0, 1.0, 1.0) and no shadows. Lights only add glow, as min(1 + Σ, 1.6).
   - `full`: "night" ambient (0.38, 0.42, 0.55) with shadows. Light can lift a pixel above its daytime colour up to 1.6×.
@@ -122,21 +138,31 @@ L(p) = ambient + sum over lights l of  colour_l * I_l * falloff(|p - pos_l| / r_
 falloff(d) = (1 - d^2)^2 for d < 1, else 0
 vis_l(p)   = 1 if l does not cast shadows, else the fraction of the segment pos_l -> p
              that crosses no solid cell, softened: march in 4-px steps; each solid cell
-             crossed multiplies by 0.25; the cell containing p does not count
+             crossed multiplies by 0.25; the cells containing p and pos_l do not count
 ```
 
-- Compute L at half resolution and sample it bilinearly.
-- Emissive pixels use max(L, 1).
-- Final colour = clamp(srgb(linear(rgb) × L)), with the sRGB curve applied for the multiply.
+- **The march:**
+  - it visits the interior points pos_l + (p − pos_l) · s / n for s = 1 .. n − 1, where n = ⌈|p − pos_l| / 4⌉;
+  - a point that enters a new solid cell multiplies vis by 0.25;
+  - the march stops once vis ≤ 1/256.
+
+  The light's own cell is excluded so that a source standing on a solid cell (a flame over a building edge) does not darken its whole circle.
+- Each channel of L is clamped to 1.6 in both modes.
+- **Half resolution:** L is computed at half resolution, one sample per 2 × 2 block. Sample (*i*, *j*) sits at base point (2*i* + 1, 2*j* + 1). It is sampled bilinearly at output pixel centres, with edges clamped.
+- Emissive pixels use max(L, 1). The emissive test reads the composed indexed frame, so it uses the base pixel under the output pixel.
+- **Final colour** = clamp(srgb(linear(rgb) × L)), with the sRGB curve applied for the multiply.
+  - Implementation precision: 8-bit sRGB ↔ 14-bit linear tables with an exact round trip, and L in 12-bit fixed point.
+  - So L = 1 leaves a pixel bit-identical, and every step is integer or plain IEEE arithmetic, deterministic on every platform.
 
 ### 6.3 Bloom (M12-12, `bloom = true`)
 
-1. Take the emissive pixels and pixels whose lit luminance is above 0.9.
-2. Downsample ×4 (box filter).
-3. Blur with two passes of a 9-tap Gaussian (σ = 2 at quarter resolution).
-4. Upsample bilinearly and add at strength 0.6.
+1. Take the emissive pixels and the pixels whose lit luminance is above 0.9. Luminance is the Rec. 709 weighting (0.2126, 0.7152, 0.0722) of the linear colour.
+2. Downsample ×4 with a box filter: the mean over each 4 × 4 block, where pixels that do not pass count as black.
+3. Blur with two passes of a 9-tap Gaussian (σ = 2 at quarter resolution): horizontal, then vertical, with the edges repeated.
+4. Upsample bilinearly to output pixel centres and add at strength 0.6 in linear light, clamped.
 
-Bloom runs after upscaling, at output resolution.
+- Bloom runs after upscaling, at output resolution.
+- It covers the whole flight frame, HUD rows included, so the lamps glow. It never runs on front-end screens or the flight modals.
 
 ### 6.4 Interaction with original palette effects
 
@@ -148,6 +174,12 @@ Bloom runs after upscaling, at output resolution.
 Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release build) for the heaviest setting: 21:9, xbr4, `full` lighting and bloom. That is 560 × 200 → 2240 × 800.
 
 - Work may be parallelised by rows with `rayon` (MIT/Apache-2.0). Add it to THIRD_PARTY.md if used.
+- **Split of the budget** (rev 3):
+  - xbr4 at 560 × 200 takes about 1.3 ms on 16 threads and 1.7 ms on 6;
+  - lighting and bloom get at most 4 ms (`tests/enhanced_lighting_timing.rs`, a busy synthetic night).
+- **Measured 2026-11-05** on an i7-10700F that other builds kept fully loaded, lighting and bloom together:
+  - 3.7 ms on 16 threads (light map 0.6, modulation 1.0, bloom 2.2);
+  - 5.1 ms on 6 threads.
 - Per-frame buffers are reused, with no allocation in the steady state.
 - A `tdtool bench-enhanced` command, or a criterion-free timing test behind `--ignored`, reports the time per stage.
 
@@ -183,3 +215,4 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 |---|---|---|---|
 | 1 | 2026-11-05 | main session | Initial design from the user's request (ADR-0006) |
 | 2 | 2026-11-05 | main session | Q4-Q7 from IM-12 resolved: `profile` key, static-playfield invariant, mirrored-repeat panels, xBR coverage weights, auto tolerance |
+| 3 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |
