@@ -18,7 +18,23 @@ use td_sim::flight::ships::SHIP_SLOTS;
 use td_sim::{Flight, TickControls};
 
 use crate::flight_setup::E1Flight;
-pub use schedule::{Plan, check as check_inputs, comm_ticks, oracle_lines, write_outputs};
+pub use schedule::{
+    Plan, check as check_inputs, comm_ticks, oracle_lines, replay as replay_of, write_outputs,
+};
+pub use search::BEAM;
+
+/// The state hash without shots on two-digit headings: those differ between muzzle tables
+/// (U-160) but live only until their first move; what they hit shows in the rest of the state.
+pub fn core_hash(f: &Flight) -> u64 {
+    let mut c = f.clone();
+    // Freed slots keep their old fields, so normalise every slot last used on such a heading.
+    for s in c.shots.0.iter_mut().filter(|s| s.heading > 9) {
+        s.tile_x = 0xFF;
+        s.off_x = 0;
+        s.off_y = 0;
+    }
+    td_sim::state_hash(&c)
+}
 
 /// Ticks between replay checkpoints.
 pub const CHECKPOINT_INTERVAL: u32 = 100;
@@ -120,9 +136,36 @@ pub fn describe(t: u32, a: &Flight, b: &Flight) -> Vec<String> {
 }
 
 /// Plans flight `number` and writes the replay and the oracle scenario lines.
-pub fn run(root: &Path, number: u8, out: &Path, max_ticks: u32, verbose: bool) -> Result<()> {
+pub fn run(
+    root: &Path,
+    number: u8,
+    out: &Path,
+    max_ticks: u32,
+    verbose: bool,
+    alt_muzzles: Option<&Path>,
+    beam: usize,
+) -> Result<()> {
     let setup = E1Flight::load(root, number)?;
-    let Some(plan) = search::plan(&setup, max_ticks, verbose) else {
+    let alt =
+        match alt_muzzles {
+            Some(p) => Some(setup.with_muzzles(
+                std::fs::read(p).map_err(|e| anyhow::anyhow!("{}: {e}", p.display()))?,
+            )),
+            None => None,
+        };
+    // Flights are large values; give the search a big stack (the main thread's is 1 MB).
+    let found = std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn_scoped(s, || {
+                search::plan(&setup, alt.as_ref(), max_ticks, verbose, beam)
+            })
+            .map(|h| h.join())
+    });
+    let Ok(Ok(found)) = found else {
+        bail!("flight {number}: the search thread failed");
+    };
+    let Some(plan) = found else {
         bail!("flight {number}: no winning plan found within {max_ticks} ticks");
     };
     // Re-run the plan from scratch: it must end in success on its last tick.

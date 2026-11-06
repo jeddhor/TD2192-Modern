@@ -44,6 +44,15 @@ impl E1Flight {
         })
     }
 
+    /// The same flight with other muzzle bytes: the original reads DGROUP from DS:035C on for
+    /// ships firing on two-digit headings (U-160), where the port's table ends after 342 bytes.
+    /// `bytes` come from a capture (game-derived data: kept outside the repository).
+    pub fn with_muzzles(&self, bytes: Vec<u8>) -> Self {
+        let mut alt = self.clone();
+        alt.world.muzzles = td_sim::flight::shots::Muzzles(bytes);
+        alt
+    }
+
     /// The flight after setup, as the first flight of a program run.
     pub fn start(&self) -> Flight {
         Flight::start(

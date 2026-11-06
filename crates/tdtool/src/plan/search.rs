@@ -19,7 +19,7 @@ use crate::flight_setup::E1Flight;
 
 /// Ticks per decision.
 pub const STEP: usize = 3;
-/// Flights kept per decision.
+/// Flights kept per decision (default; `tdtool plan --beam`).
 pub const BEAM: usize = 24;
 
 /// Guidance markers (mission-logic §2).
@@ -49,6 +49,8 @@ const DIRS: [&[FlightKey]; 9] = [
 #[derive(Debug, Clone)]
 struct Node {
     flight: Flight,
+    /// The same flight with the other muzzle bytes (`--alt-muzzles`), kept identical.
+    alt: Option<Flight>,
     /// Keys down in the last tick.
     keys: Vec<FlightKey>,
     parent: usize,
@@ -144,7 +146,16 @@ fn line_of_fire(f: &Flight, world: &World) -> Option<u8> {
     if f.mission_over {
         return None;
     }
-    let d = heading_dir(f.player.heading.code())?;
+    // The volley of the next tick (step 33) leaves on the heading after that tick's turn step
+    // (step 3). Never fire on a two-digit heading: the muzzle offsets then come from DGROUP
+    // bytes past the table (U-160), which the port does not have.
+    let p = &f.player;
+    let next = match (p.target != p.heading, p.turn) {
+        (true, td_sim::flight::player::Turn::Clockwise) => p.heading.cw(),
+        (true, td_sim::flight::player::Turn::CounterClockwise) => p.heading.ccw(),
+        _ => p.heading,
+    };
+    let d = heading_dir(next.code())?;
     let v = f.player.view;
     // Volley origin (weapons §4.2): tile (viewX + 4, viewY + 3), offsets ≈ (subX − 16 + 16,
     // subY − 28 + 11) for the middle muzzles.
@@ -296,8 +307,15 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
 }
 
 /// Runs one decision from `node`: [`STEP`] ticks of `action`.
-fn expand(node: &Node, action: Action, world: &World, g: &Goals) -> Option<Node> {
+fn expand(
+    node: &Node,
+    action: Action,
+    world: &World,
+    alt_world: Option<&World>,
+    g: &Goals,
+) -> Option<Node> {
     let mut f = node.flight.clone();
+    let mut alt = node.alt.clone();
     let mut prev = node.keys.clone();
     let mut inputs = Vec::with_capacity(STEP);
     for t in 0..STEP {
@@ -314,6 +332,13 @@ fn expand(node: &Node, action: Action, world: &World, g: &Goals) -> Option<Node>
         let w = schedule::word(&prev, &down);
         inputs.push(w);
         let r = td_sim::replay::step(&mut f, world, w);
+        if let (Some(a), Some(aw)) = (alt.as_mut(), alt_world) {
+            td_sim::replay::step(a, aw, w);
+            if super::core_hash(a) != super::core_hash(&f) {
+                // The muzzle bytes past the table (U-160) changed the flight: avoid it.
+                return None;
+            }
+        }
         prev = down;
         if f.lost || (f.mission_over && !f.succeeded) {
             return None;
@@ -322,6 +347,7 @@ fn expand(node: &Node, action: Action, world: &World, g: &Goals) -> Option<Node>
             if f.succeeded {
                 let mut n = Node {
                     flight: f,
+                    alt,
                     keys: prev,
                     parent: 0,
                     inputs,
@@ -337,6 +363,7 @@ fn expand(node: &Node, action: Action, world: &World, g: &Goals) -> Option<Node>
     let score = score(&f, world, g);
     Some(Node {
         flight: f,
+        alt,
         keys: prev,
         parent: 0,
         inputs,
@@ -370,8 +397,15 @@ fn diversity_key(f: &Flight) -> (i16, i16, i16, i16, u8, u8, u32, [u8; 4]) {
 }
 
 /// Searches for a winning plan.
-pub fn plan(setup: &E1Flight, max_ticks: u32, verbose: bool) -> Option<Plan> {
+pub fn plan(
+    setup: &E1Flight,
+    alt: Option<&E1Flight>,
+    max_ticks: u32,
+    verbose: bool,
+    beam_width: usize,
+) -> Option<Plan> {
     let world = &setup.world;
+    let alt_world = alt.map(|a| &a.world);
     let start = setup.start();
     let home = home_views(setup.number)
         .into_iter()
@@ -386,6 +420,7 @@ pub fn plan(setup: &E1Flight, max_ticks: u32, verbose: bool) -> Option<Plan> {
     let mut beam = vec![Node {
         score: score(&start, world, &g),
         flight: start,
+        alt: alt.map(E1Flight::start),
         keys: vec![],
         parent: 0,
         inputs: vec![],
@@ -407,7 +442,7 @@ pub fn plan(setup: &E1Flight, max_ticks: u32, verbose: bool) -> Option<Plan> {
                 actions
                     .into_iter()
                     .filter_map(|a| {
-                        expand(node, a, world, &g).map(|mut n| {
+                        expand(node, a, world, alt_world, &g).map(|mut n| {
                             n.parent = i;
                             n
                         })
@@ -442,7 +477,7 @@ pub fn plan(setup: &E1Flight, max_ticks: u32, verbose: bool) -> Option<Plan> {
         for c in children {
             if keys.insert(diversity_key(&c.flight)) {
                 next.push(c);
-                if next.len() == BEAM {
+                if next.len() == beam_width {
                     break;
                 }
             }

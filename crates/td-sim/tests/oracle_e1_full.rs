@@ -358,13 +358,13 @@ fn check(flight: u8) {
     assert_eq!(ds.len(), proj.len(), "{name}: record counts");
     // Records by counter value (stall records apart).
     let mut by_tick = std::collections::BTreeMap::new();
-    let mut stall = None;
+    let mut stalls = std::collections::BTreeMap::new();
     for (i, rec) in ds.iter().enumerate() {
         assert_eq!(rec.value, proj[i].value, "{name}: record {i}");
         if rec.value & STALL == 0 {
             by_tick.insert(rec.value, i);
         } else {
-            stall = Some(i);
+            stalls.insert(rec.value & !STALL, i);
         }
     }
     let dump = |i: usize| Dump {
@@ -382,6 +382,18 @@ fn check(flight: u8) {
     };
     let mission = Mission::parse(&dir.read(&format!("m{flight}.td")).unwrap()).unwrap();
     let mut f = Flight::start(flight, Some(&mission), &world, Session::new());
+    let mut known = vec![];
+    // Known divergence BUG-2 (weapons §3.2: classes 0 and 1 keep the weapon of the previous
+    // flight; at program start the original's g_Weapon is 0, td-sim's 1): copied from the
+    // original so that the rest of flight 19 can be compared.
+    if f.player.class <= 1 && f.weapon != first.u8(0x1CB8) {
+        known.push(format!(
+            "setup: weapon ours {} orig {} (BUG-2, copied)",
+            f.weapon,
+            first.u8(0x1CB8)
+        ));
+        f.weapon = first.u8(0x1CB8);
+    }
 
     // Setup: the record of tick 1 holds the state after setup (plus tick 1's turn step).
     let mut errs = differences(&f, &first);
@@ -402,12 +414,22 @@ fn check(flight: u8) {
         let mut result = f.tick(&world, &c, &mut ev);
         while let TickResult::Modal(_) = result {
             cov.comm_viewers.push(t);
+            // The host's part (hit-flash rev 2 §4.2): the screen's fades zero g_HitFlash,
+            // as td2192 does when it resumes the tick.
+            f.hit_flash = 0;
             result = f.resume(&world, &td_sim::TickControls::default(), &mut ev);
         }
+        // The host's part for the real-time interlude of step 18 (mission-logic §5.17): the
+        // flight-17 cut-scene fades out and back, which zeroes g_HitFlash (hit-flash §4.2).
+        if f.mission.scene == 17 {
+            f.hit_flash = 0;
+        }
+        // After the last tick: the stall record of that tick when the original stopped there
+        // too, else the record of the tick it went on to fly.
         let idx = if t < n {
             by_tick.get(&(t + 1)).copied()
         } else {
-            stall
+            by_tick.get(&(t + 1)).or_else(|| stalls.get(&t)).copied()
         };
         let Some(i) = idx else {
             panic!(
@@ -456,7 +478,8 @@ fn check(flight: u8) {
         "{name} flight {flight}: (outcome, succeeded, lost) after teardown"
     );
     eprintln!(
-        "{name} flight {flight}: PASS {} ticks, {} slot-ticks, kills {}, outcome {}, comm {:?}, events {:?}",
+        "{name} flight {flight}: PASS {} ticks, {} slot-ticks, kills {}, outcome {}, comm {:?}, \
+         known divergences {known:?}, events {:?}",
         cov.ticks,
         cov.slot_ticks,
         f.kills,
