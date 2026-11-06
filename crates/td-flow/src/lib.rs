@@ -13,6 +13,7 @@ pub mod program;
 pub mod program_e2;
 pub mod program_e3;
 pub mod save_screens;
+pub mod scene_card;
 pub mod scenes_e2;
 pub mod scenes_e3;
 pub mod screen;

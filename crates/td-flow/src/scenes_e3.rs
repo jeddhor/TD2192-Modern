@@ -2,7 +2,7 @@
 //!
 //! Spec: `docs/re/episode-deltas.md` rev 3 §9.2 (E3 table: anchors, styles, inks, waits),
 //! `docs/spec/flow/e3-program-flow.md` rev 1 §3.3 (waits; every timed wait flushes the keyboard
-//! on entry, §3.5). The cards are drawn by [`crate::scenes_e2::scene_card_with`]; only the
+//! on entry, §3.5). The cards are drawn by [`crate::scene_card`]; only the
 //! layouts are E3's. Fidelity: T0 for the pictures, T2 for the fades and waits.
 //!
 //! Rows marked "as E1" or "as E2" in the table take that episode's layout (E1: render/text
@@ -10,11 +10,12 @@
 //! - `tdlab`, `vidcom`: E2's (`crate::scenes_e2`).
 //! - `marauder`: E1's, which E2's `marauder` also uses, so it is taken from `crate::scenes_e2`
 //!   (the joined caption line of text §4.5.1, the background 15 rows down).
-//! - `vhang`: (20, 170) s3, entry 165 = (14, 38, 63); `intro2`: (50, 90) plain, entry 140 =
-//!   (0, 0, 0); `vlab`: (180, 170) s3, entry 32 = (14, 38, 63); 10 s each.
+//! - `vhang`, `intro2`, `vlab`: E1's routines (`crate::story::e1_scene_layout`): (20, 170) s3,
+//!   entry 165 = (14, 38, 63); (50, 90) plain, entry 140 = (0, 0, 0); (180, 170) s3, entry 32 =
+//!   (14, 38, 63); 10 s each.
 //!
 //! `maraud3` ("one joined line at (5, 2)", plain): the captions joined as `marauder` joins them
-//! (A + 4 spaces + B + 3 spaces + C + 3 spaces, text §4.5.1) and drawn as one line at (5, 2).
+//! (A + 4 spaces + B + 3 spaces + C + 3 spaces, text §4.5.1, `Captions::Joined`) at (5, 2).
 //! Black-box C-0041 f946 (captions 7.2, `_`, `_`) confirms the pen, the style and the ink;
 //! ASSUMPTION(U-350): the separators are `marauder`'s (no capture with a second caption).
 //!
@@ -23,7 +24,8 @@
 use td_assets::DataDir;
 use td_formats::palette::Rgb6;
 
-use crate::scenes_e2::{self, Captions, Layout, Shadow};
+use crate::scene_card::{self as card, Captions, Layout, Shadow};
+use crate::scenes_e2;
 use crate::story::{StoryAssets, StoryError, StoryScreen};
 
 /// The backgrounds of the E3 scene routines (e3-program-flow §4.4 abbreviations).
@@ -101,10 +103,9 @@ const fn picture(file: &'static str, secs: u32) -> Layout {
     }
 }
 
-/// The caption line of the joined-line cards (render/text rev 2 §4.5.1, `marauder`):
-/// A + 4 spaces + B + 3 spaces + C + 3 spaces.
-pub fn joined(text: [&str; 3]) -> String {
-    format!("{}    {}   {}   ", text[0], text[1], text[2])
+/// E1's layout of `file` (render/text rev 2 §4.5.1).
+fn e1(file: &str) -> Layout {
+    *crate::story::e1_scene_layout(file).expect("an E1 scene card")
 }
 
 impl Bg {
@@ -119,20 +120,19 @@ impl Bg {
             Bg::Lab => scenes_e2::Bg::Lab.layout(),
             Bg::Mar => scenes_e2::Bg::Mar.layout(),
             Bg::Mr2 => lines("maraud2.scr", (180, 170), O6, (255, rgb(63, 5, 5)), 10),
-            // The joined line is the first of three lines (`scene_card` joins the captions).
             Bg::Mr3 => Layout {
                 file: "maraud3.scr",
-                captions: Captions::Lines((5, 2)),
+                captions: Captions::Joined((5, 2)),
                 shadow: Plain,
                 ink: (83, rgb(63, 15, 63)),
                 secs: 10,
                 down: 0,
             },
             Bg::Vid => scenes_e2::Bg::Vid.layout(),
-            Bg::Vhg => lines("vhang.scr", (20, 170), S3, (165, rgb(14, 38, 63)), 10),
-            Bg::In2 => lines("intro2.scr", (50, 90), Plain, (140, rgb(0, 0, 0)), 10),
+            Bg::Vhg => e1("vhang.scr"),
+            Bg::In2 => e1("intro2.scr"),
             Bg::Sh0 => lines("shuttle0.scr", (10, 170), O4, YELLOW, 15),
-            Bg::Vlb => lines("vlab.scr", (180, 170), S3, (32, rgb(14, 38, 63)), 10),
+            Bg::Vlb => e1("vlab.scr"),
             Bg::Cnv => lines("convers.scr", (10, 10), Plain, RED, 10),
             Bg::Sel => lines("sel-pain.scr", (120, 180), Plain, RED, 15),
             Bg::Mel => lines("melting.scr", (120, 180), Plain, RED, 15),
@@ -153,14 +153,7 @@ pub fn scene_card(
     bg: Bg,
     text: [&str; 3],
 ) -> Result<StoryScreen, StoryError> {
-    let line;
-    let text = if bg == Bg::Mr3 {
-        line = joined(text);
-        [line.as_str(), "", ""]
-    } else {
-        text
-    };
-    scenes_e2::scene_card_with(data, assets, &bg.layout(), text).map(|s| s.flushing_waits(true))
+    card::scene_card(data, assets, &bg.layout(), text).map(|s| s.flushing_waits(true))
 }
 
 /// A title card (`Scene_MissionTitle(text, 3Fh, 0, 0)` `04A0:4663`): E1's text card; its wait
@@ -183,6 +176,19 @@ mod tests {
         assert_eq!(Bg::Aboutus.layout().secs, 30);
         assert_eq!(Bg::Kol.layout().secs, 10);
         assert_eq!(Bg::Sel.layout().file, "sel-pain.scr");
+    }
+
+    #[test]
+    fn as_e1_cards() {
+        // render/text rev 2 §4.5.1.
+        let l = Bg::Vhg.layout();
+        assert_eq!(
+            (l.captions, l.shadow, l.ink.0),
+            (Captions::Lines((20, 170)), Shadow::S3, 165)
+        );
+        assert_eq!(Bg::In2.layout().captions, Captions::Lines((50, 90)));
+        assert_eq!(Bg::Vlb.layout().ink, (32, card::rgb(14, 38, 63)));
+        assert_eq!(Bg::Mar.layout().down, 15);
     }
 
     #[test]
