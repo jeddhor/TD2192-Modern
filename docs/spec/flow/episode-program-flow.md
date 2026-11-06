@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/episode-program-flow` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 for the order of screens, scenes, dialogue, music and flights (the player sees it); T1 for the state that flows between missions (mission number, kills, outcome flags); T3 for the text-mode configuration screen and the `tdstatus.dat` hand-off (replaced by the port's own shell) |
 | **Confidence** | LIKELY overall (static analysis of the complete sequencer and menu). The mission-1 path is CONFIRMED by capture C-0002 (config → script choice → menu → title card → hangar card → dialogue → hint → flight → retry) |
@@ -220,7 +220,7 @@ Debrief `Flow_Debrief` `051A:6FF2(kills, kills_to_date, outcome)` shows the miss
 | 5 | 8 | joystick calibration words DS:1F5C, DS:1F5A, DS:1F58, DS:1F56 |
 | 13 | 1 | script choice (DS:0D28) |
 
-When the status is non-zero the program skips the script choice and joystick calibration and goes straight to the menu with the restored cursor and game. The file is truncated to 0 bytes on every start. Which program the launcher runs for each status is M1-10.
+When the status is non-zero the program skips the script choice and joystick calibration and goes straight to the menu with the restored cursor and game. The file is truncated to 0 bytes on every start. The launcher runs `order.exe` for status 1 and `aboutus.exe` for status 2 (with `intro.cmf` playing), then this program again with the same first parameter ([launcher](launcher.md) §4.4; C-0049, C-0050).
 
 ### 4.7 Diagram
 
@@ -289,7 +289,7 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 
 - [x] Q1: answered in [screens](screens.md) §2.2 (U-123).
 - [ ] Q2 (U-038): the WORX calls `2C37:0378(0/1)` around the endings (pause/resume sound effects?).
-- [ ] Q3 (M1-10): which extra program the launcher runs for status 1 and 2, and whether it passes switches back.
+- [x] Q3 (M1-10): answered in [launcher](launcher.md) §4.4: status 1 → `order.exe`, 2 → `aboutus.exe`; the launcher passes its first parameter to every run of this program.
 - [ ] Q4 (U-044): what flight 21 shows.
 
 ## 9. Provenance
@@ -313,3 +313,4 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial: start-up, menu, complete E1 mission sequence, endings, debrief tiers, tdstatus.dat |
 | 2 | 2026-11-02 | RE-8 | `td1-15.pic` is a plain still (U-122); retry prompt calls `Random` (U-124); skip tests per step in [screens](screens.md) §3.12 (U-125); Q1 answered (U-123) |
 | 3 | 2026-11-05 | RE-10 (Spec author, U-252) | §4.2: items 0 and 3 flush the BIOS keyboard buffer after `Main_CampaignLoop` returns (`0000:390A..391D`, `3B97..3BAA`; keys typed during the block do not reach the menu) |
+| 4 | 2026-11-05 | RE-13 | §4.6 and Q3: which extra the launcher runs per status ([launcher](launcher.md)); no behaviour change |
