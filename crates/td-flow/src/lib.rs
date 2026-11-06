@@ -11,6 +11,7 @@ pub mod main_menu;
 pub mod program;
 pub mod program_e2;
 pub mod save_screens;
+pub mod scene_card;
 pub mod scenes_e2;
 pub mod screen;
 pub mod settings;

@@ -670,3 +670,31 @@ fn tdoffic2_card_matches_c0016() {
     let s = faded_in(s);
     compare(s.screen(), &oracle, "C-0016", "f00001318_320x200_to2.vga");
 }
+
+#[test]
+fn hyde_card_matches_c0046() {
+    // Block 10's hyde card, hyd[9.2/9.3/1.1]: E1 voffice's centred, o4-outlined layout at
+    // y 5/15/25 in entry 3 = (63, 63, 63) (text.md rev 2 §4.5.1, episode-deltas §9.2). The
+    // pixels are the same in every frame f2123..f2187 (fade-in, Space, fade-out). The DAC
+    // peaks at f2155, a frame dumped during the last fade-in step's DAC write (entries 0..16
+    // at the full level, entry 17 and up one level lower), so only entry 3 is compared.
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let (dir, res) = load().unwrap();
+    let assets = StoryAssets::load(&dir).unwrap();
+    use campaign_e2::Cap::C;
+    let t = caption_texts(&res, [C(9, 2), C(9, 3), C(1, 1)]);
+    let s = scenes_e2::scene_card(&dir, &assets, Bg::Hyd, [&t[0], &t[1], &t[2]]).unwrap();
+    let s = faded_in(s);
+    for f in (2123..=2187).step_by(4) {
+        let name = format!("f{f:08}_320x200_hyde.vga");
+        let (dac, frame) = oracle_frame(&oracle, "C-0046", &name);
+        let diffs = (0..64_000)
+            .filter(|&i| s.screen().pixels[i] != frame[i])
+            .count();
+        assert_eq!(diffs, 0, "f{f}: pixels differ");
+        if f == 2155 {
+            assert_eq!(s.screen().palette.colors[3], dac.colors[3], "entry 3");
+        }
+    }
+}
