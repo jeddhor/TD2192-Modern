@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/sfx-policy` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for the `Random` calls of the PC-speaker path (they advance the shared RNG, [bp7 §4.1](../core/bp7-runtime-semantics.md#41-random-number-generator)) and for the Real48 distance; T2 for what is heard |
 | **Confidence** | Algorithm, tables, call sites: CONFIRMED (static, full read of `file0001:1E2A:006A..064F`). Which game event each call site stands for: HYPOTHESIS |
 | **Tasks** | M1-02 (feeds M3-06, M8-03) |
-| **Unknowns** | U-021 (resolved), U-030 (resolved), U-082, U-083 |
+| **Unknowns** | U-021 (resolved), U-030 (resolved), U-082, U-083, U-410 (resolved) |
 
 ## 1. Summary
 
@@ -100,12 +100,12 @@ else if Device = 2:
     current_priority := Id div 20            # distance not included
 ```
 
-`current_priority` returns to 0 at the start of each mission and, during flight, on every tick at which WORX reports no digital sound playing (`0E8B:E526..E536`). So:
+`current_priority` returns to 0 at the start of each mission and, during flight, on every tick at which WORX reports no digital sound playing (`0E8B:E526..E536`). WORX's "playing" status is not the end of the audio: it stays set for a fixed time after each effect starts, given exactly by [voc-and-adpcm §2.3](voc-and-adpcm.md#23-the-playing-status-worx-function-08h-u-410) (U-410). With E1 started from `td1` (r = 250) a `boomboom` (1.76 s of sound) holds priority 5 for 1.882 s and an `income` chime (1.39 s) holds priority 10 for 1.470 s; the reset happens on the first flight tick after that. So:
 
 - **One digital voice** (U-021): a new effect always replaces the playing one when it is allowed to play. There is no mixing and no queue.
 - Equal priority preempts. Explosions (100) cannot be cut by ids 0..10 until they end, and income (200) cannot be cut by anything below 200.
 - An effect with `dist ≥ 15` tiles gets a negative priority and never plays (even when idle, the idle priority 0 is greater). For id 100 the limit is 90 tiles, and for 200 it is 165 tiles.
-- At mission end, with device 2, the game waits until the digital sound has finished (`0E8B:F990..F99E`).
+- At mission end, with device 2, the game waits until WORX's playing status clears (`0E8B:F990..F99E`), i.e. until the busy time of voc-and-adpcm §2.3 has passed since the last effect started, not merely until the sound ends.
 
 ### 4.3 Volume and panning (Sound Blaster)
 
@@ -173,6 +173,7 @@ The `Random` calls happen only on the device-3 path, and only when the speaker p
 | 7 | Device 2, Id 100 playing, then Id 9 with no position | Id 9 is dropped until the explosion ends | static |
 | 8 | Device 3, RandSeed = 0 at program start, Id 9 then Id 2 (idle) | queue after Id 9: `20, 0`; after Id 2: `240, 268, 282, 0`; RandSeed afterwards `33DC589Ch` (4 calls) | static + [bp7 §4.1](../core/bp7-runtime-semantics.md#41-random-number-generator) |
 | 9 | Device 3, Id 100 | exactly 21 `Random(10)` calls | static |
+| 10 | Device 2, E1 started directly (r = 58), flight 1 at 18.52 ticks/s: an enemy `boomboom` (Id 100) | `current_priority` 5 from the tick of the explosion (C-0072 frame 1441) to the first tick after 1.903 s (observed: 0 in the dump of frame 1576, 1.926 s later) | C-0072; voc-and-adpcm §2.3 |
 
 
 ## 7. Presentation and audio hooks
@@ -203,3 +204,4 @@ The port's audio layer needs: one "digital effect" voice with stop-and-replace s
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | Initial |
 | 2 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.2 event of every call site confirmed or corrected (U-083): 200 is the incoming-transmission chime; the `56ED` sites are the player destruction sequence; the helicopter volley uses id 2; kind-6 kills request 100 twice |
+| 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.2: the priority reset and the mission-end wait follow WORX's playing status, whose duration is now exact (voc-and-adpcm §2.3, U-410); vector 10 (C-0072) |

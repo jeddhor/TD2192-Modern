@@ -278,19 +278,14 @@ pub fn redraw_overlays_e3(
     }
 }
 
-/// Draws a ship frame (colour 0 transparent) at the player's screen position. `frame` is a
-/// square frame of `size` pixels centred like a 32 × 32 base frame (40 × 40 heading frames
-/// have the base frame at offset (4, 4)).
+/// Draws a ship frame (colour 0 transparent) with its top-left corner at the player's screen
+/// position [`SHIP_POS`]. `frame` is a square frame of `size` pixels: a 32 × 32 sprite, or a
+/// 40 × 40 heading frame of `crate::headings`, whose box starts at the frame's corner. Every
+/// heading blit draws from the sprite position's corner, so a 40 × 40 box reaches 8 pixels
+/// further right and down than a 32 × 32 one; it is not centred (`flight-screens.md` rev 3
+/// §4.9, U-360).
 pub fn draw_player_ship(fb: &mut Framebuffer, frame: &[u8], size: usize) {
-    let inset = (size as i32 - 32) / 2;
-    let vp = Viewport::of(fb);
-    fb.blit(
-        Image::new(frame, size, size),
-        SHIP_POS.0 - inset + vp.margin(),
-        SHIP_POS.1 - inset,
-        vp.playfield(),
-        Some(0),
-    );
+    draw_sprite(fb, frame, size, SHIP_POS);
 }
 
 /// Pixel offsets of one bracket colour, with that colour for markers 32h and 39h.
@@ -382,13 +377,14 @@ pub fn mission_ship_pos_in(
     let (ox, oy) = view.page_origin();
     let pos = (x - ox, row - 32 - oy);
     let rows_ok = (view.tile_y..=view.tile_y + 5).contains(&ty) && row + 232 * page > 32;
-    (rows_ok && vp.spans((pos.0 & !3) - 4, 40)).then_some(pos)
+    (rows_ok && vp.spans(pos.0 & !3, 40)).then_some(pos)
 }
 
 /// Draws a mission ship at `pos` (from [`mission_ship_pos`]): its heading frame (colour 0
-/// transparent; `size` 32, or 40 with the 32 × 32 base frame at (4, 4)) with x rounded down to
-/// a multiple of 4 like every planar sprite blit (`flight-screens.md` §2), then the target
-/// brackets of its marker, which are single pixels at the exact x.
+/// transparent; `size` 32, or 40 for a heading frame whose box starts at its corner,
+/// `flight-screens.md` rev 3 §4.9) with x rounded down to a multiple of 4 like every planar
+/// sprite blit (`flight-screens.md` §2), then the target brackets of its marker, which are
+/// single pixels at the exact x.
 pub fn draw_mission_ship(
     fb: &mut Framebuffer,
     frame: Option<(&[u8], usize)>,
@@ -419,15 +415,16 @@ pub fn put_playfield(fb: &mut Framebuffer, x: i32, y: i32, color: u8) {
     }
 }
 
-/// Draws a sprite frame (colour 0 transparent) with the 32 × 32 base frame's top-left corner at
-/// screen `pos`; `size` 40 frames have the base frame at (4, 4).
+/// Draws a sprite frame of `size` × `size` pixels (colour 0 transparent) with its top-left
+/// corner at screen `pos`. The heading blits draw their 32 × 32 or 40 × 40 box from the
+/// sprite position's corner (`flight-screens.md` rev 3 §4.9), so a heading frame of
+/// `crate::headings` is drawn at the same corner as a plain 32 × 32 sprite.
 pub fn draw_sprite(fb: &mut Framebuffer, frame: &[u8], size: usize, (x, y): (i32, i32)) {
-    let inset = (size as i32 - 32) / 2;
     let vp = Viewport::of(fb);
     fb.blit(
         Image::new(frame, size, size),
-        x - inset + vp.margin(),
-        y - inset,
+        x + vp.margin(),
+        y,
         vp.playfield(),
         Some(0),
     );
@@ -671,7 +668,7 @@ pub fn shot_look_in(
         4..=6 => {
             let visible = (view.tile_y + 2..=view.tile_y + 5).contains(&ty)
                 && matches!(heading, 1..=4 | 6..=9)
-                && vp.spans(sprite_screen(view, (x, y)).0 - 4, 40);
+                && vp.spans(sprite_screen(view, (x, y)).0, 40);
             visible.then(|| missile_look(kind, heading, (x, y)))
         }
         _ => None,

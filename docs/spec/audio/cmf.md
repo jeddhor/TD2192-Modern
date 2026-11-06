@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/cmf` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for the OPL register-write stream (it is fully determined, and the port can reproduce it write for write); T2 for the resulting audio |
 | **Confidence** | CONFIRMED. Three lines of evidence: (1) static reading of the WORX player (`file0001:2C37`); (2) the WORX code run on an 8086 interpreter reproduces all 4,364 OPL writes of the DOSBox-X capture C-0001 in order and value; (3) an independent model written from this spec reproduces the emulated driver exactly on all 17 shipped songs (146,595 writes, same tick, register and value) |
 | **Tasks** | M3-04, M3-05 |
-| **Unknowns** | U-007 (resolved), U-034 (resolved) |
+| **Unknowns** | U-007 (resolved), U-034 (resolved), U-401 (resolved) |
 
 ## 1. Summary
 
@@ -121,6 +121,8 @@ track position, running status, delay counter
 5. Copy the instrument records into `bank` (§3.2).
 6. Track position := music offset. `delay` := the first delta time (variable-length quantity). `playing := true`.
 
+The start runs no event itself. When the game calls it (not the loop restart), the whole call runs with interrupts disabled (INT 63h, no `STI` on the way) and takes longer than the timer period then in force: about 100 OPL writes (9.8 ms at P1) come before the PIT write of step 4, against 2.0 ms when WORX is idle (500 Hz) or 10.4 ms while a previous song set 96 Hz. So a timer interrupt is latched during the call and is serviced as soon as the call returns; with `playing` now set, it runs the song's first tick (§4.4) at once. The PIT write restarts the counter, so the second tick comes one full period after it. U-401.
+
 If the file does not start with `CTMF`, steps 1–3 still happen and the rest is skipped (the game never passes such a file; what the player does next was not traced).
 
 ### 4.4 Each tick
@@ -135,7 +137,7 @@ tick():
     delay := next delta time (variable-length quantity)
 ```
 
-So an event with delta `d` after an event at tick T is executed at tick T + d (d = 0: same tick). The first event of a song runs at tick `d0 + 1`, counting the first tick after the start as tick 1. After a loop restart (§4.8) it runs `d0` ticks after the end-of-track tick.
+So an event with delta `d` after an event at tick T is executed at tick T + d (d = 0: same tick). Counting the ticks of a song from 1, the first event runs at tick `d0 + 1`, and **tick 1 runs at the start itself** (§4.3): tick k runs (k − 1) × P after the start, P = 1/96.0067 s. An event whose delta times up to and including its own sum to D therefore sounds D × P after the start (d0 = 0: at once). After a loop restart (§4.8) the next pass's first event runs `d0` ticks after the end-of-track tick, as before. So every pass of a looping song, the first included, lasts L ticks, L = the sum of all its delta times (`menu.cmf`: L = 4,841, C-0073).
 
 #### 4.4.1 Event decoding
 
@@ -236,7 +238,7 @@ Function 1Dh sets `loop` (game: 0 before the non-repeating death theme, 1 after)
 
 ### 4.10 What a port must do
 
-- Run the event interpreter at `1193180 / (1193180 div clock)` Hz (96.0067 Hz for every shipped song), independent of the game tick.
+- Run the event interpreter at `1193180 / (1193180 div clock)` Hz (96.0067 Hz for every shipped song), independent of the game tick, with the first tick at the moment of the song start (§4.4), not one period later.
 - Reproduce §4.3–§4.9 exactly: same writes in the same order. Feed them to the OPL emulator (`td-opl`).
 - Keep the cross-song state (bank leftovers, channel volumes, `gm_drums`) for the whole session, as the original does.
 
@@ -257,7 +259,7 @@ Function 1Dh sets `loop` (game: 0 before the non-repeating death theme, 1 after)
 
 ### 6.1 Synthetic songs
 
-Our own test songs (two made-up instruments: I0 = `01 11 4F 00 F1 F2 53 74 00 00 06`, I1 = `21 31 8A 90 E2 D3 15 26 01 02 0B`), played on the emulated original driver; the model gives the same output. Writes after the song-start block, as `reg=val`.
+Tick numbers count from 1 = the tick run at the song start (§4.4). Our own test songs (two made-up instruments: I0 = `01 11 4F 00 F1 F2 53 74 00 00 06`, I1 = `21 31 8A 90 E2 D3 15 26 01 02 0B`), played on the emulated original driver; the model gives the same output. Writes after the song-start block, as `reg=val`.
 
 | # | Events (delta: event) | Expected writes |
 |---|---|---|
@@ -275,7 +277,8 @@ Our own test songs (two made-up instruments: I0 = `01 11 4F 00 F1 F2 53 74 00 00
 | # | Setup | Expected | Evidence |
 |---|---|---|---|
 | C1 | `intro1.cmf`, `intro.cmf`, `intro2.cmf` as played by `file0000` (loop off, intro1 stopped after 1937 ticks, intro2 started 2 ticks after intro ended, stop at tick 12634) | The 4,364 writes in C-0001's DRO, from the first key-on to the stop, in order and value (the DRO drops writes that do not change a register; apply the same filter) | C-0001 `file0000_000.dro` |
-| C2 | Any song, tick k | Register writes at 10.4159 ms × k from the start; capture timing agrees within −18..+11 ms | C-0001 |
+| C2 | Any song, tick k | Register writes at 10.4159 ms × (k − 1) from the start; capture timing agrees within −18..+11 ms after aligning each song (C-0001) | C-0001 |
+| C4 | `menu.cmf`, looping on, started from the menu loader | Song-start PIT write → first restart's PIT write = restart → restart = 4,841 ticks + 9.8 ms (the restart's own writes before its PIT write); first note 8.8 ms after the song-start PIT write | C-0073 |
 | C3 | Durations at 96 ticks/s | climax 53.8 s, death 28.8 s, hangar 48.1 s, intro 84.0 s, td01 116.0 s, vulture 100.0 s (sum of delta times / 96, plus one tick) | data survey |
 
 ## 7. Open questions
@@ -284,7 +287,7 @@ Our own test songs (two made-up instruments: I0 = `01 11 4F 00 F1 F2 53 74 00 00
 - [x] U-034: velocity. Resolved: ignored; level = f(carrier TL, channel volume).
 - [x] Loop behaviour. Resolved: §4.8.
 - [x] Transpose units. Resolved: §4.7 (22 units per semitone, applied at the next output).
-- [ ] U-401 (VE-3, C-0073): §4.4 "the first event runs at tick d0 + 1" disagrees with the capture. `menu.cmf` looping twice: song start → first restart and restart → restart are both 4,841.94 PIT periods (4,841 ticks + 9.8 ms to the restart's PIT write), and the first note sounds 8.8 ms after the song-start PIT write. So the first event runs in the start call, as after a loop restart. The loop restart itself (§4.8) matches write for write ([M3-audio](../../parity/M3-audio.md) rows 12, 12a).
+- [x] U-401 (VE-3, C-0073; resolved by RE-16): the first tick runs as the start call returns, through a timer interrupt latched while the call ran with interrupts disabled (§4.3, §4.4). Statically the start (`2C37:4791..4877`) only sets `delay := d0` and `playing`; the INT 63h handler (`2C37:34EE..3530`) and the OPL write routine (`2C37:3CAF`) never enable interrupts. C-0073: every pass, the first included, is 4,841.94 PIT periods; `menu.cmf`'s delta times sum to exactly 4,841. If no interrupt is latched (a song change that lands early in a 96 Hz period: about 6 % of changes at P1), the first tick comes one period after the PIT write; the port does not model that (T2, one tick).
 
 ## 8. Provenance
 
@@ -300,6 +303,7 @@ All addresses are `file0001:` image-relative. `file0000` (intro) and `td1` link 
 | Init and stop | `2C37:41E5..4232`, `2C37:427F..42DB`, `2C37:3CDA` | same | CONFIRMED |
 | Tables | `2C37:2F56`, `2F80`, `2F6E`, `2F77`, `2FBF`, `31AB`, `31AC`, `2EC3`, `2E9B` | file bytes | CONFIRMED |
 | Whole-stream agreement | C-0001; 17 songs × (one pass + loop) | emulation vs DRO; model vs emulation | CONFIRMED |
+| First tick at the start (latched interrupt) | `2C37:4791..4877`, `2C37:34EE..3530`, `2C37:3CAF`; C-0073 | static + capture | CONFIRMED |
 
 ## 9. Revision history
 
@@ -307,3 +311,4 @@ All addresses are `file0001:` image-relative. `file0000` (intro) and `td1` link 
 |---|---|---|---|
 | 1 | 2026-11-02 | main session (SP) | Initial |
 | 2 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | WORX playback semantics: clock from 0x0C, −12 note offset, dynamic voice allocation, velocity ignored, volume scaling, transpose step, toggled drums with a fixed kit, lazy instrument loads, loop/stop. Synthetic and capture vectors. Replaces the SBFMDRV assumptions of rev 1 |
+| 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | U-401: the first tick of a song runs at the start (a timer interrupt latched during the start call), so the first event of a pass sounds d0 ticks after the start and every pass lasts L ticks (§4.3, §4.4, §4.10; C2 timing, new C4 from C-0073). The register stream is unchanged |

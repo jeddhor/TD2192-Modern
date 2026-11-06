@@ -38,7 +38,8 @@
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
 //! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8; the
 //! mission-specific sprites (mines, lander, helicopter and its rotor, the slot-0 reload of
-//! OB-057) follow `flight-screens.md` rev 2 §4.9.
+//! OB-057) and the heading blits (mirrors, one-pixel shifts, boxes drawn from the sprite's
+//! corner; U-360) follow `flight-screens.md` rev 3 §4.9.
 //!
 //! Enhanced presentation (`docs/spec/enhanced/presentation.md` rev 1): `draw_frame` draws into a
 //! framebuffer of any width W ≥ 320, a widescreen frame when W > 320 (`td_render::flight`
@@ -72,6 +73,7 @@ use td_input::{Key, TickInput};
 use td_render::enhanced::widescreen;
 use td_render::flight::{self, ShotLook, ViewPos, Viewport};
 use td_render::flight_palette::FlightDac;
+use td_render::headings::SpriteBuffers;
 use td_render::hud::{Hud, HudAssets, HudState, TickerFont};
 use td_render::{Framebuffer, HeadingSprites};
 use td_sim::flight::Session;
@@ -252,20 +254,20 @@ impl SpriteSources {
     }
 
     /// Every ship sprite at every heading, and the 27-slot bank. Headings N, E, S, W draw the
-    /// bank slot, the others the rotation cells (flight-screens rev 2 §4.9), so a file that
-    /// replaces only bank slots changes those four headings only.
+    /// bank slot, the others the rotation cells, each with its blit's transform, from the
+    /// buffers as the flight lays them out in memory (flight-screens rev 3 §4.9,
+    /// `td_render::headings`), so a file that replaces only bank slots changes those four
+    /// headings only.
     fn build(&self) -> Result<(HeadingSprites, SpriteSheet)> {
-        let base = SpriteSheet::parse_base(&self.shp)?;
-        let rot = [
-            SpriteSheet::parse_rotation_set(&self.rot[0])?,
-            SpriteSheet::parse_rotation_set(&self.rot[1])?,
-            SpriteSheet::parse_rotation_set(&self.rot[2])?,
-        ];
-        let Some(ships) = HeadingSprites::build(&base, [&rot[0], &rot[1], &rot[2]], 20) else {
-            bail!("sprite sheets are inconsistent");
-        };
+        SpriteSheet::parse_base(&self.shp)?;
+        for set in &self.rot {
+            SpriteSheet::parse_rotation_set(set)?;
+        }
         let mut bank_bytes = self.shp.clone();
         bank_bytes.extend_from_slice(&self.exp);
+        let [sc3, shr, sc2] = &self.rot;
+        let buffers = SpriteBuffers::flight(sc3, sc2, shr, &bank_bytes);
+        let ships = HeadingSprites::from_buffers(&buffers, 20);
         Ok((ships, SpriteSheet::parse(&bank_bytes, 32)?))
     }
 

@@ -42,7 +42,7 @@ use crate::flight_screens::{KEY_KP2, KEY_KP8};
 use crate::program::{Program, line};
 use crate::save_screens::{SaveFiles, SaveKind, SaveOutcome, SaveScreen, SaveSet};
 use crate::scenes_e2::{self, Bg};
-use crate::screen::{FlowContext, Screen, Transition};
+use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
 use crate::story::{self, Hold, StoryError, StoryScreen};
 
 /// What differs between the E2 and E3 front ends (beyond the campaign).
@@ -98,6 +98,8 @@ pub trait EpisodeCampaign: Sized {
         input: &TickInput,
     ) -> Option<BlockResult>;
     fn draw(&self, fb: &mut Framebuffer);
+    /// Ticks per second of the block's current screen (BUG-5).
+    fn tick_hz(&self) -> f64;
     /// The in-process picture of menu item 6 (`aboutus.scr`) or 7 (`order.scr`).
     fn picture(prog: &Program, item: u8) -> Result<StoryScreen, StoryError>;
 }
@@ -138,6 +140,10 @@ impl EpisodeCampaign for CampaignE2 {
 
     fn draw(&self, fb: &mut Framebuffer) {
         CampaignE2::draw(self, fb);
+    }
+
+    fn tick_hz(&self) -> f64 {
+        CampaignE2::tick_hz(self)
     }
 
     fn picture(prog: &Program, item: u8) -> Result<StoryScreen, StoryError> {
@@ -585,6 +591,14 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
 }
 
 impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
+    /// The campaign's flight runs at the flight rate; everything else at the retrace rate.
+    fn tick_hz(&self) -> f64 {
+        match &self.stage {
+            Stage::Campaign(c, _) => c.tick_hz(),
+            _ => RETRACE_HZ,
+        }
+    }
+
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         match &mut self.stage {
             Stage::Start => {

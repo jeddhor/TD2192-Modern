@@ -679,6 +679,11 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
 }
 
 impl CampaignE3 {
+    /// Ticks per second of the block's current screen (BUG-5).
+    pub fn tick_hz(&self) -> f64 {
+        Child::tick_hz(self.child.as_ref())
+    }
+
     /// Block `start.mission` (any mission; 7, 20 and above run no block).
     pub fn new(start: BlockStart) -> Self {
         let (steps, pos) = match block_of(start.mission) {

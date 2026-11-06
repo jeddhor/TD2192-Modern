@@ -1,8 +1,9 @@
 //! The real-time screens that Episode 1's mission events show from inside a tick: flight 17's
 //! cut-scene (`td1-17.pic` and five lines with DAC flashes) and flight 19's V.C.I. screen.
 //!
-//! Spec: `docs/spec/flow/flight-screens.md` rev 4 §4.10 (BUG-3), `docs/spec/sim/mission-logic.md`
-//! rev 3 §5.17, §5.19, `docs/spec/sim/hit-flash.md` rev 4 §4.2. Fidelity: T0 for the pictures
+//! Spec: `docs/spec/flow/flight-screens.md` rev 5 §4.10 (BUG-3) and §4.5.3 (fade pace),
+//! `docs/spec/sim/mission-logic.md` rev 3 §5.17, §5.19, `docs/spec/sim/hit-flash.md` rev 4
+//! §4.2. Fidelity: T0 for the pictures
 //! and DAC values (C-0067, C-0069), T2 for the pacing (`Crt.Delay` real time, the fade speed of
 //! the reference machine).
 //!
@@ -27,9 +28,8 @@ use super::{FLIGHT_ROWS, FlightScreenAssets, ModalStep, blank_below_display};
 use crate::screen::RETRACE_HZ;
 
 /// Retraces per fade level: a level waits for a retrace, then writes 255 or 256 DAC entries
-/// with three Real48 `Round`s each, which at preset P1 takes past the next retrace
-/// (flight-screens §4.10.1: "four 17-level fades (about 34 frames each at P1)"; C-0067
-/// `frames.tsv` 877..910). T2.
+/// with three Real48 `Round`s each, which at preset P1 takes past the next retrace with a
+/// flight palette (flight-screens rev 5 §4.5.3, BUG-8; C-0067 `frames.tsv` 877..910). T2.
 pub const FRAMES_PER_FADE_LEVEL: u32 = 2;
 
 /// Retraces the original spends reading `td1-17.pic` one byte at a time (C-0067 frames

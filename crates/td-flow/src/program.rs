@@ -32,7 +32,7 @@ use crate::campaign::{Bg, BlockResult, Campaign, FlightLauncher, Rating, Step, r
 use crate::dialogue::{DialogueAssets, DialogueScene, ScriptChoice};
 use crate::main_menu::{MainMenu, MenuGraphics, NEXT_MISSION, QUIT, Reentry, SAVE};
 use crate::save_screens::{E1_FILES, SaveKind, SaveOutcome, SaveScreen, SaveSet};
-use crate::screen::{FlowContext, Screen, Transition};
+use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
 use crate::story::{self, Hold, ScenePalette, StoryAssets, StoryError, StoryScreen, TextItem};
 use td_sim::flight::front_end::FrontEnd;
 
@@ -737,6 +737,15 @@ impl Episode1 {
 }
 
 impl Screen for Episode1 {
+    /// The campaign's flight runs at the flight rate; everything else at the retrace rate
+    /// (BUG-5).
+    fn tick_hz(&self) -> f64 {
+        match &self.stage {
+            Stage::Campaign(c) => c.tick_hz(),
+            _ => RETRACE_HZ,
+        }
+    }
+
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         match &mut self.stage {
             Stage::Start => {

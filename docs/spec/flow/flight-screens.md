@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
 | **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014), the 16 heading blits (C-0080) |
@@ -115,8 +115,8 @@ Flight 19's `Msn_UpdateEvents` later overwrites entry 0's lines ([mission-logic]
 | Constant | Value | Provenance |
 |---|---|---|
 | Menu image position | (80, 50) of the back page, shown from the page origin | `0E8B:79E5..7A0C` |
-| Menu item fade | DAC entry 107 + cursor: (k, 0, 0), k = 32..63 up, 63..32 down, one step per retrace start | `0E8B:7B1E..7B4A`, `7DD6..7E02` |
-| Menu poll delay | `Crt.Delay(100)` per poll | `0E8B:7B4C` |
+| Menu item fade | DAC entry 107 + cursor: (k, 0, 0), k = 32..63 up, 63..32 down, one retrace wait per step; the wait returns at once while the retrace bit is set, so at P1 a ramp takes 3 frames (11, 11, 10 steps; C-0012 f3628..3630) | `0E8B:7B1E..7B4A`, `7DD6..7E02` |
+| Menu poll delay | `Crt.Delay(100)` per poll: 100 real milliseconds ([timing §4.4](../core/timing.md#44-clocks-outside-flight-bug-7)) | `0E8B:7B4C` |
 | Comm panel | `td.cmm`, 4 rows × 8 cells, screen (32 + 32·col, 16 + 32·row) | `0E8B:5459..5503` |
 | Comm portraits | A at screen (48, 32), B at (48, 96) | `0E8B:51FE`, `0E8B:530B` |
 | Comm text | header A pen (92, 35), header B (92, 87), ink 45 opaque; line A typed at (92, 67), line B at (92, 119), ink 40 (lines) or 43 (markers) | `0E8B:5062`, `50C3`, `5124`, `5188` |
@@ -326,6 +326,8 @@ After the tick wait, if `g_PaletteMode = 1` and `g_MissionTicks` (u32) ≤ 200: 
 
 `FadeIn`: build the target palette from `g_FlightPalette` for the current mode (table above; mode 0 = P itself) for entries 1..255; then for s = 0..16: wait until the VGA status bit 3 is set (returns at once inside a retrace), set DAC 1..255 to (Round(r·s/16), Round(g·s/16), Round(b·s/16)) of the target, and zero `g_HitFlash`. `FadeOut` is the reverse (s = 16..0) over entries 0..255. DS:1829 is cleared on every step.
 
+**Speed (BUG-8).** Each level does 765 Real48 conversions, divisions and roundings, so, as for the front-end fades ([screens §2.1](screens.md#21-fades)), a level takes **2 frames at P1** with a flight palette (hundreds of non-zero components): a fade lasts 33–34 frames. Measured on the Esc menu, C-0012: out f3556..3588 (33 frames), in f3595..3628 (34 frames), and the pairs at f3976 and f4175 likewise. The same holds for every use of `FadeIn`/`FadeOut`: flight start and end, the Esc menu and its help and ship-library pages, and the flight 17 and 19 screens (§4.10). Classic: 17 levels × 2 frames; a palette with fewer than about 380 non-zero components (none in practice) would take 1 frame per level.
+
 #### 4.5.4 Palette effects per tick (tick-order step 14, `0E8B:DA6B..E019`)
 
 ```text
@@ -518,7 +520,7 @@ DS:32B6 := 0
 - The second flash loop runs to entry 145 only (91h): entries 146..255 keep the black of the first loop until the restore. Entries 248 and 250 are skipped only by the test, not by the range, so within 0..145 only 131 is spared.
 - During the flashes the image and the text drawn so far stay in video memory; only the DAC changes. The restore writes the flight palette directly (no fade), entry 0 included.
 - `SetDac(e, r, g, b)` is the DAC write of §2 (`Gfx_SetDacEntry`); the palette buffers are not changed.
-- Real-time length: 7,300 ms of delays plus four 17-level fades (about 34 frames each at P1) plus the file read: C-0067 tick 107 runs from frame 875 to frame 1548 (673 frames, about 9.6 s).
+- Real-time length: 7,300 ms of delays (`Crt.Delay`: real milliseconds, not DOS time; [timing §4.4](../core/timing.md#44-clocks-outside-flight-bug-7)) plus four 17-level fades (34 frames each at P1, §4.5.3) plus the file read: C-0067 tick 107 runs from frame 875 to frame 1548 (673 frames, about 9.6 s).
 - Port: the host runs this sequence when td-sim reports the request at step 18 of the tick, before the tick's later steps are presented; td-sim's state does not change during it, except that the host's fades zero `g_HitFlash` (hit-flash §4.2; VE-2's test does this, M9-playthrough D4).
 
 #### 4.10.2 Flight 19: the V.C.I. screen (`0E8B:A0BB..A1DC`)
@@ -644,3 +646,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author + Verifier) | §4.9 mission-specific sprites (flights 7, 12, 15, 20, 21): loads, heading-to-buffer map, which ships use them, helicopter rotor frames by draw page; OB-057; test vector 17 (C-0027). E2/E3 transmissions and library: [e2-flight-screens](e2-flight-screens.md) |
 | 3 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.9 pixel transform of all 16 heading blits (U-360): mirrors on E, S, NE, SE and the four mirrored 22.5°/67.5° headings; one-pixel shift on ten blits; 40 × 40 boxes drawn at the 32 × 32 corner, not centred. Test vector 20 (C-0080, every heading of the player) |
 | 4 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.10 new: the flight-17 cut-scene and the flight-19 V.C.I. screen in full (frame, image rows, text pens and inks, delays, DAC flashes, page-0 clear, keys, tick); list of the other mission-requested real-time effects of E1–E3 (BUG-3) |
+| 5 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.3: flight fades take 2 frames per level at P1, 33–34 frames (BUG-8, C-0012); §3.5: menu item ramp 11 steps per frame (C-0012), poll delay in real ms; §4.10 delays are `Crt.Delay` (real ms) |

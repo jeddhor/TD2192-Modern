@@ -156,7 +156,7 @@ Consequences, all seen in C-0081 and consistent with C-0047:
 - **Rule 7 never fires at P1.** `home` (from step 245) is still flagged during step 329's checks (step 329 starts at frame 2814, the flag clears in frame 2816); at step 330 the window has closed and rule 8 plays `pulse`. The flag therefore stays 0 from step 240 to the end of the flyover, as every C-0047 RAM dump shows. The margin is under one step, so a faster or slower machine (or DSP) can make rule 7 fire; the rule itself is as written above.
 - `pulse` restarts every 7 or 8 steps, not every 5 (its own length).
 
-Port policy (Classic, T2): treat an effect as playing for the measured time of the table (25.5 frames for `pulse` and `scratch`), not for its sample length. That reproduces C-0081's effect onsets (no rule-7 `scratch`, flag 0 after step 240). The mechanism behind the extra time is U-410.
+Port policy (Classic, T2): treat an effect as playing for the measured time of the table (25.5 frames for `pulse` and `scratch`), not for its sample length. That reproduces C-0081's effect onsets (no rule-7 `scratch`, flag 0 after step 240). The mechanism behind the extra time (U-410, resolved) is WORX's refill schedule: [voc-and-adpcm §2.3](../audio/voc-and-adpcm.md#23-the-playing-status-worx-function-08h-u-410) gives the busy time of every effect from its length, and with the intro's ring-buffer offset r = 171 it predicts this table within one frame (`whoosh` 4.523 s, `pulse` and `scratch` 0.363 s, `ric3` 2.996 s, `home` 4.395 s). A port may use either; they give the same steps.
 
 ### 3.7 Constants
 
@@ -465,3 +465,4 @@ The CMF playback itself is [audio/cmf](../audio/cmf.md) (§6.2 C1 checks this ex
 | 1 | 2026-11-05 | RE-13 (Archaeologist + Spec author + Verifier) | Initial: whole intro, verified against C-0047 (1,792 frames, 903 RAM dumps) |
 | 2 | 2026-11-06 | main session | §4.5 tile destination: `r × 0B00h`, not `(r + p) × 0B00h`, which matches the stated row 32 + 264p + 32r and the frames (found by IM-15) |
 | 3 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.6: "no effect playing" is WORX function 08h, which stays set 0.1..0.38 s past each sample (measured table); rule 7 never fires at P1 (U-380); port policy. §4.6: when the music byte reads 0 and step 1 restarts a song (U-370); file0000 WORX addresses (+1Fh). Test vectors 9, 10 (C-0081) |
+| 3 + note | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §3.6: U-410 resolved; the busy table follows from voc-and-adpcm §2.3 with r = 171 (no rule changed) |

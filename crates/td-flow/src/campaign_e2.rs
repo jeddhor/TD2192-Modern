@@ -23,7 +23,7 @@ use crate::campaign::{FlightResult, FlightScreen};
 use crate::dialogue::DialogueScene;
 use crate::program::{Program, line};
 use crate::scenes_e2::{self, Bg};
-use crate::screen::{FlowContext, Screen, Transition};
+use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
 use crate::story::{StoryError, StoryScreen};
 
 /// A caption (e2-program-flow §2 notation; the same in E3, e3-program-flow §2, with `e3.` ids).
@@ -687,6 +687,16 @@ pub(crate) enum Child {
 }
 
 impl Child {
+    /// Ticks per second of the screen (BUG-5): a flight's own rate, else the retrace rate.
+    pub(crate) fn tick_hz(child: Option<&Self>) -> f64 {
+        match child {
+            Some(Child::Story(s)) => s.tick_hz(),
+            Some(Child::Dialogue(d)) => d.tick_hz(),
+            Some(Child::Flight(f)) => f.tick_hz(),
+            None => RETRACE_HZ,
+        }
+    }
+
     /// Runs the screen for one frame; true when it is over.
     pub(crate) fn step(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> bool {
         match self {
@@ -771,6 +781,11 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
 }
 
 impl CampaignE2 {
+    /// Ticks per second of the block's current screen (BUG-5).
+    pub fn tick_hz(&self) -> f64 {
+        Child::tick_hz(self.child.as_ref())
+    }
+
     /// Block `mission` (1..=20) with `kills_to_date` before it.
     ///
     /// # Panics

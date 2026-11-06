@@ -1,9 +1,9 @@
 //! The intro sequence (`file0000.exe`): the date card, three narration cards on `intro0.scr`,
 //! the desert flyover with the credits, the `intro1.scr` and `intro2.scr` cards, and the exit.
 //!
-//! Spec: `docs/spec/flow/intro.md` (rev 1); `docs/spec/flow/launcher.md` (rev 1) §4.3, §4.10;
+//! Spec: `docs/spec/flow/intro.md` (rev 3); `docs/spec/flow/launcher.md` (rev 1) §4.3, §4.10;
 //! `docs/spec/render/text.md` (rev 2); `docs/spec/audio/cmf.md`, `music-cues.md`.
-//! Fidelity: T0 for every drawn frame and T1 for the flyover state (C-0047, see
+//! Fidelity: T0 for every drawn frame and T1 for the flyover state (C-0047, C-0081, see
 //! `tests/intro_parity.rs`); T2 for the pacing (P1, intro §4.3) and the audio.
 //!
 //! The intro draws into a model of the unchained VGA memory ([`td_render::vga`]) with the
@@ -18,9 +18,11 @@
 //! - a flyover step runs once per BIOS tick (19.20 Hz, 3 or 4 frames).
 //!
 //! Port policies: OB-058 (the hoverskid's low-byte y) is kept unless
-//! [`IntroOptions::fix_ob058`] (Enhanced); the effect volumes of intro §3.6 are not applied (the
-//! mixer plays every effect at full volume, T2); keys still waiting when the intro ends are
-//! dropped.
+//! [`IntroOptions::fix_ob058`] (Enhanced); an effect counts as playing for the measured busy
+//! time of intro rev 3 §3.6 ([`flyover::Effect::busy_half_frames`], U-380), not for its sample
+//! length; a song played with the loop off restarts `intro2.cmf` at the first step after its
+//! end (§4.6, U-370); the effect volumes of intro §3.6 are not applied (the mixer plays every
+//! effect at full volume, T2); keys still waiting when the intro ends are dropped.
 
 pub mod flyover;
 
@@ -408,7 +410,8 @@ pub struct Intro {
     /// Song tick at which the current non-looping song ends (`None`: looping or silent).
     song_end: Option<u64>,
     music_state: u8,
-    /// Song tick at which the playing effect ends.
+    /// Half frame (2 × frame) at which the playing effect stops counting as playing: its
+    /// start plus [`Effect::busy_half_frames`] (intro §3.6).
     sfx_end: u64,
     marks: Vec<(u64, Mark)>,
     done: bool,
@@ -653,6 +656,31 @@ impl Intro {
     #[must_use]
     pub fn flyover(&self) -> &FlyoverState {
         &self.fly
+    }
+
+    /// The music state byte (`DS:0068`, intro §4.6): 1 while `intro.cmf` plays from the
+    /// flyover setup, 2 from the date card's `intro1.cmf`, 3 once `intro2.cmf` was started.
+    #[must_use]
+    pub fn music_state(&self) -> u8 {
+        self.music_state
+    }
+
+    /// What WORX's "digital sound playing" byte (fn 08h) reads now in the port's model: an
+    /// effect started less than its measured busy time ago (intro rev 3 §3.6).
+    #[must_use]
+    pub fn effect_playing(&self) -> bool {
+        2 * self.frame < self.sfx_end
+    }
+
+    /// What WORX's "music playing" byte (fn 0Eh) reads now in the port's model: a song was
+    /// started and, if it plays with the loop off, has not reached its end yet (intro §4.6,
+    /// U-370).
+    #[must_use]
+    pub fn music_playing(&self) -> bool {
+        self.music_state != 0
+            && self
+                .song_end
+                .is_none_or(|end| self.song_clock.ticks() < end)
     }
 
     /// The video memory.
@@ -928,13 +956,16 @@ impl Intro {
             self.fly.v194,
             draw::GRID_COLUMNS,
         );
+        // "No effect playing" (intro rev 3 §3.6, U-380): the effect counts as playing for its
+        // measured busy time from the frame it starts, in half frames.
+        let half_frame = 2 * self.frame;
         let sfx_end = Cell::new(self.sfx_end);
         flyover::effects(
             &mut self.fly,
-            || now < sfx_end.get(),
+            || half_frame < sfx_end.get(),
             |e| {
                 if let Some(sound) = assets.effect(e) {
-                    sfx_end.set(now + flyover::samples_to_ticks(sound.samples.len(), sound.rate));
+                    sfx_end.set(half_frame + e.busy_half_frames());
                     audio.push(AudioCommand::PlaySfx {
                         sound: Arc::clone(sound),
                     });
