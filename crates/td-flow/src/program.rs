@@ -736,12 +736,16 @@ impl Screen for Episode1 {
                 };
             }
             Stage::ScriptChoice(s) => {
-                let keys: Vec<Key> = input
+                let mut keys: Vec<Key> = input
                     .pressed
                     .iter()
                     .copied()
                     .filter(|&k| Some(k) == Key::digit(1) || Some(k) == Key::digit(2))
                     .collect();
+                if keys.is_empty() {
+                    // A controller answers too (M11-04, port addition).
+                    keys.extend(crate::front::ui::pad_script_choice(input.pad));
+                }
                 s.step(&TickInput {
                     pressed: keys,
                     held: input.held.clone(),

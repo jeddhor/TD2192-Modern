@@ -245,6 +245,19 @@ impl Platform {
             .map_err(sdl_err)
     }
 
+    /// True while the window is fullscreen.
+    pub fn is_fullscreen(&self) -> bool {
+        self.fullscreen
+    }
+
+    /// Enters or leaves fullscreen (no change if it already matches).
+    pub fn set_fullscreen(&mut self, on: bool) -> Result<(), PlatformError> {
+        if on == self.fullscreen {
+            return Ok(());
+        }
+        self.toggle_fullscreen()
+    }
+
     /// Changes how the framebuffer is scaled to the window.
     pub fn set_scale_mode(&mut self, mode: ScaleMode) {
         self.presenter.mode = mode;
@@ -308,9 +321,41 @@ impl Platform {
 const STICK_THRESHOLD: i16 = 16_000;
 
 /// Reduces a game controller to the original's digital joystick: left stick or D-pad give the
-/// axes; South (A) is button 2 (fire), East (B) is button 1 (afterburner).
+/// axes; South (A) is button 2 (fire), East (B) is button 1 (afterburner). Every button is also
+/// reported in `buttons` for the port's own bindings (td_input::PadButton).
 fn read_pad(pad: &sdl3::gamepad::Gamepad) -> td_input::Pad {
     use sdl3::gamepad::{Axis, Button};
+    use td_input::PadButton as P;
+    let mut buttons = 0;
+    for (b, sdl) in [
+        (P::South, Button::South),
+        (P::East, Button::East),
+        (P::West, Button::West),
+        (P::North, Button::North),
+        (P::Back, Button::Back),
+        (P::Guide, Button::Guide),
+        (P::Start, Button::Start),
+        (P::LeftStick, Button::LeftStick),
+        (P::RightStick, Button::RightStick),
+        (P::LeftShoulder, Button::LeftShoulder),
+        (P::RightShoulder, Button::RightShoulder),
+        (P::DPadUp, Button::DPadUp),
+        (P::DPadDown, Button::DPadDown),
+        (P::DPadLeft, Button::DPadLeft),
+        (P::DPadRight, Button::DPadRight),
+    ] {
+        if pad.button(sdl) {
+            buttons |= b.bit();
+        }
+    }
+    for (b, a) in [
+        (P::LeftTrigger, Axis::TriggerLeft),
+        (P::RightTrigger, Axis::TriggerRight),
+    ] {
+        if pad.axis(a) > STICK_THRESHOLD {
+            buttons |= b.bit();
+        }
+    }
     let axis = |a: Axis, neg: Button, pos: Button| -> i8 {
         let v = pad.axis(a);
         if v < -STICK_THRESHOLD || pad.button(neg) {
@@ -327,5 +372,6 @@ fn read_pad(pad: &sdl3::gamepad::Gamepad) -> td_input::Pad {
         y: -axis(Axis::LeftY, Button::DPadUp, Button::DPadDown),
         button1: pad.button(Button::East),
         button2: pad.button(Button::South),
+        buttons,
     }
 }

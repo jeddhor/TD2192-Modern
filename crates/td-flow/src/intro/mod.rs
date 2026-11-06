@@ -123,6 +123,14 @@ pub struct IntroOptions {
 }
 
 impl IntroOptions {
+    /// The options for `settings`: OB-058 is fixed under the Enhanced profile only.
+    #[must_use]
+    pub fn for_settings(settings: &crate::Settings) -> Self {
+        Self {
+            fix_ob058: settings.profile == crate::settings::Profile::Enhanced,
+        }
+    }
+
     fn hoverskid(self) -> Hoverskid {
         if self.fix_ob058 {
             Hoverskid::Clipped

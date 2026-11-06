@@ -4,11 +4,10 @@
 //! The original's `td1.exe` runs the intro (`file0000.exe`) once, then Episode 1; Episodes 2 and
 //! 3 start without it. Esc skips the intro (its exit fade, then the episode).
 
-use std::path::Path;
-
 use anyhow::{Context, Result, bail};
 use td_assets::{DataDir, ExeResources};
 use td_flow::credits::{Credits, CreditsMode};
+use td_flow::front::SettingsPort;
 use td_flow::intro::{Intro, IntroOptions};
 use td_flow::settings::Profile;
 use td_flow::{Screen, Settings};
@@ -21,35 +20,36 @@ pub fn enhanced(settings: &Settings) -> bool {
 
 /// The intro's options for these settings: OB-058 is fixed only in Enhanced.
 pub fn intro_options(settings: &Settings) -> IntroOptions {
-    IntroOptions {
-        fix_ob058: enhanced(settings),
-    }
+    IntroOptions::for_settings(settings)
 }
 
-/// Episode 1, preceded by the intro unless `--no-intro`, the settings (Enhanced only) or
-/// missing intro files say otherwise. A first-launch policy is recorded in the settings file.
-pub fn episode1_start(
+/// `program` (Episode 1), preceded by the intro unless `skip` (`--no-intro`, or another
+/// episode), the `[intro]` setting (read only under Enhanced) or missing intro files say
+/// otherwise. The first time the intro plays, `intro.seen` is set through `port`, so the host
+/// saves it (for `play = "first-launch"`).
+pub fn with_intro(
     dir: &DataDir,
     res: &ExeResources,
-    settings: &mut Settings,
-    settings_path: &Path,
-    no_intro: bool,
-    episode1: Box<dyn Screen>,
-) -> Result<Box<dyn Screen>> {
-    if no_intro || !settings.intro.plays(enhanced(settings)) {
-        return Ok(episode1);
+    settings: &Settings,
+    port: &SettingsPort,
+    skip: bool,
+    program: Box<dyn Screen>,
+) -> Box<dyn Screen> {
+    if skip || !settings.intro.plays(enhanced(settings)) {
+        return program;
     }
     match Intro::load(dir, res, intro_options(settings)) {
         Ok(intro) => {
             if !settings.intro.seen {
-                settings.intro.seen = true;
-                settings.save(settings_path)?;
+                let mut seen = settings.clone();
+                seen.intro.seen = true;
+                port.submit(seen);
             }
-            Ok(Box::new(intro.then(episode1)))
+            Box::new(intro.then(program))
         }
         Err(e) => {
             tracing::warn!("intro unavailable ({e}); starting Episode 1");
-            Ok(episode1)
+            program
         }
     }
 }

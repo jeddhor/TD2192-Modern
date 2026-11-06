@@ -79,30 +79,12 @@ use crate::enhanced::{EnhancedView, SharedView};
 const TYPEMATIC_DELAY_US: u64 = 500_000;
 const TYPEMATIC_PERIOD_US: u64 = 91_743;
 
-/// Host keys for each original key byte (the grey Insert key is a different byte in the
-/// original and is not read in flight).
-fn bindings() -> Vec<(Key, FlightKey)> {
-    let letter = |c| Key::letter(c).expect("letter");
-    vec![
-        (Key(0x60), FlightKey::Kp8),
-        (Key::UP, FlightKey::Up),
-        (Key(0x5A), FlightKey::Kp2),
-        (Key::DOWN, FlightKey::Down),
-        (Key(0x5C), FlightKey::Kp4),
-        (Key::LEFT, FlightKey::Left),
-        (Key(0x5E), FlightKey::Kp6),
-        (Key::RIGHT, FlightKey::Right),
-        (Key::KP_PLUS, FlightKey::KpPlus),
-        (Key(0x62), FlightKey::Kp0),
-        (Key::LALT, FlightKey::Alt),
-        (Key::RALT, FlightKey::RightAlt),
-        (Key::SPACE, FlightKey::Space),
-        (Key::ESCAPE, FlightKey::Esc),
-        (letter('p'), FlightKey::P),
-        (Key(0x3E), FlightKey::F5),
-        (Key::F6, FlightKey::F6),
-        (letter('s'), FlightKey::S),
-    ]
+/// Host keys for each original key byte: the `[controls.keyboard]` settings (M11-03), whose
+/// defaults are the original's keys (`td_flow::controls`; the grey Insert key is a different
+/// byte in the original and is not read in flight). Bound controller buttons arrive as these
+/// keys too (`ControlsSettings::pad_keys`, applied by the host).
+fn bindings(settings: &td_flow::Settings) -> Vec<(Key, FlightKey)> {
+    settings.controls.flight_keys()
 }
 
 /// Turns tick-sampled host key state into the original's make codes, with typematic repeats.
@@ -441,7 +423,7 @@ impl FlightArena {
             screens,
             board,
             run,
-            binds: bindings(),
+            binds: bindings(&td_flow::Settings::default()),
             typematic: Typematic::default(),
             events: Vec::new(),
             magenta: None,
@@ -470,6 +452,8 @@ impl Screen for FlightArena {
     }
 
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+        // The bindings may change in the options screen at any time (M11-03).
+        self.binds = bindings(ctx.settings);
         // The original reads the joystick only when it is the chosen controller; the port
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
@@ -1142,6 +1126,51 @@ mod tests {
             assert_eq!(launcher.random(10), session.rng.random(10));
         }
         assert_eq!(launcher.run.borrow().session.rng, session.rng);
+    }
+
+    #[test]
+    fn bindings_come_from_the_settings() {
+        // The defaults are the table this file had before M11-03, plus Tab and M (which the
+        // flight code reads, globals.md §3).
+        let letter = |c| Key::letter(c).unwrap();
+        let mut old = vec![
+            (Key(0x60), FlightKey::Kp8),
+            (Key::UP, FlightKey::Up),
+            (Key(0x5A), FlightKey::Kp2),
+            (Key::DOWN, FlightKey::Down),
+            (Key(0x5C), FlightKey::Kp4),
+            (Key::LEFT, FlightKey::Left),
+            (Key(0x5E), FlightKey::Kp6),
+            (Key::RIGHT, FlightKey::Right),
+            (Key::KP_PLUS, FlightKey::KpPlus),
+            (Key(0x62), FlightKey::Kp0),
+            (Key::LALT, FlightKey::Alt),
+            (Key::RALT, FlightKey::RightAlt),
+            (Key::SPACE, FlightKey::Space),
+            (Key::ESCAPE, FlightKey::Esc),
+            (letter('p'), FlightKey::P),
+            (Key(0x3E), FlightKey::F5),
+            (Key::F6, FlightKey::F6),
+            (letter('s'), FlightKey::S),
+            (Key::TAB, FlightKey::Tab),
+            (letter('m'), FlightKey::M),
+        ];
+        let mut now = bindings(&td_flow::Settings::default());
+        old.sort();
+        now.sort();
+        assert_eq!(now, old);
+        // A rebinding reaches the flight's key bytes.
+        let mut s = td_flow::Settings::default();
+        s.controls.keyboard.bind(FlightKey::Space, Some(Key::LCTRL));
+        let mut t = Typematic::default();
+        let mut input = TickInput::default();
+        input.held.insert(Key::LCTRL);
+        input.pressed.push(Key::LCTRL);
+        let c = t.controls(&input, &bindings(&s));
+        let mut want = TickControls::default();
+        want.set_down(FlightKey::Space);
+        want.set_made(FlightKey::Space);
+        assert_eq!(c, want);
     }
 
     #[test]

@@ -6,10 +6,12 @@
 pub mod campaign;
 pub mod campaign_e2;
 pub mod campaign_e3;
+pub mod controls;
 pub mod credits;
 pub mod dialogue;
 pub mod extras;
 pub mod flight_screens;
+pub mod front;
 pub mod intro;
 pub mod main_menu;
 pub mod program;

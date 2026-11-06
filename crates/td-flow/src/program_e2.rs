@@ -609,6 +609,10 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                         keys.push(k);
                     }
                 }
+                if !chosen && keys.is_empty() {
+                    // A controller answers too (M11-04, port addition).
+                    keys.extend(crate::front::ui::pad_script_choice(input.pad));
+                }
                 s.step(&TickInput {
                     pressed: keys,
                     held: input.held.clone(),

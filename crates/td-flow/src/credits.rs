@@ -33,6 +33,17 @@ pub enum CreditsMode {
     Pages,
 }
 
+impl CreditsMode {
+    /// Mode A under the Classic profile, mode B under Enhanced (credits §4.1, §4.2).
+    #[must_use]
+    pub fn for_settings(settings: &crate::Settings) -> Self {
+        match settings.profile {
+            crate::settings::Profile::Classic => CreditsMode::Flyover,
+            crate::settings::Profile::Enhanced => CreditsMode::Pages,
+        }
+    }
+}
+
 /// Caption ink of mode B: the flyover's entry 46 = (0, 63, 63) (credits §4.2).
 pub const PAGE_INK: u8 = 46;
 /// Frames a page holds without a key: 4 s at 70.086 Hz.
