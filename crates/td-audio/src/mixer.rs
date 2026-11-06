@@ -8,9 +8,11 @@
 //! single digital voice with priority pre-emption (§4.2); [`SfxPolicy::Polyphonic`] is the
 //! Enhanced option. Both apply the distance cut-off and the SB Pro left/right levels (§4.3).
 //!
-//! Fidelity: T2. Resampling is linear interpolation. The music/SFX balance is untuned, and the SB
-//! Pro mixer's attenuation curve is not modelled: a mixer level n (0..11) gives the linear gain
-//! n/11, so an effect at the view centre plays at full gain.
+//! Fidelity: T2. Resampling is linear interpolation. Levels and balance are tuned to the oracle's
+//! WAV captures (VE-3, `docs/parity/M3-audio.md` rows 16-17): a mixer level n gives
+//! 4 dB × (15 − n) of attenuation ([`sb_level_gain`]), and the FM music plays at
+//! [`MUSIC_GAIN`] relative to an effect at level 15. With equal music and effects volumes this is
+//! the original's balance.
 
 use std::sync::Arc;
 
@@ -126,9 +128,32 @@ pub struct Mixer {
     sfx_volume: f32,
 }
 
-/// Linear gain of an SB Pro mixer level (0..11; see the module comment).
+/// Linear gain of a Sound Blaster mixer voice level (0..15, the nibble the game writes to
+/// register 04h), relative to level 15.
+///
+/// Measured (VE-3, `docs/parity/M3-audio.md` row 16): the oracle (DOSBox-X SB16, preset P1)
+/// plays a full-scale sample at WAV amplitude 0.0997 at level 10, 0.158 at 11, 0.238 at 12 and
+/// 0.364 at 13 (C-0071, C-0072). Model: 4 dB per level with level 15 at 0 dB, within 0.8 dB of
+/// all four; level 0 mutes. Levels 0..9, 14 and 15 are extrapolated.
+pub fn sb_level_gain(level: u8) -> f32 {
+    if level == 0 {
+        return 0.0;
+    }
+    10f32.powf(-0.2 * f32::from(15 - level.min(15)))
+}
+
+/// FM music relative to an effect at mixer level 15: the oracle's music RMS is 0.21 × the raw
+/// [`CmfPlayer`] render (0.208 for `intro1.cmf` in C-0070, 0.212 for `menu.cmf` in C-0073; WORX
+/// sets the FM volume to 10). Measured by VE-3, `docs/parity/M3-audio.md` row 17.
+pub const MUSIC_GAIN: f32 = 0.21;
+
+/// Overall output scale: the loudest level the game uses (13, intro effects) at the default
+/// effects volume (0.8) stays under full scale.
+pub const OUTPUT_SCALE: f32 = 3.0;
+
+/// Gain of a voice at SB Pro left/right level `level` (0..15, before the game's 12/16 scaling).
 fn level_gain(level: u8) -> f32 {
-    f32::from(sfx::mixer_level(level)) / 11.0
+    OUTPUT_SCALE * sb_level_gain(sfx::mixer_level(level))
 }
 
 impl Mixer {
@@ -297,7 +322,7 @@ impl Mixer {
                     *pos += 1;
                     Some(x as f32 / 32768.0)
                 });
-                let s = v.unwrap_or(0.0) * self.music_volume;
+                let s = v.unwrap_or(0.0) * OUTPUT_SCALE * MUSIC_GAIN * self.music_volume;
                 left += s;
                 right += s;
             }
@@ -404,14 +429,36 @@ mod tests {
     #[test]
     fn panning_follows_the_source() {
         let mut m = Mixer::new(48_000, SfxPolicy::Classic);
-        m.command(effect(9, Some((8, 13)))); // left of centre: L 15, R 5
-        assert_eq!(m.voices[0].gain, (1.0, 3.0 / 11.0));
+        m.command(effect(9, Some((8, 13)))); // left of centre: L 15, R 5 -> levels 11, 3
+        let (l, r) = m.voices[0].gain;
+        assert!((l - OUTPUT_SCALE * 0.1585).abs() < 1e-3, "left {l}");
+        assert!(
+            (r - OUTPUT_SCALE * 10f32.powf(-2.4)).abs() < 1e-4,
+            "right {r}"
+        );
         let mut buf = vec![0.0f32; 2 * 1_000];
         m.render(&mut buf);
         let (l, r) = buf.chunks_exact(2).fold((0.0f32, 0.0f32), |(l, r), f| {
             (l.max(f[0].abs()), r.max(f[1].abs()))
         });
         assert!(l > 2.0 * r, "left {l} right {r}");
+    }
+
+    /// The measured oracle levels (M3-audio rows 16-17): within 0.8 dB of the model, and the
+    /// music/effect balance of the WAV captures.
+    #[test]
+    fn levels_match_the_oracle_measurements() {
+        for (level, measured) in [(10u8, 0.0997f32), (11, 0.158), (12, 0.238), (13, 0.364)] {
+            let db = 20.0 * (sb_level_gain(level) / measured).log10();
+            assert!(db.abs() < 0.8, "level {level}: {db:+.2} dB");
+        }
+        assert_eq!(sb_level_gain(0), 0.0);
+        assert_eq!(sb_level_gain(15), 1.0);
+        // Oracle: music RMS / gain of a level-11 effect = 0.21 / 0.158.
+        let ratio = MUSIC_GAIN / sb_level_gain(11);
+        assert!((ratio - 0.21 / 0.158).abs() < 0.01, "{ratio}");
+        // Level 13 (intro) at the default effects volume stays under full scale.
+        assert!(OUTPUT_SCALE * sb_level_gain(13) * 0.8 <= 1.0);
     }
 
     #[test]
