@@ -68,7 +68,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-07 | Global data map + symbols | RE | M1-01 | REVIEW | RE-2 | docs/re/globals.md (front end, input + flight keys, cheat chords, player/view state, slot/projectile/explosion arrays, buffers) + 158 symbol rows (functions and data; ApplySymbols-checked on a private copy) |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | REVIEW | RE-2 | docs/re/structures.md: units (tile+pixel), mission file load map with 501-byte path stride (FORMATS 7 corrected; M2-11 parser needs the fix), ship record 1065 B, slot/projectile/explosion arrays, class table (U-008), heading codes (U-003), tile attributes (U-009) |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | DONE | RE-7 | 2026-11-02: docs/re/episode-deltas.md rev 1; symbols td2.csv (505 rows) / td3.csv (493); tools match-episodes.py + ExportInstructionTable.java; 7 units identical (System, WORX, Crt, sfx, 386E, 34E6, 3A92); E2 380/394 matched (316 identical), E3 374/384 (311); U-006, U-012 resolved, U-005/U-009 partial; U-200..U-207; OB-023..OB-028 |
-| M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | TODO | | |
+| M1-10 | Launcher + intro flow specs | RE/SP | M1-01 | IN PROGRESS | RE-13 | Started 2026-11-05 (private Ghidra copy re-work\ghidra-re13) |
 | M1-11 | Exe resource maps (all text/tables) | RE | M1-04 | REVIEW | RE-3 | 2026-11-02: file0001.toml 82 resources (all mission titles/cards, ending, objectives, flight messages, target info, 9 comms, debrief labels/tiers, retry, dossiers, hints, background story, script-choice notices, ship library, prompts); new file0000/td2/td3 maps (4/71/62) to register in td-assets MAPS; tdtool exe-res green for file0001 |
 | M1-12 | Unknowns triage | RE | M1-01..M1-11 | TODO | | |
 
@@ -129,7 +129,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M5-05 | Dossier screens | SP/IM | M1-11 | REVIEW | IM-1, IM-5 | IM-5 2026-11-02: orders (frame + typed lines, 5 s), enemy dossier (face 6, 10 s), pilot dossier (face 1, delays, 25 s) per spec/flow/screens.md rev 1 3.4-3.5 (U-121) in td-flow::program; no capture of these screens (static layouts) |
 | M5-06 | Help screens | SP/IM | M2-09 | REVIEW | IM-1 | 2026-11-02 td-flow::story::help: td.hlp pages 1 and 2, each held for a key, menu item 4 |
 | M5-07 | Script-choice + missing-dialogue screens | SP/IM | M5-01 | REVIEW | IM-1, IM-5 | IM-5 2026-11-02: script choice and missing-dialogue notice layouts and palette per spec/flow/screens.md rev 1 3.2 (U-121); L5 0-diff vs C-0002 f710 (tests/story_parity.rs) |
-| M5-08 | Intro sequence | SP/IM | M1-10 | TODO | | |
+| M5-08 | Intro sequence | SP/IM | M1-10 | IN PROGRESS | RE-13 | RE/SP part started 2026-11-05 (docs/spec/flow/intro.md); IM part not started |
 | M5-09 | Narrative parity | VE | M5-01..M5-08 | TODO | | |
 
 ## M6: Flight core
@@ -263,7 +263,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M11-02 | In-flight options menu (Esc) | SP/IM | M6-06 | REVIEW | IM-5 | IM-5 2026-11-02: Esc computer menu (items, keys incl. OB-030, pulses, fades, abort, view restore), ship library, help in td_flow::flight_screens::menu (flight-screens rev 1 4.1); L5 0-diff vs C-0012 f3844, f4184, f4824, f5124, f5514 and C-0014 f1822 (menu in IR) |
 | M11-03 | Modern settings screens (video, audio, controls, profile, accessibility, data dir) | IM | M4-05 | TODO | | |
 | M11-04 | Gamepad UI navigation | IM | M11-03 | TODO | | |
-| M11-05 | Credits screen (exe resources) | IM | M2-14 | TODO | | |
+| M11-05 | Credits screen (exe resources) | IM | M2-14 | IN PROGRESS | RE-13 | RE part started 2026-11-05 (credits text source); IM part not started |
 | M11-06 | Original save import (D3) | IM | M2-12, D3 | TODO |  | Screen part done by IM-7 2026-11-05 (td_flow::save_screens, see M9-19): the port keeps its own td.sav/td.stt in <user data>/saves in the original byte format and starts empty; the game folder's saves are never read. Import/export of the original files waits for D3 |
 | M11-07 | TFP extras (D4, optional) | RE/IM | D4 | TODO | | |
 
