@@ -105,6 +105,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | REVIEW | IM-17, IM-2 | 2026-11-02; sfx-policy rev 1: Classic arbiter (priority, pre-emption, idle 0, 15-tile cut-off, OB-009 too far), effect->VOC table, SB Pro levels -> stereo gain (linear, untuned); music-cues rev 1 table + MusicCues::play_cue in td-audio (not wired); U-140, U-141 open (9a3814d). RE-14 2026-11-06: U-083 resolved, sfx-policy rev 2 §3.2 (every call site confirmed; 200 = incoming-transmission chime; end-sequence blasts; helicopter volley id 2) IM-17 2026-11-06: sim effect requests checked against sfx-policy rev 2 §3.2: added the end sequence's 9 at end ticks 3, 6, 9, 17, 19, 25 and 100 at 12 (td_sim::flight::end_sequence_sound, all episodes) and the kind-6 branch's 100 in step 4 (E1, E3; not E2, P5); the other sites (200 chime, helicopter volley 2, per-shot volleys) already matched; unit tests flight/sound_tests.rs, flight/shots/tests.rs; no td-audio change. U-421 open (an E1 homing kill through step 3 still requests nothing) | |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
 | M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | REVIEW | VE-3 | VE-3 2026-11-06: docs/parity/M3-audio.md rows 12-20. Row 12 loop restart PASS (C-0073 DRO exact incl. 2 restarts, pass 4,841 ticks; test looping_menu_music_matches_capture_c0073); 12a first event at song start 1 tick late (U-401). VOC: onsets 1-10 ms into the triggering tick, rates = header except ric3 11,905 Hz (U-402), pre-emption PASS, ADPCM decode FAIL (BUG-4, U-400). Levels 4 dB per step (0.0997/0.158/0.238/0.364 at 10..13) and music 0.21 x raw: port tuned (td_audio::mixer::sb_level_gain, MUSIC_GAIN). Intro effects vs intro rev 3: onsets +1.1..1.6 ms, no rule-7 scratch at P1, fires at step 327 with music off (C-0071). Captures C-0070..C-0073. Earlier: CMF stream exact vs C-0001/C-0002 (IM-2) RE-16 2026-11-06: U-400 (ADPCM = DSP algorithm, voc rev 3 §3), U-401 (first song tick at the start, cmf rev 3), U-402 (4-bit rate clamp 172, voc §2.2), U-410 (playing-status rule, voc §2.3) resolved; port work is IM |
+| M3-09 | Fix BUG-4 (ADPCM per voc-and-adpcm rev 3 §3), U-402 (DSP rate clamp), U-410 (WORX playing status: flight priority reset, mission-end wait, intro rules), U-401 (CMF first tick at the song start), intro effect volumes (M3-audio row 18) | IM | M3-02, M3-08 | IN PROGRESS | IM-19 | 2026-11-06 claimed (IM-19) |
 
 ## M4: Platform shell
 
@@ -283,6 +284,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M12-10 | Pixel-art upscaling (Scale2x/3x/4x, xBR 2x/3x/4x) | IM | M12-08 | REVIEW | IM-12 | IM-12: Scale2x/3x/4x, xBR level 2 at 2x/3x/4x (exact-coverage blend weights, spec Q6), hard edge at row 160, rayon rows. xbr4 560x200: ~1.3 ms (16 threads), ~1.7 ms (6), ~6.8 ms (1); timing test behind --ignored. Golden hashes on a synthetic sprite |
 | M12-11 | Dynamic lighting (light sources, soft shadows from solid tiles, night ambient) | IM | M12-08 | REVIEW | IM-13 | td_render::enhanced::{lighting,lights} (light map, soft shadows, emissive, LightStage; light list from Flight::drawn with widescreen visibility), td2192 flight/lights.rs; spec/enhanced/presentation.md rev 3 §6 (light table tuned by eye in E1 flight 1); handoff docs/handoffs/2026-11-05-IM-13.md |
 | M12-12 | Bloom, performance budget, enhanced tests | IM/VE | M12-10, M12-11 | REVIEW | IM-13 | td_render::enhanced::bloom (bright pass, 4x box, sparse 9-tap Gaussian, linear add); lighting/bloom tests incl. goldens; ignored timing test tests/enhanced_lighting_timing.rs asserts lighting+bloom <= 4 ms at 21:9 x4 (measured on a fully loaded i7-10700F: 3.7 ms on 16 threads, 5.1 ms on 6); fusing the bright pass into the light map is the next speed-up; VE review open; handoff docs/handoffs/2026-11-05-IM-13.md |
+| M12-13 | Fix BUG-6 (scene-fade speed from the palette left in g_Palette), BUG-7 (DOS-time waits), BUG-8 (flight fades, menu item ramp), E2/E3 main-menu fades and ramps (M12-timing row 19) | IM | M12-02 | IN PROGRESS | IM-19 | 2026-11-06 claimed (IM-19) |
 
 ## M13: Release engineering
 
@@ -339,6 +341,7 @@ Template: ADG §17.5.
 - Severity: major (every ADPCM effect sounds wrong). Fix: SP revision of §3 (U-400), then IM
 - **Spec part DONE (RE-16, 2026-11-06):** voc-and-adpcm rev 3. The DSP decodes (WORX copies bytes unchanged). §3: value u8 starts at the reference byte (not output), step 0; delta = m at step 0, (2m + 1)·2^(step − 1) at steps ≥ 1, 2.6-bit step 4 = (2m + 1)·5; clamp 0..255; down on m = 0, up on m ≥ 5 / m = 3 / m = 1 to tops 3 / 4 / 5. §2.2: rate = 1,000,000 div (256 − min(tc, 172 / 179 / 165 / 234)) (`ric3` 11,904 Hz). §4: 12 synthetic vectors, SHA-256 of every decoded file, oracle correlation targets (≥ 0.98). Port (IM): rewrite `td_audio::adpcm` and the VOC rate per rev 3; optional L5 test against C-0071/C-0072
 
+- **IM: IN PROGRESS** (IM-19, 2026-11-06, M3-09)
 ### BUG-5: flights inside an episode tick at 70.086 Hz
 - Found by / date / milestone: VE-3, 2026-11-06, M12 (M12-02), static reading
 - Profile: both
@@ -359,6 +362,7 @@ Template: ADG §17.5.
 - Severity: minor. Fix: SP states the measured rate, then IM
 - **Spec part DONE (RE-16, 2026-11-06):** the title card has no fade of its own: it uses the scene fade, whose speed follows the non-zero count of the palette left in `g_Palette` (screens rev 3 §2.1, text rev 3 §4.5.2). 1 frame per level only while `g_Palette` is nearly black (first title card after program start: C-0002, C-0160); 2 frames per level after any picture palette (C-0170: title card after "story so far", 34 f). Port (IM): count the non-zero components of the faded entries; < 380 → 1 frame per level, else 2 (U-461); the port must keep the leftover palette buffer semantics (the title card sets only entry 85)
 
+- **IM: IN PROGRESS** (IM-19, 2026-11-06, M12-13)
 ### BUG-7: timed story waits use real seconds; the original's run 5.5 % faster while music plays
 - Found by / date / milestone: VE-3, 2026-11-06, M12-02
 - Profile: Classic
@@ -369,6 +373,7 @@ Template: ADG §17.5.
 - Severity: minor. Fix: SP adds the rule to the story and screens specs; IM scales by 18.2065 / f_BIOS for the active sound configuration
 - **Spec part DONE (RE-16, 2026-11-06):** timing rev 4 §4.4, screens rev 3 §2.2. `Flow_WaitSecondsOrKey(n)` (every timed card, still, dossier, debrief, story so far) is DOS time: ceil(n × 18.2065) BIOS ticks or one less, so 0.948 n s with the ADR-0007 clock (5 s = 332 f, 10 s = 664 f); `Crt.Delay` (debrief/dossier lines, save/restore, flight menu poll, flight 17/19 screens) stays real ms; fades, typing and ramps are retrace-paced. Port (IM): DOS-time waits count BIOS ticks at 19.2015 Hz (or round(n × 18.2065) ticks); leave `Crt.Delay` in ms. Canonical rate still pending ADR-0007
 
+- **IM: IN PROGRESS** (IM-19, 2026-11-06, M12-13)
 ### BUG-8: flight Esc-menu fades take 17 frames; the original takes 33–34
 - Found by / date / milestone: VE-3, 2026-11-06, M12-02
 - Profile: Classic
@@ -378,3 +383,4 @@ Template: ADG §17.5.
 - Spec reference: flow/flight-screens §4.1 (rate not measured); M12-timing row 11
 - Severity: minor. Fix: SP records the rate, then IM
 - **Spec part DONE (RE-16, 2026-11-06):** flight-screens rev 5 §4.5.3: `Gfx_FadeInFlight`/`FadeOutFlight` take 2 frames per level at P1 with a flight palette (33–34 f; C-0012), for every use (flight start/end, Esc menu, help, ship library, flight 17/19 screens). The menu item ramp makes 11 steps per frame (§3.5). Port (IM): 17 levels × 2 frames in `flight_screens/menu.rs` and the other flight fades
+- **IM: IN PROGRESS** (IM-19, 2026-11-06, M12-13)
