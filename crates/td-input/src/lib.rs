@@ -58,17 +58,205 @@ impl Key {
             _ => None,
         }
     }
+
+    /// The key's name in settings files and on the options screens: lower case, digits and
+    /// `-` only, so the game's small font can draw it. Keys without a name are `key-N` (N =
+    /// the usage ID).
+    pub fn name(self) -> String {
+        if let Some(c) = (self.0 >= Key::A.0 && self.0 <= Key::Z.0)
+            .then(|| char::from(b'a' + (self.0 - Key::A.0) as u8))
+        {
+            return c.to_string();
+        }
+        if self.0 >= Key::DIGIT_1.0 && self.0 <= Key::DIGIT_0.0 {
+            return ((self.0 - Key::DIGIT_1.0 + 1) % 10).to_string();
+        }
+        if self.0 >= Key::F1.0 && self.0 < Key::F1.0 + 12 {
+            return format!("f{}", self.0 - Key::F1.0 + 1);
+        }
+        if self.0 >= KP_1 && self.0 <= KP_1 + 9 {
+            return format!("keypad-{}", (self.0 - KP_1 + 1) % 10);
+        }
+        match NAMED.iter().find(|&&(k, _)| k == self) {
+            Some(&(_, n)) => n.to_string(),
+            None => format!("key-{}", self.0),
+        }
+    }
+
+    /// The key named `name` (see [`Key::name`]).
+    pub fn from_name(name: &str) -> Option<Key> {
+        let mut chars = name.chars();
+        if let (Some(c), None) = (chars.next(), chars.next()) {
+            if let Some(k) = Key::letter(c) {
+                return Some(k);
+            }
+            if let Some(d) = c.to_digit(10) {
+                return Key::digit(d as u8);
+            }
+        }
+        if let Some(n) = name.strip_prefix('f').and_then(|n| n.parse::<u16>().ok()) {
+            return (1..=12).contains(&n).then(|| Key(Key::F1.0 + n - 1));
+        }
+        if let Some(d) = name
+            .strip_prefix("keypad-")
+            .and_then(|n| n.parse::<u16>().ok())
+        {
+            return (d <= 9).then(|| Key(KP_1 + (d + 9) % 10));
+        }
+        if let Some(n) = name.strip_prefix("key-").and_then(|n| n.parse().ok()) {
+            return Some(Key(n));
+        }
+        NAMED.iter().find(|&&(_, n)| n == name).map(|&(k, _)| k)
+    }
+}
+
+/// Keypad 1 (keypad 2..9 and 0 follow).
+const KP_1: u16 = 89;
+
+/// Names of the keys outside the letter, digit, F-key and keypad-digit runs.
+const NAMED: [(Key, &str); 43] = [
+    (Key::ENTER, "enter"),
+    (Key::ESCAPE, "escape"),
+    (Key::BACKSPACE, "backspace"),
+    (Key::TAB, "tab"),
+    (Key::SPACE, "space"),
+    (Key(45), "minus"),
+    (Key(46), "equals"),
+    (Key(47), "left-bracket"),
+    (Key(48), "right-bracket"),
+    (Key(49), "backslash"),
+    (Key(51), "semicolon"),
+    (Key(52), "apostrophe"),
+    (Key(53), "grave"),
+    (Key(54), "comma"),
+    (Key(55), "period"),
+    (Key(56), "slash"),
+    (Key(57), "caps-lock"),
+    (Key(70), "print-screen"),
+    (Key(71), "scroll-lock"),
+    (Key::PAUSE, "pause"),
+    (Key::INSERT, "insert"),
+    (Key::HOME, "home"),
+    (Key::PAGE_UP, "page-up"),
+    (Key::DELETE, "delete"),
+    (Key::END, "end"),
+    (Key::PAGE_DOWN, "page-down"),
+    (Key::RIGHT, "right"),
+    (Key::LEFT, "left"),
+    (Key::DOWN, "down"),
+    (Key::UP, "up"),
+    (Key(83), "num-lock"),
+    (Key(84), "keypad-slash"),
+    (Key(85), "keypad-star"),
+    (Key::KP_MINUS, "keypad-minus"),
+    (Key::KP_PLUS, "keypad-plus"),
+    (Key::KP_ENTER, "keypad-enter"),
+    (Key(99), "keypad-period"),
+    (Key::LCTRL, "left-ctrl"),
+    (Key::LSHIFT, "left-shift"),
+    (Key::LALT, "left-alt"),
+    (Key::RCTRL, "right-ctrl"),
+    (Key::RSHIFT, "right-shift"),
+    (Key::RALT, "right-alt"),
+];
+
+/// A game-controller button, in SDL3's gamepad layout (South is A on an Xbox pad, cross on a
+/// PlayStation pad). The triggers count as buttons when pressed past half way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PadButton {
+    South,
+    East,
+    West,
+    North,
+    Back,
+    Guide,
+    Start,
+    LeftStick,
+    RightStick,
+    LeftShoulder,
+    RightShoulder,
+    DPadUp,
+    DPadDown,
+    DPadLeft,
+    DPadRight,
+    LeftTrigger,
+    RightTrigger,
+}
+
+impl PadButton {
+    /// Every button, in bit order.
+    pub const ALL: [PadButton; 17] = [
+        PadButton::South,
+        PadButton::East,
+        PadButton::West,
+        PadButton::North,
+        PadButton::Back,
+        PadButton::Guide,
+        PadButton::Start,
+        PadButton::LeftStick,
+        PadButton::RightStick,
+        PadButton::LeftShoulder,
+        PadButton::RightShoulder,
+        PadButton::DPadUp,
+        PadButton::DPadDown,
+        PadButton::DPadLeft,
+        PadButton::DPadRight,
+        PadButton::LeftTrigger,
+        PadButton::RightTrigger,
+    ];
+
+    /// The button's bit in [`Pad::buttons`].
+    pub fn bit(self) -> u32 {
+        1 << self as u32
+    }
+
+    /// The button's name in settings files and on the options screens.
+    pub fn name(self) -> &'static str {
+        match self {
+            PadButton::South => "south",
+            PadButton::East => "east",
+            PadButton::West => "west",
+            PadButton::North => "north",
+            PadButton::Back => "back",
+            PadButton::Guide => "guide",
+            PadButton::Start => "start",
+            PadButton::LeftStick => "left-stick",
+            PadButton::RightStick => "right-stick",
+            PadButton::LeftShoulder => "left-shoulder",
+            PadButton::RightShoulder => "right-shoulder",
+            PadButton::DPadUp => "dpad-up",
+            PadButton::DPadDown => "dpad-down",
+            PadButton::DPadLeft => "dpad-left",
+            PadButton::DPadRight => "dpad-right",
+            PadButton::LeftTrigger => "left-trigger",
+            PadButton::RightTrigger => "right-trigger",
+        }
+    }
+
+    /// The button named `name` (see [`PadButton::name`]).
+    pub fn from_name(name: &str) -> Option<PadButton> {
+        PadButton::ALL.into_iter().find(|b| b.name() == name)
+    }
 }
 
 /// A game controller reduced to the original's digital joystick (`docs/re/globals.md` §3):
 /// each axis is -1, 0 or 1 with the original's signs (`x` 1 = left, `y` 1 = up), plus its two
-/// buttons (button 1 = afterburner, button 2 = fire in flight).
+/// buttons (button 1 = afterburner, button 2 = fire in flight). `buttons` has every button of
+/// the controller ([`PadButton::bit`]) for the port's own bindings and screens.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Pad {
     pub x: i8,
     pub y: i8,
     pub button1: bool,
     pub button2: bool,
+    pub buttons: u32,
+}
+
+impl Pad {
+    /// True if `b` is held.
+    pub fn held(&self, b: PadButton) -> bool {
+        self.buttons & b.bit() != 0
+    }
 }
 
 /// Input gathered since the previous poll.
@@ -197,5 +385,39 @@ mod tests {
         assert_eq!(Key::digit(1), Some(Key::DIGIT_1));
         assert_eq!(Key::digit(0), Some(Key::DIGIT_0));
         assert_eq!(Key::letter('A'), None);
+    }
+
+    #[test]
+    fn key_names_round_trip() {
+        for code in 0..=300u16 {
+            let k = Key(code);
+            let name = k.name();
+            assert_eq!(Key::from_name(&name), Some(k), "{code} {name}");
+            assert!(
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "{name}"
+            );
+        }
+        assert_eq!(Key(96).name(), "keypad-8");
+        assert_eq!(Key(98).name(), "keypad-0");
+        assert_eq!(Key::F6.name(), "f6");
+        assert_eq!(Key::DIGIT_0.name(), "0");
+        assert_eq!(Key::RALT.name(), "right-alt");
+        assert_eq!(Key::from_name("f13"), None);
+        assert_eq!(Key::from_name("nonsense"), None);
+    }
+
+    #[test]
+    fn pad_buttons() {
+        for b in PadButton::ALL {
+            assert_eq!(PadButton::from_name(b.name()), Some(b));
+        }
+        let pad = Pad {
+            buttons: PadButton::Start.bit() | PadButton::South.bit(),
+            ..Pad::default()
+        };
+        assert!(pad.held(PadButton::Start) && pad.held(PadButton::South));
+        assert!(!pad.held(PadButton::East));
     }
 }
