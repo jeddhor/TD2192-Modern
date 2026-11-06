@@ -539,3 +539,63 @@ fn keys_typed_ahead_carry_into_the_next_screen() {
         "flight launched at frame {frame}"
     );
 }
+
+/// A flight that runs at the flight rate and never ends.
+#[derive(Debug)]
+struct Endless;
+
+impl td_flow::Screen for Endless {
+    fn tick_hz(&self) -> f64 {
+        19.2
+    }
+    fn tick(&mut self, _ctx: &mut FlowContext<'_>, _input: &TickInput) -> td_flow::Transition {
+        td_flow::Transition::None
+    }
+    fn draw(&self, fb: &mut td_render::Framebuffer) {
+        fb.clear(0);
+    }
+}
+
+impl FlightScreen for Endless {
+    fn result(&self) -> td_flow::FlightResult {
+        td_flow::FlightResult::default()
+    }
+}
+
+#[derive(Debug)]
+struct EndlessLauncher;
+
+impl FlightLauncher for EndlessLauncher {
+    fn launch(&mut self, _ctx: &mut FlowContext<'_>, _flight: u8) -> Box<dyn FlightScreen> {
+        Box::new(Endless)
+    }
+    fn random(&mut self, _n: u16) -> u16 {
+        0
+    }
+}
+
+#[test]
+fn a_campaign_flight_runs_at_the_flight_rate() {
+    // BUG-5 (docs/parity/M12-timing.md row 2): the block reports its flight child's tick rate,
+    // so the run loop paces the flight at 19.2 Hz, not at the 70 Hz retrace rate.
+    let _data = require_data!();
+    let (dir, res) = load().unwrap();
+    let mut prog = Program::new(&dir, &res, Box::new(EndlessLauncher)).unwrap();
+    let mut c = Campaign::new(1, 0);
+    assert_eq!(c.tick_hz(), td_flow::RETRACE_HZ);
+    let rate = Rc::new(Cell::new(0.0));
+    let seen = rate.clone();
+    let key = move |c: &Campaign, f: u32| {
+        seen.set(c.tick_hz());
+        f.is_multiple_of(20).then_some(Key::ESCAPE)
+    };
+    let r = rate.clone();
+    drive(
+        &mut prog,
+        &mut c,
+        key,
+        move || r.get() == 19.2,
+        &mut Vec::new(),
+    );
+    assert_eq!(c.tick_hz(), 19.2);
+}

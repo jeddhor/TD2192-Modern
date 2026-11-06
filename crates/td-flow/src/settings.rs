@@ -88,9 +88,11 @@ pub struct AudioSettings {
 }
 
 impl Default for AudioSettings {
+    /// Music and effects at the same volume: the mixer's gains reproduce the original's
+    /// balance (docs/parity/M3-audio.md, VE-3), so equal settings keep it.
     fn default() -> Self {
         Self {
-            music_volume: 0.6,
+            music_volume: 0.8,
             sfx_volume: 0.8,
             sfx_mode: SfxMode::Classic,
         }
@@ -356,7 +358,7 @@ mod tests {
 
         let partial: Settings = toml::from_str("[audio]\nsfx_mode = \"polyphonic\"\n").unwrap();
         assert_eq!(partial.audio.sfx_mode, SfxMode::Polyphonic);
-        assert_eq!(partial.audio.music_volume, 0.6);
+        assert_eq!(partial.audio.music_volume, 0.8);
         assert_eq!(partial.video, VideoSettings::default());
     }
 

@@ -25,7 +25,7 @@ use td_render::small_text;
 
 use crate::dialogue::DialogueScene;
 use crate::program::Program;
-use crate::screen::{FlowContext, Screen, Transition};
+use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
 use crate::story::{self, StoryScreen};
 
 /// Backgrounds of the scene cards (§3.3).
@@ -852,6 +852,18 @@ const ENDING_B_STEPS: &[Step] = &[M(12), C(Intro2, ENDING_B)];
 const ENDING_C_STEPS: &[Step] = &[M(12), C(Intro2, ENDING_C)];
 
 impl Campaign {
+    /// Ticks per second of the screen the block is showing: the flight's own rate while a
+    /// flight runs (19.2 Hz, or the retrace rate while it shows a modal screen), the retrace
+    /// rate otherwise (BUG-5: the run loop paces the whole episode by this).
+    pub fn tick_hz(&self) -> f64 {
+        match &self.child {
+            Some(Child::Flight(f)) => f.tick_hz(),
+            Some(Child::Dialogue(d)) => d.tick_hz(),
+            Some(Child::Story(s)) => s.tick_hz(),
+            None => RETRACE_HZ,
+        }
+    }
+
     /// A block for `mission` (1..=20) with `kills_to_date` before it.
     ///
     /// # Panics

@@ -165,7 +165,7 @@ impl Mixer {
             music: None,
             voices: Vec::new(),
             arbiter: ClassicArbiter::default(),
-            music_volume: 0.6,
+            music_volume: 0.8,
             sfx_volume: 0.8,
         }
     }

@@ -346,6 +346,7 @@ Template: ADG §17.5.
 - Actual (port): `Episode1` / `LaterEpisode` do not override `Screen::tick_hz`, so `Flow::tick_hz` is `RETRACE_HZ`, and `campaign.rs` ticks the flight child once per episode tick: 70.086 ticks/s, 3.65× fast. Only `--flight` dev mode (`FlightArena::tick_hz`) runs at `FLIGHT_TICK_HZ`
 - Spec reference: core/timing.md §4.1–4.2; M12-timing row 2
 - Severity: blocker for Classic parity. Fix: IM, delegate `tick_hz` to the flight child (and to its modal screens)
+- **Status: FIXED** (main session, 2026-11-06): `Campaign`, `CampaignE2` and `CampaignE3` report their child's `tick_hz` (a flight's own rate, the retrace rate while it shows a modal screen), and `Episode1` and `LaterEpisode` report the campaign's. Test: `td-flow/tests/story_parity.rs` `a_campaign_flight_runs_at_the_flight_rate`. A runtime tick count in the real binary is still to be taken (M12-02 re-check)
 
 ### BUG-6: mission title card fades take 34 frames; the original takes 18–20
 - Found by / date / milestone: VE-3, 2026-11-06, M12-02

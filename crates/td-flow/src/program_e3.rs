@@ -75,6 +75,10 @@ impl EpisodeCampaign for CampaignE3 {
         CampaignE3::draw(self, fb);
     }
 
+    fn tick_hz(&self) -> f64 {
+        CampaignE3::tick_hz(self)
+    }
+
     fn picture(prog: &Program, item: u8) -> Result<StoryScreen, StoryError> {
         let bg = if item == 6 { Bg::Aboutus } else { Bg::Order };
         scenes_e3::scene_card(&prog.data, &prog.assets, bg, ["", "", ""])
