@@ -64,7 +64,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M1-03 | Hardware access catalogue | RE | M0-09 | DONE | RE-1 | 2026-11-02; docs/re/hardware-access.md (466 sites, every one listed by device); vectors hooked: INT 08h/63h (WORX), 09h (game, per mission), 1Ch (SFX unit) |
 | M1-04 | Episode program top-level flow spec | RE/SP | M1-01 | REVIEW | RE-2 | docs/spec/flow/episode-program-flow.md rev 1 (start-up, menu, all 20 E1 mission blocks + flight 21, endings, debrief tiers, tdstatus.dat). Static; mission-1 path matches C-0002 |
 | M1-05 | Asset load-site table | RE | M1-01 | DONE | RE-3 | 2026-11-02: docs/re/asset-load-sites.md (all E1 load sites, VGA layout); FORMATS 3/4/6.3/7/9-13 updated (path stride 501, td.men regions, stills confirmed); E2/E3 map/tileset loaders |
-| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | PAUSED | RE-1 | Static draft done 2026-11-02: docs/spec/core/timing.md rev 1 (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). Needs VE measurements: docs/handoffs/2026-11-02-M1-06.md |
+| M1-06 | Timing model spec (U-001) | RE/SP | M1-03, M0-10 | IN PROGRESS | RE-1, VE-3 | Static draft done 2026-11-02 (RE-1): docs/spec/core/timing.md (tick = BIOS tick via DOS-time busy-wait at 0E8B:E05C; 18.2/18.5/19.2 Hz by WORX PIT state). VE-3 2026-11-06: VE measurements M1-M7 per docs/handoffs/2026-11-02-M1-06.md |
 | M1-07 | Global data map + symbols | RE | M1-01 | REVIEW | RE-2 | docs/re/globals.md (front end, input + flight keys, cheat chords, player/view state, slot/projectile/explosion arrays, buffers) + 158 symbol rows (functions and data; ApplySymbols-checked on a private copy) |
 | M1-08 | Core record layouts (ship, projectile, mission, class table) | RE | M1-07 | REVIEW | RE-2 | docs/re/structures.md: units (tile+pixel), mission file load map with 501-byte path stride (FORMATS 7 corrected; M2-11 parser needs the fix), ship record 1065 B, slot/projectile/explosion arrays, class table (U-008), heading codes (U-003), tile attributes (U-009) |
 | M1-09 | Cross-episode Version Tracking + deltas | RE | M1-07 | DONE | RE-7 | 2026-11-02: docs/re/episode-deltas.md rev 1; symbols td2.csv (505 rows) / td3.csv (493); tools match-episodes.py + ExportInstructionTable.java; 7 units identical (System, WORX, Crt, sfx, 386E, 34E6, 3A92); E2 380/394 matched (316 identical), E3 374/384 (311); U-006, U-012 resolved, U-005/U-009 partial; U-200..U-207; OB-023..OB-028 |
@@ -104,7 +104,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M3-05 | CMF tempo semantics in WORX (U-007) | RE | M1-02 | DONE | RE-4 | 2026-11-02; docs/spec/audio/cmf.md rev 2: WORX player exact (emulated driver = C-0001 capture 4,364/4,364 writes; model = driver on 17 songs, 146,595 writes); U-007, U-034, U-035 resolved; timing.md rev 2 |
 | M3-06 | Mixer + SFX policy | SP/IM | M1-02, M3-02 | DONE | IM-2 | 2026-11-02; sfx-policy rev 1: Classic arbiter (priority, pre-emption, idle 0, 15-tile cut-off, OB-009 too far), effect->VOC table, SB Pro levels -> stereo gain (linear, untuned); music-cues rev 1 table + MusicCues::play_cue in td-audio (not wired); U-140, U-141 open (9a3814d) |
 | M3-07 | tdtool play / export audio | IM | M3-04, M3-06 | IN PROGRESS | main-session | tdtool export audio (WAV) done; live play arrives with M4 platform |
-| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | IN PROGRESS | main-session | docs/parity/M3-audio.md: CMF register stream exact vs C-0001 (4,455 writes) and C-0002 (3,438), timing within 1.5 ticks (td-audio tests/oracle_parity.rs, IM-2); loop restart not captured; VOC and balance pending |
+| M3-08 | Audio parity vs DOSBox | VE | M3-05, M3-07 | IN PROGRESS | VE-3 | VE-3 2026-11-06: remaining rows (VOC onsets/rate/ADPCM A/B/length/pre-emption vs WAV, music/SFX balance and SB Pro levels, CMF loop restart row 12); intro effects (intro §8 Q2, U-380 VE part). Earlier (main-session, IM-2): CMF register stream exact vs C-0001 (4,455 writes) and C-0002 (3,438), timing within 1.5 ticks (td-audio tests/oracle_parity.rs) |
 
 ## M4: Platform shell
 
@@ -272,7 +272,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
 | M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | TODO | | |
-| M12-02 | Timing audit | VE | M12-01 | TODO | | |
+| M12-02 | Timing audit | VE | M12-01 | IN PROGRESS | VE-3 | VE-3 2026-11-06: timing audit of every screen kind vs captures, docs/parity/M12-timing.md (started ahead of M12-01 at the coordinator's request) |
 | M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | TODO | | |
 | M12-04 | Enhanced features for 1.0 (D5) | IM | D5 | TODO | | |
 | M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
