@@ -16,6 +16,7 @@
 use std::fmt;
 
 use td_assets::Episode;
+use td_formats::palette::Palette;
 use td_input::{Key, TickInput};
 use td_render::Framebuffer;
 
@@ -712,6 +713,16 @@ impl Child {
         }
     }
 
+    /// What a story screen or a dialogue scene leaves in `g_Palette` (screens rev 3 §2.1);
+    /// `None` for a flight, which does not touch it.
+    pub(crate) fn palette_left(&self) -> Option<&Palette> {
+        match self {
+            Child::Story(s) => Some(s.palette_buffer()),
+            Child::Dialogue(d) => Some(d.palette_buffer()),
+            Child::Flight(_) => None,
+        }
+    }
+
     /// True if Esc ended a story screen or a dialogue scene.
     pub(crate) fn skipped(&self) -> bool {
         match self {
@@ -769,9 +780,17 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
         T(n) => {
             let id = format!("e2.mission.{n:02}.title");
             let text = prog.res.text(&id).unwrap_or_default().to_owned();
-            Ok(scenes_e2::title_card(&prog.assets, &text))
+            Ok(scenes_e2::title_card(
+                &prog.assets,
+                &text,
+                &prog.scene_palette,
+            ))
         }
-        Tc(cap) => Ok(scenes_e2::title_card(&prog.assets, &caption(prog, cap))),
+        Tc(cap) => Ok(scenes_e2::title_card(
+            &prog.assets,
+            &caption(prog, cap),
+            &prog.scene_palette,
+        )),
         S(bg, caps) => {
             let t = caps.map(|c| caption(prog, c));
             scenes_e2::scene_card(&prog.data, &prog.assets, bg, [&t[0], &t[1], &t[2]])
@@ -842,6 +861,9 @@ impl CampaignE2 {
                     return None;
                 }
                 let child = self.child.take();
+                if let Some(p) = child.as_ref().and_then(Child::palette_left) {
+                    prog.leave_palette(p);
+                }
                 self.finish_child(prog, ctx, child);
                 continue;
             }

@@ -7,8 +7,10 @@
 //!
 //! The screen ticks once per vertical retrace ([`RETRACE_HZ`]). Every wait of the original
 //! becomes a whole number of ticks: one per typed character
-//! (`td_render::small_text::FRAMES_PER_TYPED_CHAR`) and two per fade level
-//! ([`FADE_FRAMES_PER_LEVEL`]). Everything between two waits happens at once inside one tick,
+//! (`td_render::small_text::FRAMES_PER_TYPED_CHAR`) and, per fade level, the frames
+//! `td_render::fade::frames_per_level` gives for the palette buffer (two with portraits loaded,
+//! [`FADE_FRAMES_PER_LEVEL`]; `docs/spec/flow/screens.md` rev 3 §2.1). Everything between two
+//! waits happens at once inside one tick,
 //! in the original's order. A page break waits for a key; keys pressed while text is typing or
 //! fading are kept, like the BIOS type-ahead buffer, and taken by the next page break.
 //!
@@ -16,9 +18,12 @@
 //! buffer (`g_Palette`, always full brightness) and the DAC (what is shown: faded, dimmed or
 //! highlighted). DAC writes made while the screen is dark are left to the next fade-in.
 //!
+//! The palette buffer is the shared `g_Palette`: the scene overwrites only the face, text and
+//! prompt entries, so the rest is what the previous screens left
+//! ([`DialogueScene::with_palette_buffer`]; black when the scene is played on its own).
+//!
 //! Not modelled: the joystick button that also ends a page wait (§4.7; there is no joystick
-//! input yet), and palette entries left over from the previous screen (224..239, 255 and the
-//! unused text entries start black here; no pixel uses them).
+//! input yet).
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -43,8 +48,10 @@ pub const NO_PORTRAIT: u8 = 200;
 pub const FIRST_TEXT_ENTRY: u8 = 250;
 /// Where the text entry allocator wraps to. Spec: §3.4.
 pub const TEXT_ENTRY_WRAP: u8 = 240;
-/// Ticks per fade level: 17 levels, one per two frames at 70 Hz, about 34 frames per fade as
-/// at preset P1 (C-0002 frames 2186..2219). Spec: §5 item 6 (T2).
+/// Ticks per fade level of a full picture palette: 17 levels, one per two frames at 70 Hz,
+/// about 34 frames per fade as at preset P1 (C-0002 frames 2186..2219). Spec: §5 item 6 (T2).
+/// A nearly black palette fades at one frame per level (`td_render::fade::frames_per_level`,
+/// screens rev 3 §2.1, BUG-6).
 pub const FADE_FRAMES_PER_LEVEL: u32 = 2;
 /// Keystrokes the BIOS type-ahead buffer holds (16 words, one always free); further keys are
 /// dropped. Spec: §4.7 (keys typed during text stay in the BIOS buffer).
@@ -324,6 +331,14 @@ impl DialogueScene {
         }
     }
 
+    /// Starts the palette buffer from `left`, what the previous screens left in `g_Palette`
+    /// (the scene overwrites only the entries it uses, §4.4).
+    #[must_use]
+    pub fn with_palette_buffer(mut self, left: &Palette) -> Self {
+        self.pal.clone_from(left);
+        self
+    }
+
     /// The video memory and DAC as shown.
     pub fn screen(&self) -> &Framebuffer {
         &self.screen
@@ -394,7 +409,7 @@ impl DialogueScene {
                         } else {
                             run.level - 1
                         };
-                        self.wait = FADE_FRAMES_PER_LEVEL;
+                        self.wait = fade::frames_per_level(&self.pal, 1);
                         continue;
                     }
                     if run.fading_in {
@@ -428,7 +443,7 @@ impl DialogueScene {
             fading_in,
             then_end,
         });
-        self.wait = FADE_FRAMES_PER_LEVEL;
+        self.wait = fade::frames_per_level(&self.pal, 1);
     }
 
     /// Reads and performs the next script line (§4.3).
@@ -549,11 +564,16 @@ mod tests {
     }
 
     /// Synthetic files: every small-font glyph solid; face n has pixel value n everywhere and
-    /// colour n = (n, n, n) at entry n; td.pal entry c = (c / 4, 0, 0).
+    /// colour n = (n, n, n) at entry n, entries 4..111 a grey (5, 5, 5) so that two faces
+    /// fill the palette like real portraits (two frames per fade level, screens rev 3 §2.1);
+    /// td.pal entry c = (c / 4, 0, 0).
     fn assets(script_bytes: Vec<u8>) -> DialogueAssets {
         let faces = (1..=3u8)
             .map(|n| {
                 let mut palette = Palette::default();
+                for c in &mut palette.colors[4..112] {
+                    *c = Rgb6 { r: 5, g: 5, b: 5 };
+                }
                 palette.colors[usize::from(n)] = Rgb6 { r: n, g: n, b: n };
                 palette.colors[0] = Rgb6 { r: 1, g: 2, b: 3 };
                 Portrait {
@@ -752,6 +772,32 @@ mod tests {
         assert_eq!(remap_face(Episode::E3, 126), 10);
         assert_eq!(remap_face(Episode::E3, 32), 9);
         assert_eq!(remap_face(Episode::E3, 200), 200);
+    }
+
+    #[test]
+    fn a_scene_without_portraits_fades_at_one_frame_per_level() {
+        // Face 200 loads nothing: the buffer is nearly black (one text entry), so each level
+        // takes one frame (screens rev 3 §2.1); a picture palette left in g_Palette counts.
+        let data = script(&[
+            b"\x06\x02",
+            b"\x01\x01\xc8\x40a",
+            b"\x03",
+            b"\x02\x01\x40b",
+            b"\x05",
+            b"\x04",
+            b"d",
+        ]);
+        let mut s = DialogueScene::new(assets(data.clone()), Episode::E1, 2);
+        s.step(&TickInput::default());
+        assert_eq!(run_until(&mut s, |s| s.lit), 17);
+        let mut left = Palette::default();
+        for c in &mut left.colors {
+            *c = Rgb6 { r: 7, g: 7, b: 7 };
+        }
+        let mut s = DialogueScene::new(assets(data), Episode::E1, 2).with_palette_buffer(&left);
+        s.step(&TickInput::default());
+        assert_eq!(s.palette_buffer().colors[230], left.colors[230], "kept");
+        assert_eq!(run_until(&mut s, |s| s.lit), 34, "the leftover counts");
     }
 
     #[test]

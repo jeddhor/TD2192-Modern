@@ -959,6 +959,13 @@ impl Campaign {
                     Some(Child::Dialogue(d)) => d.take_keys(),
                     _ => Vec::new(),
                 };
+                // What the screen leaves in g_Palette (screens rev 3 §2.1); a flight does not
+                // touch it.
+                match &child {
+                    Some(Child::Story(s)) => prog.leave_palette(s.palette_buffer()),
+                    Some(Child::Dialogue(d)) => prog.leave_palette(d.palette_buffer()),
+                    _ => {}
+                }
                 self.finish_child(prog, ctx, child);
                 continue;
             }

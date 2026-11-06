@@ -9,8 +9,16 @@
 //!
 //! Every screen works the same way (asset-load-sites §4): black video memory, the image and
 //! captions drawn while dark, a fade-in, a wait (seconds or a key; Esc also sets the skip
-//! flag), a fade-out. Fades use the 17 levels of `td_render::fade::write_level`, one level per
-//! [`FADE_FRAMES_PER_LEVEL`] frames as in the dialogue player.
+//! flag), a fade-out. Fades use the 17 levels of `td_render::fade::write_level`; a level takes
+//! one or two frames depending on the palette being faded (`td_render::fade::frames_per_level`,
+//! `docs/spec/flow/screens.md` rev 3 §2.1, BUG-6). Timed waits are DOS time
+//! ([`crate::timing::dos_seconds_frames`], screens rev 3 §2.2, BUG-7); `Crt.Delay` pauses are
+//! real milliseconds.
+//!
+//! The palette buffer is the original's shared `g_Palette` (DS:0D2E): a screen that sets only
+//! a few entries fades whatever the previous screen left there. Only the mission title card
+//! does that in the shipped flows ([`text_card`] starts from the buffer the program keeps,
+//! `Program::scene_palette`); every other screen loads a whole palette.
 //!
 //! Provisional parts (no spec yet): the line layout of the hint screens and of the text-only
 //! screens (orders, dossiers, debrief, retry prompt, script choice), U-121; what `td1-15.pic`'s
@@ -28,9 +36,10 @@ use td_render::small_text::{self, Typewriter};
 use td_render::{Framebuffer, fade, title_text};
 use thiserror::Error;
 
-use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
+use crate::dialogue::KEY_BUFFER;
 use crate::scene_card::{Captions, Layout, Shadow, lines, rgb};
-use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
+use crate::screen::{FlowContext, Screen, Transition};
+use crate::timing::{delay_ms_frames, dos_seconds_frames};
 
 /// Errors while preparing a story screen.
 #[derive(Debug, Error)]
@@ -123,6 +132,9 @@ pub struct StoryScreen {
     next_page: Option<(Box<[u8]>, Palette, Hold)>,
     phase: Phase,
     wait: u32,
+    /// False until the first frame, which arms the wait before the first fade level (the
+    /// palette is built after [`StoryScreen::blank`]).
+    primed: bool,
     keys: Vec<Key>,
     skip: bool,
     /// The key that ended the last wait.
@@ -154,16 +166,6 @@ pub(crate) fn is_keystroke(k: Key) -> bool {
     )
 }
 
-/// Seconds to frames at the retrace rate.
-fn seconds(s: u32) -> u32 {
-    (f64::from(s) * RETRACE_HZ).round() as u32
-}
-
-/// `Crt.Delay(ms)` in frames at the retrace rate (T2).
-fn ms_frames(ms: u32) -> u32 {
-    (f64::from(ms) * RETRACE_HZ / 1000.0).round() as u32
-}
-
 /// `Round(x)` of a non-negative `n / 2` (halves away from zero).
 fn round_half(n: i32) -> i32 {
     (n + 1).div_euclid(2)
@@ -182,7 +184,8 @@ impl StoryScreen {
             flush_waits: false,
             next_page: None,
             phase: Phase::FadeIn(0),
-            wait: FADE_FRAMES_PER_LEVEL,
+            wait: 0,
+            primed: false,
             keys: Vec::new(),
             skip: false,
             last_key: None,
@@ -194,9 +197,15 @@ impl StoryScreen {
         &self.screen
     }
 
-    /// The palette buffer (what the fade-in reaches).
+    /// The palette buffer (what the fade-in reaches; what the screen leaves in `g_Palette`).
     pub fn palette_buffer(&self) -> &Palette {
         &self.pal
+    }
+
+    /// Frames per fade level for the palette buffer as it is (screens rev 3 §2.1): entries
+    /// 1..255 are faded.
+    pub fn fade_frames_per_level(&self) -> u32 {
+        fade::frames_per_level(&self.pal, 1)
     }
 
     /// Mutable access to video memory and the palette buffer while building a screen.
@@ -256,7 +265,12 @@ impl StoryScreen {
                 self.keys.push(k);
             }
         }
+        if !self.primed {
+            self.primed = true;
+            self.wait = self.fade_frames_per_level();
+        }
         self.wait = self.wait.saturating_sub(1);
+        let fpl = self.fade_frames_per_level();
         while self.wait == 0 {
             match &mut self.phase {
                 Phase::Done => return,
@@ -265,7 +279,7 @@ impl StoryScreen {
                     fade::write_level(&mut self.screen.palette, &self.pal, k);
                     if k < 16 {
                         *level = k + 1;
-                        self.wait = FADE_FRAMES_PER_LEVEL;
+                        self.wait = fpl;
                     } else {
                         if self.hint_skip {
                             // The hint screen flushes the BIOS buffer after its fade-in.
@@ -303,21 +317,21 @@ impl StoryScreen {
                         return;
                     }
                     self.phase = Phase::FadeOut(16);
-                    self.wait = FADE_FRAMES_PER_LEVEL;
+                    self.wait = fpl;
                 }
                 Phase::FadeOut(level) => {
                     let k = *level;
                     fade::write_level(&mut self.screen.palette, &self.pal, k);
                     if k > 0 {
                         *level = k - 1;
-                        self.wait = FADE_FRAMES_PER_LEVEL;
+                        self.wait = fpl;
                     } else if let Some((pixels, pal, hold)) = self.next_page.take() {
                         self.screen.pixels.copy_from_slice(&pixels);
                         self.pal = pal;
                         self.hold = hold;
                         self.items.clear();
                         self.phase = Phase::FadeIn(0);
-                        self.wait = FADE_FRAMES_PER_LEVEL;
+                        self.wait = self.fade_frames_per_level();
                     } else {
                         self.phase = Phase::Done;
                     }
@@ -334,7 +348,7 @@ impl StoryScreen {
         }
         match self.items.get(n) {
             Some(item) => {
-                self.wait = ms_frames(item.delay_ms);
+                self.wait = delay_ms_frames(item.delay_ms);
                 Phase::Typing(n, Typewriter::new(&item.text, item.pen, item.ink, 0))
             }
             None => self.hold_phase(),
@@ -347,7 +361,7 @@ impl StoryScreen {
                 if self.flush_waits {
                     self.keys.clear();
                 }
-                seconds(s)
+                dos_seconds_frames(s)
             }
             Hold::Key => u32::MAX,
         })
@@ -496,10 +510,15 @@ fn still_screen(
     Ok(s)
 }
 
-/// A text card (`Flow_TextCard`, `051A:5852`): one title-font line centred at y = 90 in entry
-/// 85 = (63, 0, 0) on black; 5 s. Spec: text.md §4.5; asset-load-sites §4.
-pub fn text_card(assets: &StoryAssets, text: &str) -> StoryScreen {
+/// A text card (`Scene_MissionTitle`, `051A:5852`): one title-font line centred at y = 90 in
+/// entry 85 = (63, 0, 0) on black; 5 s of DOS time. It loads no palette: `left` is what the
+/// previous screens left in `g_Palette`, and only entry 85 is set, so the card fades at one
+/// frame per level while that buffer is nearly black (the first card after program start) and
+/// at two after any picture palette. Spec: text.md rev 3 §4.5, §4.5.2 (BUG-6); screens rev 3
+/// §2.1; asset-load-sites §4.
+pub fn text_card(assets: &StoryAssets, text: &str, left: &Palette) -> StoryScreen {
     let mut s = StoryScreen::blank(Hold::Seconds(5));
+    s.pal.clone_from(left);
     s.pal.colors[usize::from(TITLE_ENTRY)] = TITLE_RGB;
     let x = title_text::centred_x(text);
     title_text::draw(&mut s.screen, &assets.title, text, (x, 90), TITLE_ENTRY);
@@ -728,11 +747,14 @@ pub fn story_so_far(
         let mut fb = Framebuffer::new();
         fb.pixels.copy_from_slice(&img.pixels);
         fb.palette = img.palette.clone();
+        // Each component × 6 div 9 in Integer arithmetic (screens §3.8); a u8 product would
+        // overflow above 42.
+        let scale = |v: u8| (u16::from(v) * 6 / 9) as u8;
         for c in fb.palette.colors.iter_mut().take(251) {
             *c = Rgb6 {
-                r: c.r * 6 / 9,
-                g: c.g * 6 / 9,
-                b: c.b * 6 / 9,
+                r: scale(c.r),
+                g: scale(c.g),
+                b: scale(c.b),
             };
         }
         fb.palette.colors[254].g = 63;
@@ -814,6 +836,15 @@ mod tests {
         }
     }
 
+    /// A picture-like palette buffer: every component non-zero, so the fades take two frames
+    /// per level (screens rev 3 §2.1).
+    fn picture(mut s: StoryScreen) -> StoryScreen {
+        for c in &mut s.pal.colors {
+            *c = Rgb6 { r: 1, g: 2, b: 3 };
+        }
+        s
+    }
+
     fn run(s: &mut StoryScreen, input: &TickInput) -> u32 {
         let (mut n, idle) = (0, TickInput::default());
         while !s.finished() {
@@ -826,18 +857,40 @@ mod tests {
 
     #[test]
     fn timed_hold_fades_in_waits_and_fades_out() {
-        let mut s = StoryScreen::blank(Hold::Seconds(5));
+        let mut s = picture(StoryScreen::blank(Hold::Seconds(5)));
         s.pal.colors[3] = Rgb6 { r: 63, g: 0, b: 0 };
-        // 17 levels in (34), 5 s (350 frames), 17 levels out (34).
+        // 17 levels in (34), 5 s of DOS time (91 BIOS ticks: 332 frames, BUG-7), 17 levels
+        // out (34).
         let n = run(&mut s, &TickInput::default());
-        assert_eq!(n, 34 + 350 + 34);
+        assert_eq!(n, 34 + 332 + 34);
         assert!(!s.skipped());
         assert_eq!(s.screen().palette.colors[3], Rgb6::default());
     }
 
     #[test]
+    fn a_nearly_black_buffer_fades_at_one_frame_per_level() {
+        // BUG-6 (screens rev 3 §2.1, text rev 3 §4.5.2): the first title card after program
+        // start fades only entry 85 over the black (or script-choice) buffer: 17 frames a
+        // fade, against 34 once a picture palette is left in g_Palette (C-0002 f1063..1080
+        // and f1409..1428 against C-0170 f1003..1036 and f1364..1397).
+        let mut s = StoryScreen::blank(Hold::Seconds(5));
+        s.pal.colors[usize::from(TITLE_ENTRY)] = TITLE_RGB;
+        assert_eq!(s.fade_frames_per_level(), 1);
+        assert_eq!(run(&mut s, &TickInput::default()), 17 + 332 + 17);
+        let mut left = Palette::default();
+        for c in &mut left.colors {
+            *c = Rgb6 { r: 9, g: 9, b: 9 };
+        }
+        let mut s = StoryScreen::blank(Hold::Seconds(5));
+        s.pal.clone_from(&left);
+        s.pal.colors[usize::from(TITLE_ENTRY)] = TITLE_RGB;
+        assert_eq!(s.fade_frames_per_level(), 2);
+        assert_eq!(run(&mut s, &TickInput::default()), 34 + 332 + 34);
+    }
+
+    #[test]
     fn a_key_ends_the_hold_and_esc_skips() {
-        let mut s = StoryScreen::blank(Hold::Key);
+        let mut s = picture(StoryScreen::blank(Hold::Key));
         for _ in 0..40 {
             s.step(&TickInput::default());
         }
@@ -859,7 +912,7 @@ mod tests {
     #[test]
     fn typed_lines_come_after_the_fade_in() {
         let font = Font::parse(&vec![0xF7; FontKind::Small.file_len()], FontKind::Small).unwrap();
-        let mut s = StoryScreen::blank(Hold::Key).with_items(
+        let mut s = picture(StoryScreen::blank(Hold::Key)).with_items(
             font,
             vec![
                 TextItem::typed((10, 40), "ab", 240),
@@ -891,7 +944,7 @@ mod tests {
     #[test]
     fn a_key_after_a_hint_line_skips_the_rest() {
         let font = Font::parse(&vec![0xF7; FontKind::Small.file_len()], FontKind::Small).unwrap();
-        let mut s = StoryScreen::blank(Hold::Key).with_items(
+        let mut s = picture(StoryScreen::blank(Hold::Key)).with_items(
             font,
             vec![
                 TextItem::typed((10, 40), "a", 240),
@@ -918,7 +971,7 @@ mod tests {
     fn leftover_keys_end_the_next_wait() {
         // Two keys in one frame: the first ends this wait, the second is left for the next
         // screen, whose wait ends right after its fade-in (screens §2.2).
-        let mut a = StoryScreen::blank(Hold::Seconds(5));
+        let mut a = picture(StoryScreen::blank(Hold::Seconds(5)));
         a.step(&TickInput {
             pressed: vec![Key::SPACE, Key::ESCAPE],
             ..TickInput::default()
@@ -928,7 +981,7 @@ mod tests {
         assert!(!a.skipped());
         let left = a.take_keys();
         assert_eq!(left, [Key::ESCAPE]);
-        let mut b = StoryScreen::blank(Hold::Seconds(5));
+        let mut b = picture(StoryScreen::blank(Hold::Seconds(5)));
         b.type_ahead(left);
         assert_eq!(run(&mut b, &TickInput::default()), 34 + 34);
         assert!(b.skipped(), "the carried Esc sets the skip flag");

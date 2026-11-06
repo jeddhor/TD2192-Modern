@@ -23,7 +23,7 @@ use std::sync::Arc;
 use td_assets::{DataDir, Episode, ExeResources};
 use td_audio::{AudioCommand, CueRestart, CueTable, MusicCues};
 use td_formats::cmf::Cmf;
-use td_formats::palette::Rgb6;
+use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
 use td_render::dialogue::Side;
 use td_render::{Framebuffer, WIDTH, title_text};
@@ -60,6 +60,14 @@ pub struct Program {
     pub cues: MusicCues,
     songs: BTreeMap<&'static str, Arc<Cmf>>,
     pub launcher: Box<dyn FlightLauncher>,
+    /// `g_Palette` (DS:0D2E), the front end's shared palette buffer, as the last story screen,
+    /// dialogue scene, debrief or retry prompt of this program run left it: all black at program
+    /// start (BSS), then each screen's buffer when it ends ([`Program::leave_palette`]). The
+    /// mission title card loads no palette and fades this buffer with only entry 85 changed,
+    /// so its fade speed depends on it (screens rev 3 §2.1, text rev 3 §4.5.2, BUG-6).
+    /// IM-18 is adding the same front-end palette for the OB-017 muzzle bytes (weapons rev 4
+    /// §3.3): whoever merges second reuses the other's state.
+    pub scene_palette: Palette,
 }
 
 impl fmt::Debug for Program {
@@ -102,6 +110,7 @@ impl Program {
             cues: MusicCues::with_table(CueRestart::Always, table),
             songs: BTreeMap::new(),
             launcher,
+            scene_palette: Palette::default(),
         })
     }
 
@@ -149,6 +158,12 @@ impl Program {
         self.cues.play_cue(n, load, ctx.audio);
     }
 
+    /// A front-end screen ended with `pal` in its palette buffer: that is now what `g_Palette`
+    /// holds ([`Program::scene_palette`]).
+    pub fn leave_palette(&mut self, pal: &Palette) {
+        self.scene_palette.clone_from(pal);
+    }
+
     /// The flight song of flight `n`.
     pub fn play_flight_song(&mut self, ctx: &mut FlowContext<'_>, n: u8) {
         let load = Self::song_loader(&self.data, &mut self.songs);
@@ -163,7 +178,7 @@ impl Program {
                 Err(e) => tracing::warn!("dialogue unavailable: {e}"),
             }
         }
-        match &self.dialogue {
+        let scene = match &self.dialogue {
             Some(a) => DialogueScene::new(a.clone(), self.episode, id),
             None => DialogueScene::new(
                 DialogueAssets {
@@ -176,7 +191,9 @@ impl Program {
                 self.episode,
                 id,
             ),
-        }
+        };
+        // The scene overwrites only its face, text and prompt entries of g_Palette.
+        scene.with_palette_buffer(&self.scene_palette)
     }
 
     /// The screen of a story step (text card, scene card, stills, hint, orders, dossier).
@@ -184,7 +201,7 @@ impl Program {
         let a = &self.assets;
         let lines = |s: &[u16; 3]| [self.text(s[0]), self.text(s[1]), self.text(s[2])];
         Ok(match step {
-            Step::T(addr) => story::text_card(a, self.text(addr)),
+            Step::T(addr) => story::text_card(a, self.text(addr), &self.scene_palette),
             Step::C(Bg::Pic4, s) => story::pic4_card(&self.data, a, lines(&s))?,
             Step::C(Bg::Td1_18, s) => story::still_18(&self.data, a, lines(&s))?,
             Step::C(bg, s) => {
@@ -761,6 +778,7 @@ impl Screen for Episode1 {
                     pad: input.pad,
                 });
                 if s.finished() {
+                    self.prog.leave_palette(s.palette_buffer());
                     self.prog.choice = if s.last_key() == Key::digit(2) {
                         ScriptChoice::Edited
                     } else {
@@ -773,12 +791,16 @@ impl Screen for Episode1 {
             Stage::Notice(s) => {
                 s.step(input);
                 if s.finished() {
+                    self.prog.leave_palette(s.palette_buffer());
                     self.enter_menu(ctx, 0, Reentry::Loader { first: true });
                 }
             }
             Stage::Sub(s, how) => {
                 s.step(input);
                 if s.finished() {
+                    // ASSUMPTION(U-475): help and the port's about/order pictures leave their
+                    // palettes in g_Palette like the story so far (screens rev 3 §2.1).
+                    self.prog.leave_palette(s.palette_buffer());
                     let how = *how;
                     self.enter_menu(ctx, self.menu.cursor(), how);
                 }

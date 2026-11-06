@@ -10,6 +10,7 @@
 //! C-0046 (`hyde`).
 
 use td_assets::DataDir;
+use td_formats::palette::Palette;
 
 pub use crate::scene_card::{Captions, Layout, Shadow};
 use crate::scene_card::{lines, rgb};
@@ -158,9 +159,10 @@ pub fn scene_card(
     crate::scene_card::scene_card(data, assets, &bg.layout(), text)
 }
 
-/// A title card (`Scene_MissionTitle(text, 3Fh, 0, 0)` `04EC:5A89`): E1's text card.
-pub fn title_card(assets: &StoryAssets, text: &str) -> StoryScreen {
-    crate::story::text_card(assets, text)
+/// A title card (`Scene_MissionTitle(text, 3Fh, 0, 0)` `04EC:5A89`): E1's text card over the
+/// palette `left` in `g_Palette` (text rev 3 §4.5.2).
+pub fn title_card(assets: &StoryAssets, text: &str, left: &Palette) -> StoryScreen {
+    crate::story::text_card(assets, text, left)
 }
 
 #[cfg(test)]
