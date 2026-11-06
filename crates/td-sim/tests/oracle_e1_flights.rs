@@ -529,7 +529,6 @@ fn check_capture(flight: u8, tag: &str) {
 /// shields and armour that the class tables hold past their end (DS:03D1, 2 × DS:03C7; both
 /// bytes are 22h). Flight 2 has eight such slots (8, 10–13, 15–17).
 #[test]
-#[ignore = "M8-12: class FFh slots get shields 34 / armour 68 at setup in the original, 0 in ours (U-143)"]
 fn class_ffh_slots_setup_shields_and_armour() {
     let _data = require_data!();
     let _oracle = require_oracle!();
