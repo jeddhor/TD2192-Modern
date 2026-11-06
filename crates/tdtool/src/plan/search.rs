@@ -353,7 +353,7 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
             })
             .min()
             .unwrap_or(0);
-        if near < 96 {
+        if near < 256 {
             s -= near * 20;
         }
         if let Some(max) = home_sub_y_max(f.episode, f.number)
