@@ -76,6 +76,8 @@ pub enum FlightScreensError {
 /// What the screens read from the data files and from `file0001.exe`.
 #[derive(Debug, Clone)]
 pub struct FlightScreenAssets {
+    /// The program the screens belong to (transmission tables, ship-library rules).
+    pub episode: Episode,
     /// `td.lt2`.
     pub font: Font,
     /// `td.lt2` byte 650: the flight's opaque-text background (178 in the shipped file).
@@ -88,10 +90,11 @@ pub struct FlightScreenAssets {
     pub help: Vec<u8>,
     /// `td.cmm`: 32 cells of 32 × 32 (the transmission panel).
     pub panel: Vec<u8>,
-    /// `td1.ccm` (E2: `td2.ccm`): comm portraits, 32 × 32 each.
+    /// `td1.ccm` (E2: `td2.ccm`, E3: `td3.ccm`): comm portraits, 32 × 32 each.
     pub portraits: Vec<u8>,
-    /// Transmissions 1.. as the comm loaders fill them (E1: §3.3; E2: [`comm::e2_transmission`]).
-    pub transmissions: Vec<comm::Transmission>,
+    /// Transmission screens 1.. as the comm loaders fill them ([`comm::transmission_for`]; E2
+    /// provisionally [`comm::e2_transmission`]); `None` for a screen the episode lacks (E3 4).
+    pub transmissions: Vec<Option<comm::Transmission>>,
     /// `ship_library`.
     pub ship_library: Vec<String>,
     /// `comm.prompts`: [0] the "press Space" prompt, [1] the closing line.
@@ -103,10 +106,10 @@ pub struct FlightScreenAssets {
     pub map_prompts: Vec<String>,
     /// `flight.prompts`: [0] the IR notice, [1] the pause line.
     pub flight_prompts: Vec<String>,
-    /// `e1.target_info` (E2: `e2.target_info`).
+    /// `e1.target_info` (E2: `e2.target_info`, E3: `e3.target_info`).
     pub target_info: Vec<String>,
     /// `hud.radar_tile_colours` (`k_TileRadarColour`, tiles 0..70); E2 the map-set-1 or, once
-    /// a set-2 flight has run, the set-2 table (OB-024).
+    /// a set-2 flight has run, the set-2 table (OB-024); E3 its own table for both maps.
     pub radar_colours: Vec<u8>,
 }
 
@@ -159,6 +162,23 @@ const E2_IDS: Ids = Ids {
     ],
 };
 
+/// E3 (e2-flight-screens rev 1 §3.2, §3.3): comm screens 1, 2, 3 and 5 on the runs
+/// `e3.comms.01`, `.02`, `.03` and `.04` (there is no screen 4).
+const E3_IDS: Ids = Ids {
+    ship_library: "e3.ship_library",
+    comm_prompts: "e3.comm.prompts",
+    map_prompts: "e3.flight.map_prompts",
+    flight_prompts: "e3.flight.prompts",
+    target_info: "e3.target_info",
+    comms: &[
+        &["e3.comms.01"],
+        &["e3.comms.02"],
+        &["e3.comms.03"],
+        &[],
+        &["e3.comms.04"],
+    ],
+};
+
 fn texts(res: &ExeResources, id: &'static str) -> Result<Vec<String>, FlightScreensError> {
     res.texts(id)
         .map(<[String]>::to_vec)
@@ -171,16 +191,19 @@ impl FlightScreenAssets {
         Self::load_episode(data, res, Episode::E1, false)
     }
 
-    /// Loads everything for `episode` (E1 or E2). `radar_set2`: E2's radar table holds the
-    /// map-set-2 colours (`Session::radar_set2`).
+    /// Loads everything for `episode`. `radar_set2`: E2's radar table holds the map-set-2
+    /// colours (`Session::radar_set2`); ignored in E1 and E3.
     pub fn load_episode(
         data: &DataDir,
         res: &ExeResources,
         episode: Episode,
         radar_set2: bool,
     ) -> Result<Self, FlightScreensError> {
-        let e2 = episode == Episode::E2;
-        let ids = if e2 { &E2_IDS } else { &E1_IDS };
+        let ids = match episode {
+            Episode::E1 => &E1_IDS,
+            Episode::E2 => &E2_IDS,
+            Episode::E3 => &E3_IDS,
+        };
         let font_bytes = data.read("td.lt2")?;
         let font_background = *font_bytes
             .get(FONT_BACKGROUND_BYTE)
@@ -203,12 +226,18 @@ impl FlightScreenAssets {
         if panel.len() != 32 * 1024 {
             return Err(FlightScreensError::Size("td.cmm"));
         }
-        // UI_DrawCommPortraitA/B read td2.ccm in E2 (episode-deltas rev 2 §6).
-        let portraits = data.read(if e2 { "td2.ccm" } else { "td1.ccm" })?;
-        let radar_id = match (e2, radar_set2) {
-            (true, false) => "e2.hud.radar_tile_colours",
-            (true, true) => "e2.hud.radar_tile_colours_set2",
-            (false, _) => "hud.radar_tile_colours",
+        // UI_DrawCommPortraitA/B read td2.ccm / td3.ccm (episode-deltas rev 3 §6).
+        let portraits = data.read(match episode {
+            Episode::E1 => "td1.ccm",
+            Episode::E2 => "td2.ccm",
+            Episode::E3 => "td3.ccm",
+        })?;
+        let radar_id = match (episode, radar_set2) {
+            (Episode::E1, _) => "hud.radar_tile_colours",
+            (Episode::E2, false) => "e2.hud.radar_tile_colours",
+            (Episode::E2, true) => "e2.hud.radar_tile_colours_set2",
+            // One table for td3.map and td4.map (e3-mission-setup §3.1).
+            (Episode::E3, _) => "e3.hud.radar_tile_colours",
         };
         let Some(ResourceValue::Bytes(radar_colours)) = res.get(radar_id).cloned() else {
             return Err(FlightScreensError::Resource(radar_id));
@@ -224,18 +253,19 @@ impl FlightScreenAssets {
             })
             .collect::<Result<_, _>>()?;
         let comm_prompts = texts(res, ids.comm_prompts)?;
-        let transmissions = if e2 {
-            comms
-                .iter()
-                .enumerate()
-                .map(|(i, run)| comm::e2_transmission(i + 1, run, &comm_prompts))
-                .collect()
-        } else {
-            (1..=comm::TRANSMISSIONS)
-                .filter_map(comm::transmission)
-                .collect()
-        };
+        let transmissions = comms
+            .iter()
+            .enumerate()
+            .map(|(i, run)| {
+                comm::transmission_for(episode, i + 1).or_else(|| {
+                    // E2 until its table is filled in (e2-flight-screens §3.1).
+                    (episode == Episode::E2)
+                        .then(|| comm::e2_transmission(i + 1, run, &comm_prompts))
+                })
+            })
+            .collect();
         Ok(Self {
+            episode,
             font: Font::parse(&font_bytes, FontKind::Small)?,
             font_background,
             menu,

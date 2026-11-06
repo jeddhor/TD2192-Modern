@@ -122,6 +122,52 @@ fn title_and_hangar_cards_match_the_original() {
 }
 
 #[test]
+fn every_e1_scene_card_puts_its_captions_where_text_md_says() {
+    // text.md rev 2 §4.5.1: the captions (and their black copies) change only the pixels
+    // around each card's own pens; the ink entry gets the card's colour.
+    use td_flow::scene_card::Captions;
+    let _data = require_data!();
+    let (dir, _res) = load().unwrap();
+    let assets = StoryAssets::load(&dir).unwrap();
+    let caps = ["abc", "defgh", "ij"];
+    for l in &story::E1_SCENE_CARDS {
+        let bare = story::scene_card(&dir, &assets, l.file, ["", "", ""]).unwrap();
+        let card = story::scene_card(&dir, &assets, l.file, caps).unwrap();
+        // Pen and character count of each drawn string.
+        let pens: Vec<((i32, i32), usize)> = match l.captions {
+            Captions::Lines((x, y)) => (0..3)
+                .map(|k| ((x, y + 10 * k), caps[k as usize].len()))
+                .collect(),
+            Captions::Joined(pen) => vec![(pen, td_flow::scene_card::joined(caps).len())],
+            Captions::Centred(ys) => caps
+                .iter()
+                .zip(ys)
+                .map(|(t, y)| ((td_flow::scene_card::centred_x(t), y), t.len()))
+                .collect(),
+            Captions::None => Vec::new(),
+        };
+        let inside = |x: i32, y: i32| {
+            pens.iter().any(|&((px, py), n)| {
+                (px - 1..=px + 2 + 6 * n as i32).contains(&x) && (py - 1..=py + 7).contains(&y)
+            })
+        };
+        let (a, b) = (bare.palette_buffer(), card.palette_buffer());
+        let mut changed = 0;
+        for i in 0..64_000 {
+            if bare.screen().pixels[i] != card.screen().pixels[i] {
+                let (x, y) = ((i % 320) as i32, (i / 320) as i32);
+                assert!(inside(x, y), "{}: ({x}, {y}) changed", l.file);
+                changed += 1;
+            }
+        }
+        assert!(changed > 0, "{}: no caption pixels", l.file);
+        let e = usize::from(l.ink.0);
+        assert_eq!(Some(b.colors[e]), l.ink.1, "{}: ink entry", l.file);
+        assert_eq!(a.colors[e], b.colors[e]);
+    }
+}
+
+#[test]
 fn hint_1_matches_the_original() {
     let _data = require_data!();
     let oracle = require_oracle!();
