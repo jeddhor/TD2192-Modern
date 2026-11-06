@@ -10,8 +10,9 @@
 //! Every screen works the same way (asset-load-sites §4): black video memory, the image and
 //! captions drawn while dark, a fade-in, a wait (seconds or a key; Esc also sets the skip
 //! flag), a fade-out. Fades use the 17 levels of `td_render::fade::write_level`; a level takes
-//! one or two frames depending on the palette being faded (`td_render::fade::frames_per_level`,
-//! `docs/spec/flow/screens.md` rev 3 §2.1, BUG-6). Timed waits are DOS time
+//! one or two frames depending on the palette being faded (`td_render::fade::level_frames`,
+//! `docs/spec/flow/screens.md` rev 3 §2.1, BUG-6; level 0 one) and is shown from the frame
+//! after its last write (`td_render::fade::first_level_frames`, M12-14). Timed waits are DOS time
 //! ([`crate::timing::dos_seconds_frames`], screens rev 3 §2.2, BUG-7); `Crt.Delay` pauses are
 //! real milliseconds.
 //!
@@ -311,10 +312,9 @@ impl StoryScreen {
         }
         if !self.primed {
             self.primed = true;
-            self.wait = self.fade_frames_per_level();
+            self.wait = fade::first_level_frames(&self.pal, 1, 0);
         }
         self.wait = self.wait.saturating_sub(1);
-        let fpl = self.fade_frames_per_level();
         while self.wait == 0 {
             match &mut self.phase {
                 Phase::Done => return,
@@ -323,7 +323,7 @@ impl StoryScreen {
                     fade::write_level(&mut self.screen.palette, &self.pal, k);
                     if k < 16 {
                         *level = k + 1;
-                        self.wait = fpl;
+                        self.wait = fade::level_frames(&self.pal, 1, k + 1);
                     } else {
                         if self.hint_skip {
                             // The hint screen flushes the BIOS buffer after its fade-in.
@@ -361,21 +361,24 @@ impl StoryScreen {
                         return;
                     }
                     self.phase = Phase::FadeOut(16);
-                    self.wait = fpl;
+                    self.wait = fade::first_level_frames(&self.pal, 1, 16);
                 }
                 Phase::FadeOut(level) => {
                     let k = *level;
                     fade::write_level(&mut self.screen.palette, &self.pal, k);
                     if k > 0 {
                         *level = k - 1;
-                        self.wait = fpl;
+                        self.wait = fade::level_frames(&self.pal, 1, k - 1);
                     } else if let Some((pixels, pal, hold)) = self.next_page.take() {
+                        // The next page is drawn after one retrace wait and fades in from the
+                        // retrace after that (C-0170 story so far: page 2's levels shown 2,
+                        // 4, …, 34 frames after the frame of page 1's last level).
                         self.screen.pixels.copy_from_slice(&pixels);
                         self.pal = pal;
                         self.hold = hold;
                         self.items.clear();
                         self.phase = Phase::FadeIn(0);
-                        self.wait = self.fade_frames_per_level();
+                        self.wait = fade::first_level_frames(&self.pal, 1, 0);
                     } else {
                         self.phase = Phase::Done;
                     }

@@ -180,11 +180,13 @@ fn computer_menu_library_and_help_match_c0012() {
 
 #[test]
 fn menu_fades_take_two_frames_per_level_and_the_ramp_eleven_steps_per_frame() {
-    // BUG-8, flight-screens rev 5 §4.5.3 and §3.5 (C-0012): 17 levels two frames apart, each
-    // written in the second frame of its pair: the fade-out's DAC writes span 33 frames
-    // (f3556..3588), black in the 34th frame after Esc; the fade-in's span 33 frames (C-0012
-    // f3595..3628: 34; the original's page drawing in between, 6 frames, is instant here);
-    // item 0's ramp 32..63 starts in the frame of the last level and runs 11, 11 and 10 steps
+    // BUG-8, flight-screens rev 5 §4.5.3 and §3.5 (C-0012), M12-14: 17 levels two frames
+    // apart, level 0 one, each shown from the frame after its last write. The fade-out's
+    // levels are complete in the frames 3, 5, …, 33, 34 after the Esc tick (C-0012 writes
+    // f3555.92..3588.1: f3558, 3560, …, 3588, 3589), so black in the 34th; the fade-in's
+    // levels follow 1, 3, …, 33 frames later (C-0012 f3595.92..3628.44, 7 frames later than
+    // here: the original reads and draws the menu page in f3589..3594, instant here); item 0's
+    // ramp 32..63 starts in the frame of the last level and runs 11, 11 and 10 steps
     // (f3628..3630).
     let data = require_data!();
     let (_dir, a, pal) = load(&data);
@@ -202,8 +204,8 @@ fn menu_fades_take_two_frames_per_level_and_the_ramp_eleven_steps_per_frame() {
     assert_eq!(out, 34, "fade-out: level 0 in the 34th frame");
     let first_change = frames.iter().position(|p| *p != pal).unwrap() + 1;
     assert_eq!(
-        first_change, 4,
-        "level 16 (frame 2) leaves the DAC as it was"
+        first_change, 5,
+        "level 16 (frame 3) leaves the DAC as it was"
     );
     let menu_pal = {
         let mut p = pal.clone();

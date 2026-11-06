@@ -10,7 +10,11 @@
 //! The original runs each screen to completion inside step 18 of the tick that requests it:
 //! no tick passes, no key is read, music goes on. Both use the flight fades
 //! ([`fade_target`], 17 levels), which also end any hit flash; td-sim zeroes `g_HitFlash` when
-//! it reports the request. The port runs the screen as a queue of steps, one vertical retrace
+//! it reports the request. The fades are paced like every other fade
+//! (`td_render::fade::level_frames`, two retraces a level with a flight palette and one for
+//! level 0, each level shown from the frame after its last write; M12-14: C-0067 and C-0069
+//! show their four fades' levels 3, 5, …, 33, 34 frames after a fade-out starts and 2, 4, …,
+//! 34 after a fade-in does). The port runs the screen as a queue of steps, one vertical retrace
 //! per waiting step, like the computer menu ([`super::menu`]).
 //!
 //! The screen shows page 0 from its origin: first with the split line off (no HUD; rows 0..191
@@ -22,20 +26,27 @@ use std::collections::VecDeque;
 
 use td_formats::palette::{Palette, Rgb6};
 use td_render::flight_palette::{FADE_STEPS, fade_target, write_fade_step};
-use td_render::{Framebuffer, WIDTH, small_text};
+use td_render::{Framebuffer, WIDTH, fade, small_text};
 
 use super::{FLIGHT_ROWS, FlightScreenAssets, ModalStep, blank_below_display};
 use crate::screen::RETRACE_HZ;
 
-/// Retraces per fade level: a level waits for a retrace, then writes 255 or 256 DAC entries
-/// with three Real48 `Round`s each, which at preset P1 takes past the next retrace with a
-/// flight palette (flight-screens rev 5 §4.5.3, BUG-8; C-0067 `frames.tsv` 877..910). T2.
-pub const FRAMES_PER_FADE_LEVEL: u32 = 2;
+/// Frames from the opening fade-out's last level to the next code (clear page 0, split line
+/// off, show page 0 from its origin): the split-line change waits through two retraces, the
+/// one that ends the last level's frame and the next (C-0069 f1265: 49 retrace-bit hits, f1266:
+/// 1; the V.C.I. line and the fade-in follow, its first level from f1267.92). T2.
+pub const SPLIT_OFF_FRAMES: u32 = 2;
 
-/// Retraces the original spends reading `td1-17.pic` one byte at a time (C-0067 frames
-/// 911..925, 28,800 one-byte reads at P1). The picture is drawn while the DAC is black, so only
-/// the pacing depends on it. T2.
-pub const PICTURE_LOAD_FRAMES: u32 = 15;
+/// Frames the original then spends reading `td1-17.pic` one byte at a time: 28,800 reads from
+/// the retrace that ends f911 (the fade-out's last level shown) to f926, the fade-in's first
+/// level from f926.92 (C-0067). The picture is drawn while the DAC is black, so only the pacing
+/// depends on it. T2.
+pub const PICTURE_LOAD_FRAMES: u32 = 14;
+
+/// Frames from the closing fade-out's last level to the closing fade-in's code (split line
+/// back at 13Fh, clear page 0): one retrace wait (C-0067 f1514, C-0069 f1476: 1 hit; the
+/// fade-in's first level from f1515.92 and f1477.92). T2.
+pub const SPLIT_ON_FRAMES: u32 = 1;
 
 /// Screen rows of the cut-scene picture: page rows 35..124 (VGA rows 67..156).
 pub const PICTURE_TOP: usize = 35;
@@ -82,13 +93,18 @@ fn delay_frames(ms: u32) -> u32 {
 /// One step of a screen's program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Op {
-    /// One fade level per [`FRAMES_PER_FADE_LEVEL`] retraces: DAC entries `first..` :=
-    /// Round(`target` · s / 16), s moving from `s` to `end`.
+    /// A flight fade: DAC entries `first..` := Round(`target` · s / 16), s moving from `s` to
+    /// `end`, each level shown from the frame after its last write
+    /// ([`fade::first_level_frames`] for the first, [`fade::level_frames`] for the rest, two
+    /// retraces a level with a flight palette and one for level 0; `wait` = frames left before
+    /// the level is shown, this one included). The next step starts in the frame of the last
+    /// level.
     Fade {
         target: Box<Palette>,
         s: u8,
         end: u8,
         first: usize,
+        wait: u32,
     },
     /// Wait this many retraces, the current one included.
     Hold(u32),
@@ -151,12 +167,14 @@ impl Interlude {
             s: FADE_STEPS,
             end: 0,
             first: 0,
+            wait: fade::first_level_frames(&target, 0, FADE_STEPS),
         };
         let fade_in = || Op::Fade {
             target: Box::new(target.clone()),
             s: 0,
             end: FADE_STEPS,
             first: 1,
+            wait: fade::first_level_frames(&target, 1, 0),
         };
         let text = |list: &[String], i: usize| list.get(i).cloned().unwrap_or_default();
         let mut ops = VecDeque::new();
@@ -164,6 +182,7 @@ impl Interlude {
         // from its origin.
         ops.push_back(fade_out());
         ops.push_back(Op::ClearPage { hud: false });
+        ops.push_back(Op::Hold(SPLIT_OFF_FRAMES));
         let mut picture = Vec::new();
         match scene {
             SCENE_CUT_SCENE => {
@@ -207,6 +226,7 @@ impl Interlude {
         // vehicle switch, done by td-sim), FadeIn.
         ops.push_back(fade_out());
         ops.push_back(Op::ClearPage { hud: true });
+        ops.push_back(Op::Hold(SPLIT_ON_FRAMES));
         ops.push_back(fade_in());
         let band = HUD_TOP * WIDTH..FLIGHT_ROWS * WIDTH;
         Some(Self {
@@ -243,18 +263,30 @@ impl Interlude {
                     s,
                     end,
                     first,
+                    wait,
                 } => {
-                    write_fade_step(&mut self.canvas.palette, &target, s, first);
-                    if s != end {
-                        let s = if s < end { s + 1 } else { s - 1 };
+                    if wait > 1 {
                         self.ops.push_front(Op::Fade {
                             target,
                             s,
                             end,
                             first,
+                            wait: wait - 1,
                         });
+                        return ModalStep::Continue;
                     }
-                    self.ops.push_front(Op::Hold(FRAMES_PER_FADE_LEVEL));
+                    write_fade_step(&mut self.canvas.palette, &target, s, first);
+                    if s != end {
+                        let s = if s < end { s + 1 } else { s - 1 };
+                        self.ops.push_front(Op::Fade {
+                            wait: fade::level_frames(&target, first, s),
+                            target,
+                            s,
+                            end,
+                            first,
+                        });
+                        return ModalStep::Continue;
+                    }
                 }
                 Op::Hold(n) => {
                     if n > 1 {

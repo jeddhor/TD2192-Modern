@@ -14,9 +14,12 @@
 //! DS:07E0) and the DAC. Fades and the half-brightness boxes are computed from the buffer;
 //! the cursor pulses write the DAC only.
 //!
-//! Pace (T2): fade levels take `td_render::fade::frames_per_level` frames of the palette buffer,
-//! two for `tdmen.pal` as everywhere else (C-0002 frames 835..868; E2 C-0120 f272..305, E3
-//! C-0125 f270..303). The pulse waits for the retrace bit, which stays set long enough for
+//! Pace (T2): fade levels take `td_render::fade::level_frames` frames of the palette buffer,
+//! two for `tdmen.pal` as everywhere else and one for level 0, each level shown from the frame
+//! after its last write (`fade::first_level_frames`, M12-14): the fade-in's levels 2, 4, …, 34
+//! frames after the loader (C-0002 frames 835..868; E2 C-0120 f272..305, E3 C-0125 f270..303),
+//! the fade-out's 3, 5, …, 33, 34 frames after the key (C-0002 f1027..1060, C-0120 f435..468),
+//! and the action [`NEXT_SCREEN_INIT_FRAMES`] after that. The pulse waits for the retrace bit, which stays set long enough for
 //! several cheap steps: C-0002 shows the 48 steps of the first pulse as 11, 11, 11, 11 and 4
 //! DAC writes in frames 868..872, so the port runs [`PULSE_STEPS_PER_FRAME`] steps per frame.
 //! The box fade writes 256 entries per level and gets one level per frame.
@@ -50,6 +53,14 @@ pub const QUIT: u8 = 8;
 pub const ITEM_ENTRY: usize = 224;
 /// Cursor pulse steps per frame at preset P1 (C-0002 frames 868..872; T2).
 pub const PULSE_STEPS_PER_FRAME: u32 = 11;
+/// Frames from the fade-out's last level to the chosen action: the next screen's mode X
+/// initialisation (screens rev 3 §1: `Gfx_InitUnchained` blacks the DAC, then the split line
+/// is turned off), which waits through the retrace that ends the last level's frame and two
+/// more before the screen's own work (C-0002 f1060..1062 and f1428..1430, C-0120 f470..472:
+/// 49, 55 and 1 retrace-bit hits). The E1 title card then fades in from f1063.92, its levels
+/// shown 38, 39, …, 54 frames after the Enter of f1027, as here. Screens that read a picture
+/// first spend that time on top (U-512). T2, M12-14.
+pub const NEXT_SCREEN_INIT_FRAMES: u32 = 2;
 /// The joystick's `Crt.Delay(200)` after a move up, in frames (screens §3.1).
 const JOY_DELAY_FRAMES: u32 = 14;
 /// Menu rows the confirmation boxes cover (`UI_ShowMenuBox` `0000:330E`).
@@ -300,9 +311,17 @@ impl MainMenu {
         self.after_loader = Some((entry, rgb));
     }
 
-    /// Frames per fade level of the palette buffer (screens rev 3 §2.1).
-    fn fade_frames(&self) -> u32 {
-        fade::frames_per_level(&self.buffer, 1)
+    /// Frames fade level `s` of the palette buffer takes (screens rev 3 §2.1, M12-14).
+    fn level_frames(&self, s: u8) -> u32 {
+        fade::level_frames(&self.buffer, 1, s)
+    }
+
+    /// Starts the fade-out before `item`'s action, from code that ran in this frame: level 16
+    /// is shown [`fade::first_level_frames`] later (C-0002 Enter at f1027: levels shown at
+    /// f1030, 1032, …, 1060, 1061).
+    fn start_fade_out(&mut self, item: u8) {
+        self.phase = Phase::FadeOut { s: 16, item };
+        self.wait = fade::first_level_frames(&self.buffer, 1, 16);
     }
 
     /// Shows the menu with `cursor` after an action (or at program start), with an empty key
@@ -354,7 +373,7 @@ impl MainMenu {
             loader,
             pulse,
         };
-        self.wait = self.fade_frames();
+        self.wait = fade::first_level_frames(&self.buffer, 1, 0);
     }
 
     /// Advances one frame; returns the chosen item once the menu has faded out for it.
@@ -381,7 +400,7 @@ impl MainMenu {
                             loader,
                             pulse,
                         };
-                        self.wait = self.fade_frames();
+                        self.wait = self.level_frames(s + 1);
                         continue;
                     }
                     if loader {
@@ -486,11 +505,13 @@ impl MainMenu {
                 }
                 Phase::FadeOut { s, item } => {
                     fade::write_level(&mut self.screen.palette, &self.buffer, s);
-                    self.phase = match s {
-                        0 => Phase::Chosen(item),
-                        _ => Phase::FadeOut { s: s - 1, item },
-                    };
-                    self.wait = self.fade_frames();
+                    if s > 0 {
+                        self.phase = Phase::FadeOut { s: s - 1, item };
+                        self.wait = self.level_frames(s - 1);
+                    } else {
+                        self.phase = Phase::Chosen(item);
+                        self.wait = NEXT_SCREEN_INIT_FRAMES;
+                    }
                 }
                 Phase::Chosen(item) => {
                     self.phase = Phase::Wait;
@@ -545,7 +566,7 @@ impl MainMenu {
         if self.in_game && (item == 0 || item == 2) {
             self.ask(BOX_GAME_LOST, item);
         } else {
-            self.phase = Phase::FadeOut { s: 16, item };
+            self.start_fade_out(item);
         }
     }
 
@@ -568,7 +589,7 @@ impl MainMenu {
         match (n, yes) {
             (BOX_QUIT, true) => {
                 self.cursor = QUIT;
-                self.phase = Phase::FadeOut { s: 16, item: QUIT };
+                self.start_fade_out(QUIT);
             }
             (BOX_QUIT, false) => {
                 // A cancelled quit counts as a cursor change: the pulse runs again.
@@ -577,7 +598,7 @@ impl MainMenu {
                 self.pulses.push_back(Pulse::up(self.cursor));
                 self.phase = Phase::Pulses;
             }
-            (_, true) => self.phase = Phase::FadeOut { s: 16, item },
+            (_, true) => self.start_fade_out(item),
             (_, false) => self.phase = Phase::Wait,
         }
     }
@@ -745,10 +766,19 @@ mod tests {
         m.enter(4, false, Reentry::Loader { first: false });
         idle(&mut m, 40);
         assert_eq!(m.step(&press(Key::ENTER)), None);
-        // 17 levels from the buffer (the cursor entry dim there), then the action.
+        // 17 levels from the buffer (the cursor entry dim there): level 16 shown 3 frames after
+        // the key, level 1 33 and level 0 34 frames after it (C-0002 Enter f1027: f1030,
+        // f1060, f1061); the action 2 frames later (the next screen's mode X initialisation).
+        assert_eq!(entry(&m, 4), red(63));
+        assert_eq!(idle(&mut m, 2), None);
+        assert_eq!(entry(&m, 4), red(63));
+        assert_eq!(idle(&mut m, 1), None);
         assert_eq!(entry(&m, 4), red(16));
-        assert_eq!(idle(&mut m, 33), None);
+        assert_eq!(idle(&mut m, 30), None);
+        assert_eq!(entry(&m, 4), red(1), "level 1");
+        assert_eq!(idle(&mut m, 1), None);
         assert_eq!(entry(&m, 4), Rgb6::default());
+        assert_eq!(idle(&mut m, NEXT_SCREEN_INIT_FRAMES - 1), None);
         assert_eq!(idle(&mut m, 1), Some(4));
     }
 

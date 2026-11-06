@@ -41,6 +41,11 @@
 //! OB-057) and the heading blits (mirrors, one-pixel shifts, boxes drawn from the sprite's
 //! corner; U-360) follow `flight-screens.md` rev 3 §4.9.
 //!
+//! Presentation around the ticks (M12-14): the flight opens with the original's `FadeIn` from
+//! black over a black playfield and the bar as setup drew it, 34 retraces with tick 1 in the
+//! last ([`Opening`]; hud rev 2 §4.1, flight-screens rev 5 §4.5.3), and ends with its `FadeOut`
+//! ([`Teardown`]); both pace their levels by `td_render::fade::level_frames`.
+//!
 //! Sound effects (sfx-policy rev 4 §4.2, voc-and-adpcm rev 3 §2.3): the arena keeps the game's
 //! side of the single digital voice ([`DigitalVoice`]) on its own clock (flight ticks at
 //! `FLIGHT_TICK_HZ`, modal screens and the teardown at the retrace rate): which effects start,
@@ -206,23 +211,28 @@ pub struct FlightArena {
     voice: DigitalVoice,
     /// Seconds since the flight started: flight ticks and retrace frames as they pass.
     clock: f64,
+    /// Before tick 1: the opening fade-in.
+    opening: Option<Opening>,
     /// After the last tick: the fade-out and the wait for the playing status.
     teardown: Option<Teardown>,
 }
 
 /// The flight's teardown after its last tick (mission-logic §4.8, tick-order §4): `FadeOut`
-/// (flight-screens rev 5 §4.5.3: 17 levels, each written in the last of its frames), then the
-/// wait until WORX reports no digital sound playing (sfx-policy rev 4 §4.2, `0E8B:F990..F99E`),
-/// then the campaign goes on (it stops the music).
+/// (flight-screens rev 5 §4.5.3: 17 levels, each shown from the frame after its last write,
+/// `td_render::fade::first_level_frames`; C-0069 f1809: levels shown 3, 5, …, 33, 34 frames
+/// after the last tick's frame), then the wait until WORX reports no digital sound playing
+/// (sfx-policy rev 4 §4.2, `0E8B:F990..F99E`), then the campaign goes on (it stops the music).
 #[derive(Debug, Clone)]
 struct Teardown {
     /// The DAC as shown.
     dac: Palette,
     /// The palette being faded out.
     target: Palette,
+    /// The first entry the fade writes (episode-deltas rev 3 §6: E2 1, E1 and E3 0).
+    first: usize,
     /// The next fade level to write (16 down to 0); `None` once the fade is over.
     level: Option<u8>,
-    /// Frames until that level is written.
+    /// Frames until that level is shown.
     wait: u32,
 }
 
@@ -230,19 +240,21 @@ impl Teardown {
     /// Starts the fade-out from `dac` (what is on screen) towards black: `target` is the flight
     /// palette in the current mode. After a Quit the screen is already black (the menu returns
     /// without fading back in), so only the wait remains.
-    fn new(dac: &Palette, target: Palette, aborted: bool) -> Self {
+    fn new(dac: &Palette, target: Palette, first: usize, aborted: bool) -> Self {
         if aborted {
             return Self {
                 dac: Palette::default(),
                 target,
+                first,
                 level: None,
                 wait: 0,
             };
         }
         Self {
             dac: dac.clone(),
-            wait: td_render::fade::frames_per_level(&target, 0),
+            wait: td_render::fade::first_level_frames(&target, first, FADE_STEPS),
             target,
+            first,
             level: Some(FADE_STEPS),
         }
     }
@@ -254,13 +266,85 @@ impl Teardown {
         };
         self.wait = self.wait.saturating_sub(1);
         if self.wait == 0 {
-            write_fade_step(&mut self.dac, &self.target, s, 0);
+            write_fade_step(&mut self.dac, &self.target, s, self.first);
             self.level = s.checked_sub(1);
-            self.wait = td_render::fade::frames_per_level(&self.target, 0);
+            if let Some(next) = self.level {
+                self.wait = td_render::fade::level_frames(&self.target, self.first, next);
+            }
         }
         false
     }
 }
+
+/// The flight's opening `FadeIn` (hud rev 2 §4.1 step 6, tick-order §4 setup, flight-screens
+/// rev 5 §4.5.3): before tick 1 the screen shows a black playfield (page 1, cleared) and the
+/// HUD band as setup drew it ([`Hud::start`]), while DAC entries `first..=255` rise from black
+/// to the flight palette in the start mode over 17 levels. Level k is shown 2k + 2 frames after
+/// the flight opens (`td_render::fade::first_level_frames`), level 16 in frame 34: C-0002
+/// f3439..3472 and C-0017 f458..491 with tick 1 in the next frame, E2 C-0015 f631..664, E3
+/// C-0036 f660..693. Tick 1 runs in the frame of level 16: it draws into the page on screen, so
+/// its playfield appears with the last level (C-0002 f3473). In infra-red mode 1 (E1 flights 4
+/// and 8, E2 3 and 10) the start formula then replaces the fade's (B / 4, entry 37), which
+/// takes the next frame (C-0019 f490..491), and tick 1 runs then. The key table is cleared and
+/// the keyboard handler hooked before the fade, so keys pressed during it reach tick 1.
+#[derive(Debug, Clone)]
+struct Opening {
+    /// The DAC as shown.
+    dac: Palette,
+    /// `g_FlightPalette` in the start mode (the fade's target).
+    target: Palette,
+    /// The first entry the fade writes (episode-deltas rev 3 §6: E3 0, E1 and E2 1).
+    first: usize,
+    /// The next level to write; `None` after level 16.
+    level: Option<u8>,
+    /// Frames until that level is shown (then until the infra-red palette is).
+    wait: u32,
+    /// Mode 1 at the start, in an episode that applies the start formula after the fade.
+    infra_red: bool,
+    /// Keys pressed while the fade runs.
+    pressed: Vec<Key>,
+}
+
+impl Opening {
+    fn new(target: Palette, first: usize, infra_red: bool) -> Self {
+        Self {
+            dac: Palette::default(),
+            wait: td_render::fade::first_level_frames(&target, first, 0),
+            target,
+            first,
+            level: Some(0),
+            infra_red,
+            pressed: Vec::new(),
+        }
+    }
+
+    /// One retrace frame; true once tick 1 is due in this frame.
+    fn step(&mut self, input: &TickInput) -> bool {
+        self.pressed.extend(input.pressed.iter().copied());
+        self.wait = self.wait.saturating_sub(1);
+        if self.wait > 0 {
+            return false;
+        }
+        let Some(s) = self.level else {
+            // The infra-red start formula is on screen (the arena's `FlightDac`).
+            return true;
+        };
+        write_fade_step(&mut self.dac, &self.target, s, self.first);
+        if s < FADE_STEPS {
+            self.level = Some(s + 1);
+            self.wait = td_render::fade::level_frames(&self.target, self.first, s + 1);
+            return false;
+        }
+        self.level = None;
+        self.wait = OPENING_IR_FRAMES;
+        !self.infra_red
+    }
+}
+
+/// Frames from the opening fade's last level to the infra-red start palette (mode 1): C-0019
+/// (E1 flight 4) writes the formula's 257 entries from f490.2 to f491.9, right after the last
+/// level, so it is first shown one frame after that level. T2.
+const OPENING_IR_FRAMES: u32 = 1;
 
 /// WORX's ring offset r in `episode`'s program as Classic runs it (voc-and-adpcm rev 3 §2.3:
 /// E1 started by `td1.exe`, E2 and E3 run directly).
@@ -486,7 +570,14 @@ impl FlightArena {
             &dir.read("td.lt2")?,
             radar,
         )?;
-        let hud = Hud::new(&hud_assets);
+        // Setup draws the weapon icon and the missile column before the fade-in (hud §4.1).
+        let mut hud = Hud::new(&hud_assets);
+        hud.start(
+            &hud_assets,
+            flight.weapon,
+            flight.missiles,
+            flight.missile_cooldown,
+        );
         // Texts the mission logic can post to the ticker, by resource id (the sim carries ids).
         let mut ticker_texts = BTreeMap::new();
         for id in TICKER_RESOURCES {
@@ -509,6 +600,13 @@ impl FlightArena {
         };
         let palette = Palette::parse(&dir.read("td.pal")?)?;
         let emissive = lights::emissive_of(&bank);
+        // The opening FadeIn of the start mode: E3 writes entry 0 too and never starts in
+        // infra-red; E1 and E2 apply the start formula after the fade in mode 1.
+        let opening = Opening::new(
+            fade_target(&flight_palette_of(&palette, &hud), flight.palette_mode),
+            usize::from(ep != Episode::E3),
+            flight.palette_mode == 1 && ep != Episode::E3,
+        );
         Ok(Self {
             world,
             tiles: Tileset::parse(&dir.read(episode::tileset_file(ep, number))?)?,
@@ -540,6 +638,7 @@ impl FlightArena {
             emissive,
             voice: DigitalVoice::new(worx_ring(ep)),
             clock: 0.0,
+            opening: Some(opening),
             teardown: None,
         })
     }
@@ -554,9 +653,13 @@ impl FlightArena {
 
 impl Screen for FlightArena {
     fn tick_hz(&self) -> f64 {
-        // The modal screens, E3's magenta fade and the teardown step once per vertical retrace
-        // (fades, pulses, typing, the wait for the sound).
-        if self.screen.is_some() || self.magenta.is_some() || self.teardown.is_some() {
+        // The opening fade-in, the modal screens, E3's magenta fade and the teardown step once
+        // per vertical retrace (fades, pulses, typing, the wait for the sound).
+        if self.opening.is_some()
+            || self.screen.is_some()
+            || self.magenta.is_some()
+            || self.teardown.is_some()
+        {
             RETRACE_HZ
         } else {
             FLIGHT_TICK_HZ
@@ -574,6 +677,20 @@ impl Screen for FlightArena {
         let before = self.clock;
         self.clock += 1.0 / self.tick_hz();
         let now = self.clock;
+        // The opening fade-in: no tick until its last level (or the infra-red palette) is on
+        // screen; tick 1 then runs in that frame with the keys pressed during the fade.
+        let mut first_input = None;
+        if let Some(o) = &mut self.opening {
+            if !o.step(input) {
+                return Transition::None;
+            }
+            first_input = Some(TickInput {
+                pressed: std::mem::take(&mut o.pressed),
+                ..input.clone()
+            });
+            self.opening = None;
+        }
+        let input = first_input.as_ref().unwrap_or(input);
         if let Some(t) = &mut self.teardown {
             // mission-logic §4.8: fade out, then wait while WORX reports a sound playing.
             if t.step() && !self.voice.playing(now) {
@@ -697,11 +814,13 @@ impl Screen for FlightArena {
                 if let Some(run) = &self.run {
                     run.borrow_mut().session = self.flight.session();
                 }
-                // Teardown (mission-logic §4.8): fade out, wait for the sound, then pop.
-                let target = fade_target(&self.palette, self.flight.palette_mode);
+                // Teardown (mission-logic §4.8): fade out, wait for the sound, then pop. The
+                // fade reads g_FlightPalette (the lamp entries as the instruments stored them).
+                let target = fade_target(&self.flight_palette(), self.flight.palette_mode);
                 self.teardown = Some(Teardown::new(
                     self.dac.current(),
                     target,
+                    usize::from(self.flight.episode == Episode::E2),
                     self.flight.aborted,
                 ));
                 Transition::None
@@ -774,6 +893,10 @@ impl FlightArena {
         let Some(view) = &self.enhanced else {
             return;
         };
+        // The opening fade-in keeps its Classic picture (a black playfield).
+        if self.opening.is_some() {
+            return;
+        }
         let paused = match &self.screen {
             None => false,
             Some(FlightModal::Pause(_)) => true,
@@ -816,6 +939,13 @@ impl FlightArena {
     fn draw_play(&self, fb: &mut Framebuffer) {
         let vp = Viewport::of(fb);
         fb.clear(0);
+        if let Some(o) = &self.opening {
+            // Before tick 1: page 1 is clear and the bar shows what setup drew; the DAC is the
+            // fade's alone.
+            widescreen::draw_hud(fb, &self.hud.borrow().hud);
+            fb.palette = o.dac.clone();
+            return;
+        }
         fb.palette = match &self.teardown {
             Some(t) => t.dac.clone(),
             None => self.dac.current().clone(),
@@ -972,16 +1102,21 @@ impl FlightArena {
     /// `g_FlightPalette`: `td.pal` with the entries the instruments store into it (the
     /// compass, missile and low-armour lamps, hud §4.3–§4.5), which the flight fades read.
     fn flight_palette(&self) -> Palette {
-        let mut p = self.palette.clone();
-        for &(e, [r, g, b]) in self.hud.borrow().hud.entries() {
-            p.colors[usize::from(e)] = td_formats::palette::Rgb6 {
-                r: r & 63,
-                g: g & 63,
-                b: b & 63,
-            };
-        }
-        p
+        flight_palette_of(&self.palette, &self.hud.borrow().hud)
     }
+}
+
+/// `g_FlightPalette` from `td.pal` and the entries `hud` stored last (hud §4.1 step 5, §4.3–§4.5).
+fn flight_palette_of(palette: &Palette, hud: &Hud) -> Palette {
+    let mut p = palette.clone();
+    for &(e, [r, g, b]) in hud.entries() {
+        p.colors[usize::from(e)] = td_formats::palette::Rgb6 {
+            r: r & 63,
+            g: g & 63,
+            b: b & 63,
+        };
+    }
+    p
 }
 
 /// The key bytes after a real-time screen of the mission events (flight-screens §4.10): the
@@ -1488,7 +1623,18 @@ mod tests {
             .with_enhanced(Some(view.clone()));
         let settings = td_flow::Settings::default();
         let mut audio = Vec::new();
-        for t in 1..=ticks {
+        // The opening fade-in; its last frame runs tick 1.
+        while arena.opening.is_some() {
+            let mut ctx = FlowContext {
+                data: dir,
+                resources,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, &TickInput::default());
+        }
+        assert_eq!(arena.flight.ticks, 1);
+        for t in 2..=ticks {
             let mut input = TickInput::default();
             if pause && t == ticks {
                 let p = Key::letter('p').unwrap();
@@ -1622,8 +1768,10 @@ mod tests {
         // The side panels show the city, not black.
         assert!((0..160).any(|y| wide.get(0, y) != Some(0)));
     }
-    /// The teardown's fade-out (flight-screens rev 5 §4.5.3): 17 levels at 2 frames each for a
-    /// flight palette, black after 34 frames; after a Quit nothing is left to fade.
+    /// The teardown's fade-out (flight-screens rev 5 §4.5.3, M12-14): levels 16..1 shown 3, 5,
+    /// …, 33 frames after the last tick and level 0 at 34 (C-0069 last tick f1808, fade-out
+    /// f1809.92: levels complete at f1812, 1814, …, 1842, 1843); after a Quit nothing is left
+    /// to fade.
     #[test]
     fn teardown_fades_out_in_34_frames() {
         let mut pal = Palette::default();
@@ -1634,17 +1782,228 @@ mod tests {
                 b: 63,
             };
         }
-        let mut t = Teardown::new(&pal, pal.clone(), false);
+        let mut t = Teardown::new(&pal, pal.clone(), 0, false);
         let mut frames = 0;
+        let mut shown = Vec::new();
+        let mut last = t.dac.clone();
         while !t.step() {
             frames += 1;
+            if t.dac != last {
+                shown.push(frames);
+                last = t.dac.clone();
+            }
             assert!(frames < 100);
         }
-        assert_eq!(frames, 34, "17 levels x 2 frames");
+        assert_eq!(frames, 34, "the last level in the 34th frame");
+        // Level 16 equals the palette shown, so the first change is level 15.
+        let mut want: Vec<u32> = (2..=16).map(|k| 2 * k + 1).collect();
+        want.push(34);
+        assert_eq!(shown, want);
         assert!(t.dac.colors.iter().all(|c| *c == Default::default()));
-        let mut t = Teardown::new(&pal, pal.clone(), true);
+        let mut t = Teardown::new(&pal, pal.clone(), 0, true);
         assert!(t.step(), "after Quit: only the wait");
         assert!(t.dac.colors.iter().all(|c| *c == Default::default()));
+        // E2 fades entries 1..255 only (episode-deltas rev 3 §6).
+        let mut t = Teardown::new(&pal, pal.clone(), 1, false);
+        while !t.step() {}
+        assert_eq!(t.dac.colors[0], pal.colors[0]);
+        assert!(t.dac.colors[1..].iter().all(|c| *c == Default::default()));
+    }
+
+    /// Runs `arena` until tick 1 has run; returns, per frame, the DAC drawn and the tick count.
+    fn open(arena: &mut FlightArena, dir: &DataDir, res: &ExeResources) -> Vec<(Palette, u32)> {
+        let settings = td_flow::Settings::default();
+        let mut audio = Vec::new();
+        let mut out = Vec::new();
+        while arena.flight.ticks == 0 {
+            assert!(
+                (arena.tick_hz() - RETRACE_HZ).abs() < 1e-9,
+                "the fade runs at the retrace rate"
+            );
+            let mut ctx = FlowContext {
+                data: dir,
+                resources: res,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, &TickInput::default());
+            let mut fb = Framebuffer::new();
+            arena.draw_frame(&mut fb);
+            out.push((fb.palette.clone(), arena.flight.ticks));
+            assert!(out.len() < 100);
+        }
+        out
+    }
+
+    /// The opening fade-in (hud §4.1 step 6, flight-screens rev 5 §4.5.3, M12-14): level k of
+    /// the flight palette shown 2k + 2 frames after the flight opens, tick 1 in the frame of
+    /// level 16 (C-0002 f3439..3473, C-0017 f458..492, E2 C-0015 f631..665, E3 C-0036
+    /// f660..694); in infra-red mode 1 the start formula and tick 1 one frame later (C-0019).
+    /// Before tick 1 the playfield is black and the bar shows `td.win`, the weapon icon and the
+    /// missile column. Keys pressed during the fade reach tick 1.
+    #[test]
+    fn opening_fades_in_before_tick_1() {
+        use td_render::flight_palette::ir_palette;
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        for (ep, n, first) in [
+            (Episode::E1, 1, 1),
+            (Episode::E2, 1, 1),
+            (Episode::E3, 1, 0),
+        ] {
+            let mut arena = FlightArena::new(&dir, &res, ep, n).unwrap();
+            let target = fade_target(&arena.flight_palette(), 0);
+            let frames = open(&mut arena, &dir, &res);
+            assert_eq!(frames.len(), 34, "{ep} flight {n}: tick 1 in frame 34");
+            for (i, (dac, ticks)) in frames.iter().enumerate() {
+                let f = i as u32 + 1;
+                if f < 34 {
+                    assert_eq!(*ticks, 0);
+                    let mut want = Palette::default();
+                    if f >= 2 {
+                        write_fade_step(&mut want, &target, (f / 2 - 1) as u8, first);
+                    }
+                    assert_eq!(dac, &want, "{ep} flight {n}, frame {f}");
+                }
+            }
+            // Tick 1's frame: the fade's last level under the instruments' lamp entries.
+            let (dac, _) = &frames[33];
+            assert_eq!(dac.colors[1..36], target.colors[1..36], "{ep}");
+        }
+        // E1 flight 4 starts in infra-red mode 1: the fade reaches the fade formula (B / 8),
+        // then the start formula (B / 4, entry 37 readable) comes with tick 1.
+        let mut arena = FlightArena::new(&dir, &res, Episode::E1, 4).unwrap();
+        assert_eq!(arena.flight.palette_mode, 1);
+        // The target as setup left g_FlightPalette (tick 1 then lights the compass lamps).
+        let fade = fade_target(&arena.flight_palette(), 1);
+        let frames = open(&mut arena, &dir, &res);
+        assert_eq!(frames.len(), 35);
+        assert_eq!(frames[33].0.colors[1..], fade.colors[1..]);
+        assert_eq!(
+            frames[34].0.colors[37],
+            ir_palette(&arena.palette, 1).colors[37]
+        );
+        // A key pressed during the fade and still held has its byte set at tick 1 (the key
+        // table was cleared and the handler hooked before the fade); one held since before the
+        // flight waits for a typematic repeat.
+        for (pressed_at, set) in [(Some(10), true), (None, false)] {
+            let mut arena = FlightArena::new(&dir, &res, Episode::E1, 2).unwrap();
+            let settings = td_flow::Settings::default();
+            let mut audio = Vec::new();
+            for f in 1..=34 {
+                let mut input = TickInput::default();
+                if pressed_at.is_none_or(|p| f >= p) {
+                    input.held.insert(Key::UP);
+                }
+                if pressed_at == Some(f) {
+                    input.pressed.push(Key::UP);
+                }
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &res,
+                    settings: &settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &input);
+            }
+            assert_eq!(arena.flight.ticks, 1);
+            assert_eq!(arena.flight.keys.get(FlightKey::Up), set, "{pressed_at:?}");
+        }
+    }
+
+    /// Every flight of every episode opens (fade-in, tick 1) and flies a few ticks, drawn each
+    /// frame. Until M12-14 no E2 or E3 arena could be built (the radar table size check).
+    #[test]
+    fn every_flight_opens_and_flies() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let settings = td_flow::Settings::default();
+        let flights = (1..=21u8)
+            .map(|n| (Episode::E1, n))
+            .chain((1..=20).map(|n| (Episode::E2, n)))
+            .chain((1..=21).filter(|&n| n != 20).map(|n| (Episode::E3, n)));
+        for (ep, n) in flights {
+            let mut arena = FlightArena::new(&dir, &res, ep, n)
+                .unwrap_or_else(|e| panic!("{ep} flight {n}: {e:#}"));
+            let mut audio = Vec::new();
+            let mut fb = Framebuffer::new();
+            for _ in 0..34 + 20 {
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &res,
+                    settings: &settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &TickInput::default());
+                arena.draw(&mut fb);
+                audio.clear();
+            }
+            assert!(arena.flight.ticks >= 19, "{ep} flight {n}");
+        }
+    }
+
+    /// The opening picture against the original's frames inside the fade: C-0017 f490 (E1
+    /// flight 2 at a direct start), C-0015 f660 (E2 flight 1), C-0036 f690 (E3 flight 1), the
+    /// fades starting in f458, f631 and f660. Pixels exact (black playfield, the bar as setup
+    /// drew it); every DAC entry at the level the port shows in that frame or at the next one
+    /// (the original writes a level over two frames).
+    #[test]
+    fn opening_frames_match_the_original() {
+        let data = require_data!();
+        let oracle = require_oracle!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        for (ep, n, capture, start, dump) in [
+            (Episode::E1, 2, "C-0017", 458, "f00000490_320x200_fl.vga"),
+            (
+                Episode::E2,
+                1,
+                "C-0015",
+                631,
+                "f00000660_320x200_flight.vga",
+            ),
+            (
+                Episode::E3,
+                1,
+                "C-0036",
+                660,
+                "f00000690_320x200_flight.vga",
+            ),
+        ] {
+            let raw = std::fs::read(oracle.join(capture).join("fb").join(dump)).unwrap();
+            let theirs = Palette::parse_prefix(&raw).unwrap();
+            let px = &raw[768..];
+            let f: usize = dump[1..9].parse().unwrap();
+            let mut arena = FlightArena::new(&dir, &res, ep, n).unwrap();
+            let mut fb = Framebuffer::new();
+            arena.draw_frame(&mut fb);
+            assert_eq!(fb.pixels.len(), px.len());
+            let diff: Vec<usize> = (0..px.len()).filter(|&i| fb.pixels[i] != px[i]).collect();
+            assert!(
+                diff.is_empty(),
+                "{capture} f{f}: {} pixels differ, first at ({}, {})",
+                diff.len(),
+                diff[0] % 320,
+                diff[0] / 320
+            );
+            let frames = open(&mut arena, &dir, &res);
+            let k = f - start;
+            let (now, next) = (&frames[k - 1].0, &frames[k + 1].0);
+            let mut at_next = 0;
+            for e in 0..256 {
+                let c = theirs.colors[e];
+                assert!(
+                    c == now.colors[e] || c == next.colors[e],
+                    "{capture} f{f}: DAC entry {e} {c:?}, ours {:?} or {:?}",
+                    now.colors[e],
+                    next.colors[e]
+                );
+                at_next += usize::from(c != now.colors[e]);
+            }
+            eprintln!("{capture} f{f}: {at_next} entries already at the next level");
+        }
     }
 
     /// sfx-policy rev 4 §4.2 in the host: sounds before tick-order step 26 are judged before
