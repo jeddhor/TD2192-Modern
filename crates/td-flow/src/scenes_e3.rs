@@ -5,22 +5,18 @@
 //! on entry, §3.5). The cards are drawn by [`crate::scenes_e2::scene_card_with`]; only the
 //! layouts are E3's. Fidelity: T0 for the pictures, T2 for the fades and waits.
 //!
-//! Rows marked "as E1" or "as E2" in the table take that episode's layout:
+//! Rows marked "as E1" or "as E2" in the table take that episode's layout (E1: render/text
+//! rev 2 §4.5.1):
 //! - `tdlab`, `vidcom`: E2's (`crate::scenes_e2`).
-//! - `marauder`: "as E1", which E2's `marauder` also is; E2's black-box layout (U-311: the
-//!   background 15 rows down, the three captions side by side at (10, 10), (123, 10),
-//!   (226, 10), ink 255 = (63, 5, 5)). ASSUMPTION(U-350): no E3 capture shows it.
-//! - `vhang`, `intro2`: E1's scene card (text.md §4.5: (10, 170), shadow (−1, +1), entry 210 =
-//!   (14, 63, 63), 10 s). ASSUMPTION(U-350): E1's own routines for these two are not
-//!   specified apart from the shared row of text.md.
-//! - `vlab`: (180, 170) s3 in entry 32 with the picture's colour (episode-deltas §13).
+//! - `marauder`: E1's, which E2's `marauder` also uses, so it is taken from `crate::scenes_e2`
+//!   (the joined caption line of text §4.5.1, the background 15 rows down).
+//! - `vhang`: (20, 170) s3, entry 165 = (14, 38, 63); `intro2`: (50, 90) plain, entry 140 =
+//!   (0, 0, 0); `vlab`: (180, 170) s3, entry 32 = (14, 38, 63); 10 s each.
 //!
-//! `maraud3` ("one joined line at (5, 2)"): black-box C-0041 f946 (captions 7.2, `_`, `_`)
-//! confirms the first pen (5, 2), the plain style and the ink. Where the second and third
-//! captions go is not shown by any capture. The same phrase describes E2's `marauder`, whose
-//! captions are not one concatenated string (drawing them so differs from C-0015 f542 from
-//! x = 109 on) but sit at pens 113 and 216 pixels right of the first (U-311).
-//! ASSUMPTION(U-350): `maraud3` spaces its captions the same way, at x = 5, 118, 221.
+//! `maraud3` ("one joined line at (5, 2)", plain): the captions joined as `marauder` joins them
+//! (A + 4 spaces + B + 3 spaces + C + 3 spaces, text §4.5.1) and drawn as one line at (5, 2).
+//! Black-box C-0041 f946 (captions 7.2, `_`, `_`) confirms the pen, the style and the ink;
+//! ASSUMPTION(U-350): the separators are `marauder`'s (no capture with a second caption).
 //!
 //! `sel-pain` and `melting` draw their third caption at y = 200, off screen (OB-027, kept).
 
@@ -105,9 +101,10 @@ const fn picture(file: &'static str, secs: u32) -> Layout {
     }
 }
 
-/// E1's scene card (text.md §4.5): (10, 170), shadow (−1, +1), entry 210 = (14, 63, 63), 10 s.
-const fn e1_card(file: &'static str) -> Layout {
-    lines(file, (10, 170), Shadow::S1, (210, rgb(14, 63, 63)), 10)
+/// The caption line of the joined-line cards (render/text rev 2 §4.5.1, `marauder`):
+/// A + 4 spaces + B + 3 spaces + C + 3 spaces.
+pub fn joined(text: [&str; 3]) -> String {
+    format!("{}    {}   {}   ", text[0], text[1], text[2])
 }
 
 impl Bg {
@@ -122,19 +119,20 @@ impl Bg {
             Bg::Lab => scenes_e2::Bg::Lab.layout(),
             Bg::Mar => scenes_e2::Bg::Mar.layout(),
             Bg::Mr2 => lines("maraud2.scr", (180, 170), O6, (255, rgb(63, 5, 5)), 10),
+            // The joined line is the first of three lines (`scene_card` joins the captions).
             Bg::Mr3 => Layout {
                 file: "maraud3.scr",
-                captions: Captions::Row([5, 118, 221], 2),
+                captions: Captions::Lines((5, 2)),
                 shadow: Plain,
                 ink: (83, rgb(63, 15, 63)),
                 secs: 10,
                 down: 0,
             },
             Bg::Vid => scenes_e2::Bg::Vid.layout(),
-            Bg::Vhg => e1_card("vhang.scr"),
-            Bg::In2 => e1_card("intro2.scr"),
+            Bg::Vhg => lines("vhang.scr", (20, 170), S3, (165, rgb(14, 38, 63)), 10),
+            Bg::In2 => lines("intro2.scr", (50, 90), Plain, (140, rgb(0, 0, 0)), 10),
             Bg::Sh0 => lines("shuttle0.scr", (10, 170), O4, YELLOW, 15),
-            Bg::Vlb => lines("vlab.scr", (180, 170), S3, (32, None), 10),
+            Bg::Vlb => lines("vlab.scr", (180, 170), S3, (32, rgb(14, 38, 63)), 10),
             Bg::Cnv => lines("convers.scr", (10, 10), Plain, RED, 10),
             Bg::Sel => lines("sel-pain.scr", (120, 180), Plain, RED, 15),
             Bg::Mel => lines("melting.scr", (120, 180), Plain, RED, 15),
@@ -155,6 +153,13 @@ pub fn scene_card(
     bg: Bg,
     text: [&str; 3],
 ) -> Result<StoryScreen, StoryError> {
+    let line;
+    let text = if bg == Bg::Mr3 {
+        line = joined(text);
+        [line.as_str(), "", ""]
+    } else {
+        text
+    };
     scenes_e2::scene_card_with(data, assets, &bg.layout(), text).map(|s| s.flushing_waits(true))
 }
 
