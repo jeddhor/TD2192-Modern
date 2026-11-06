@@ -10,6 +10,14 @@
 //! state after tick N − 1, counted from anchors: the first write of each fade (from
 //! `frames.tsv`) against our [`Mark`]s. Flyover frames are matched by the step value in the
 //! capture's RAM instead (vector 6).
+//!
+//! Pixels must be equal and the DAC entries a frame uses must be equal, with these allowances
+//! for timing below one frame, which the port does not model (T2), each named where it is
+//! applied: the tear of a full fade (entries from 190 on may hold the previous level), the
+//! split of a colour fade's 64 levels over the frames (±10 levels on its entry), two dropped
+//! retraces (f1105, f7523), the start address latched before the step's RAM update (f1738,
+//! f7344), a line or strip half drawn when the dump was taken (f346, f9286), and frames that
+//! are black on both sides (loading). The test prints how often each one was used.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
