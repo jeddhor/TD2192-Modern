@@ -104,6 +104,25 @@ The port's `Session` must carry `weapon: u8`, set to 0 when the program starts a
 7. **`g_FontTitle`** is the far pointer to the title-font block (`td-let.cin`), allocated anew by every text card (`Flow_TextCard` `051A:5852`; every mission block starts with one, the mission title) and by the script choice; freeing it leaves the pointer as it was. Its offset word is 0008h. Its segment word is the heap address of the block, which depends on where DOS loaded the program: on the reference machine it is DGROUP + 192Bh, that is **6916h** when the game is started through `td1.exe` (C-0002; DGROUP 4FEBh) and **5D92h** when `FILE0001.EXE` is started directly (C-0051..C-0090, C-0160; DGROUP 4467h). **Port: 6916h for a game played through the launcher flow, 5D92h for a direct start** (the oracle captures). Only class 6 (muzzle 11: offset (8, 0)) and class 7 (muzzle 12: the segment bytes) read it, on heading 60h.
 8. **The dialogue reader** (`Dlg_PlayScene` `051A:92AF`) keeps its line state in DGROUP: DS:1036 = the code byte of the last line it read (during the search for the scene it holds the first byte of each line read and then the scene number; inside the scene the line codes of [dialogue-player](../narrative/dialogue-player.md) §3.1; an empty line reads as 13); DS:103A..103C = the fields of the last `01`, `02` or `06` line as stored (`01`: slot, face after the remap of §3.3 there, then DS:103C := the text entry allocated; `02`: the ignored byte, the colour; `06` inside a scene: its id at DS:103A); DS:103E = `g_DlgText`, the name of the last `01` line or the text of the last `02` line, read as `string[255]` (length byte, then the characters; a longer earlier string survives after the end of a shorter one). At the end of a scene played to its `d` line DS:1036 = 64h ('d'); when Esc ends a scene at a `05` wait it is 05h and the lines after that wait are never read. The flight reads this state as the last dialogue scene of the program run left it; 0 everywhere if no dialogue scene has been played (a direct start).
 
+**Construction (for the Implementer).** td-sim's muzzle world is the byte vector of DGROUP from DS:035C (index = DS address − 035Ch, 3,402 bytes cover heading 98 + muzzle 17). Indices 0..341 are the muzzle table of the executable; outside the table only the 272 bytes below are ever read, and the rest may be anything. At each flight start fill them as follows (`scene` = the session's 768-byte scene palette, `dlg` = the reader's 256-byte text buffer, byte 0 = length):
+
+| DS range | Bytes |
+|---|---|
+| 04F6..0501 | 00 A0 00 B0 00 B8 02 00 02 00 0D 0A |
+| 0502..0503 | 07 00 (`g_SbIrq` of the reference machine) |
+| 0504..0517 | 06 32 30 33 33 35 32, then 13 × 00 (`g_MemAvailText` = `203352`) |
+| 053A..055B, 079E..07BF | 00 |
+| 0826..0847 | `tdmen.pal` bytes 70..103 |
+| 0D32..0D53 | `scene` bytes 4..37 |
+| 0DBA..0DDB | `scene` bytes 140..173 |
+| 101E..102D | `scene` bytes 752..767 |
+| 102E..1031 | lit flag, 00, 00, 00 |
+| 1032..1035 | 08 00, then the title-font segment low, high (6916h through the launcher flow, 5D92h after a direct start) |
+| 1036..103F | reader code byte, 00, 00, 00, the three field bytes, 00, `dlg` bytes 0 and 1 |
+| 1062..1083 | `dlg` bytes 36..69 |
+
+The session keeps `scene`, the lit flag, the reader's code byte, field bytes and `dlg` from program start (all 0) for the whole program run, updated exactly as items 5–8 say; a direct start (tdstatus resume, Esc at the mission card) leaves them 0.
+
 **Which shooters read what.** Only muzzles with a shot-table entry fire (§3.1). E1 player classes 2, 3, 4, 8 (and 0 in flight 19, which has none); E1 mission ships of classes 2..8.
 
 | Class (muzzles) | 0Ch | 0Eh, 20h | 24h | 4Ah, 4Eh | 60h | 62h |
