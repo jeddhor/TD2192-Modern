@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/e2-program-flow` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | As [episode-program-flow](episode-program-flow.md): T2 for the order of screens, scenes, dialogue, music and flights; T1 for the state that flows between missions (mission number, kills, outcome flags, the retry prompt's `Random` call); T0 for menu colours; T3 for the text-mode configuration screen, the `/?` usage text, the memory gate and the exit notice (the port's own shell replaces them) |
 | **Confidence** | LIKELY overall. CONFIRMED (static) for the call order of all 20 mission blocks, every branch and every write of the campaign state: complete token walk of `Main_CampaignLoop` plus a byte scan of the whole image for writes of the flags (§10). No E2 capture exists yet (U-249) |
@@ -146,8 +146,8 @@ The loop is E1's (E1 §4.2, [screens](screens.md) §3.1) with these differences:
 
 1. **Entry:** `Snd_PlayMusic(7)`, then mission := 0 and cursor := 0 unconditionally, then `UI_LoadMainMenu(1)`, which plays song 7 again (the song restarts at once).
 2. **Loader** `UI_LoadMainMenu(playMusic)` `0000:2EC0`: plays song 7 only when its argument is non-zero; loads `td.men` regions and `tdmen.pal` exactly as E1; entries 224..233 := (16, 0, 0) **including 227**; the cursor's entry gets red component 63 **only** (cursor 3 too: (63, 0, 0), not yellow); fade in (`0000:0000`); the cursor's red component goes back to 16 in the buffer. E1's item-3 rules (entry 227 := black; yellow for cursor 3), DAC 255 := white and the `MemAvail` digits are **gone** (OB-041; U-229 does not apply to E2).
-3. **Fades** `0000:0000` (in) and `0000:00D2` (out): same result as E1 (`0000:0000`, `0000:0124`): 17 levels, DAC 1..255 := Round(c × s / 16) from `g_MenuPalette`, one retrace-bit wait per level. E2 reads `g_MenuPalette` directly instead of a stack copy; nothing changes it during a fade, so the output is identical. (U-206, resolved for these routines.)
-4. **Highlight loop:** unchanged (cursor ≠ 3: (k, 0, 0), k = 16..63; cursor 3: (k, k, 0), k = 0..63; un-highlight in reverse, from the *previous* cursor `DS:07B3`). The ramp runs only when the cursor changed (Up, Down, quit box); after an action (new game, restore, next mission, help, story, about, order) the loop keeps polling without a ramp, so the DAC shows what the loader left.
+3. **Fades** `0000:0000` (in) and `0000:00D2` (out): same result as E1 (`0000:0000`, `0000:0124`): 17 levels, DAC 1..255 := Round(c × s / 16) from `g_MenuPalette`, one retrace-bit wait per level. E2 reads `g_MenuPalette` directly instead of a stack copy; nothing changes it during a fade, so the output is identical. (U-206, resolved for these routines.) At P1 a level takes 2 frames ([screens §2.1](screens.md#21-fades)): 34 frames per fade, as E1 (C-0120: in f272..305, out f435..468).
+4. **Highlight loop:** unchanged (cursor ≠ 3: (k, 0, 0), k = 16..63; cursor 3: (k, k, 0), k = 0..63; un-highlight in reverse, from the *previous* cursor `DS:07B3`). One retrace-bit wait per step, which returns at once while the bit is set: **11 steps per frame** at P1, so a 48-step ramp takes 4–5 frames. The ramp of the current cursor runs **once when the loop is entered**, right after the loader's fade-in (`0000:332E..3398`; C-0120 f305..309), and again after every change of cursor (Up, Down, quit box: un-highlight the previous item, then back to `0000:3324` and ramp the new one, `3ECC..3F49`). After an action (new game, restore, next mission, help, story, about, order) the loop goes back to polling without a ramp (`3ED3`), so the DAC shows what the loader left: the cursor's entry still at red 63 from the fade-in. So a port must show, at every entry from the program start: menu fade-in (34 frames), then the start cursor's ramp; on Up/Down: the old item's ramp down, then the new item's ramp up; on an action: fade-out (34 frames).
 
 Items (selection: Space, Enter, joystick button 1 or 2; Up/Down skip items 1 and 3 while mission = 0; Esc = quit box; confirmation `UpCase(key) = 'Y'`):
 
@@ -391,3 +391,4 @@ The §8.2 E2 table is correct for the order of every call in all 20 blocks (veri
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-9d (Archaeologist + Spec author, for RE-9) | Initial: start-up, menu, all 20 blocks, endings, music, flight hand-off, Verifier section; U-206 (menu parts) resolved; OB-041, OB-042; U-249..U-251 |
+| 2 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.2: menu fades 34 frames at P1; the highlight ramp also runs at loop entry, 11 steps per frame (C-0120); exact jump structure of the ramp (VE-3 M12-02 row 19) |
