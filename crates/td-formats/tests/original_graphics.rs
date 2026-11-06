@@ -117,8 +117,10 @@ fn maps_parse_and_reference_valid_tiles() {
         assert_eq!(*set.last().unwrap(), max, "{name}");
         assert!((max as usize) < TILE_COUNT);
     }
-    let intro = TileMap::parse_intro(&read(&dir, "intro.map")).unwrap();
-    assert_eq!(intro.cells().iter().max(), Some(&73));
+    // intro.map is 20 x 2000 (not a square map); its tiles stop at 73 (intro §3.1).
+    let intro = read(&dir, "intro.map");
+    assert_eq!(intro.len(), 20 * 2000);
+    assert_eq!(intro.iter().max(), Some(&73));
 }
 
 #[test]
