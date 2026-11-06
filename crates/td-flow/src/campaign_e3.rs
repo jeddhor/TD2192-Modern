@@ -17,11 +17,15 @@
 //! carry no test. The skip flag is the program's (`g_SkipRequested`): the menu hands it in and
 //! gets it back, because `Main_CampaignLoop` no longer clears it and block 1 tests it before
 //! its first step (OB-050).
+//!
+//! As in E2, every screen updates the program run's front-end state when it ends and the
+//! launcher receives it before each flight (weapons rev 5 §3.3.3, OB-017).
 
 use std::fmt;
 
 use td_input::{Key, TickInput};
 use td_render::Framebuffer;
+use td_sim::flight::front_end::{SCENE_FILE_CARDS, SCENE_FILE_PALETTE};
 
 use crate::campaign::FlightResult;
 use crate::campaign_e2::{BlockResult, Cap, Child, caption};
@@ -791,6 +795,17 @@ impl CampaignE3 {
         child: Option<Child>,
     ) {
         let step = self.child_step.take();
+        // What the screen left for the flights (weapons rev 5 §3.3.3).
+        let story_file = match (self.pos, step) {
+            (Pos::Prompt(..) | Pos::Debrief21, _) | (_, Some(B | Dossier)) => {
+                Some(SCENE_FILE_PALETTE)
+            }
+            (_, Some(S(..))) => Some(SCENE_FILE_CARDS),
+            _ => None,
+        };
+        if let Some(c) = &child {
+            c.apply_front_end(&mut prog.front_end, story_file);
+        }
         match (&child, step) {
             // The retry prompt clears the flag and never sets it (§3.5).
             (Some(Child::Story(_)), _) if matches!(self.pos, Pos::Prompt(..)) => {
@@ -984,6 +999,7 @@ impl CampaignE3 {
     fn launch(&mut self, prog: &mut Program, ctx: &mut FlowContext<'_>, flight: u8) {
         prog.cues.stop(ctx.audio);
         prog.play_flight_song(ctx, flight);
+        prog.launcher.set_front_end(&prog.front_end);
         let f = prog.launcher.launch(ctx, flight);
         self.child = Some(Child::Flight(f));
     }

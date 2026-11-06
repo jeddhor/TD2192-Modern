@@ -112,8 +112,10 @@ enum Command {
         /// Print the search's progress.
         #[arg(long)]
         verbose: bool,
-        /// Also fly every candidate with these muzzle bytes (DGROUP from DS:035C as a capture
-        /// holds it, U-160) and keep only candidates that behave the same in both worlds.
+        /// Also fly every candidate with these muzzle bytes (DGROUP from the muzzle table on,
+        /// E1 DS:035C, E2/E3 DS:04BA, as a capture holds it; U-160) and keep only candidates
+        /// that behave the same in both worlds. The default world already holds a direct
+        /// start's bytes (weapons rev 5 §3.3, §3.3.2, §3.3.3).
         #[arg(long)]
         alt_muzzles: Option<PathBuf>,
         /// Flights kept per decision of the beam search.
@@ -139,8 +141,9 @@ enum Command {
         /// Write the oracle scenario lines (ORACLE.md 5a) to this file.
         #[arg(long)]
         oracle_schedule: Option<PathBuf>,
-        /// Also run the replay with these muzzle bytes (DGROUP from DS:035C, U-160) and print
-        /// the first tick where the two flights differ.
+        /// Also run the replay with these muzzle bytes (DGROUP from the muzzle table on, E1
+        /// DS:035C, E2/E3 DS:04BA; U-160) and print the first tick where the two flights
+        /// differ.
         #[arg(long)]
         alt_muzzles: Option<PathBuf>,
         /// Write the replay with the same inputs and recomputed checkpoints to this file (after

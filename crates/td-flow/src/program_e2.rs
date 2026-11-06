@@ -21,6 +21,12 @@
 //! 224..233 are the ramps' end states, kept as the original keeps them: the palette buffer
 //! (`g_MenuPalette`) and the DAC separately.
 //!
+//! What the front-end screens leave in DGROUP for the flights (weapons rev 5 §3.3.2, §3.3.3;
+//! OB-017) goes into [`Program::front_end`]: the script choice, the scene cards and the story so
+//! far, the save and restore screens update the scene palette and the scene-file name, and the
+//! menu's poll keeps the last key byte it discarded (`g_MenuDrainKey`, §4.2 item 5,
+//! [`crate::bios_key`]). The campaign updates the rest and hands the state to each flight.
+//!
 //! The program is shared with Episode 3 (`td3.exe`, `crate::program_e3`): [`LaterEpisode`]
 //! is the menu of both, parameterised by the episode's campaign ([`EpisodeCampaign`]) and its
 //! [`FrontEnd`] constants (e3-program-flow rev 1 §4.1, §4.2 list the E3 deltas).
@@ -34,7 +40,9 @@ use td_audio::music_cues::{E2_INTRO, MENU};
 use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
 use td_render::{Framebuffer, WIDTH, title_text};
+use td_sim::flight::front_end::{SCENE_FILE_CARDS, SCENE_FILE_SAVES};
 
+use crate::bios_key;
 use crate::campaign::FlightLauncher;
 use crate::campaign_e2::{BlockResult, CampaignE2};
 use crate::dialogue::ScriptChoice;
@@ -445,6 +453,11 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         for (i, &c) in self.buffer.iter().enumerate() {
             pal.colors[ITEM_ENTRY + i] = c;
         }
+        // Both screens copy that buffer into g_Palette and leave g_SceneFile at td.sss unless a
+        // game is saved (weapons rev 5 §3.3.2 items 8, 9).
+        let fe = &mut self.prog.front_end;
+        fe.scene_palette.copy_from_slice(&pal.to_bytes());
+        fe.assign_scene_file(SCENE_FILE_SAVES);
         let set = SaveSet::load(self.save_dir.as_deref(), C::FRONT.saves);
         let s = SaveScreen::open(
             kind,
@@ -465,6 +478,7 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
             SaveOutcome::Left => self.restored(self.mission, self.kills_to_date),
             SaveOutcome::Restored { mission, kills } => self.restored(mission, kills),
             SaveOutcome::Saved(set) => {
+                self.prog.front_end.assign_scene_file(C::FRONT.saves.sav);
                 match &self.save_dir {
                     Some(dir) => {
                         if let Err(e) = set.store(dir, C::FRONT.saves) {
@@ -633,6 +647,9 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     pad: input.pad,
                 });
                 if s.finished() {
+                    // g_Palette cleared but for five entries; g_SceneFile := td.lt2.
+                    s.apply_front_end(&mut self.prog.front_end);
+                    self.prog.front_end.assign_scene_file(SCENE_FILE_CARDS);
                     self.prog.choice = if s.last_key() == Key::digit(2) {
                         ScriptChoice::Edited
                     } else {
@@ -645,6 +662,12 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                 let (back, rule) = (*back, *rule);
                 s.step(input);
                 if s.finished() {
+                    // About, order and the story so far load g_Palette and assign td.lt2; help
+                    // uses g_MenuPalette (weapons rev 5 §3.3.2 items 8, 9).
+                    s.apply_front_end(&mut self.prog.front_end);
+                    if rule != SkipRule::Keep {
+                        self.prog.front_end.assign_scene_file(SCENE_FILE_CARDS);
+                    }
                     if rule != SkipRule::Keep && s.skipped() {
                         self.skip = true;
                     }
@@ -681,13 +704,20 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                 }
             }
             Stage::Menu => {
-                // The menu reads one key and discards the rest of the BIOS buffer.
-                let first = self
+                // The menu reads one key and discards the rest of the BIOS buffer, keeping the
+                // last byte it read in g_MenuDrainKey (§4.2 item 5).
+                let shift = input.held(Key::LSHIFT) || input.held(Key::RSHIFT);
+                let mut keys = self
                     .typed_ahead
                     .drain(..)
                     .chain(input.pressed.iter().copied())
-                    .find(|&k| story::is_keystroke(k));
-                if let Some(k) = first {
+                    .filter(|&k| story::is_keystroke(k))
+                    .filter_map(|k| Some((k, bios_key::last_byte(k, shift)?)));
+                let first = keys.next();
+                if let Some((_, b)) = keys.next_back() {
+                    self.prog.front_end.drain_key = b;
+                }
+                if let Some((k, _)) = first {
                     self.menu_key(ctx, k);
                 }
             }

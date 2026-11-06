@@ -204,7 +204,8 @@ fn line_of_fire(f: &Flight, world: &World) -> Option<u8> {
     }
     // The volley of the next tick (step 33) leaves on the heading after that tick's turn step
     // (step 3). Never fire on a two-digit heading: the muzzle offsets then come from DGROUP
-    // bytes past the table (U-160), which the port does not have.
+    // bytes past the table that depend on the front end before the flight (U-160, weapons
+    // rev 5 §3.3), so a plan that used them would hold only after a direct start.
     let p = &f.player;
     let next = match (p.target != p.heading, p.turn) {
         (true, td_sim::flight::player::Turn::Clockwise) => p.heading.cw(),

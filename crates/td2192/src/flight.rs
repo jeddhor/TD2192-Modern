@@ -31,9 +31,9 @@
 //! goes on with the keys held at the screen's end, the DAC faded in, and, when the tick's back
 //! page was page 0, a black playfield for that frame.
 //!
-//! The muzzle world of an E1 flight holds the two-digit-heading bytes built from the program
-//! run's front-end state (weapons rev 4 §3.3, OB-017 preserved): what the campaign's screens
-//! left, or a direct start's for the developer arena. E2 and E3 keep the plain table (U-441).
+//! The muzzle world of a flight holds the two-digit-heading bytes built from the program run's
+//! front-end state (weapons rev 5 §3.3, §3.3.2, §3.3.3, OB-017 preserved): what the campaign's
+//! screens left, or a direct start's for the developer arena.
 //!
 //! Mission ships and their target brackets follow `mission-ships.md` §4.7 (with U-127); the
 //! afterburner flame, shots and explosions follow `flight-screens.md` rev 1 §4.6–§4.8; the
@@ -79,7 +79,7 @@ use td_render::{Framebuffer, HeadingSprites};
 use td_sim::flight::Session;
 use td_sim::flight::episode::{self, Episode};
 use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
-use td_sim::flight::front_end::{FrontEnd, muzzle_world};
+use td_sim::flight::front_end::{FrontEnd, MenuBytes, direct_start_world, muzzle_world};
 use td_sim::flight::heading::Heading;
 use td_sim::flight::player::Event;
 use td_sim::{Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
@@ -304,7 +304,8 @@ pub struct RunState {
     pub session: Session,
     /// The F5 target entries (`Msn_LoadTargetInfo` rewrites only part of them per flight).
     pub board: TargetBoard,
-    /// The front-end state the campaign handed over before the flight (weapons rev 4 §3.3).
+    /// The front-end state the campaign handed over before the flight (weapons rev 5 §3.3,
+    /// §3.3.2, §3.3.3).
     pub front_end: FrontEnd,
 }
 
@@ -351,20 +352,20 @@ impl FlightArena {
         if ep == Episode::E3 && number == 20 {
             bail!("{ep} has no flight 20 (flights 1..=19 and 21)");
         }
-        // The muzzle table is byte-identical in every episode (episode-deltas §11). E1 adds the
-        // bytes its two-digit headings read past it, from the run's front-end state (a direct
-        // start's in the developer arena; weapons rev 4 §3.3, OB-017).
-        let Some(ResourceValue::Bytes(mut muzzles)) =
-            resources.get("flight.muzzle_offsets").cloned()
+        // The muzzle table is byte-identical in every episode (episode-deltas §11). The bytes
+        // the two-digit headings read past it come from the run's front-end state, or a direct
+        // start's in the developer arena (weapons rev 5 §3.3, §3.3.2, §3.3.3; OB-017).
+        let Some(ResourceValue::Bytes(table)) = resources.get("flight.muzzle_offsets").cloned()
         else {
             bail!("file0001.exe resources are unavailable (muzzle table)");
         };
-        if ep == Episode::E1 {
-            let front_end = run
-                .as_ref()
-                .map_or_else(FrontEnd::direct_start, |r| r.borrow().front_end.clone());
-            muzzles = muzzle_world(&muzzles, &dir.read("tdmen.pal")?, &front_end);
-        }
+        let muzzles = match &run {
+            Some(r) => {
+                let menu = MenuBytes::load(|f| dir.read(f))?;
+                muzzle_world(ep, &table, &menu, &r.borrow().front_end)
+            }
+            None => direct_start_world(ep, number, &table, |f| dir.read(f))?,
+        };
         // E1 flight 21 loads no mission file and flies the ship records it inherits.
         let mission = match episode::mission_file(ep, number) {
             None => None,

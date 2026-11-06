@@ -3,6 +3,7 @@
 //! Owns the simulation during missions and drives the renderer and audio. Implemented from
 //! `docs/spec/flow/`, `docs/spec/narrative/` and `docs/spec/frontend/`.
 
+pub mod bios_key;
 pub mod campaign;
 pub mod campaign_e2;
 pub mod campaign_e3;

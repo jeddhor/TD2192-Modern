@@ -12,12 +12,19 @@
 //! in the spec ([`Step::Nt`] after them here). A set flag after a tested pre-flight step jumps
 //! to the flight; after a tested post-flight step it ends the block (the mission still counts).
 //! Music cues are instant and carry no test, as in the E1 sequencer.
+//!
+//! Every screen updates the front-end state of the program run ([`Program::front_end`]) when it
+//! ends: its `g_Palette` writes and the last name it assigned to `g_SceneFile`
+//! ([`Child::apply_front_end`]); the launcher receives the state before each flight
+//! ([`crate::FlightLauncher::set_front_end`]), whose two-digit-heading volleys read it (weapons
+//! rev 5 §3.3.2, OB-017).
 
 use std::fmt;
 
 use td_assets::Episode;
 use td_input::{Key, TickInput};
 use td_render::Framebuffer;
+use td_sim::flight::front_end::{FrontEnd, SCENE_FILE_CARDS, SCENE_FILE_PALETTE};
 
 use crate::campaign::{FlightResult, FlightScreen};
 use crate::dialogue::DialogueScene;
@@ -721,6 +728,28 @@ impl Child {
         }
     }
 
+    /// Applies what the finished screen left in DGROUP for the flights (weapons rev 5 §3.3.2
+    /// items 8, 9; §3.3.3): its `g_Palette` writes, and the last name it assigned to
+    /// `g_SceneFile`: `td.pal` for a dialogue scene, `story_file` for a story screen (`td.lt2`
+    /// for a scene card, `td.pal` for the retry prompt, debrief and dossier, none for a title
+    /// card).
+    pub(crate) fn apply_front_end(&self, fe: &mut FrontEnd, story_file: Option<&str>) {
+        let name = match self {
+            Child::Story(s) => {
+                s.apply_front_end(fe);
+                story_file
+            }
+            Child::Dialogue(d) => {
+                d.apply_front_end(fe);
+                Some(SCENE_FILE_PALETTE)
+            }
+            Child::Flight(_) => None,
+        };
+        if let Some(name) = name {
+            fe.assign_scene_file(name);
+        }
+    }
+
     /// Draws the screen; `None` draws the black between screens.
     pub(crate) fn draw(child: Option<&Self>, fb: &mut Framebuffer) {
         match child {
@@ -875,6 +904,15 @@ impl CampaignE2 {
     ) {
         let skipped = child.as_ref().is_some_and(Child::skipped);
         let step = self.child_step.take();
+        // What the screen left for the flights (weapons rev 5 §3.3.2 items 8, 9).
+        let story_file = match (self.pos, step) {
+            (Pos::Prompt(_) | Pos::Debrief, _) | (_, Some(Dossier)) => Some(SCENE_FILE_PALETTE),
+            (_, Some(S(..))) => Some(SCENE_FILE_CARDS),
+            _ => None,
+        };
+        if let Some(c) = &child {
+            c.apply_front_end(&mut prog.front_end, story_file);
+        }
         self.pos = match (self.pos, child) {
             (Pos::Fly, Some(Child::Flight(f))) => {
                 prog.cues.stop(ctx.audio);
@@ -1030,10 +1068,12 @@ impl CampaignE2 {
         }
     }
 
-    /// `Sim_FlyMission(block number)`: the music stops, the flight song starts.
+    /// `Sim_FlyMission(block number)`: the music stops, the flight song starts; the launcher
+    /// gets the front-end state the flight reads.
     fn launch(&mut self, prog: &mut Program, ctx: &mut FlowContext<'_>) {
         prog.cues.stop(ctx.audio);
         prog.play_flight_song(ctx, self.mission);
+        prog.launcher.set_front_end(&prog.front_end);
         let f = prog.launcher.launch(ctx, self.mission);
         self.child = Some(Child::Flight(f));
     }
