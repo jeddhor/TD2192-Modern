@@ -350,9 +350,15 @@ address,kind,name,signature,comment,confidence,source_task
 32C5:0658,data,g_SegB800,u16,"= E1 file0001:3C43:04FA, DS offset by between 04F4 and 04FC. E1:",HYPOTHESIS,M1-09
 32C5:065A,data,g_Test8086,u8,"= E1 file0001:3C43:04FC, DS offset by refs 3/3. E1: CPU class (2 = 386+, enables 32-bit LongInt paths)",CONFIRMED,M1-09
 32C5:065C,data,g_FileMode,u8,"= E1 file0001:3C43:04FE, DS offset by refs 1/1. E1: open mode for Reset (initial 2)",LIKELY,M1-09
+32C5:0660,data,g_MenuDrainKey,u8,"main menu poll: every key read after the handled one is discarded into this byte (last byte ReadKey returned; scan code for an extended key); BSS; RE-17, weapons rev 5 3.3.2",CONFIRMED,M10-45
 32C5:0662,data,g_SbIrq,i16,"= E1 file0001:3C43:0502, DS offset by refs 4/5. E1: WORX_SbInit result; -1 = no Sound Blaster; also: WORX card detection result (FFFFh none) (g_SoundCard)",HYPOTHESIS,M1-09
+32C5:0666,data,g_CfgScreenPtr,farptr,"B800:0000, written only by the text-mode configuration screen and the exit notice; RE-17",CONFIRMED,M10-45
+32C5:066A,data,g_CfgWork,u8[3],"configuration: detected/edited music, effects, controller (written to td.cfg); as td2 36B6:066A; RE-17",CONFIRMED,M10-45
+32C5:066D,data,g_CfgCursor,u8,configuration screen cursor 1..4; as td2; RE-17,CONFIRMED,M10-45
+32C5:066E,data,g_MenuExitCursor,u8,"cursor when the menu loop ends (0000:3A70); written once, never read; RE-17",CONFIRMED,M10-45
 32C5:066F,data,g_GameOver,u8,"= E1 file0001:3C43:060F, DS offset by refs 5/5. E1: set by every ending of a mission block",LIKELY,M1-09
 32C5:0670,data,g_MissionAdvance,u8,"= E1 file0001:3C43:0610, DS offset by refs 7/7. E1: 1 = mission block completed (menu advances)",LIKELY,M1-09
+32C5:0672,data,g_MenuRow,u8[320],UI_LoadMainMenu row buffer: td.men bytes 16000..79999 read one 320-byte row at a time; holds row 199 after a menu load; RE-17,CONFIRMED,M10-45
 32C5:07B2,data,g_ResumeStatus,u8,"= E1 file0001:3C43:0752, DS offset by refs 2/4. E1: tdstatus.dat status byte (1 ordering; 2 about)",HYPOTHESIS,M1-09
 32C5:07B4,data,g_MenuCursor,u8,"= E1 file0001:3C43:0754, DS offset by refs 50/50. E1: main menu cursor 0..8",CONFIRMED,M1-09
 32C5:07B7,data,g_KeyChar,u8,"= E1 file0001:3C43:0758, DS offset by refs 42/42. E1: last ReadKey character (menus)",CONFIRMED,M1-09
@@ -364,7 +370,10 @@ address,kind,name,signature,comment,confidence,source_task
 32C5:0C4A,data,g_KillsToDate,i16,"= E1 file0001:3C43:0D2A, DS offset by refs 16/16. E1: kills before the current mission",CONFIRMED,M1-09
 32C5:0C4E,data,g_ScreenLit,,"= E1 file0001:3C43:102E, DS offset by refs 4/4. E1: 1 after Gfx_FadeInScene, 0 after Gfx_FadeOutScene; DAC writes happen at once only when 1",CONFIRMED,M1-09
 32C5:0C52,data,g_FontTitle,farptr,"= E1 file0001:3C43:1032, DS offset by refs 9/9. E1: farptr to td-let.cin glyphs (2,560-byte block)",CONFIRMED,M1-09
+32C5:0E5E,data,g_SceneFile,FileRec,"front-end FileRec (name at +30h = DS:0E8E): last name td.lt2, td.pal, td.sss or the save file; RE-17, weapons rev 5 3.3.2",CONFIRMED,M10-45
 32C5:0EDE,data,g_Palette,u8[768],"= E1 file0001:3C43:0D2E, DS offset by refs 3/3. E1: u8[768] scene/dialogue palette used by the fades",CONFIRMED,M1-09
+32C5:11DE,data,g_FeLoopI,u16,"front-end loop counter (fades, dialogue, script choice, save/restore screens); 0 after Gfx_FadeOutScene; RE-17",CONFIRMED,M10-45
+32C5:11E0,data,g_FeLoopJ,u16,front-end loop counter; 255 after Gfx_FadeOutScene; RE-17,CONFIRMED,M10-45
 32C5:11E4,data,g_HitFlash,u16,"= E1 file0001:3C43:12C4, DS offset by refs 2/2. E1: red hit-flash intensity",LIKELY,M1-09
 32C5:11E6,data,g_NoWorx,u8,"= E1 file0001:3C43:13DC, DS offset by refs 12/12. E1: 1 when the first parameter is /nosound or /pc: WORX never installed; also: /nosound or /pc: WORX never called (g_NoSoundDriver)",CONFIRMED,M1-09
 32C5:11E7,data,g_MusicDevice,u8,"= E1 file0001:3C43:12C6, DS offset by refs 15/15. E1: 2 = FM music; other values = no music; also: td.cfg byte 0 (2 = music on); also: 1 off; 2 on; 0 = show config screen (g_CfgMusic)",CONFIRMED,M1-09

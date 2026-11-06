@@ -158,6 +158,12 @@ All comparisons are exact (T1): every tick of the flight, the last one included 
 3. **E3 flights 7 and 21** need a two-flight oracle run: the tick lines of the second flight would fire in the first unless the oracle restarts its tick-keyed lines when the watcher is re-armed (an oracle 3 feature, ORACLE.md §5a).
 4. **VE-4's capture range is used up** (C-0120..C-0159). Further captures need a new range.
 
+**Answers (RE-17, 2026-11-06):**
+
+1. U-441: the E2/E3 bytes past the muzzle table are specified in [weapons](../spec/sim/weapons.md) rev 5 §3.3.2 and §3.3.3: constants and start-up values on 0Ch, 0Eh, 20h, 24h, the last front-end file name on 4Ah, the scene palette and two front-end loop counters on 4Eh, 60h, 62h. The construction reproduces the tick-1 bytes of all 38 captures (and C-0015, C-0036, C-0180) byte for byte, and none changes during a flight. Once td-sim builds them (M10-46), `e2f01`, `e2f02` and `e3f10` fly the capture's world in L4 too; rewrite their checkpoints then.
+2. U-430: the original lets the player back into `home17` from below (C-0182, C-0183: out to view (17, 166) and back in at tick 70). At the home position sideways thrust does not move the ship (map row 166 is solid except the hangar tile (22, 166)), so re-entry needs the ship lined up under the one-tile opening. td-sim has not been compared with these captures: replay the C-0183 schedule (scenario `re17-e3f10-hangar-c.txt`, tick lines) in td-sim from the same start and compare every tick; if td-sim matches, the planner's failure is its alignment, not the collision.
+3. E3 flights 7 and 21: oracle 2 cannot re-arm its watcher; a backward-compatible change is designed in `re-work\re17\ORACLE-REARM.md` (U-481), not built.
+
 ## Planner notes
 
 - The E2/E3 base tests with a `viewSubY` limit and the narrow E3 hangar needed a goal term in pixels near the goal (offsets (32, 16)); the view tile alone left the ship stuck one tile short.
