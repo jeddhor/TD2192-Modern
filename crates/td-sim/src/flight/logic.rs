@@ -1649,10 +1649,11 @@ impl Flight {
         }
         // Ticker (hud §4.7).
         if self.edge_hit {
-            // E2 has one warning text (episode-deltas §6).
+            // E2 and E3 have one warning text each (episode-deltas §6).
             let m = match self.episode {
                 Episode::E1 => Message::Jurisdiction(u8::from(matches!(self.number, 13 | 14))),
-                _ => Message::E2Jurisdiction,
+                Episode::E2 => Message::E2Jurisdiction,
+                Episode::E3 => Message::E3Jurisdiction,
             };
             self.post(m);
             self.edge_hit = false;

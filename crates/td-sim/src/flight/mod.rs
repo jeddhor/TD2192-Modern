@@ -207,7 +207,9 @@ pub struct Flight {
     /// `g_EdgeHit`: the view was pushed back at a map limit while the ticker was idle; the
     /// instruments step posts the jurisdiction warning and clears it.
     pub edge_hit: bool,
-    /// Read the joystick each tick (controller = joystick).
+    /// Read the joystick each tick. E1 and E2: the configured controller is the joystick; E3:
+    /// whenever a stick was detected, whatever the configuration (e3-mission-ships §5.2 row 2,
+    /// episode-deltas §4.1 step 17). The caller sets it.
     pub joystick_enabled: bool,
     pub joystick: Joystick,
     pub keys: KeyTable,
@@ -478,11 +480,15 @@ impl Flight {
             self.player.turn_step();
             // 4. Tile window drawn from the current view.
             self.frame.view = self.player.view;
-            // 5. Afterburner burst.
+            // 5. Afterburner burst (E3 flight 16 from phase 2: no new burst, e3-mission-logic
+            // §4.7.1).
+            let no_new_burst =
+                self.episode == Episode::E3 && self.number == 16 && self.mission.phase >= 2;
             self.frame.flame = self.player.afterburner(
                 &mut self.keys,
                 self.joystick.button1,
                 self.mission_over,
+                no_new_burst,
                 events,
             );
             // 6. Projectiles and hits.
@@ -550,7 +556,11 @@ impl Flight {
             self.white_flash = self.white_flash.saturating_sub(1);
             // 15. Comm viewer on an even back page: a transmission only when the table has
             // one for this flight and phase (mission-logic §4.6); otherwise the request is
-            // consumed.
+            // consumed. E3 flight 16 in phase 2 forces the request every tick, also during the
+            // end sequence (e3-mission-logic §4.5).
+            if self.episode == Episode::E3 && self.number == 16 && self.mission.phase == 2 {
+                self.comm_request = true;
+            }
             if self.comm_request && self.draw_page == 0 {
                 self.comm_request = false;
                 if self.comm_viewer().is_some() {
@@ -600,24 +610,38 @@ impl Flight {
             }
         }
         if from <= 26 {
-            // E2: `Msn_E2FlightEvents` after the flight menu (e2-mission-logic §4.7.1).
-            if self.episode == Episode::E2 {
-                self.e2_flight_events(events);
+            // E2: `Msn_E2FlightEvents`, E3: `Msn_E3TimedEvents`, after the flight menu
+            // (e2-mission-logic §4.7.1, e3-mission-logic §4.6).
+            match self.episode {
+                Episode::E1 => {}
+                Episode::E2 => self.e2_flight_events(events),
+                Episode::E3 => self.e3_timed_events(),
             }
             // 26 is audio. 27. Shields and destruction.
             if self.player.shields_step(&self.classes, self.mission_over) {
                 self.end_mission();
             }
-            // 28. Movement, map collision (skipped while drawing late), carry and limits;
-            // the edge alert is raised only while the ticker is idle (flight-model §4.4).
-            if self.player.move_step(world, !self.late_draw) && self.mission.ticker.idle() {
+            // 28. Movement: drift and drag; E3's hazard tiles (e3-mission-ships §5.1); map
+            // collision (skipped while drawing late), carry and limits. The edge alert is
+            // raised only while the ticker is idle (flight-model §4.4).
+            self.player.drift();
+            if self.episode == Episode::E3 {
+                self.hazard_step(world, events);
+            }
+            if self.player.collide_and_carry(world, !self.late_draw) && self.mission.ticker.idle() {
                 self.edge_hit = true;
             }
-            // 29. Comm request (not once the mission is over) and the F5 tactical map.
+            // 29. Comm request (not once the mission is over) and the F5 tactical map (E1: not
+            // in flight 14; E3: not in flight 16 from phase 5, e3-mission-logic §4.7.1).
             if self.keys.get(FlightKey::F6) && !self.mission_over {
                 self.comm_request = true;
             }
-            if self.keys.get(FlightKey::F5) && (self.episode != Episode::E1 || self.number != 14) {
+            let map_allowed = match self.episode {
+                Episode::E1 => self.number != 14,
+                Episode::E2 => true,
+                Episode::E3 => self.number != 16 || self.mission.phase < 5,
+            };
+            if self.keys.get(FlightKey::F5) && map_allowed {
                 return self.interrupt(30, Modal::TacticalMap);
             }
         }
@@ -656,6 +680,39 @@ impl Flight {
 }
 
 impl Flight {
+    /// E3 hazard tiles 41h..46h (e3-mission-ships rev 1 §5.1, `td3:0C5D:D27A..D3CB`): after
+    /// drift and drag, before collision and carry, every tick (also while the mission is over,
+    /// OB-054), except in flights 14, 17 and 19. The cells are read from the view left by the
+    /// previous carry; the third clause repeats the first, as in the original.
+    fn hazard_step(&mut self, world: &World, events: &mut Vec<Event>) {
+        if matches!(self.number, 14 | 17 | 19) {
+            return;
+        }
+        let v = self.player.view;
+        let hazard = |dx: i16, dy: i16| {
+            // Cell index (viewX + dx) × 201 + (viewY + dy), 16-bit.
+            let i = (v.tile_x + dx)
+                .wrapping_mul(201)
+                .wrapping_add(v.tile_y + dy) as u16;
+            let (x, y) = (usize::from(i) / 201, usize::from(i) % 201);
+            self.map_tile(world, x, y)
+                .is_some_and(|t| (0x41..=0x46).contains(&t))
+        };
+        let hit = hazard(5, 2)
+            || (hazard(4, 2) && v.sub_x <= 32)
+            || (hazard(5, 2) && v.sub_y <= 32)
+            || hazard(4, 3);
+        if hit {
+            // Effect 9 at the player (source FFh, distance 0).
+            events.push(Event::Sound {
+                kind: 9,
+                source: None,
+            });
+            self.player.shields = 0;
+            self.player.armour = self.player.armour.wrapping_sub(17);
+        }
+    }
+
     /// Tab, infra-red toggle and fire (`weapons.md` §4.1, tick-order step 33).
     fn player_specials(&mut self, world: &World, events: &mut Vec<Event>) {
         use FlightKey::{Alt, RightAlt, Space, Tab};
