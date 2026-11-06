@@ -273,9 +273,9 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 
 | ID | Task | Hat | Depends on | Status | Owner | Notes |
 |---|---|---|---|---|---|---|
-| M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | TODO | | |
+| M12-01 | Master parity checklist + full L5 re-run | VE | M10, M11 | IN PROGRESS | VE-6 | VE-6 2026-11-06: docs/parity/M12-checklist.md |
 | M12-02 | Timing audit | VE | M12-01 | REVIEW | VE-3 | VE-3 2026-11-06: docs/parity/M12-timing.md, 21 screen rows: 10 PASS, 8 FAIL, 2 not measured. FAIL: episode flights tick at 70.086 Hz (BUG-5, blocker), title-card fades (BUG-6), DOS-time waits 5.5 % (BUG-7), flight-menu fades (BUG-8), E2/E3 menu fades/pulse missing, flight 17/19 scenes missing. Canonical tick-rate proposal 19.2015 Hz (section 3) for the coordinator/user RE-16 2026-11-06: spec parts of BUG-6/7/8 done (screens rev 3 §2.1/§2.2, text rev 3 §4.5.2, flight-screens rev 5 §4.5.3, timing rev 4 §4.4); row 19 spec made explicit (e2-program-flow rev 2, e3 rev 2: fades 34 f, entry ramp, C-0120/C-0125); row 12 measured: flight menu item ramp 11 steps per frame (C-0012 f3628..3630) |
-| M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | TODO | | |
+| M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | IN PROGRESS | VE-6 | VE-6 2026-11-06: review in docs/parity/M12-checklist.md |
 | M12-04 | Enhanced features for 1.0 (D5) | IM | D5 | REVIEW | IM-16 | IM-16 2026-11-06: colour-blind guidance line done (td_render::enhanced::guidance: Okabe-Ito orange/sky blue + white cores with black outline per marker, drawn at the RGBA stage after the palette and over the final image; works under either profile; Classic unchanged with the setting off, invariant test with data; spec frontend/port-front-end rev 2 3.3). The other Enhanced features of this row wait for D5 |
 | M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
 | M12-06 | Replay soak, fuzzing, profiling | VE | M12-01 | TODO | | |
