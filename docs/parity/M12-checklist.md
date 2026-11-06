@@ -5,7 +5,7 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 ## 0. What remains for Classic 1.0 (ordered by impact on play)
 
 1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10).
-2. **E2/E3 two-digit muzzle bytes (M10-46, OB-017 E2/E3, in progress in the main session).** In E2 and E3 the port still flies the 342-byte table's world. Any volley fired on an intermediate heading (by the player while turning, or by an enemy) hits differently from the original, which changes kills and end ticks. The L5 tests pass only because they feed the capture's bytes, and `e2f01`, `e2f02` and `e3f10` are dual replays (weapons vector 9, NOT COVERED).
+2. ~~E2/E3 two-digit muzzle bytes~~ **Done after this review (IM-20, merged 90bd09f):** the E2/E3 worlds are built from front-end state, equal all 58 whole-flight captures and the C-0015/C-0036/C-0180/C-0121/C-0128 campaign states, every L5 flight uses the built bytes, and the dual replays were rewritten.
 3. **Session state across flights is unverified.** Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481).
 4. **The flight-start fade-in is not ported** (M12-timing §7). Every flight starts with a cut where the original runs a 34-frame `FadeIn` before tick 1. BUG-10 is filed for it.
 5. **Flights never compared:** E1 flight 21 (U-044), and E3 flights 7 and 21 (U-481). Only static tests cover them.
@@ -21,7 +21,7 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 9. **Missing Enhanced bug fixes.** The user's D5 decision (2026-11-06) puts every fix-enhanced fix in the Enhanced preset, so these are now 1.0 scope. OB-012, OB-024, OB-032, OB-056 and OB-057 are fix-enhanced and not implemented. OB-031 and OB-023 behave as fixed in both profiles, against their policy. The candidates OB-022, OB-036, OB-038, OB-041, OB-043, OB-046 and OB-102 have no decision (§7.2).
 10. **55 OBs are still "proposed"** and OB-008 is still "open" (U-060 is now resolved). They need one batch decision (§7.1). OB-005 and OB-034 are labelled fix-all but are not crash, hang, save or progression bugs (§7.1).
 11. **Timing residues:**
-    - ADR-0007 (19.2015 Hz) awaits the user, and U-001 stays OPEN until it is accepted;
+    - ADR-0007 (19.2015 Hz) was accepted by the user on 2026-11-06 (after this review), so U-001 can be closed;
     - U-451: `Crt.Delay` ends the flight-17 cut-scene about 12 retraces early;
     - U-461: the fade crossover at 380 is an estimate;
     - after a menu fade-out the original spends 1–2 frames more than the port (M12-timing §7);
@@ -65,7 +65,7 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 | re/FORMATS.md | — | T0 | 15 | 11 | 1 | 0 | 3 | stills never compared; `td.cfg`, `tdstatus.dat`, TFP are T3/D4 |
 | core/bp7-runtime-semantics | 2 | T1, T3 | 11 | 9 | 1 | 0 | 1 | Real `Random` values 2–3 |
 | core/real48 | 1 | T1 | 2 | 2 | 0 | 0 | 0 | — (1,705 file vectors) |
-| core/timing | 5 | T1, T2 | 9 | 4 | 1 | 0 | 4 | U-451; ADR-0007 pending |
+| core/timing | 5 | T1, T2 | 9 | 4 | 1 | 0 | 4 | U-451; ADR-0007 accepted 2026-11-06 |
 | audio/cmf | 3 | T1, T2 | 12 | 11 | 1 | 0 | 0 | song lengths except `menu` |
 | audio/music-cues | 2 | T1, T2 | 5 | 2 | 2 | 0 | 1 | E1 cue order not asserted end to end |
 | audio/sfx-policy | 4 | T1, T2 | 11 | 8 | 0 | 3 | 0 | PC speaker (M12-05); positioned effects |
@@ -80,7 +80,7 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 | sim/hit-flash | 4 | T0, T1 | 12 | 9 | 3 | 0 | 0 | C-0041 flash and DAC frames |
 | sim/mission-setup | 2 | T1 | 3 | 2 | 0 | 1 | 0 | OB-018 persistence |
 | sim/mission-ships | 5 | T1, T2 | 6 | 6 | 0 | 0 | 0 | — |
-| sim/weapons | 5 | T1, T2 | 11 | 9 | 1 | 1 | 0 | E2/E3 bytes (M10-46); missiles in whole flights |
+| sim/weapons | 5 | T1, T2 | 11 | 10 | 1 | 0 | 0 | missiles in whole flights (E2/E3 bytes done by IM-20 after this review) |
 | sim/mission-logic (E1) | 3 | T1, T2 | 16 | 13 | 2 | 1 | 0 | vector 12; flight 21; failure paths |
 | sim/e2-mission-setup | 1 | T1, T2 | 10 | 9 | 1 | 0 | 0 | home points |
 | sim/e2-mission-ships | 1 | T1 | 5 | 5 | 0 | 0 | 0 | — |
@@ -398,7 +398,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 4–6 | Volley offsets, missile, heading 6 | `td-sim/tests/oracle_weapons.rs::player_weapons_match_the_original` | C-0011 | PASS |
 | 7 | Front-end bytes after a played story (OB-017, E1) | `td-flow/tests/front_end_state.rs::mission_3_after_its_story_matches_c0160`, `::campaign_start_through_the_launcher_matches_c0002`, `td-sim/src/flight/front_end.rs::direct_start_bytes_follow_the_construction_table` | C-0160, C-0002 | PASS |
 | 8 | `g_Weapon` 0 in flight 19 (BUG-2) | `td-sim/src/flight/tests.rs::g_weapon_is_carried_from_flight_to_flight`, full flight 19 | C-0069 | PASS |
-| 9 | E2/E3 two-digit muzzle bytes (§3.3.2, §3.3.3) | none in the port: the L5 tests feed the capture's bytes; M10-46 in progress | C-0120..C-0159, C-0015, C-0036, C-0180 | NOT COVERED |
+| 9 | E2/E3 two-digit muzzle bytes (§3.3.2, §3.3.3) | `td-sim/tests/oracle_front_end.rs` (all 58 whole-flight captures), `td-flow/tests/front_end_state.rs` (C-0015, C-0036, C-0180, C-0121, C-0128), the E2/E3 full-flight L5 tests with built bytes (IM-20, after this review) | C-0120..C-0159, C-0015, C-0036, C-0180 | PASS |
 | 10 | Homing missile step 3 (U-421) | `td-sim/src/flight/shots/tests.rs::homing_kill_is_step_3_only` | static | PASS |
 | — | Missiles and Tab inside whole flights | none (the plans never select missiles; C-0011 is short) | C-0011 only | PARTIAL |
 
@@ -825,7 +825,7 @@ One row per OB. "Decided" is "no" where the catalogue's last column still says "
 | 014 | preserve | yes | `ships.rs` | `oracle_ships.rs`, full flights | OK |
 | 015 | preserve | no | `ships.rs` | `oracle_ships.rs` (slot 19 detour) | OK |
 | 016 | preserve | no | scan toward +x / +y (`ships.rs:635`, uncited) | full flights (enemy fire) | OK; cite OB-016 in the code |
-| 017 | preserve | yes (main session) | E1: `td_sim::flight::front_end`; E2/E3: M10-46 in progress | `front_end_state.rs` (C-0002, C-0160), `front_end.rs::direct_start_bytes_follow_the_construction_table`, full flights | **E2/E3 not implemented** |
+| 017 | preserve | yes (main session) | E1 and E2/E3: `td_sim::flight::front_end` (IM-18, IM-20) | `front_end_state.rs`, `oracle_front_end.rs`, `front_end/tests.rs`, full flights | implemented in all episodes (after this review) |
 | 018 | preserve (session state) | no | `ClassTables` in the `Session` | none | **Not pinned** (direct starts only) |
 | 019 | preserve | no | `hud.rs` | `hud_parity.rs::c0002_f3543_instruments_match` | OK |
 | 020 | preserve | no | `hud.rs` | `hud.rs::same_column_uses_the_plus_two_test` | OK |
