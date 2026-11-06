@@ -22,10 +22,10 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 |---|---|---|---|
 | D1 | Language and stack | M0-01 and everything after it | **DECIDED 2026-11-02: Rust + SDL3** |
 | D2 | Project licence | M0-03, M0-12 | **DECIDED 2026-11-02: MIT** |
-| D3 | Import original saves? | M11-06 | OPEN |
-| D4 | TFP extras? | M11-07 | OPEN |
-| D5 | Enhanced features in 1.0 | M12-04, M12-05 | OPEN (partly answered 2026-11-05: the user wants widescreen, upscaling and dynamic lighting planned and implemented, M12-08..M12-12; ADR-0006) |
-| D6 | Platforms and signing | M13-01 | OPEN |
+| D3 | Import original saves? | M11-06 | **DECIDED 2026-11-06 (user): no** |
+| D4 | TFP extras? | M11-07 | **DECIDED 2026-11-06 (user): no for 1.0** |
+| D5 | Enhanced features in 1.0 | M12-04, M12-05 | **DECIDED 2026-11-06 (user): Enhanced = visual preset** (16:9 widescreen, xBR 3x, subtle lighting, bloom off, polyphonic SFX, all fix-enhanced fixes; each adjustable) |
+| D6 | Platforms and signing | M13-01 | **DECIDED 2026-11-06 (user): Windows x64 + Linux x64, unsigned; macOS later** |
 | D7 | Repo hosting and visibility | Running CI remotely (the workflow file is written regardless) | OPEN |
 | D8 | Default script variant | M5-07 | OPEN (recommend: ask, as the original does) |
 | D9 | Cheater judgement text | M8-09 | OPEN (recommend: text only) |
@@ -266,8 +266,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M11-03 | Modern settings screens (video, audio, controls, profile, accessibility, data dir) | IM | M4-05 | REVIEW | IM-14, IM-16 | IM-14 2026-11-05: td_flow::front::options (spec frontend/port-front-end rev 1 §3-4): video (fullscreen, scaling, widescreen marked affects gameplay, upscaler, lighting, bloom), audio (volumes, SFX policy), controls (keyboard + gamepad per td_sim::FlightKey, conflict detection, reset; [controls] in td_flow::controls, flight reads them live), profile (Classic forces [enhanced] off via effective_enhanced; per presentation rev 2 the profile governs only [enhanced]), accessibility (colour-blind guidance setting saved, drawing TODO M12-04). F2 opens it in play. Live apply + save of only the player's changes (Settings::with_changes). Not done: data-directory page (the first-run picker remains the way to set it). IM-16 2026-11-06: game-data page (td_flow::front::data + options Page::Data: the folder or ZIP in use, who set it, file check, playable episodes; choose a folder / a zip / extract through SettingsPort DataRequest, host td2192::data::DataHost; saved to settings.toml; disabled while --data or TD2192_DATA set, MDG 8.8; a new choice is switched to when the start screen is on top), spec frontend/port-front-end rev 2 3.2 |
 | M11-04 | Gamepad UI navigation | IM | M11-03 | REVIEW | IM-14 | IM-14 2026-11-05: stick/D-pad move, South confirms, East back on the port screens (td_flow::front::ui); bound buttons act as their flight key's keyboard key everywhere (ControlsSettings::pad_keys, Start = Esc, South = Space by default); original menus keep the original joystick rules, plus controller answers for the main-menu boxes and the script choice (spec frontend/port-front-end rev 1 §5) |
 | M11-05 | Credits screen (exe resources) | IM | M2-14 | REVIEW | IM-15 | RE part DONE 2026-11-05 (RE-13): docs/spec/frontend/credits.md rev 1. IM-15 2026-11-05: td_flow::credits::Credits, a reusable Screen (pops or Replace via then()): mode A = Intro::flyover_only (the C-0047-verified flyover, any key ends it, fade out, music stopped), mode B = 7 grouped pages in Text A, intro2.cmf looping, 65-frame fades, 4 s or a key, Esc leaves at once; mode A falls back to B without the flyover files; td2192 --dev-credits a or b. Start-screen item `credits` (td_flow::front::start): mode A under Classic, B under Enhanced |
-| M11-06 | Original save import (D3) | IM | M2-12, D3 | TODO |  | Screen part done by IM-7 2026-11-05 (td_flow::save_screens, see M9-19): the port keeps its own td.sav/td.stt in <user data>/saves in the original byte format and starts empty; the game folder's saves are never read. Import/export of the original files waits for D3 |
-| M11-07 | TFP extras (D4, optional) | RE/IM | D4 | TODO | | |
+| M11-06 | Original save import (D3) | IM | M2-12, D3 | WON'T DO |  | Screen part done by IM-7 2026-11-05 (td_flow::save_screens, see M9-19): the port keeps its own td.sav/td.stt in <user data>/saves in the original byte format and starts empty; the game folder's saves are never read. Import/export of the original files waits for D3 |
+| M11-07 | TFP extras (D4, optional) | RE/IM | D4 | WON'T DO | | D4 decided 2026-11-06: no for 1.0 |
 
 ## M12: Fidelity verification & polish
 
