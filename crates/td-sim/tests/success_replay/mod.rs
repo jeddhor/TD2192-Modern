@@ -12,6 +12,9 @@
 //! §3.3, OB-017; E2 and E3 keep (0, 0) past the table, U-441). A replay that diverges after an intended behaviour change is re-recorded only after a
 //! Verifier confirms the new behaviour against the original (ADG §10.5).
 
+// Each test crate uses some of the helpers (`check_after` only E1 and E3).
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 
 use td_assets::{DataDir, ExeResources, ResourceValue};
