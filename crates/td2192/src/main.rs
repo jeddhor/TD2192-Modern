@@ -1,5 +1,6 @@
 //! TD2192-Modern: the game executable (composition root).
 
+mod enhanced;
 mod flight;
 mod mapview;
 mod run;
@@ -54,6 +55,10 @@ struct Cli {
     /// Developer: save a screenshot and exit after this many simulation ticks.
     #[arg(long, value_name = "TICKS")]
     dev_exit_after: Option<u64>,
+    /// Developer: Enhanced presentation for this run, as `key=value` pairs of the `[enhanced]`
+    /// settings (e.g. `widescreen=16:9,upscaler=xbr3`); implies `profile = "enhanced"`.
+    #[arg(long, value_name = "SPEC")]
+    dev_enhanced: Option<String>,
 }
 
 /// Parses `--dev-flight`: `N` (Episode 1) or `eN:N`.
@@ -176,6 +181,11 @@ fn real_main() -> Result<()> {
     if cli.fullscreen {
         settings.video.fullscreen = true;
     }
+    if let Some(spec) = cli.dev_enhanced.as_deref() {
+        settings.profile = td_flow::settings::Profile::Enhanced;
+        settings.enhanced = enhanced::parse_spec(spec).context("--dev-enhanced")?;
+    }
+    let view = enhanced::SharedView::default();
 
     let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
@@ -186,7 +196,10 @@ fn real_main() -> Result<()> {
         }
         (Some(spec), _) => {
             let (episode, n) = parse_flight_spec(&spec)?;
-            Box::new(flight::FlightArena::new(&dir, &resources, episode, n)?)
+            Box::new(
+                flight::FlightArena::new(&dir, &resources, episode, n)?
+                    .with_enhanced(Some(view.clone())),
+            )
         }
         (None, Some(spec)) => {
             let (episode, choice, id) = td_flow::dialogue::parse_scene_spec(spec)?;
@@ -201,7 +214,9 @@ fn real_main() -> Result<()> {
                 td_flow::Episode2::new(
                     &dir,
                     &resources,
-                    Box::new(flight::ArenaLauncher::for_episode(Episode::E2)),
+                    Box::new(
+                        flight::ArenaLauncher::for_episode(Episode::E2).with_enhanced(view.clone()),
+                    ),
                 )?
                 .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
             ),
@@ -210,7 +225,9 @@ fn real_main() -> Result<()> {
                 td_flow::Episode3::new(
                     &dir,
                     &resources,
-                    Box::new(flight::ArenaLauncher::for_episode(Episode::E3)),
+                    Box::new(
+                        flight::ArenaLauncher::for_episode(Episode::E3).with_enhanced(view.clone()),
+                    ),
                 )?
                 .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
             ),
@@ -227,7 +244,7 @@ fn real_main() -> Result<()> {
                     td_flow::Episode1::new(
                         &dir,
                         &resources,
-                        Box::new(flight::ArenaLauncher::default()),
+                        Box::new(flight::ArenaLauncher::default().with_enhanced(view.clone())),
                     )?
                     .with_save_dir(td_flow::save_screens::save_dir(&user_dir)),
                 ),
@@ -242,6 +259,7 @@ fn real_main() -> Result<()> {
         resources: &resources,
         settings: &settings,
         user_dir: &user_dir,
+        enhanced: view,
     };
     run::run(td_flow::Flow::new(first), &rd, &options)
 }

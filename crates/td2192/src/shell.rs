@@ -10,14 +10,13 @@ use anyhow::{Context, Result, bail};
 use td_assets::{DataDir, ExeResources};
 use td_flow::credits::{Credits, CreditsMode};
 use td_flow::intro::{Intro, IntroOptions};
+use td_flow::settings::Profile;
 use td_flow::{Screen, Settings};
 
-/// True when the Enhanced profile is selected.
-///
-/// ASSUMPTION: `td_flow::Settings` has no profile on this branch yet (IM-12 adds
-/// `profile == Profile::Enhanced`); until it lands, everything runs as Classic.
-pub fn enhanced(_settings: &Settings) -> bool {
-    false
+/// True when the Enhanced profile is selected (the profile, not the `[enhanced]` presentation
+/// keys).
+pub fn enhanced(settings: &Settings) -> bool {
+    settings.profile == Profile::Enhanced
 }
 
 /// The intro's options for these settings: OB-058 is fixed only in Enhanced.

@@ -157,11 +157,14 @@ impl VgaMemory {
         self.start = start;
     }
 
-    /// The visible 320 × 200 pixels into `fb.pixels` (the palette is the caller's).
+    /// The visible 320 × 200 pixels into `fb.pixels`, from its left edge (the palette is the
+    /// caller's).
     pub fn render(&self, fb: &mut Framebuffer) {
+        let stride = fb.width();
+        let w = stride.min(WIDTH);
         for y in 0..HEIGHT {
             let row = self.start.wrapping_add((y as u16).wrapping_mul(ROW_BYTES));
-            let line = &mut fb.pixels[y * WIDTH..(y + 1) * WIDTH];
+            let line = &mut fb.pixels[y * stride..y * stride + w];
             for (x, px) in line.iter_mut().enumerate() {
                 *px = self.byte((x % 4) as u8, row.wrapping_add((x / 4) as u16));
             }

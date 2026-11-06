@@ -202,6 +202,44 @@ fn vector_4_flyover_state_matches_every_ram_dump() {
     assert!(compared > 800, "{compared}");
 }
 
+/// DAC index writes (port 3C8h) per frame, from `frames.tsv`.
+fn dac_writes(oracle: &Path) -> BTreeMap<u64, u32> {
+    let text = fs::read_to_string(capture(oracle).join("frames.tsv")).unwrap();
+    let mut lines = text.lines();
+    let header: Vec<&str> = lines.next().unwrap().split('\t').collect();
+    let col = header.iter().position(|&h| h == "dac_3c8").unwrap();
+    lines
+        .filter_map(|l| {
+            let c: Vec<&str> = l.split('\t').collect();
+            Some((c.first()?.parse().ok()?, c.get(col)?.parse().ok()?))
+        })
+        .collect()
+}
+
+#[test]
+fn vector_3_full_fades_are_65_frames() {
+    // intro §6 vector 3: each full fade writes 255 entries per frame. Its first level starts
+    // at the anchor (about 190 writes before the frame ends), so it spans 65 frames, then the
+    // last level's remaining writes spill into the next frame. Ours: one level per frame.
+    let oracle = require_oracle!();
+    let writes = dac_writes(&oracle);
+    for &i in &FULL_FADES {
+        let a = ANCHORS[i];
+        let dropped = DROPPED.iter().filter(|&&d| a <= d && d <= a + 66).count() as u64;
+        for f in a..a + 65 + dropped {
+            let n = writes[&f];
+            if DROPPED.contains(&f) {
+                assert_eq!(n, 64, "f{f}: dropped retrace");
+            } else {
+                assert!(n >= 190, "full fade from f{a}: f{f} has {n} writes");
+            }
+        }
+        let after = writes[&(a + 65 + dropped)];
+        assert!(after < 190, "full fade from f{a} lasts longer: {after}");
+    }
+    // Ours, synthetic and data-free: tested in the unit tests (65 frames, levels 0..=64).
+}
+
 fn load_intro() -> Option<Intro> {
     let data = td_test_support::data_dir()?;
     let dir = DataDir::open(&data).unwrap();

@@ -2,9 +2,11 @@
 //!
 //! All drawing targets an indexed 320x200 [`Framebuffer`] with a 6-bit VGA palette (ADR-0004).
 //! Conversion to RGBA and scaling happen only in `td-platform`. Behaviour is implemented from
-//! `docs/spec/render/` and `docs/re/FORMATS.md`.
+//! `docs/spec/render/` and `docs/re/FORMATS.md`. The opt-in Enhanced presentation (wider
+//! frames, upscaling, lighting; ADR-0006) is the [`enhanced`] module.
 
 pub mod dialogue;
+pub mod enhanced;
 pub mod fade;
 pub mod flight;
 pub mod flight_palette;
