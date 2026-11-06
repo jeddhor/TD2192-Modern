@@ -4,9 +4,13 @@
 //! state carries over between songs, cmf §4.10). A new song stops the current one first and
 //! always starts from the top (music-cues §4.1).
 //!
-//! Sound effects: `docs/spec/audio/sfx-policy.md` rev 1. [`SfxPolicy::Classic`] is the original
-//! single digital voice with priority pre-emption (§4.2); [`SfxPolicy::Polyphonic`] is the
-//! Enhanced option. Both apply the distance cut-off and the SB Pro left/right levels (§4.3).
+//! Sound effects: `docs/spec/audio/sfx-policy.md` rev 4. [`SfxPolicy::Classic`] is the original
+//! single digital voice: a new effect stops the playing one (WORX function 06h);
+//! [`SfxPolicy::Polyphonic`] is the Enhanced option. Both apply the distance cut-off and the
+//! SB Pro left/right levels (§4.3). Which effects may start (the priority pre-emption of §4.2)
+//! is the game's decision, made with [`crate::sfx::DigitalVoice`] on the game's clock, because
+//! the game also reads WORX's playing status (voc-and-adpcm rev 3 §2.3); the mixer plays what
+//! it is sent.
 //!
 //! Fidelity: T2. Resampling is linear interpolation. Levels and balance are tuned to the oracle's
 //! WAV captures (VE-3, `docs/parity/M3-audio.md` rows 16-17): a mixer level n gives
@@ -19,14 +23,14 @@ use std::sync::Arc;
 use td_formats::cmf::Cmf;
 
 use crate::cmf_player::CmfPlayer;
-use crate::sfx::{self, ClassicArbiter, TilePos};
+use crate::sfx::{self, TilePos};
 use crate::sound::Pcm8;
 
 /// How many sound effects may play at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SfxPolicy {
-    /// The original: one digital voice. A new effect replaces the playing one when its priority
-    /// is at least the current priority (sfx-policy §4.2).
+    /// The original: one digital voice. A new effect replaces the playing one; the game decides
+    /// which effects start (sfx-policy §4.2, [`crate::sfx::DigitalVoice`]).
     Classic,
     /// Up to `n` simultaneous voices (Enhanced profile); the oldest is dropped when full. Effects
     /// out of the original's earshot still do not play.
@@ -48,15 +52,18 @@ pub enum AudioCommand {
     /// A new program's music driver takes over (the intro hands over to the game): the driver
     /// state returns to start-up, the chip keeps playing. See [`CmfPlayer::restart_driver`].
     RestartMusicDriver,
-    /// An unpositioned sound at full volume with the lowest priority (like effect ids 0..10
-    /// without a position).
+    /// An unpositioned sound with the SB Pro mixer voice volume set to `level` (0..15) on both
+    /// channels first (`WORX_SetVoiceVolume(level, level)`, the intro's effects: 10, 12, 13 of
+    /// 15, intro §3.6). Under [`SfxPolicy::Classic`] it replaces the playing sound.
     PlaySfx {
         sound: Arc<Pcm8>,
+        level: u8,
     },
-    /// A game sound effect: `Snd_PlayEffect(id, source, view)` on a Sound Blaster
-    /// (sfx-policy §4). `sound` is the effect's sample ([`sfx::effect_voc`]); `None` for an id
-    /// without one. `source` is the sound's tile, `None` for the player's own sounds (SrcX =
-    /// FFh); `view` is the view's top-left tile.
+    /// A game sound effect the game's arbiter let start: `Snd_PlayEffect(id, source, view)` on
+    /// a Sound Blaster (sfx-policy §4.2–§4.3). `sound` is the effect's sample
+    /// ([`sfx::effect_voc`]); `None` for an id without one. `source` is the sound's tile,
+    /// `None` for the player's own sounds (SrcX = FFh); `view` is the view's top-left tile.
+    /// Effects out of earshot (priority below 0, or OB-009) never play.
     PlayEffect {
         id: u8,
         sound: Option<Arc<Pcm8>>,
@@ -123,7 +130,6 @@ pub struct Mixer {
     /// Created by the first song; kept for the session afterwards.
     music: Option<Music>,
     voices: Vec<Voice>,
-    arbiter: ClassicArbiter,
     music_volume: f32,
     sfx_volume: f32,
 }
@@ -164,7 +170,6 @@ impl Mixer {
             policy,
             music: None,
             voices: Vec::new(),
-            arbiter: ClassicArbiter::default(),
             music_volume: 0.8,
             sfx_volume: 0.8,
         }
@@ -188,15 +193,6 @@ impl Mixer {
     /// Number of sound effects currently playing.
     pub fn active_sfx(&self) -> usize {
         self.voices.len()
-    }
-
-    /// Priority of the playing digital effect under [`SfxPolicy::Classic`] (0 = idle).
-    pub fn sfx_priority(&self) -> u8 {
-        if self.voices.is_empty() {
-            0
-        } else {
-            self.arbiter.current_priority()
-        }
     }
 
     /// Applies a command.
@@ -228,17 +224,18 @@ impl Mixer {
                     m.player.restart_driver();
                 }
             }
-            AudioCommand::PlaySfx { sound } => self.play_effect(0, Some(sound), None, (0, 0)),
+            AudioCommand::PlaySfx { sound, level } => {
+                // The level is the nibble written to register 04h itself (no 12/16 scaling).
+                let gain = OUTPUT_SCALE * sb_level_gain(level);
+                self.start_voice(sound, (gain, gain));
+            }
             AudioCommand::PlayEffect {
                 id,
                 sound,
                 source,
                 view,
             } => self.play_effect(id, sound, source, view),
-            AudioCommand::StopSfx => {
-                self.voices.clear();
-                self.arbiter.idle();
-            }
+            AudioCommand::StopSfx => self.voices.clear(),
             AudioCommand::SetVolumes { music, sfx } => {
                 self.music_volume = music.clamp(0.0, 1.0);
                 self.sfx_volume = sfx.clamp(0.0, 1.0);
@@ -246,7 +243,8 @@ impl Mixer {
         }
     }
 
-    /// `Snd_PlayEffect` with a Sound Blaster (sfx-policy §4.1–§4.3).
+    /// `Snd_PlayEffect` with a Sound Blaster once the game's arbiter let it start
+    /// (sfx-policy §4.1–§4.3): the earshot test, the stereo levels, then the voice.
     fn play_effect(
         &mut self,
         id: u8,
@@ -258,44 +256,35 @@ impl Mixer {
         let Some(dist) = sfx::distance(source, view) else {
             return;
         };
+        // 15 tiles or more (90 for id 100, 165 for 200): below the idle priority, never heard.
+        if sfx::priority(id, dist) < 0 {
+            return;
+        }
+        // An id without a sample (1) starts nothing (sfx::DigitalVoice::request).
+        let Some(sound) = sound else {
+            return;
+        };
+        let (l, r) = sfx::stereo_levels(source, view, dist);
+        self.start_voice(sound, (level_gain(l), level_gain(r)));
+    }
+
+    /// Starts a voice: under [`SfxPolicy::Classic`] it replaces the playing one (WORX function
+    /// 06h stops the playing sound first); under [`SfxPolicy::Polyphonic`] the oldest voice is
+    /// dropped when all are busy.
+    fn start_voice(&mut self, sound: Arc<Pcm8>, gain: (f32, f32)) {
         match self.policy {
-            SfxPolicy::Classic => {
-                if self.voices.is_empty() {
-                    self.arbiter.idle();
-                }
-                if !self.arbiter.request(id, dist) {
-                    return;
-                }
-                // ASSUMPTION: an id without a sample (1) sets the priority but leaves the playing
-                // sound alone; the spec does not say whether WORX is asked to play nothing.
-                let Some(sound) = sound else {
-                    return;
-                };
-                self.voices.clear(); // WORX function 06h stops the playing sound first
-                self.push_voice(sound, source, view, dist);
-            }
+            SfxPolicy::Classic => self.voices.clear(),
             SfxPolicy::Polyphonic(n) => {
-                if sfx::priority(id, dist) < 0 {
-                    return;
-                }
-                let Some(sound) = sound else {
-                    return;
-                };
                 while self.voices.len() >= n.max(1) {
                     self.voices.remove(0);
                 }
-                self.push_voice(sound, source, view, dist);
             }
         }
-    }
-
-    fn push_voice(&mut self, sound: Arc<Pcm8>, source: Option<TilePos>, view: TilePos, dist: u16) {
-        let (l, r) = sfx::stereo_levels(source, view, dist);
         self.voices.push(Voice {
             sound,
             pos: 0,
             interp: Interp::default(),
-            gain: (level_gain(l), level_gain(r)),
+            gain,
         });
     }
 
@@ -358,10 +347,14 @@ mod tests {
     use super::*;
 
     fn tone(rate: u32, n: usize) -> Arc<Pcm8> {
-        Arc::new(Pcm8 {
+        Arc::new(Pcm8::new(
             rate,
-            samples: (0..n).map(|i| if i % 2 == 0 { 200 } else { 56 }).collect(),
-        })
+            (0..n).map(|i| if i % 2 == 0 { 200 } else { 56 }).collect(),
+        ))
+    }
+
+    fn sfx(sound: Arc<Pcm8>) -> AudioCommand {
+        AudioCommand::PlaySfx { sound, level: 11 }
     }
 
     fn effect(id: u8, source: Option<TilePos>) -> AudioCommand {
@@ -376,37 +369,40 @@ mod tests {
     #[test]
     fn classic_policy_keeps_one_voice() {
         let mut m = Mixer::new(48_000, SfxPolicy::Classic);
-        m.command(AudioCommand::PlaySfx {
-            sound: tone(8000, 800),
-        });
-        m.command(AudioCommand::PlaySfx {
-            sound: tone(8000, 800),
-        });
+        m.command(sfx(tone(8000, 800)));
+        m.command(sfx(tone(8000, 800)));
         assert_eq!(m.active_sfx(), 1);
         m.set_policy(SfxPolicy::Polyphonic(4));
-        m.command(AudioCommand::PlaySfx {
-            sound: tone(8000, 800),
-        });
+        m.command(sfx(tone(8000, 800)));
         assert_eq!(m.active_sfx(), 2);
     }
 
+    /// Classic: every effect the game sends replaces the playing one (the game's arbiter has
+    /// already decided, sfx::DigitalVoice).
     #[test]
-    fn classic_priority_pre_emption() {
+    fn classic_effects_replace_the_playing_one() {
         let mut m = Mixer::new(48_000, SfxPolicy::Classic);
         m.command(effect(100, None));
-        assert_eq!(m.sfx_priority(), 5);
         let first = Arc::as_ptr(&m.voices[0].sound);
         m.command(effect(9, None));
-        assert_eq!(Arc::as_ptr(&m.voices[0].sound), first, "explosion not cut");
-        m.command(effect(200, Some((15, 13))));
-        assert_ne!(Arc::as_ptr(&m.voices[0].sound), first, "income cuts it");
-        assert_eq!((m.active_sfx(), m.sfx_priority()), (1, 10));
-        // The voice ends: idle again, so an ordinary effect plays.
-        let mut buf = vec![0.0f32; 2 * 9_600];
-        m.render(&mut buf);
-        assert_eq!(m.sfx_priority(), 0);
-        m.command(effect(9, None));
+        assert_ne!(Arc::as_ptr(&m.voices[0].sound), first);
         assert_eq!(m.active_sfx(), 1);
+    }
+
+    /// The intro's levels (intro §3.6): `WORX_SetVoiceVolume(v, v)` writes v itself.
+    #[test]
+    fn play_sfx_uses_its_level() {
+        for (level, gain) in [(10u8, 0.0997f32), (12, 0.238), (13, 0.364)] {
+            let mut m = Mixer::new(48_000, SfxPolicy::Classic);
+            m.command(AudioCommand::PlaySfx {
+                sound: tone(8000, 800),
+                level,
+            });
+            let (l, r) = m.voices[0].gain;
+            assert_eq!(l, r);
+            let db = 20.0 * (l / (OUTPUT_SCALE * gain)).log10();
+            assert!(db.abs() < 0.8, "level {level}: {db:+.2} dB");
+        }
     }
 
     #[test]
@@ -477,9 +473,7 @@ mod tests {
     #[test]
     fn sfx_lasts_its_duration_and_then_stops() {
         let mut m = Mixer::new(48_000, SfxPolicy::Classic);
-        m.command(AudioCommand::PlaySfx {
-            sound: tone(8000, 800),
-        }); // 0.1 s
+        m.command(sfx(tone(8000, 800))); // 0.1 s
         let mut buf = vec![0.0f32; 2 * 4_700];
         m.render(&mut buf);
         assert_eq!(m.active_sfx(), 1, "still playing before 0.1 s");

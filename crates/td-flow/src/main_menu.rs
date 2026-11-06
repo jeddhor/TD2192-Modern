@@ -1,11 +1,12 @@
-//! The Episode 1 main menu screen: `td.men` with the item colours, the menu fades, the cursor
-//! pulses, the keys and the two confirmation boxes.
+//! The main menu screen of all three episodes: `td.men` with the item colours, the menu fades,
+//! the cursor pulses, the keys and the two confirmation boxes.
 //!
-//! Spec: `docs/spec/flow/screens.md` (rev 1) §3.1 (loader `UI_LoadMainMenu` `0000:2E88`, loop
+//! Spec: `docs/spec/flow/screens.md` (rev 3) §3.1 (loader `UI_LoadMainMenu` `0000:2E88`, loop
 //! `UI_MainMenuLoop` `0000:3381`), §2.1 (fades); `docs/spec/flow/episode-program-flow.md`
-//! (rev 2) §4.2 (which actions fade and reload the menu); the E1 parts that
-//! `docs/spec/flow/e2-program-flow.md` (rev 1) §4.2 states as unchanged in E2 (the pulse runs
-//! only after a cursor change; help and the story so far re-fade the menu without the loader).
+//! (rev 2) §4.2 (which actions fade and reload the menu); `docs/spec/flow/e2-program-flow.md`
+//! rev 2 §4.2 and `e3-program-flow.md` rev 2 §4.2 for Episodes 2 and 3 ([`MenuStyle::Later`]:
+//! the OB-041 colours, the same fades and ramps: 34-frame fades, the start cursor's ramp once
+//! at loop entry, a ramp on every cursor change and none after an action; C-0120, C-0125).
 //! Graphics: `docs/re/FORMATS.md` §12.1. Fidelity: T0 for the pixels and colours, T2 for the
 //! pace.
 //!
@@ -13,8 +14,9 @@
 //! DS:07E0) and the DAC. Fades and the half-brightness boxes are computed from the buffer;
 //! the cursor pulses write the DAC only.
 //!
-//! Pace (T2): fade levels take [`FADE_FRAMES_PER_LEVEL`] frames as everywhere else (C-0002
-//! frames 835..868). The pulse waits for the retrace bit, which stays set long enough for
+//! Pace (T2): fade levels take `td_render::fade::frames_per_level` frames of the palette buffer,
+//! two for `tdmen.pal` as everywhere else (C-0002 frames 835..868; E2 C-0120 f272..305, E3
+//! C-0125 f270..303). The pulse waits for the retrace bit, which stays set long enough for
 //! several cheap steps: C-0002 shows the 48 steps of the first pulse as 11, 11, 11, 11 and 4
 //! DAC writes in frames 868..872, so the port runs [`PULSE_STEPS_PER_FRAME`] steps per frame.
 //! The box fade writes 256 entries per level and gets one level per frame.
@@ -33,7 +35,8 @@ use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, Pad, PadButton, TickInput};
 use td_render::{Framebuffer, WIDTH, fade};
 
-use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
+use crate::bios_key;
+use crate::dialogue::KEY_BUFFER;
 use crate::story::is_keystroke;
 
 /// Menu items (episode-program-flow §4.2).
@@ -80,6 +83,17 @@ impl MenuGraphics {
             palette,
         })
     }
+}
+
+/// Which program's menu: the item colours differ (e2-program-flow rev 2 §4.2 item 2, OB-041).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuStyle {
+    /// Episode 1 (screens §3.1): items dim red, item 3 black, the cursor bright (yellow for
+    /// item 3), DAC 255 white after the fade-in.
+    E1,
+    /// Episodes 2 and 3: all ten entries dim red, item 3 included; the cursor gets red 63 only
+    /// (item 3 too: red, not yellow); no DAC 255 change. The ramps are E1's (item 3 yellow).
+    Later,
 }
 
 /// How the menu comes back after an action (episode-program-flow §4.2; e2-program-flow §4.2).
@@ -169,6 +183,7 @@ enum Phase {
 /// The main menu: what is on screen, the palette buffer, the cursor and the key buffer.
 #[derive(Debug, Clone)]
 pub struct MainMenu {
+    style: MenuStyle,
     gfx: Option<MenuGraphics>,
     screen: Framebuffer,
     buffer: Palette,
@@ -179,7 +194,14 @@ pub struct MainMenu {
     pulses: VecDeque<Pulse>,
     /// The BIOS keyboard buffer as the loop sees it.
     keys: Vec<Key>,
+    /// A Shift key was held at the last frame (for the bytes of discarded keys).
+    shift: bool,
+    /// The last byte the loop's poll read and discarded, not yet taken ([`Self::take_discarded`]).
+    discarded: Option<u8>,
     pad: Option<Pad>,
+    /// A palette-buffer entry the program changes after the loader's fade-in (the E2/E3
+    /// restore bookkeeping, e2-program-flow §4.2 item 2).
+    after_loader: Option<(usize, Rgb6)>,
 }
 
 /// The highlighted colour of `item` (the loader's cursor colour).
@@ -218,9 +240,15 @@ pub fn move_cursor(cursor: u8, dir: i8, in_game: bool) -> u8 {
 }
 
 impl MainMenu {
-    /// A menu showing `gfx` (black if `None`), not yet entered.
+    /// The Episode 1 menu showing `gfx` (black if `None`), not yet entered.
     pub fn new(gfx: Option<MenuGraphics>) -> Self {
+        Self::with_style(gfx, MenuStyle::E1)
+    }
+
+    /// A menu of `style` showing `gfx` (black if `None`), not yet entered.
+    pub fn with_style(gfx: Option<MenuGraphics>, style: MenuStyle) -> Self {
         Self {
+            style,
             gfx,
             screen: Framebuffer::new(),
             buffer: Palette::default(),
@@ -230,7 +258,10 @@ impl MainMenu {
             wait: 0,
             pulses: VecDeque::new(),
             keys: Vec::new(),
+            shift: false,
+            discarded: None,
             pad: None,
+            after_loader: None,
         }
     }
 
@@ -255,9 +286,39 @@ impl MainMenu {
         std::mem::take(&mut self.keys)
     }
 
+    /// The last byte the loop read from the BIOS buffer and discarded since the last call, if
+    /// any: when a poll finds several keystrokes it handles the first and reads and discards the
+    /// rest, the last byte `ReadKey` returned staying in E2/E3 `g_MenuDrainKey` (DS:0660;
+    /// e2-program-flow rev 3 §4.2 item 5, weapons rev 5 §3.3.2 item 2; [`bios_key`]). E1 keeps
+    /// no such byte.
+    pub fn take_discarded(&mut self) -> Option<u8> {
+        self.discarded.take()
+    }
+
     /// True while the loop waits for input (no fade, pulse or box in progress).
     pub fn waiting(&self) -> bool {
         self.phase == Phase::Wait && self.wait == 0
+    }
+
+    /// Keys already in the BIOS buffer when the menu is entered (E2: typed after the script
+    /// choice, e2-program-flow §4.1): the loop reads the first after its fade-in.
+    pub fn type_ahead(&mut self, keys: Vec<Key>) {
+        for k in keys {
+            if self.keys.len() < KEY_BUFFER {
+                self.keys.push(k);
+            }
+        }
+    }
+
+    /// Sets palette-buffer entry `entry` to `rgb` once the loader's fade-in is done (after
+    /// the loader puts the cursor's colour back): the E2/E3 restore bookkeeping.
+    pub fn set_after_loader(&mut self, entry: usize, rgb: Rgb6) {
+        self.after_loader = Some((entry, rgb));
+    }
+
+    /// Frames per fade level of the palette buffer (screens rev 3 §2.1).
+    fn fade_frames(&self) -> u32 {
+        fade::frames_per_level(&self.buffer, 1)
     }
 
     /// Shows the menu with `cursor` after an action (or at program start), with an empty key
@@ -267,6 +328,7 @@ impl MainMenu {
         self.in_game = in_game;
         self.keys.clear();
         self.pulses.clear();
+        self.after_loader = None;
         if let Some(g) = &self.gfx {
             self.screen.pixels.copy_from_slice(&g.image);
         } else {
@@ -277,16 +339,28 @@ impl MainMenu {
         let first = how == Reentry::Loader { first: true };
         let (loader, pulse) = match how {
             Reentry::Loader { .. } | Reentry::Story => {
-                // 0000:2E88: tdmen.pal; entries 224..233 dim red, 227 black; the cursor bright.
                 self.buffer = self
                     .gfx
                     .as_ref()
                     .map(|g| g.palette.clone())
                     .unwrap_or_default();
-                for item in 0..10 {
-                    self.buffer.colors[ITEM_ENTRY + usize::from(item)] = resting(item);
+                let c = ITEM_ENTRY + usize::from(cursor);
+                match self.style {
+                    MenuStyle::E1 => {
+                        // 0000:2E88: entries 224..233 dim red, 227 black; the cursor bright.
+                        for item in 0..10 {
+                            self.buffer.colors[ITEM_ENTRY + usize::from(item)] = resting(item);
+                        }
+                        self.buffer.colors[c] = bright(cursor);
+                    }
+                    MenuStyle::Later => {
+                        // E2 0000:2EC0, E3 0000:29E5: all ten dim red; the cursor's red 63.
+                        for e in ITEM_ENTRY..ITEM_ENTRY + 10 {
+                            self.buffer.colors[e] = Rgb6 { r: DIM, g: 0, b: 0 };
+                        }
+                        self.buffer.colors[c].r = BRIGHT;
+                    }
                 }
-                self.buffer.colors[ITEM_ENTRY + usize::from(cursor)] = bright(cursor);
                 (true, first)
             }
             Reentry::Refade => (false, false),
@@ -296,13 +370,14 @@ impl MainMenu {
             loader,
             pulse,
         };
-        self.wait = FADE_FRAMES_PER_LEVEL;
+        self.wait = self.fade_frames();
     }
 
     /// Advances one frame; returns the chosen item once the menu has faded out for it.
     /// Items 0 and 2 with a game in progress, and Esc, ask first (boxes 2 and 1); a confirmed
     /// quit returns [`QUIT`].
     pub fn step(&mut self, input: &TickInput) -> Option<u8> {
+        self.shift = input.held(Key::LSHIFT) || input.held(Key::RSHIFT);
         for &k in &input.pressed {
             if is_keystroke(k) && self.keys.len() < KEY_BUFFER {
                 self.keys.push(k);
@@ -323,18 +398,28 @@ impl MainMenu {
                             loader,
                             pulse,
                         };
-                        self.wait = FADE_FRAMES_PER_LEVEL;
+                        self.wait = self.fade_frames();
                         continue;
                     }
                     if loader {
-                        // The cursor entry goes back in the buffer only; DAC 255 := white.
+                        // The cursor entry goes back in the buffer only.
                         let c = self.cursor;
-                        self.buffer.colors[ITEM_ENTRY + usize::from(c)] = resting(c);
-                        self.screen.palette.colors[255] = Rgb6 {
-                            r: 63,
-                            g: 63,
-                            b: 63,
-                        };
+                        let e = ITEM_ENTRY + usize::from(c);
+                        match self.style {
+                            MenuStyle::E1 => {
+                                // DAC 255 := white (screens §3.1).
+                                self.buffer.colors[e] = resting(c);
+                                self.screen.palette.colors[255] = Rgb6 {
+                                    r: 63,
+                                    g: 63,
+                                    b: 63,
+                                };
+                            }
+                            MenuStyle::Later => self.buffer.colors[e].r = DIM,
+                        }
+                        if let Some((e, rgb)) = self.after_loader.take() {
+                            self.buffer.colors[e] = rgb;
+                        }
                     }
                     if pulse {
                         // C-0002 f868: the last fade level and the first 11 pulse steps.
@@ -422,7 +507,7 @@ impl MainMenu {
                         0 => Phase::Chosen(item),
                         _ => Phase::FadeOut { s: s - 1, item },
                     };
-                    self.wait = FADE_FRAMES_PER_LEVEL;
+                    self.wait = self.fade_frames();
                 }
                 Phase::Chosen(item) => {
                     self.phase = Phase::Wait;
@@ -437,6 +522,13 @@ impl MainMenu {
     /// Returns true if the loop moved on (its next phase starts in the same frame).
     fn poll(&mut self) -> bool {
         if let Some(&k) = self.keys.first() {
+            let last = self.keys[1..]
+                .iter()
+                .filter_map(|&k| bios_key::last_byte(k, self.shift))
+                .next_back();
+            if last.is_some() {
+                self.discarded = last;
+            }
             self.keys.clear();
             match k {
                 Key::UP | KP_8 => self.move_by(-1),
@@ -484,9 +576,15 @@ impl MainMenu {
     /// Starts confirmation box `n` for `item`: the cursor entry bright in the buffer, then
     /// the fade to half brightness.
     fn ask(&mut self, n: u8, item: u8) {
-        // ASSUMPTION(U-302): "set to 63" uses the loader's cursor colour (yellow for item 3).
         let c = self.cursor;
-        self.buffer.colors[ITEM_ENTRY + usize::from(c)] = bright(c);
+        let e = ITEM_ENTRY + usize::from(c);
+        match self.style {
+            // ASSUMPTION(U-302): "set to 63" uses the loader's cursor colour (yellow for
+            // item 3).
+            MenuStyle::E1 => self.buffer.colors[e] = bright(c),
+            // E2/E3: the red component := 63 (e2-program-flow §4.2).
+            MenuStyle::Later => self.buffer.colors[e].r = BRIGHT,
+        }
         self.phase = Phase::BoxDim { n, k: 32, item };
     }
 
@@ -649,6 +747,40 @@ mod tests {
         assert_eq!(move_cursor(8, 1, false), 0);
         assert_eq!(move_cursor(4, -1, false), 2);
         assert_eq!(move_cursor(2, 1, true), 3);
+    }
+
+    #[test]
+    fn discarded_keys_leave_their_last_byte() {
+        // e2-program-flow rev 3 §4.2 item 5: the poll handles the first key and reads the rest
+        // into g_MenuDrainKey; an extended key leaves its scan code.
+        let mut m = MainMenu::with_style(Some(gfx()), MenuStyle::Later);
+        m.enter(0, false, Reentry::Loader { first: false });
+        idle(&mut m, 40);
+        assert_eq!(m.take_discarded(), None);
+        m.step(&press(Key::DOWN));
+        idle(&mut m, 20);
+        assert_eq!(m.take_discarded(), None, "a key alone is not discarded");
+        m.step(&TickInput {
+            pressed: vec![Key::DOWN, Key::letter('q').unwrap(), Key::UP],
+            ..TickInput::default()
+        });
+        assert_eq!(m.cursor(), 4);
+        assert_eq!(m.take_discarded(), Some(0x48), "Up's scan code");
+        assert_eq!(m.take_discarded(), None);
+        idle(&mut m, 20);
+        // Keys typed during a pulse wait in the buffer: the next poll takes the first.
+        m.step(&press(Key::DOWN));
+        m.step(&TickInput {
+            pressed: vec![Key::letter('a').unwrap(), Key::letter('b').unwrap()],
+            ..TickInput::default()
+        });
+        idle(&mut m, 20);
+        assert_eq!(m.take_discarded(), Some(b'b'));
+        m.step(&TickInput {
+            pressed: vec![Key::ESCAPE, Key::ENTER],
+            ..TickInput::default()
+        });
+        assert_eq!(m.take_discarded(), Some(0x0D));
     }
 
     #[test]

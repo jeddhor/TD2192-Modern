@@ -41,6 +41,15 @@
 //! OB-057) and the heading blits (mirrors, one-pixel shifts, boxes drawn from the sprite's
 //! corner; U-360) follow `flight-screens.md` rev 3 §4.9.
 //!
+//! Sound effects (sfx-policy rev 4 §4.2, voc-and-adpcm rev 3 §2.3): the arena keeps the game's
+//! side of the single digital voice ([`DigitalVoice`]) on its own clock (flight ticks at
+//! `FLIGHT_TICK_HZ`, modal screens and the teardown at the retrace rate): which effects start,
+//! the priority reset at tick-order step 26 (where `Flight::sound_reset_at` says it fell among
+//! the tick's sounds) and, after the last tick, the flight fade-out followed by the wait for
+//! WORX's playing status (mission-logic §4.8), music still playing, before the campaign goes on.
+//! Under the polyphonic option every effect in earshot is sent; the model still decides the
+//! wait.
+//!
 //! Enhanced presentation (`docs/spec/enhanced/presentation.md` rev 1): `draw_frame` draws into a
 //! framebuffer of any width W ≥ 320, a widescreen frame when W > 320 (`td_render::flight`
 //! viewport rules). When the run loop asks for it through the shared [`EnhancedView`], the
@@ -55,11 +64,12 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use td_assets::{DataDir, ExeResources, ResourceValue};
-use td_audio::{AudioCommand, Pcm8, decode_voc};
+use td_audio::{AudioCommand, DigitalVoice, Pcm8, decode_voc};
 use td_flow::flight_screens::{
     CommScreen, ComputerMenu, FlightModal, FlightScreenAssets, Interlude, ModalStep, Pause,
     ShipDot, TacticalMap, TargetBoard, draw_ir_notice, draw_pause_line, shows_ir_notice,
 };
+use td_flow::settings::SfxMode;
 use td_flow::{
     FLIGHT_TICK_HZ, FlightResult, FlightScreen, FlowContext, PlaceholderLauncher, RETRACE_HZ,
     Screen, Transition,
@@ -72,7 +82,7 @@ use td_formats::tileset::Tileset;
 use td_input::{Key, TickInput};
 use td_render::enhanced::widescreen;
 use td_render::flight::{self, ShotLook, ViewPos, Viewport};
-use td_render::flight_palette::FlightDac;
+use td_render::flight_palette::{FADE_STEPS, FlightDac, fade_target, write_fade_step};
 use td_render::headings::SpriteBuffers;
 use td_render::hud::{Hud, HudAssets, HudState, TickerFont};
 use td_render::{Framebuffer, HeadingSprites};
@@ -192,6 +202,74 @@ pub struct FlightArena {
     enhanced: Option<SharedView>,
     /// Enhanced lighting: the colours that glow (`lights`).
     emissive: td_render::enhanced::scene::Emissive,
+    /// The game's side of the digital voice: `g_SfxPriority` and WORX's playing status.
+    voice: DigitalVoice,
+    /// Seconds since the flight started: flight ticks and retrace frames as they pass.
+    clock: f64,
+    /// After the last tick: the fade-out and the wait for the playing status.
+    teardown: Option<Teardown>,
+}
+
+/// The flight's teardown after its last tick (mission-logic §4.8, tick-order §4): `FadeOut`
+/// (flight-screens rev 5 §4.5.3: 17 levels, each written in the last of its frames), then the
+/// wait until WORX reports no digital sound playing (sfx-policy rev 4 §4.2, `0E8B:F990..F99E`),
+/// then the campaign goes on (it stops the music).
+#[derive(Debug, Clone)]
+struct Teardown {
+    /// The DAC as shown.
+    dac: Palette,
+    /// The palette being faded out.
+    target: Palette,
+    /// The next fade level to write (16 down to 0); `None` once the fade is over.
+    level: Option<u8>,
+    /// Frames until that level is written.
+    wait: u32,
+}
+
+impl Teardown {
+    /// Starts the fade-out from `dac` (what is on screen) towards black: `target` is the flight
+    /// palette in the current mode. After a Quit the screen is already black (the menu returns
+    /// without fading back in), so only the wait remains.
+    fn new(dac: &Palette, target: Palette, aborted: bool) -> Self {
+        if aborted {
+            return Self {
+                dac: Palette::default(),
+                target,
+                level: None,
+                wait: 0,
+            };
+        }
+        Self {
+            dac: dac.clone(),
+            wait: td_render::fade::frames_per_level(&target, 0),
+            target,
+            level: Some(FADE_STEPS),
+        }
+    }
+
+    /// One retrace frame of the fade; true once it is over.
+    fn step(&mut self) -> bool {
+        let Some(s) = self.level else {
+            return true;
+        };
+        self.wait = self.wait.saturating_sub(1);
+        if self.wait == 0 {
+            write_fade_step(&mut self.dac, &self.target, s, 0);
+            self.level = s.checked_sub(1);
+            self.wait = td_render::fade::frames_per_level(&self.target, 0);
+        }
+        false
+    }
+}
+
+/// WORX's ring offset r in `episode`'s program as Classic runs it (voc-and-adpcm rev 3 §2.3:
+/// E1 started by `td1.exe`, E2 and E3 run directly).
+fn worx_ring(episode: Episode) -> u16 {
+    match episode {
+        Episode::E1 => td_audio::worx::RING_E1,
+        Episode::E2 => td_audio::worx::RING_E2,
+        Episode::E3 => td_audio::worx::RING_E3,
+    }
 }
 
 /// The flight's sprite data as `Sim_FlyMission` leaves it (flight-screens rev 2 §4.9): the
@@ -461,6 +539,9 @@ impl FlightArena {
             blank_page: None,
             enhanced: None,
             emissive,
+            voice: DigitalVoice::new(worx_ring(ep)),
+            clock: 0.0,
+            teardown: None,
         })
     }
 
@@ -474,9 +555,9 @@ impl FlightArena {
 
 impl Screen for FlightArena {
     fn tick_hz(&self) -> f64 {
-        // The modal screens and E3's magenta fade step once per vertical retrace (fades,
-        // pulses, typing).
-        if self.screen.is_some() || self.magenta.is_some() {
+        // The modal screens, E3's magenta fade and the teardown step once per vertical retrace
+        // (fades, pulses, typing, the wait for the sound).
+        if self.screen.is_some() || self.magenta.is_some() || self.teardown.is_some() {
             RETRACE_HZ
         } else {
             FLIGHT_TICK_HZ
@@ -490,6 +571,17 @@ impl Screen for FlightArena {
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
         self.events.clear();
+        // This host tick lasts one period of the rate it runs at.
+        let before = self.clock;
+        self.clock += 1.0 / self.tick_hz();
+        let now = self.clock;
+        if let Some(t) = &mut self.teardown {
+            // mission-logic §4.8: fade out, then wait while WORX reports a sound playing.
+            if t.step() && !self.voice.playing(now) {
+                return Transition::Pop;
+            }
+            return Transition::None;
+        }
         if let Some(step) = self.magenta {
             // E3 flight 16 (§4.6.4): one fade step per retrace; no tick runs meanwhile.
             self.dac.magenta_step(&self.palette, step);
@@ -538,7 +630,7 @@ impl Screen for FlightArena {
                         }
                         self.flight.hit_flash = 0;
                     }
-                    if scene {
+                    let r = if scene {
                         // The screen's closing FadeIn (mode 0 in flights 17 and 19) ended any hit
                         // flash; its key changes reach the tick's input steps (§4.10). The page
                         // it cleared is this tick's back page when that is page 0.
@@ -552,7 +644,10 @@ impl Screen for FlightArena {
                     } else {
                         let c = self.typematic.controls(input, &self.binds);
                         self.flight.resume(&self.world, &c, &mut self.events)
-                    }
+                    };
+                    // The rest of the tick runs as the screen closes.
+                    self.issue_sounds(ctx, 0, now, now);
+                    r
                 }
             }
         } else {
@@ -562,6 +657,8 @@ impl Screen for FlightArena {
                 self.flight.succeeded = true;
             }
             let r = self.flight.tick(&self.world, &c, &mut self.events);
+            // Steps 1..19 ran right after the previous tick's end; step 26 and on at this one's.
+            self.issue_sounds(ctx, 0, before, now);
             // 14. Palette effects, in the mode the step saw (Alt acts later, at step 33), from
             // the hit-flash level the step found (hit-flash.md §4.3).
             self.dac.set_hit_flash(self.flight.frame.hit_flash);
@@ -582,7 +679,9 @@ impl Screen for FlightArena {
             } else {
                 TickControls::default()
             };
+            let start = self.events.len();
             result = self.flight.resume(&self.world, &c, &mut self.events);
+            self.issue_sounds(ctx, start, now, now);
         }
         // 33. Alt toggled infra-red: the start formula of the new mode.
         if self.flight.palette_mode != mode {
@@ -592,15 +691,6 @@ impl Screen for FlightArena {
         if !tinted && self.flight.mission.tint && self.screen.is_none() {
             self.magenta = Some(1);
         }
-        let v = self.flight.player.view;
-        for &Event::Sound { kind, source } in &self.events {
-            ctx.audio.push(AudioCommand::PlayEffect {
-                id: kind,
-                sound: self.effects.get(&kind).cloned(),
-                source,
-                view: (v.tile_x as u8, v.tile_y as u8),
-            });
-        }
         match result {
             TickResult::Done | TickResult::Modal(_) => Transition::None,
             TickResult::Finished => {
@@ -608,7 +698,14 @@ impl Screen for FlightArena {
                 if let Some(run) = &self.run {
                     run.borrow_mut().session = self.flight.session();
                 }
-                Transition::Pop
+                // Teardown (mission-logic §4.8): fade out, wait for the sound, then pop.
+                let target = fade_target(&self.palette, self.flight.palette_mode);
+                self.teardown = Some(Teardown::new(
+                    self.dac.current(),
+                    target,
+                    self.flight.aborted,
+                ));
+                Transition::None
             }
         }
     }
@@ -620,6 +717,56 @@ impl Screen for FlightArena {
 }
 
 impl FlightArena {
+    /// `Snd_PlayEffect` for the sounds the last `tick`/`resume` call requested,
+    /// `self.events[start..]`: those before tick-order step 26 at time `before`, then the
+    /// priority reset (step 26: idle again when WORX reports no sound playing), then the rest at
+    /// `now` (sfx-policy rev 4 §4.2). Effects the arbiter lets start go to the mixer.
+    fn issue_sounds(&mut self, ctx: &mut FlowContext<'_>, start: usize, before: f64, now: f64) {
+        let reset = self.flight.sound_reset_at.filter(|&i| i >= start);
+        let events: Vec<Event> = self.events.get(start..).unwrap_or_default().to_vec();
+        for (i, &Event::Sound { kind, source }) in (start..).zip(&events) {
+            if reset == Some(i) {
+                self.voice.priority_reset(now);
+            }
+            let at = if reset.is_some_and(|r| i >= r) {
+                now
+            } else {
+                before
+            };
+            self.play_sound(ctx, kind, source, at);
+        }
+        if reset == Some(start + events.len()) {
+            self.voice.priority_reset(now);
+        }
+    }
+
+    /// One `Snd_PlayEffect(kind, source, view)` at time `at` on a Sound Blaster.
+    fn play_sound(
+        &mut self,
+        ctx: &mut FlowContext<'_>,
+        kind: u8,
+        source: Option<(u8, u8)>,
+        at: f64,
+    ) {
+        let v = self.flight.player.view;
+        let view = (v.tile_x as u8, v.tile_y as u8);
+        // OB-009: a distance the original cannot compute is "too far"; nothing happens.
+        let Some(dist) = td_audio::sfx::distance(source, view) else {
+            return;
+        };
+        let sound = self.effects.get(&kind).cloned();
+        let starts = self.voice.request(kind, dist, sound.as_deref(), at);
+        let polyphonic = ctx.settings.audio.sfx_mode == SfxMode::Polyphonic;
+        if starts || (polyphonic && sound.is_some()) {
+            ctx.audio.push(AudioCommand::PlayEffect {
+                id: kind,
+                sound,
+                source,
+                view,
+            });
+        }
+    }
+
     /// Composes the Enhanced frame when the run loop asked for one (module docs). The pause
     /// is a text overlay, so it is drawn over the wide frame like the infra-red notice (spec
     /// enhanced/presentation rev 4 §4.3); the other modal screens keep their Classic picture,
@@ -670,7 +817,10 @@ impl FlightArena {
     fn draw_play(&self, fb: &mut Framebuffer) {
         let vp = Viewport::of(fb);
         fb.clear(0);
-        fb.palette = self.dac.current().clone();
+        fb.palette = match &self.teardown {
+            Some(t) => t.dac.clone(),
+            None => self.dac.current().clone(),
+        };
         let f = &self.flight.frame;
         let view = ViewPos {
             tile_x: i32::from(f.view.tile_x),
@@ -1472,5 +1622,72 @@ mod tests {
         }
         // The side panels show the city, not black.
         assert!((0..160).any(|y| wide.get(0, y) != Some(0)));
+    }
+    /// The teardown's fade-out (flight-screens rev 5 §4.5.3): 17 levels at 2 frames each for a
+    /// flight palette, black after 34 frames; after a Quit nothing is left to fade.
+    #[test]
+    fn teardown_fades_out_in_34_frames() {
+        let mut pal = Palette::default();
+        for (i, c) in pal.colors.iter_mut().enumerate() {
+            *c = td_formats::palette::Rgb6 {
+                r: (i % 64) as u8,
+                g: 20,
+                b: 63,
+            };
+        }
+        let mut t = Teardown::new(&pal, pal.clone(), false);
+        let mut frames = 0;
+        while !t.step() {
+            frames += 1;
+            assert!(frames < 100);
+        }
+        assert_eq!(frames, 34, "17 levels x 2 frames");
+        assert!(t.dac.colors.iter().all(|c| *c == Default::default()));
+        let mut t = Teardown::new(&pal, pal.clone(), true);
+        assert!(t.step(), "after Quit: only the wait");
+        assert!(t.dac.colors.iter().all(|c| *c == Default::default()));
+    }
+
+    /// sfx-policy rev 4 §4.2 in the host: sounds before tick-order step 26 are judged before
+    /// the priority reset, the rest after it; the reset needs WORX's playing status to have
+    /// cleared (voc-and-adpcm rev 3 §2.3), not merely the audio to have ended.
+    #[test]
+    fn step_26_resets_the_priority_only_after_the_busy_time() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let resources = ExeResources::load(&dir).unwrap();
+        let mut arena = FlightArena::new(&dir, &resources, Episode::E1, 1).unwrap();
+        let settings = td_flow::Settings::default();
+        let sound = |kind: u8| Event::Sound { kind, source: None };
+        // Runs one call's sounds: `events`, step 26 before entry `reset`, at time `now`.
+        let run = |arena: &mut FlightArena, events: Vec<Event>, reset: usize, now: f64| {
+            let mut audio = Vec::new();
+            let mut ctx = FlowContext {
+                data: &dir,
+                resources: &resources,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.events = events;
+            arena.flight.sound_reset_at = Some(reset);
+            arena.issue_sounds(&mut ctx, 0, now - 0.05, now);
+            audio
+                .iter()
+                .filter_map(|c| match c {
+                    AudioCommand::PlayEffect { id, .. } => Some(*id),
+                    _ => None,
+                })
+                .collect::<Vec<u8>>()
+        };
+        // An explosion before step 26 (at 0.0 s), a hit after it: the hit is refused.
+        assert_eq!(run(&mut arena, vec![sound(100), sound(9)], 1, 0.05), [100]);
+        assert_eq!(arena.voice.priority(), 5);
+        // boomboom.voc's sound ends at 1.759 s, but WORX reports it playing until 1.882 s
+        // (r = 250): at 1.85 s the reset does not happen.
+        assert_eq!(run(&mut arena, vec![sound(9)], 0, 1.85), [] as [u8; 0]);
+        assert_eq!(arena.voice.priority(), 5);
+        // At 1.90 s it does, and the hit plays.
+        assert_eq!(run(&mut arena, vec![sound(9)], 0, 1.90), [9]);
+        assert_eq!(arena.voice.priority(), 0);
     }
 }

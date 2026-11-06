@@ -671,9 +671,18 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
         T(n) => Ok(scenes_e3::title_card(
             &prog.assets,
             &text(&format!("e3.mission.{n:02}.title")),
+            &prog.scene_palette(),
         )),
-        Tc(cap) => Ok(scenes_e3::title_card(&prog.assets, &caption(prog, cap))),
-        TEnd => Ok(scenes_e3::title_card(&prog.assets, &text("e3.ending"))),
+        Tc(cap) => Ok(scenes_e3::title_card(
+            &prog.assets,
+            &caption(prog, cap),
+            &prog.scene_palette(),
+        )),
+        TEnd => Ok(scenes_e3::title_card(
+            &prog.assets,
+            &text("e3.ending"),
+            &prog.scene_palette(),
+        )),
         S(bg, caps) => {
             let t = caps.map(|c| caption(prog, c));
             scenes_e3::scene_card(&prog.data, &prog.assets, bg, [&t[0], &t[1], &t[2]])
@@ -756,6 +765,9 @@ impl CampaignE3 {
                     return None;
                 }
                 let child = self.child.take();
+                if let Some(c) = &child {
+                    c.apply_front_end(&mut prog.front_end);
+                }
                 self.finish_child(prog, ctx, child);
                 continue;
             }
@@ -795,7 +807,8 @@ impl CampaignE3 {
         child: Option<Child>,
     ) {
         let step = self.child_step.take();
-        // What the screen left for the flights (weapons rev 5 §3.3.3).
+        // The name the screen left in g_SceneFile for the flights (weapons rev 5 §3.3.3; its
+        // g_Palette writes are applied by `step`).
         let story_file = match (self.pos, step) {
             (Pos::Prompt(..) | Pos::Debrief21, _) | (_, Some(B | Dossier)) => {
                 Some(SCENE_FILE_PALETTE)
@@ -803,8 +816,8 @@ impl CampaignE3 {
             (_, Some(S(..))) => Some(SCENE_FILE_CARDS),
             _ => None,
         };
-        if let Some(c) = &child {
-            c.apply_front_end(&mut prog.front_end, story_file);
+        if let Some(name) = child.as_ref().and_then(|c| c.scene_file(story_file)) {
+            prog.front_end.assign_scene_file(name);
         }
         match (&child, step) {
             // The retry prompt clears the flag and never sets it (§3.5).

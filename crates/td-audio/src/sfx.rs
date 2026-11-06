@@ -2,9 +2,19 @@
 //! a source is from the view, whether a new effect may cut off the playing one, and the SB Pro
 //! left/right volume.
 //!
-//! Spec: `docs/spec/audio/sfx-policy.md` rev 1 (§3.1, §4.1–§4.3). Fidelity: T1 for the decisions
-//! (distance, priority, volume nibbles), T2 for what is heard. The PC-speaker path (§4.5), which
-//! also draws on the gameplay RNG, belongs with the simulation and is not here.
+//! Spec: `docs/spec/audio/sfx-policy.md` rev 4 (§3.1, §4.1–§4.3); WORX's playing status per
+//! `docs/spec/audio/voc-and-adpcm.md` rev 3 §2.3 ([`crate::worx`]). Fidelity: T1 for the
+//! decisions (distance, priority, volume nibbles), T2 for what is heard and for the timing of
+//! the playing status. The PC-speaker path (§4.5), which also draws on the gameplay RNG, belongs
+//! with the simulation and is not here.
+//!
+//! [`DigitalVoice`] is the game's side of the Sound Blaster's single digital voice: the
+//! arbiter's priority and WORX's playing status, which the flight reads at tick-order step 26
+//! (priority reset) and at the end of the mission (wait). It lives with the game, not the
+//! mixer, because the game must read the status; the mixer only plays what it is sent.
+
+use crate::sound::Pcm8;
+use crate::worx;
 
 /// Effect ids the game uses and their Sound Blaster samples (sfx-policy §3.1, loaded by
 /// `Snd_LoadEffects`, `file0001:1E2A:0724..0807`). Id 1 has no sample.
@@ -142,6 +152,80 @@ impl ClassicArbiter {
     }
 }
 
+/// The game's side of the single digital voice under Classic (device 2): `g_SfxPriority`
+/// (DS:1F0A, [`ClassicArbiter`]) and WORX's "digital sound playing" status (function 08h), on
+/// the caller's clock in seconds.
+///
+/// The status is set from an effect's start for [`worx::busy_seconds`] with the program's ring
+/// offset r, not until the audio ends (voc §2.3, sfx-policy rev 3 §4.2): a `boomboom` holds
+/// priority 5 for about 1.88 s in Episode 1, though its sound lasts 1.76 s.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DigitalVoice {
+    arbiter: ClassicArbiter,
+    ring: u16,
+    /// When the playing status clears; `None` while idle.
+    busy_until: Option<f64>,
+}
+
+impl DigitalVoice {
+    /// An idle voice of a program whose WORX ring offset is `ring` ([`worx::RING_E1`] etc.).
+    #[must_use]
+    pub fn new(ring: u16) -> Self {
+        Self {
+            arbiter: ClassicArbiter::default(),
+            ring,
+            busy_until: None,
+        }
+    }
+
+    /// `Snd_PlayEffect(id, …)` on a Sound Blaster at time `now` (sfx-policy §4.2), `dist` from
+    /// [`distance`] and `sound` the effect's sample. Returns true when a sound starts: WORX
+    /// function 06h stops the playing one and the status is set from `now`. An effect whose
+    /// priority is below the current one does nothing.
+    ///
+    /// ASSUMPTION: an id without a sample (1) sets the priority but starts nothing and leaves
+    /// the status alone; the spec does not say whether WORX is asked to play nothing.
+    pub fn request(&mut self, id: u8, dist: u16, sound: Option<&Pcm8>, now: f64) -> bool {
+        if !self.arbiter.request(id, dist) {
+            return false;
+        }
+        let Some(sound) = sound else {
+            return false;
+        };
+        self.busy_until = Some(now + worx::busy_seconds(sound, self.ring));
+        true
+    }
+
+    /// WORX function 08h at time `now`: true while the last effect started is within its busy
+    /// time.
+    #[must_use]
+    pub fn playing(&self, now: f64) -> bool {
+        self.busy_until.is_some_and(|t| now < t)
+    }
+
+    /// Tick-order step 26 (`0E8B:E526..E536`): when WORX reports no digital sound playing,
+    /// the current priority returns to 0.
+    pub fn priority_reset(&mut self, now: f64) {
+        if !self.playing(now) {
+            self.busy_until = None;
+            self.arbiter.idle();
+        }
+    }
+
+    /// The current priority (0 = idle).
+    #[must_use]
+    pub fn priority(&self) -> u8 {
+        self.arbiter.current_priority()
+    }
+
+    /// When the playing status clears (`None` while idle): the mission-end wait
+    /// (`0E8B:F990..F99E`) lasts until then.
+    #[must_use]
+    pub fn busy_until(&self) -> Option<f64> {
+        self.busy_until
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +308,66 @@ mod tests {
         assert_eq!(effect_voc(1), None);
         assert_eq!(effect_voc(11), None);
         assert_eq!(base_priority(200), 10);
+    }
+
+    fn sample(rate: u32, bytes: u32, codes_per_byte: u8) -> Pcm8 {
+        Pcm8 {
+            rate,
+            samples: Vec::new(),
+            dma: crate::sound::DmaStream {
+                bytes,
+                codes_per_byte,
+            },
+        }
+    }
+
+    /// sfx-policy rev 3 §6 vector 10 (C-0072): E1 started directly (r = 58), flight 1 at
+    /// 18.52 ticks/s; an enemy `boomboom` holds priority 5 from the tick of the explosion to
+    /// the first tick after 1.903 s (observed: 0 in the dump 1.926 s later).
+    #[test]
+    fn boomboom_holds_its_priority_for_its_busy_time() {
+        let boom = sample(6_250, 5_497, 2);
+        let blast = sample(6_993, 1_142, 3);
+        let tick = 1.0 / 18.521;
+        let mut v = DigitalVoice::new(worx::RING_E1_DIRECT);
+        assert!(v.request(100, 3, Some(&boom), 0.0));
+        let mut reset = None;
+        for n in 1..60 {
+            let now = f64::from(n) * tick;
+            v.priority_reset(now);
+            if v.priority() == 0 {
+                reset = Some(now);
+                break;
+            }
+            assert!(!v.request(9, 0, Some(&blast), now), "tick {n}");
+        }
+        let reset = reset.unwrap();
+        // "Predicted 1.903 s plus less than one tick" (voc §2.3). C-0072 observed 1.926 s from
+        // the first dump showing the priority, which also counts the time the explosion's tick
+        // had run before step 6 (not modelled: the port's ticks are instants).
+        assert!(reset >= 1.903 && reset < 1.903 + tick, "{reset}");
+        assert!(!v.playing(reset));
+        assert!(v.request(9, 0, Some(&blast), reset));
+    }
+
+    /// The status follows the last effect started; a refused effect does not touch it; an id
+    /// without a sample sets the priority only.
+    #[test]
+    fn digital_voice_status() {
+        let pulse = sample(4_000, 897, 1);
+        let mut v = DigitalVoice::new(worx::RING_E1);
+        assert!(!v.playing(0.0));
+        assert_eq!(v.busy_until(), None);
+        assert!(v.request(200, 0, Some(&pulse), 1.0));
+        let end = v.busy_until().unwrap();
+        assert!((end - 1.0 - 0.3825).abs() < 1e-9);
+        assert!(!v.request(9, 0, Some(&pulse), 1.1), "income outranks it");
+        assert_eq!(v.busy_until(), Some(end));
+        v.priority_reset(1.2);
+        assert_eq!(v.priority(), 10, "still playing");
+        v.priority_reset(end);
+        assert_eq!((v.priority(), v.busy_until()), (0, None));
+        assert!(!v.request(1, 0, None, 2.0), "nothing to start");
+        assert!(!v.playing(2.0));
     }
 }

@@ -14,8 +14,8 @@
 //! Music cues are instant and carry no test, as in the E1 sequencer.
 //!
 //! Every screen updates the front-end state of the program run ([`Program::front_end`]) when it
-//! ends: its `g_Palette` writes and the last name it assigned to `g_SceneFile`
-//! ([`Child::apply_front_end`]); the launcher receives the state before each flight
+//! ends: its `g_Palette` writes ([`Child::apply_front_end`]) and the last name it assigned to
+//! `g_SceneFile` ([`Child::scene_file`]); the launcher receives the state before each flight
 //! ([`crate::FlightLauncher::set_front_end`]), whose two-digit-heading volleys read it (weapons
 //! rev 5 §3.3.2, OB-017).
 
@@ -719,6 +719,16 @@ impl Child {
         }
     }
 
+    /// What a story screen or a dialogue scene leaves in the front-end state, `g_Palette`
+    /// first (screens rev 3 §2.1: the next title card fades it); a flight does not touch it.
+    pub(crate) fn apply_front_end(&self, fe: &mut FrontEnd) {
+        match self {
+            Child::Story(s) => s.apply_front_end(fe),
+            Child::Dialogue(d) => d.apply_front_end(fe),
+            Child::Flight(_) => {}
+        }
+    }
+
     /// True if Esc ended a story screen or a dialogue scene.
     pub(crate) fn skipped(&self) -> bool {
         match self {
@@ -728,25 +738,14 @@ impl Child {
         }
     }
 
-    /// Applies what the finished screen left in DGROUP for the flights (weapons rev 5 §3.3.2
-    /// items 8, 9; §3.3.3): its `g_Palette` writes, and the last name it assigned to
-    /// `g_SceneFile`: `td.pal` for a dialogue scene, `story_file` for a story screen (`td.lt2`
-    /// for a scene card, `td.pal` for the retry prompt, debrief and dossier, none for a title
-    /// card).
-    pub(crate) fn apply_front_end(&self, fe: &mut FrontEnd, story_file: Option<&str>) {
-        let name = match self {
-            Child::Story(s) => {
-                s.apply_front_end(fe);
-                story_file
-            }
-            Child::Dialogue(d) => {
-                d.apply_front_end(fe);
-                Some(SCENE_FILE_PALETTE)
-            }
+    /// The last name the finished screen assigned to `g_SceneFile` (weapons rev 5 §3.3.2 item
+    /// 8, §3.3.3): `td.pal` for a dialogue scene, `story_file` for a story screen (`td.lt2` for
+    /// a scene card; `td.pal` for the retry prompt, debrief and dossier; none for a title card).
+    pub(crate) fn scene_file<'a>(&self, story_file: Option<&'a str>) -> Option<&'a str> {
+        match self {
+            Child::Story(_) => story_file,
+            Child::Dialogue(_) => Some(SCENE_FILE_PALETTE),
             Child::Flight(_) => None,
-        };
-        if let Some(name) = name {
-            fe.assign_scene_file(name);
         }
     }
 
@@ -798,9 +797,17 @@ pub fn story(prog: &Program, step: Step) -> Result<StoryScreen, StoryError> {
         T(n) => {
             let id = format!("e2.mission.{n:02}.title");
             let text = prog.res.text(&id).unwrap_or_default().to_owned();
-            Ok(scenes_e2::title_card(&prog.assets, &text))
+            Ok(scenes_e2::title_card(
+                &prog.assets,
+                &text,
+                &prog.scene_palette(),
+            ))
         }
-        Tc(cap) => Ok(scenes_e2::title_card(&prog.assets, &caption(prog, cap))),
+        Tc(cap) => Ok(scenes_e2::title_card(
+            &prog.assets,
+            &caption(prog, cap),
+            &prog.scene_palette(),
+        )),
         S(bg, caps) => {
             let t = caps.map(|c| caption(prog, c));
             scenes_e2::scene_card(&prog.data, &prog.assets, bg, [&t[0], &t[1], &t[2]])
@@ -871,6 +878,9 @@ impl CampaignE2 {
                     return None;
                 }
                 let child = self.child.take();
+                if let Some(c) = &child {
+                    c.apply_front_end(&mut prog.front_end);
+                }
                 self.finish_child(prog, ctx, child);
                 continue;
             }
@@ -904,14 +914,15 @@ impl CampaignE2 {
     ) {
         let skipped = child.as_ref().is_some_and(Child::skipped);
         let step = self.child_step.take();
-        // What the screen left for the flights (weapons rev 5 §3.3.2 items 8, 9).
+        // The name the screen left in g_SceneFile for the flights (weapons rev 5 §3.3.2 item 8;
+        // its g_Palette writes are applied by `step`).
         let story_file = match (self.pos, step) {
             (Pos::Prompt(_) | Pos::Debrief, _) | (_, Some(Dossier)) => Some(SCENE_FILE_PALETTE),
             (_, Some(S(..))) => Some(SCENE_FILE_CARDS),
             _ => None,
         };
-        if let Some(c) = &child {
-            c.apply_front_end(&mut prog.front_end, story_file);
+        if let Some(name) = child.as_ref().and_then(|c| c.scene_file(story_file)) {
+            prog.front_end.assign_scene_file(name);
         }
         self.pos = match (self.pos, child) {
             (Pos::Fly, Some(Child::Flight(f))) => {

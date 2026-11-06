@@ -624,10 +624,13 @@ fn start_up_to_the_menu_and_a_completed_block() {
     let _data = require_data!();
     let mut ep = program(Scripted::default());
     let two = Key::digit(2).unwrap();
-    let audio = run(&mut ep, 100, |f| match f {
+    // The script choice fades out (17 frames), the menu fades in (34) and ramps the start
+    // cursor (5): e3-program-flow rev 2 §4.2.
+    let audio = run(&mut ep, 120, |f| match f {
         50 => vec![two, Key::DOWN],
         _ => Vec::new(),
     });
+    assert!(ep.menu().waiting());
     assert_eq!(songs(&audio), 1, "menu.CMF started once");
     assert_eq!(ep.state(), (0, 0, 0), "the Down typed after 2 was flushed");
     let c = ep.item_colours();
@@ -641,6 +644,9 @@ fn start_up_to_the_menu_and_a_completed_block() {
     };
     run_until(&mut ep, 400_000, keys, |ep| ep.state().0 == 2);
     assert_eq!(ep.state(), (2, 2, 3));
+    // The menu's loader fades in (34 frames; no ramp after an action).
+    run(&mut ep, 40, |_| Vec::new());
+    assert!(ep.menu().waiting());
     assert_eq!(ep.item_colours()[3], RED, "OB-041: red, not yellow");
 }
 
@@ -716,23 +722,32 @@ fn esc_on_the_about_screen_skips_block_1() {
         100,
         |f| if f == 10 { vec![two] } else { Vec::new() },
     );
-    // Down four times: 0 → 2 → 4 → 5 → 6 (items 1 and 3 are skipped with no game).
+    // Down four times: 0 → 2 → 4 → 5 → 6 (items 1 and 3 are skipped with no game). Each move
+    // ramps the old item down and the new one up (96 steps, 9 frames); keys typed meanwhile
+    // wait in the buffer and the loop takes only the first, so the keys are spaced.
     let keys = |f| match f {
-        0..=3 => vec![Key::DOWN],
-        4 => vec![Key::ENTER],
-        100 => vec![Key::ESCAPE],
+        0 | 20 | 40 | 60 => vec![Key::DOWN],
+        80 => vec![Key::ENTER],
+        200 => vec![Key::ESCAPE],
         _ => Vec::new(),
     };
     run_until(&mut ep, 400, keys, |ep| ep.skip_flag());
     assert!(ep.skip_flag(), "Esc on the about screen sets the flag");
     run(&mut ep, 200, |_| Vec::new());
     assert!(ep.skip_flag(), "the menu does not clear it");
-    // Up from 6: 5, 4, 2, 0 (one key per frame; the menu discards the rest).
-    run(&mut ep, 4, |_| vec![Key::UP]);
+    // Up from 6: 5, 4, 2, 0 (one key per ramp; the menu discards keys typed during one).
+    run(&mut ep, 80, |f| {
+        if f % 20 == 0 {
+            vec![Key::UP]
+        } else {
+            Vec::new()
+        }
+    });
     assert_eq!(ep.state().2, 0, "cursor back on item 0");
+    // Enter: the 34-frame fade-out, then the block.
     run_until(
         &mut ep,
-        10,
+        100,
         |f| if f == 0 { vec![Key::ENTER] } else { Vec::new() },
         |_| !flights.borrow().is_empty(),
     );
@@ -840,7 +855,9 @@ fn restore_screen_and_menu_match_c0041() {
         100,
         |f| if f == 10 { vec![two] } else { Vec::new() },
     );
-    run(&mut ep, 60, |f| match f {
+    // Down (ramps, 9 frames), Enter (typed during the ramps: the loop reads it next), the
+    // menu's fade-out (34) and the restore screen's fade-in (34).
+    run(&mut ep, 150, |f| match f {
         0 => vec![Key::DOWN],
         1 => vec![Key::ENTER],
         _ => Vec::new(),
@@ -848,7 +865,8 @@ fn restore_screen_and_menu_match_c0041() {
     let mut fb = Framebuffer::new();
     ep.draw(&mut fb);
     compare(&fb, &oracle, "C-0041", "f00000576_320x200_restore.vga");
-    run(&mut ep, 60, |f| {
+    // Enter on slot 1: the screen fades out, the menu fades in (no ramp after an action).
+    run(&mut ep, 120, |f| {
         if f == 0 { vec![Key::ENTER] } else { Vec::new() }
     });
     assert_eq!(ep.state(), (8, 0, 3));

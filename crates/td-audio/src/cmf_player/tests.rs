@@ -383,14 +383,15 @@ fn gm_drum_flag_suppresses_key_on_for_channels_9_and_up() {
     );
 }
 
+/// cmf rev 3 §4.4, §6.2 C2: tick 1 runs at the start (U-401), tick k (k − 1) periods later.
 #[test]
 fn player_ticks_at_the_pit_rate() {
     let s = song(&[0x00, 0x90, 0x3C, 0x64, 0x60, 0x90, 0x3C, 0x00]); // on at t1, off at t97
     let mut p = CmfPlayer::new_traced(s, false);
     let start = p.take_trace();
     assert!(start.iter().all(|w| w.sample == 0));
-    // 12428 / 1193180 s at 3579545 / 72 Hz: 517.83 samples per tick.
-    assert_eq!(p.samples_until_tick(), 518);
+    // The latched interrupt: tick 1 is due at once.
+    assert_eq!(p.samples_until_tick(), 0);
     let mut buf = vec![0i32; 518 * 100];
     p.render(&mut buf);
     let t = p.take_trace();
@@ -398,24 +399,50 @@ fn player_ticks_at_the_pit_rate() {
         .iter()
         .find(|w| w.reg == 0xB0 && w.value & 0x20 != 0)
         .unwrap();
-    assert_eq!(key_on.sample, 518, "tick 1 fires before sample 518");
+    assert_eq!(key_on.sample, 0, "tick 1 runs before the first sample");
     let key_off = t
         .iter()
         .find(|w| w.reg == 0xB0 && w.value & 0x20 == 0)
         .unwrap();
-    // Tick 97 at 97 × 517.834 = 50229.9 samples.
-    assert_eq!(key_off.sample, 50230);
+    // 12428 / 1193180 s at 3579545 / 72 Hz: 517.834 samples per tick, so tick 97 comes
+    // 96 × 517.834 = 49712.1 samples after the start, before sample 49713.
+    assert_eq!(key_off.sample, 49_713);
     assert!(buf.iter().any(|&x| x.abs() > 500), "audible");
     assert!(p.finished());
 }
 
 #[test]
 fn render_runs_ticks_due_at_the_end_of_the_buffer() {
-    let s = song(&[0x00, 0x90, 0x3C, 0x64]);
+    let s = song(&[0x01, 0x90, 0x3C, 0x64]); // note on at tick 2
     let mut p = CmfPlayer::new_traced(s, false);
     p.take_trace();
+    p.render(&mut []);
+    assert!(p.take_trace().is_empty(), "tick 1 ran (nothing to do)");
     let n = p.samples_until_tick() as usize;
+    assert_eq!(n, 518);
     p.render(&mut vec![0; n]);
-    assert!(!p.take_trace().is_empty(), "tick 1 ran");
+    assert!(!p.take_trace().is_empty(), "tick 2 ran");
     assert_eq!(p.position(), n as u64);
+}
+
+/// cmf rev 3 §4.4, §4.8 (C4): a looping song's first pass is as long as the later ones, L =
+/// the sum of its delta times (here 5 ticks).
+#[test]
+fn every_pass_of_a_looping_song_lasts_l_ticks() {
+    let s = song(&[0x03, 0x90, 0x3C, 0x64, 0x02, 0x90, 0x3C, 0x00]);
+    let mut p = CmfPlayer::new_traced(s, true);
+    p.take_trace();
+    let mut restarts = Vec::new();
+    for tick in 1..=16u32 {
+        let n = p.samples_until_tick() as usize;
+        p.render(&mut vec![0; n]);
+        if p.take_trace()
+            .iter()
+            .any(|w| (w.reg, w.value) == (0xBD, 0xC0))
+        {
+            restarts.push(tick);
+        }
+    }
+    // Restarts at ticks 6, 11, 16: the start is "tick 1", so each pass is 5 periods long.
+    assert_eq!(restarts, [6, 11, 16]);
 }

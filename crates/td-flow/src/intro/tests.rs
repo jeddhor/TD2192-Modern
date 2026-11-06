@@ -45,10 +45,16 @@ fn fly_assets() -> FlyoverAssets {
     sprites[4 * 1024..5 * 1024].fill(200);
     let mut td_pal = Palette::default();
     td_pal.colors[200] = Rgb6 { r: 1, g: 2, b: 3 };
-    let pcm = |n: usize| {
+    // Silent samples of any length; the DMA facts (rate, D, codec) are the real effects'
+    // (voc-and-adpcm rev 3 §2.2), because WORX's busy time follows them (§2.3).
+    let pcm = |n: usize, rate: u32, bytes: u32, codes_per_byte: u8| {
         Some(Arc::new(Pcm8 {
-            rate: 11_025,
+            rate,
             samples: vec![128; n],
+            dma: td_audio::DmaStream {
+                bytes,
+                codes_per_byte,
+            },
         }))
     };
     FlyoverAssets {
@@ -64,11 +70,11 @@ fn fly_assets() -> FlyoverAssets {
         intro2_song: Some(song(4000)),
         // whoosh, pulse, ric3, scratch, home: about 1, 0.5, 2, 1, 1 s.
         effects: [
-            pcm(11_025),
-            pcm(5_512),
-            pcm(22_050),
-            pcm(11_025),
-            pcm(11_025),
+            pcm(11_025, 4_000, 17_689, 1),
+            pcm(5_512, 4_000, 897, 1),
+            pcm(22_050, 11_904, 16_764, 2),
+            pcm(11_025, 8_000, 595, 2),
+            pcm(11_025, 8_000, 16_116, 2),
         ],
     }
 }
@@ -390,7 +396,7 @@ fn effects_follow_the_schedule() {
     let lens: Vec<(usize, usize)> = audio
         .iter()
         .filter_map(|(f, c)| match c {
-            AudioCommand::PlaySfx { sound } => {
+            AudioCommand::PlaySfx { sound, .. } => {
                 let s = intro
                     .marks()
                     .iter()
@@ -401,8 +407,8 @@ fn effects_follow_the_schedule() {
             _ => None,
         })
         .collect();
-    // whoosh at step 1, then pulse once WORX would report it ended: the measured 317 frames
-    // of intro rev 3 §3.6 (step 88), whatever the sample's length (U-380).
+    // whoosh at step 1, then pulse once WORX would report it ended: 317 frames by the DMA
+    // rule of voc-and-adpcm rev 3 §2.3 (step 88), whatever the sample's length (U-380).
     assert_eq!(lens[0], (1, 11_025));
     assert_eq!(lens[1], (88, 5_512));
     for (step, len) in [(150, 11_025), (155, 22_050), (240, 11_025), (245, 11_025)] {
