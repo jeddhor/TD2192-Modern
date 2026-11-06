@@ -99,7 +99,7 @@ Only `ric3` (an intro effect) is above a limit. The oracle plays it at 11,904 Hz
 
 ### 2.3 The "playing" status (WORX function 08h; U-410)
 
-WORX's playing byte (file0001 `CS:31F2`, file0000 `CS:3211`) is cleared only by the refill that finds the data used up, and the refills are paced by the DMA position at 256-byte granularity. So the status outlasts the sample by 0.03..0.75 s depending on the sample. The rule:
+WORX's playing byte (file0001 `CS:31F2`, file0000 `CS:3211`) is cleared only by the refill that finds the data used up, and the refills are paced by the DMA position at 256-byte granularity. So the status outlasts the sample by 0.03..0.80 s depending on the sample. The rule:
 
 **Definitions.**
 
