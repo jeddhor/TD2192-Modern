@@ -153,11 +153,11 @@ Checked every tick after the player specials. A chord is several key bytes down 
 
 | Keys held | Effect | Port |
 |---|---|---|
-| T + I + M | `g_PlayerArmour` := 64, `g_Missiles` := 30 | decision (D5/D9) |
-| H + A + R + D | DS:13DE += 1 (difficulty/cheat level; also set to 8 by M+K+A+R) | decision |
-| J + O + H + N | DS:13DE := 0 | decision |
-| J + D + W | player class := 6 and **patches the class table** (max speed of class 6 := 1Ch, accel := 4) | decision |
-| M + K + A + R | player class := 0, every slot's record byte +3F6h := FFh, DS:13DE := 8, armour 1, shields 0 | decision |
+| T + I + M | `g_PlayerArmour` := 64, `g_Missiles` := 30 | port as original (D9, user 2026-11-06) |
+| H + A + R + D | DS:13DE += 1 (difficulty/cheat level; also set to 8 by M+K+A+R) | port as original (D9, user 2026-11-06) |
+| J + O + H + N | DS:13DE := 0 | port as original (D9, user 2026-11-06) |
+| J + D + W | player class := 6 and **patches the class table** (max speed of class 6 := 1Ch, accel := 4) | port as original (D9, user 2026-11-06) |
+| M + K + A + R | player class := 0, every slot's record byte +3F6h := FFh, DS:13DE := 8, armour 1, shields 0 | port as original (D9, user 2026-11-06) |
 | E + V + L | `Dos_Exec` of the drive-relabel program with the pilot's name (strings `0E8B:B84F`/`B860`) | **never port** |
 | P + L + A + Y | `Dos_Exec` of the relabel program with the title (strings `0E8B:B86A`/`B874`) | **never port** |
 | (flight 20) view tile x > 170 and y > 170 | `g_PlayerArmour` := 64 | preserve (mission rule) |

@@ -28,7 +28,7 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | D6 | Platforms and signing | M13-01 | **DECIDED 2026-11-06 (user): Windows x64 + Linux x64, unsigned; macOS later** |
 | D7 | Repo hosting and visibility | Running CI remotely (the workflow file is written regardless) | OPEN |
 | D8 | Default script variant | M5-07 | OPEN (recommend: ask, as the original does) |
-| D9 | Cheater judgement text | M8-09 | OPEN (recommend: text only) |
+| D9 | Cheater judgement text | M8-09 | **DECIDED 2026-11-06 (user): port the five harmless chords as original, both profiles; cheater text as original** |
 | D10 | Unknown exe versions | M2-14 | OPEN |
 
 ### Done so far (pre-M0)

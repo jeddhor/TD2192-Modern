@@ -1104,7 +1104,7 @@ These need the project owner's decision. Agents MUST NOT decide them; they are l
 | D6 | Target platforms and signing for 1.0 | **DECIDED 2026-11-06 (user): Windows x64 and Linux x64, unsigned;** macOS later if a signing identity becomes available |
 | D7 | Repository hosting and visibility | Private GitHub repository until the rights review (R5) is done |
 | D8 | Default script variant on first run | Ask, exactly like the original |
-| D9 | Reproduce the original's in-game "cheater" judgement (text only)? | Yes, text only; host-modifying behaviour never |
+| D9 | Reproduce the original's in-game "cheater" judgement (text only)? | **DECIDED 2026-11-06 (user):** port the five harmless cheat chords (T+I+M, H+A+R+D, J+O+H+N, J+D+W, M+K+A+R) exactly as the original, in both profiles, with the debrief's "cheater" text when its rule fires; the host-modifying E+V+L and P+L+A+Y are never ported |
 | D10 | Behaviour when exe hashes don't match (other versions) | Run with degraded text (placeholders), clear warning |
 
 ## 15. Glossary
