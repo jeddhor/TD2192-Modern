@@ -1,14 +1,14 @@
 //! Episode configuration: what one engine does differently as `file0001.exe` (E1), `td2.exe`
 //! (E2) or `td3.exe` (E3).
 //!
-//! Spec: `docs/re/episode-deltas.md` rev 2 (§4.1 tick order, §4.3 setup, §4.4 tile attributes,
-//! §5 weapons and mission ships) and `docs/spec/sim/e2-mission-setup.md` rev 1 (§3.1 map sets,
-//! §3.3 player state, §3.5 tile attributes, §4.1 setup order). Fidelity: T1.
+//! Spec: `docs/re/episode-deltas.md` rev 3 (§4.1 tick order, §4.3 setup, §4.4 tile attributes,
+//! §5 weapons and mission ships), `docs/spec/sim/e2-mission-setup.md` rev 1 (§3.1 map sets,
+//! §3.3 player state, §3.5 tile attributes, §4.1 setup order) and
+//! `docs/spec/sim/e3-mission-setup.md` rev 1 (§3.1 maps, §3.3 player state, §3.5 tile
+//! attributes, §3.7 home points, §4.1 step 9 start view). Fidelity: T1.
 //!
 //! The episodes are one engine: [`super::Flight`] holds its [`Episode`] and the tick and the
-//! setup branch on it where the deltas say so. E3 has its files and tile attributes here, but
-//! no setup or mission logic yet (M10-02): an E3 flight runs the shared engine with the mission
-//! file's ships and no rules.
+//! setup branch on it where the deltas say so.
 
 pub use td_assets::Episode;
 
@@ -17,7 +17,8 @@ use super::tables::{TILE_OPEN, TILE_SOLID, player_class as e1_player_class};
 use super::{START_VIEW, World};
 
 /// `g_MapSet` (E2 DS:1302): 1 for `td.map`/`td.blk`, 2 for `td2.map`/`td2.blk` (E2 flights
-/// 9–20). E1 has one map; E3 counts `td4.map` (flights ≥ 7) as set 2 here.
+/// 9–20). E1 has one map. E3 stores 1 always (e3-mission-setup §3.1) but loads `td4.map` for
+/// flights ≥ 7; this function counts those as set 2 to select the file.
 pub fn map_set(ep: Episode, flight: u8) -> u8 {
     match ep {
         Episode::E1 => 1,
@@ -154,10 +155,19 @@ pub fn setup_waypoint_loop(ep: Episode) -> bool {
     ep == Episode::E1
 }
 
-/// The player's class in a flight (E1: structures §6; E2: e2-mission-setup §3.3).
+/// The player's class in a flight (E1: structures §6; E2: e2-mission-setup §3.3; E3:
+/// e3-mission-setup §3.3, the dead flight 20 included).
 pub fn player_class(ep: Episode, flight: u8) -> u8 {
     match ep {
-        Episode::E1 | Episode::E3 => e1_player_class(flight),
+        Episode::E1 => e1_player_class(flight),
+        Episode::E3 => match flight {
+            4 => 4,
+            8..=11 | 21 => 6,
+            13 | 19 => 7,
+            14 | 17 | 18 => 3,
+            20 => 5,
+            _ => 2,
+        },
         Episode::E2 => match flight {
             4 | 9 => 4,
             5 | 6 => 7,
@@ -168,14 +178,52 @@ pub fn player_class(ep: Episode, flight: u8) -> u8 {
     }
 }
 
-/// Missiles at flight start for a class: class 5 starts with 4 in E2 and E3, 1 in E1
-/// (episode-deltas §4.3; weapons §3.2 otherwise).
-pub fn start_missiles(ep: Episode, class: u8, table: u8) -> u8 {
-    if class == 5 && ep != Episode::E1 {
+/// Missiles at flight start for a class: class 5 starts with 4 in E2 and E3, 1 in E1; E3
+/// flight 12 with class 2 starts with 10 (episode-deltas §4.3, e3-mission-setup §3.3; weapons
+/// §3.2 otherwise).
+pub fn start_missiles(ep: Episode, flight: u8, class: u8, table: u8) -> u8 {
+    if ep == Episode::E3 && flight == 12 && class == 2 {
+        10
+    } else if class == 5 && ep != Episode::E1 {
         4
     } else {
         table
     }
+}
+
+/// The player's armour at flight start: the class value, 5 in E2 and E3 flight 7
+/// (episode-deltas §4.3).
+pub fn start_armour(ep: Episode, flight: u8, class_armour: u8) -> i8 {
+    if ep != Episode::E1 && flight == 7 {
+        5
+    } else {
+        class_armour as i8
+    }
+}
+
+/// The E3 guidance home point (`UI_DrawGuidanceLine`, e3-mission-setup §3.7; a later rule
+/// wins). No E3 home point depends on the view.
+pub fn e3_home_point(flight: u8) -> (u8, u8) {
+    let mut home = (172, 68);
+    if flight == 6 {
+        home = (1, 110);
+    }
+    if flight > 6 {
+        home = (22, 166);
+    }
+    if flight == 11 {
+        home = (166, 78);
+    }
+    if flight == 13 {
+        home = (41, 46);
+    }
+    if flight >= 14 {
+        home = (22, 166);
+    }
+    if flight == 18 {
+        home = (28, 33);
+    }
+    home
 }
 
 /// The start view after setup (offsets 32, 16): E1 mission-setup §3.1, E2 e2-mission-setup
@@ -206,8 +254,22 @@ pub fn start_view(ep: Episode, flight: u8, late_draw: bool) -> View {
                 tile(102, 100);
             }
         }
-        // ASSUMPTION(M10-02): E3 start views are not ported yet; the default view is used.
-        Episode::E3 => {}
+        // Final before `Msn_Setup` (e3-mission-setup §4.1 step 9); late draw is never set.
+        Episode::E3 => {
+            tile(167, 66);
+            if flight > 6 {
+                tile(17, 164);
+            }
+            if flight == 21 {
+                tile(160, 75);
+            }
+            if matches!(flight, 14 | 17 | 19) {
+                tile(88, 76);
+            }
+            if flight == 7 {
+                tile(185, 32);
+            }
+        }
     }
     v
 }
@@ -266,5 +328,72 @@ mod tests {
             classes,
             [2, 2, 2, 4, 7, 7, 3, 3, 4, 2, 5, 5, 5, 2, 2, 2, 2, 2, 2, 5]
         );
+    }
+
+    /// e3-mission-setup §6 vector 10.
+    #[test]
+    fn e3_tile_attributes() {
+        let a = tile_attributes(Episode::E3, 1);
+        assert_eq!(a, tile_attributes(Episode::E3, 12));
+        let want: Vec<usize> = (0x10..=0x16)
+            .chain([0x22])
+            .chain(0x25..=0x2C)
+            .chain(0x41..=0x46)
+            .collect();
+        assert_eq!(open(&a, 0x46), want);
+    }
+
+    /// e3-mission-setup §3.1, §3.3 and §6 vectors 11 (start view) and 12 (home point).
+    #[test]
+    fn e3_files_classes_views_and_home_points() {
+        let e = Episode::E3;
+        assert_eq!(map_file(e, 6), "td3.map");
+        assert_eq!(map_file(e, 7), "td4.map");
+        assert_eq!(map_file(e, 21), "td4.map");
+        assert_eq!(tileset_file(e, 19), "td3.blk");
+        assert_eq!(mission_file(e, 21).as_deref(), Some("m21.td3"));
+        let tile = |f| {
+            let v = start_view(e, f, false);
+            (v.tile_x, v.tile_y, v.sub_x, v.sub_y)
+        };
+        for f in 1..=6 {
+            assert_eq!(tile(f), (167, 66, 32, 16));
+        }
+        assert_eq!(tile(7), (185, 32, 32, 16));
+        for f in [8, 9, 10, 11, 12, 13, 15, 16, 18] {
+            assert_eq!(tile(f), (17, 164, 32, 16));
+        }
+        for f in [14, 17, 19] {
+            assert_eq!(tile(f), (88, 76, 32, 16));
+        }
+        assert_eq!(tile(21), (160, 75, 32, 16));
+        let classes: Vec<u8> = (1..=21).map(|f| player_class(e, f)).collect();
+        assert_eq!(
+            classes,
+            [
+                2, 2, 2, 4, 2, 2, 2, 6, 6, 6, 6, 2, 7, 3, 2, 2, 3, 3, 7, 5, 6
+            ]
+        );
+        let home: Vec<(u8, u8)> = [3, 6, 11, 13, 14, 18, 21]
+            .iter()
+            .map(|&f| e3_home_point(f))
+            .collect();
+        assert_eq!(
+            home,
+            [
+                (172, 68),
+                (1, 110),
+                (166, 78),
+                (41, 46),
+                (22, 166),
+                (28, 33),
+                (22, 166)
+            ]
+        );
+        assert_eq!(start_missiles(e, 12, 2, 6), 10);
+        assert_eq!(start_missiles(e, 1, 2, 6), 6);
+        assert_eq!(start_missiles(e, 20, 5, 1), 4);
+        assert_eq!(start_armour(e, 7, 15), 5);
+        assert_eq!(start_armour(Episode::E1, 7, 15), 15);
     }
 }
