@@ -6,16 +6,16 @@
 
 use std::time::Duration;
 
-use crate::screen::RETRACE_HZ;
+use crate::screen::{FLIGHT_TICK_HZ, RETRACE_HZ};
 
 /// The BIOS tick (and with it DOS time) while a 96 Hz CMF song plays: 1,193,182 / (12,428 × 5)
-/// = 19.2015 Hz. Classic uses this rate for every DOS-time wait, whatever the sound
-/// configuration. Spec: `docs/spec/core/timing.md` rev 4 §4.2, §4.4 and §5 (canonical rate
-/// proposed in ADR-0007, pending the user).
-pub const BIOS_TICK_HZ: f64 = 1_193_182.0 / 62_140.0;
+/// = 19.2015 Hz, the same clock as the flight tick ([`FLIGHT_TICK_HZ`]). Classic uses this rate
+/// for every DOS-time wait, whatever the sound configuration. Spec: `docs/spec/core/timing.md`
+/// rev 5 §4.2, §4.4 and §5; ADR-0007 (accepted 2026-11-06).
+pub const BIOS_TICK_HZ: f64 = FLIGHT_TICK_HZ;
 
 /// BIOS ticks per second of DOS time: DOS time advances 6,553,600 / 1,193,182 centiseconds per
-/// BIOS tick, so 100 cs take 1,193,182 / 65,536 = 18.2065 ticks. Spec: timing rev 4 §4.4.
+/// BIOS tick, so 100 cs take 1,193,182 / 65,536 = 18.2065 ticks. Spec: timing rev 5 §4.4.
 pub const BIOS_TICKS_PER_DOS_SECOND: f64 = 1_193_182.0 / 65_536.0;
 
 /// Retrace frames (70.086 Hz) that `Flow_WaitSecondsOrKey(n)` (`file0001:051A:1AA3`, the E2
@@ -23,7 +23,7 @@ pub const BIOS_TICKS_PER_DOS_SECOND: f64 = 1_193_182.0 / 65_536.0;
 /// BIOS tick, so round(n × 18.2065) BIOS ticks at [`BIOS_TICK_HZ`] (the original takes
 /// ceil(n × 18.2065) ticks or one less, depending on where in a BIOS tick the wait starts).
 /// 5 s → 332 frames, 10 s → 664 frames (measured 328 and 664, C-0002, C-0170). Spec:
-/// timing rev 4 §4.4, `docs/spec/flow/screens.md` rev 3 §2.2 (BUG-7). Fidelity: T2.
+/// timing rev 5 §4.4, `docs/spec/flow/screens.md` rev 3 §2.2 (BUG-7). Fidelity: T2.
 ///
 /// `Crt.Delay(ms)` pauses are real milliseconds and do not use this.
 #[must_use]
