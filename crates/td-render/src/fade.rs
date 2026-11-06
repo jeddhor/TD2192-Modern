@@ -31,6 +31,38 @@ pub fn write_level(dac: &mut Palette, src: &Palette, k: u8) {
     }
 }
 
+/// Non-zero palette components from which a Real48 fade level takes two retrace frames instead
+/// of one at preset P1. Spec: `docs/spec/flow/screens.md` rev 3 §2.1 (BUG-6): a level costs one
+/// retrace wait plus 765 Real48 conversions, divisions and roundings, which are cheap on a zero
+/// component; ≤ 10 non-zero components take 1 frame (C-0002 script choice and first title card,
+/// C-0160), 677 take 2 (C-0170). ASSUMPTION(U-461): the crossover is about 380, the estimate
+/// from the measured level times; no shipped flow fades a palette in between.
+pub const SLOW_FADE_NONZERO: usize = 380;
+
+/// The number of non-zero components (r, g, b counted separately) of entries `first..=255`.
+#[must_use]
+pub fn nonzero_components(pal: &Palette, first: usize) -> usize {
+    pal.colors
+        .iter()
+        .skip(first)
+        .map(|c| usize::from(c.r != 0) + usize::from(c.g != 0) + usize::from(c.b != 0))
+        .sum()
+}
+
+/// Retrace frames each level of a 17-level fade of `pal` takes at preset P1, where the fade
+/// writes entries `first..=255` (1 for the scene and menu fades and the flight `FadeIn`, 0 for
+/// the flight `FadeOut`): 2 when at least [`SLOW_FADE_NONZERO`] of their components are
+/// non-zero, else 1. Spec: screens rev 3 §2.1, flight-screens rev 5 §4.5.3, timing rev 4 §4.4
+/// item 3. Fidelity: T2.
+#[must_use]
+pub fn frames_per_level(pal: &Palette, first: usize) -> u32 {
+    if nonzero_components(pal, first) >= SLOW_FADE_NONZERO {
+        2
+    } else {
+        1
+    }
+}
+
 /// An in-progress palette fade.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fade {
@@ -120,6 +152,35 @@ mod tests {
         assert_eq!(dac.colors[1], src.colors[1]);
         write_level(&mut dac, &src, 0);
         assert_eq!(dac.colors[1], Rgb6::default());
+    }
+
+    #[test]
+    fn fade_speed_follows_the_non_zero_components() {
+        // screens rev 3 §2.1: the script choice's 7 components fade at 1 frame per level, a
+        // picture palette at 2; the crossover (U-461) at 380.
+        let mut pal = Palette::default();
+        for (e, (r, g, b)) in [
+            (1, (10, 10, 10)),
+            (85, (0, 33, 0)),
+            (92, (40, 0, 0)),
+            (102, (63, 0, 0)),
+            (103, (63, 0, 0)),
+        ] {
+            pal.colors[e] = Rgb6 { r, g, b };
+        }
+        assert_eq!(nonzero_components(&pal, 1), 7);
+        assert_eq!(frames_per_level(&pal, 1), 1);
+        let mut full = Palette::default();
+        for c in full.colors.iter_mut().take(127) {
+            *c = Rgb6 { r: 1, g: 2, b: 3 };
+        }
+        // Entries 0..126: 381 components, 378 of them from entry 1 on.
+        assert_eq!(nonzero_components(&full, 0), 381);
+        assert_eq!(frames_per_level(&full, 0), 2);
+        assert_eq!(frames_per_level(&full, 1), 1, "entry 0 is not faded");
+        full.colors[200].b = 5;
+        full.colors[201].g = 5;
+        assert_eq!(frames_per_level(&full, 1), 2, "380 from entry 1");
     }
 
     #[test]

@@ -180,7 +180,7 @@ fn the_intro_timeline_with_the_original_files() {
     let effects: std::collections::BTreeSet<usize> = audio
         .iter()
         .filter_map(|c| match c {
-            AudioCommand::PlaySfx { sound } => Some(sound.samples.len()),
+            AudioCommand::PlaySfx { sound, .. } => Some(sound.samples.len()),
             _ => None,
         })
         .collect();

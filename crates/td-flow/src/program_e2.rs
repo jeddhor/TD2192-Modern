@@ -1,7 +1,7 @@
 //! The Episode 2 program (`td2.exe` main body): script choice, main menu and the campaign.
 //!
-//! Spec: `docs/spec/flow/e2-program-flow.md` rev 1 §4.1 (start-up), §4.2 (menu, items and
-//! bookkeeping), §4.6, §7 (music); E1 screen layouts per `docs/spec/flow/screens.md` rev 1 §3.1,
+//! Spec: `docs/spec/flow/e2-program-flow.md` rev 2 §4.1 (start-up), §4.2 (menu, items and
+//! bookkeeping), §4.6, §7 (music); E1 screen layouts per `docs/spec/flow/screens.md` rev 3 §3.1,
 //! §3.2 with the E2 deltas of episode-deltas rev 2 §8.3. The campaign is
 //! [`crate::campaign_e2`]. Fidelity: T0 for the layouts and the menu colours (OB-041 kept), T1
 //! for the state between blocks, T2 for pacing.
@@ -17,9 +17,13 @@
 //! screen shows empty slots and a save is not written); [`LaterEpisode::restored`] applies the
 //! menu bookkeeping of a restore.
 //!
-//! The menu is shown without its fades and highlight ramps (T2); the colours of entries
-//! 224..233 are the ramps' end states, kept as the original keeps them: the palette buffer
-//! (`g_MenuPalette`) and the DAC separately.
+//! The menu screen is [`MainMenu`] in its [`MenuStyle::Later`] colours (OB-041 kept): the
+//! loader's 34-frame fade-in, the start cursor's highlight ramp once at loop entry (11 steps
+//! per frame), a ramp on every cursor change (and after a cancelled quit box) but none after an
+//! action, the 34-frame fade-out before an action, and the confirmation boxes
+//! (e2-program-flow rev 2 §4.2 items 2–4, e3-program-flow rev 2 §4.2 item 4; C-0120,
+//! C-0125). The palette buffer (`g_MenuPalette`) and the DAC are kept apart as in the
+//! original.
 //!
 //! The program is shared with Episode 3 (`td3.exe`, `crate::program_e3`): [`LaterEpisode`]
 //! is the menu of both, parameterised by the episode's campaign ([`EpisodeCampaign`]) and its
@@ -31,14 +35,14 @@ use std::path::PathBuf;
 use td_assets::{DataDir, Episode, ExeResources};
 use td_audio::AudioCommand;
 use td_audio::music_cues::{E2_INTRO, MENU};
-use td_formats::palette::{Palette, Rgb6};
+use td_formats::palette::Rgb6;
 use td_input::{Key, TickInput};
 use td_render::{Framebuffer, WIDTH, title_text};
 
 use crate::campaign::FlightLauncher;
 use crate::campaign_e2::{BlockResult, CampaignE2};
 use crate::dialogue::ScriptChoice;
-use crate::flight_screens::{KEY_KP2, KEY_KP8};
+use crate::main_menu::{ITEM_ENTRY, MainMenu, MenuGraphics, MenuStyle, Reentry};
 use crate::program::{Program, line};
 use crate::save_screens::{SaveFiles, SaveKind, SaveOutcome, SaveScreen, SaveSet};
 use crate::scenes_e2::{self, Bg};
@@ -153,20 +157,13 @@ impl EpisodeCampaign for CampaignE2 {
 }
 
 /// Menu items (§4.2).
-const ITEMS: u8 = 9;
 const SAVE: u8 = 1;
 const RESTORE: u8 = 2;
 const NEXT_MISSION: u8 = 3;
 const QUIT: u8 = 8;
-/// First palette entry of the item colours (FORMATS §12.1).
-const ITEM_ENTRY: usize = 224;
-/// Entries the confirmation boxes keep at full brightness (screens §3.1).
-const BOX_ENTRIES: std::ops::RangeInclusive<usize> = 192..=209;
 
 const DIM: Rgb6 = Rgb6 { r: 16, g: 0, b: 0 };
 const BLACK: Rgb6 = Rgb6 { r: 0, g: 0, b: 0 };
-const RED: Rgb6 = Rgb6 { r: 63, g: 0, b: 0 };
-const YELLOW: Rgb6 = Rgb6 { r: 63, g: 63, b: 0 };
 
 /// Pens and inks of `e2.script_choice.warning[1..6]`: screens §3.2 with one ink-92 line fewer
 /// (episode-deltas §8.3). Black-box (C-0015 f146): the four ink-92 lines keep E1's first four
@@ -197,8 +194,6 @@ enum Stage<C> {
     Campaign(Box<C>, u8),
     /// A sub-screen, what follows it and how its Esc reaches the skip flag.
     Sub(StoryScreen, Back, SkipRule),
-    /// A confirmation box (1 = quit, 2 = current game lost) for an item.
-    Confirm(u8, u8),
     /// The save or restore screen.
     Saves(Box<SaveScreen>),
     Quit,
@@ -215,9 +210,6 @@ enum SkipRule {
     Story,
 }
 
-/// The menu image, the confirmation boxes (320 × 32 each) and `tdmen.pal`.
-type MenuGraphics = (Box<[u8]>, Box<[u8]>, Palette);
-
 /// The program of a later episode (E2, E3) as a screen.
 pub struct LaterEpisode<C: EpisodeCampaign> {
     prog: Program,
@@ -229,11 +221,8 @@ pub struct LaterEpisode<C: EpisodeCampaign> {
     mission_kills: i16,
     /// `g_SkipRequested` between blocks (only E3 reads it, OB-050).
     skip: bool,
-    menu: Option<MenuGraphics>,
-    /// `g_MenuPalette` entries 224..233.
-    buffer: [Rgb6; 10],
-    /// DAC entries 224..233.
-    dac: [Rgb6; 10],
+    /// The menu screen (fades, ramps, keys, boxes; `g_MenuPalette` and the DAC).
+    menu: MainMenu,
     /// Keys typed after the script choice (no flush in E2, §4.1).
     typed_ahead: Vec<Key>,
     /// Where the port keeps the episode's saved games.
@@ -260,19 +249,11 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         res: &ExeResources,
         launcher: Box<dyn FlightLauncher>,
     ) -> Result<Self, StoryError> {
-        let menu = (|| {
-            let men = data.read("td.men").ok()?;
-            let pal = Palette::parse(&data.read("tdmen.pal").ok()?).ok()?;
-            Some((
-                men.get(16_000..80_000)?.into(),
-                men.get(80_000..120_960)?.into(),
-                pal,
-            ))
-        })();
-        if menu.is_none() {
+        let gfx = MenuGraphics::load(data);
+        if gfx.is_none() {
             tracing::warn!("td.men or tdmen.pal unavailable; the menu is drawn black");
         }
-        let mut ep = Self {
+        Ok(Self {
             prog: Program::for_episode(data, res, launcher, C::FRONT.episode)?,
             stage: Stage::Start,
             cursor: 0,
@@ -280,14 +261,10 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
             kills_to_date: 0,
             mission_kills: 0,
             skip: false,
-            menu,
-            buffer: [DIM; 10],
-            dac: [DIM; 10],
+            menu: MainMenu::with_style(gfx, MenuStyle::Later),
             typed_ahead: Vec::new(),
             save_dir: None,
-        };
-        ep.load_menu_colours();
-        Ok(ep)
+        })
     }
 
     /// Keeps the saved games in `dir` (the user data directory's `saves`), in the original
@@ -305,7 +282,14 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
 
     /// DAC entries 224..233 (the item colours) as shown.
     pub fn item_colours(&self) -> [Rgb6; 10] {
-        self.dac
+        let mut out = [Rgb6::default(); 10];
+        out.copy_from_slice(&self.menu.screen().palette.colors[ITEM_ENTRY..ITEM_ENTRY + 10]);
+        out
+    }
+
+    /// The main menu (cursor, palette buffer, screen, and whether it waits for a key).
+    pub fn menu(&self) -> &MainMenu {
+        &self.menu
     }
 
     /// The skip flag as the menu holds it (E3, OB-050).
@@ -314,9 +298,10 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
     }
 
     /// The menu after a successful restore of (`mission`, `kills`) from item 2 (§4.2): the
-    /// cursor moves to item 3, the loader runs, and the palette buffer's entry 227 is cleared
-    /// (else 226's red goes back to 16). Black-box (C-0016 f750, U-314): the loader already
-    /// sees cursor 3 (DAC 227 = (63, 0, 0), 226 = (16, 0, 0)).
+    /// cursor moves to item 3, the loader runs (without the song), and after its fade-in the
+    /// palette buffer's entry 227 is cleared (else 226's red goes back to 16). Black-box
+    /// (C-0016 f750, U-314): the loader already sees cursor 3 (DAC 227 = (63, 0, 0), 226 =
+    /// (16, 0, 0)).
     pub fn restored(&mut self, mission: u8, kills: i16) {
         self.mission = mission;
         self.kills_to_date = kills;
@@ -325,24 +310,20 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         } else {
             RESTORE
         };
-        self.load_menu_colours();
+        self.reload(false);
         if self.cursor == NEXT_MISSION {
-            self.buffer[3] = BLACK;
+            self.menu.set_after_loader(ITEM_ENTRY + 3, BLACK);
         } else {
-            self.buffer[2].r = 16;
+            self.menu.set_after_loader(ITEM_ENTRY + 2, DIM);
         }
-        self.stage = Stage::Menu;
     }
 
-    /// `UI_LoadMainMenu` colours (§4.2 item 2 of the loader): entries 224..233 := (16, 0, 0),
-    /// the cursor's red := 63 (also for cursor 3), fade in, then the cursor's red back to 16 in
-    /// the buffer only.
-    fn load_menu_colours(&mut self) {
-        let c = usize::from(self.cursor);
-        self.buffer = [DIM; 10];
-        self.buffer[c].r = 63;
-        self.dac = self.buffer;
-        self.buffer[c].r = 16;
+    /// `UI_LoadMainMenu` without the song: the item colours of §4.2 item 2, fade in; the
+    /// start cursor's ramp follows only at loop entry (`first`).
+    fn reload(&mut self, first: bool) {
+        self.menu
+            .enter(self.cursor, self.in_game(), Reentry::Loader { first });
+        self.stage = Stage::Menu;
     }
 
     /// `UI_LoadMainMenu(playMusic)`.
@@ -350,19 +331,7 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         if music {
             self.prog.play_cue(ctx, MENU);
         }
-        self.load_menu_colours();
-        self.stage = Stage::Menu;
-    }
-
-    /// The highlight ramps' end states when the cursor moves from `from` (§4.2 item 4; OB-041:
-    /// item 3 un-highlights to black, highlights yellow).
-    fn move_highlight(&mut self, from: u8) {
-        self.dac[usize::from(from)] = if from == NEXT_MISSION { BLACK } else { DIM };
-        self.dac[usize::from(self.cursor)] = if self.cursor == NEXT_MISSION {
-            YELLOW
-        } else {
-            RED
-        };
+        self.reload(false);
     }
 
     /// The script-choice screen (`UI_ScriptChoice` `04EC:689B`, E3 `04A0:4980`): E1's layout
@@ -400,7 +369,8 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
     }
 
     /// Starts the main menu after the start-up (§4.2 entry): song 7 (E2 only), mission 0,
-    /// cursor 0, then the loader, which starts song 7 (again).
+    /// cursor 0, then the loader, which starts song 7 (again), and the loop, which ramps the
+    /// start cursor once.
     fn enter_menu(&mut self, ctx: &mut FlowContext<'_>) {
         if C::FRONT.menu_song_at_entry {
             self.prog.play_cue(ctx, MENU);
@@ -410,18 +380,28 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         }
         self.mission = 0;
         self.cursor = 0;
-        self.load_menu(ctx, true);
+        self.prog.play_cue(ctx, MENU);
+        self.reload(true);
+        self.menu.type_ahead(std::mem::take(&mut self.typed_ahead));
     }
 
+    /// Shows a menu sub-screen with the keys typed during the menu's fade-out; if it is
+    /// unavailable, the menu fades in again.
     fn sub(&mut self, s: Result<StoryScreen, StoryError>, back: Back, skip: SkipRule, what: &str) {
         match s {
-            Ok(s) => {
+            Ok(mut s) => {
                 if skip == SkipRule::Card {
                     self.skip = false;
                 }
+                s.type_ahead(self.menu.take_keys());
                 self.stage = Stage::Sub(s, back, skip);
             }
-            Err(e) => tracing::warn!("{what} unavailable: {e}"),
+            Err(e) => {
+                tracing::warn!("{what} unavailable: {e}");
+                self.menu
+                    .enter(self.cursor, self.in_game(), Reentry::Refade);
+                self.stage = Stage::Menu;
+            }
         }
     }
 
@@ -437,21 +417,13 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         } else {
             (SaveKind::Restore, C::FRONT.restore_labels)
         };
-        let mut pal = self
-            .menu
-            .as_ref()
-            .map(|(_, _, pal)| pal.clone())
-            .unwrap_or_default();
-        for (i, &c) in self.buffer.iter().enumerate() {
-            pal.colors[ITEM_ENTRY + i] = c;
-        }
         let set = SaveSet::load(self.save_dir.as_deref(), C::FRONT.saves);
         let s = SaveScreen::open(
             kind,
             &self.prog.data,
             &self.prog.assets.small,
             &self.prog.texts(labels),
-            &pal,
+            self.menu.palette_buffer(),
             set,
         );
         self.stage = Stage::Saves(Box::new(s));
@@ -473,8 +445,7 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
                     }
                     None => tracing::warn!("no save directory; the game was not saved"),
                 }
-                self.load_menu_colours();
-                self.stage = Stage::Menu;
+                self.reload(false);
             }
         }
     }
@@ -484,13 +455,14 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         s.flushing_waits(C::FRONT.episode == Episode::E3)
     }
 
-    fn select(&mut self, ctx: &mut FlowContext<'_>) {
-        match self.cursor {
-            0 if self.in_game() => self.stage = Stage::Confirm(0, 2),
+    /// The action of `item` once the menu has faded out for it (§4.2; the menu asked box 2
+    /// before items 0 and 2 with a game in progress, and box 1 before quitting).
+    fn select(&mut self, ctx: &mut FlowContext<'_>, item: u8) {
+        self.cursor = item;
+        match item {
             0 => self.start_block(1, 0, 0),
             NEXT_MISSION => self.start_block(self.mission, self.kills_to_date, NEXT_MISSION),
-            RESTORE if self.in_game() => self.stage = Stage::Confirm(RESTORE, 2),
-            SAVE | RESTORE => self.open_saves(self.cursor),
+            SAVE | RESTORE => self.open_saves(item),
             4 => {
                 let s = story::help(&self.prog.data);
                 self.sub(s, Back::FadeIn, SkipRule::Keep, "help");
@@ -505,11 +477,14 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
             6 | 7 => {
                 // In-process pictures with intro.cmf (§4.2 items 6 and 7).
                 self.prog.play_cue(ctx, C::FRONT.intro_cue);
-                let s = C::picture(&self.prog, self.cursor).map(|s| self.timed(s));
+                let s = C::picture(&self.prog, item).map(|s| self.timed(s));
                 let back = Back::Reload { music: true };
                 self.sub(s, back, SkipRule::Card, "about/order");
             }
-            _ => self.stage = Stage::Confirm(QUIT, 1),
+            _ => {
+                self.cursor = QUIT;
+                self.stage = Stage::Quit;
+            }
         }
     }
 
@@ -556,38 +531,6 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         // Item 0: Snd_PlayMusic(7) and UI_LoadMainMenu(0); item 3: UI_LoadMainMenu(1).
         self.load_menu(ctx, true);
     }
-
-    fn menu_key(&mut self, ctx: &mut FlowContext<'_>, k: Key) {
-        let step = match k {
-            Key::UP | KEY_KP8 => ITEMS - 1,
-            Key::DOWN | KEY_KP2 => 1,
-            k if Some(k) == Key::digit(8) => ITEMS - 1,
-            k if Some(k) == Key::digit(2) => 1,
-            Key::ENTER | Key::KP_ENTER | Key::SPACE => return self.select(ctx),
-            Key::ESCAPE => {
-                self.stage = Stage::Confirm(QUIT, 1);
-                return;
-            }
-            _ => return,
-        };
-        let from = self.cursor;
-        loop {
-            self.cursor = (self.cursor + step) % ITEMS;
-            let hidden = !self.in_game() && (self.cursor == SAVE || self.cursor == NEXT_MISSION);
-            if !hidden {
-                break;
-            }
-        }
-        self.move_highlight(from);
-    }
-
-    /// After a confirmation box: the DAC fades back to the buffer, whose cursor entry was set
-    /// to red 63; then the cursor's highlight runs (the box counts as a cursor change).
-    fn close_box(&mut self) {
-        self.buffer[usize::from(self.cursor)].r = 63;
-        self.dac = self.buffer;
-        self.move_highlight(self.cursor);
-    }
 }
 
 impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
@@ -633,6 +576,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     pad: input.pad,
                 });
                 if s.finished() {
+                    s.apply_front_end(&mut self.prog.front_end);
                     self.prog.choice = if s.last_key() == Key::digit(2) {
                         ScriptChoice::Edited
                     } else {
@@ -648,9 +592,13 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     if rule != SkipRule::Keep && s.skipped() {
                         self.skip = true;
                     }
+                    // Help uses g_MenuPalette and leaves g_Palette alone (weapons rev 4 §3.3 item
+                    // 4); the in-process story so far, about and order load theirs.
+                    s.apply_front_end(&mut self.prog.front_end);
                     match back {
                         Back::FadeIn => {
-                            self.dac = self.buffer;
+                            self.menu
+                                .enter(self.cursor, self.in_game(), Reentry::Refade);
                             self.stage = Stage::Menu;
                         }
                         Back::Reload { music } => self.load_menu(ctx, music),
@@ -663,32 +611,12 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     self.block_done(ctx, r, item);
                 }
             }
-            Stage::Confirm(item, _) => {
-                let item = *item;
-                if let Some(&k) = input.pressed.iter().find(|&&k| story::is_keystroke(k)) {
-                    self.close_box();
-                    self.stage = Stage::Menu;
-                    if Some(k) == Key::letter('y') {
-                        match item {
-                            QUIT => {
-                                self.cursor = QUIT;
-                                self.stage = Stage::Quit;
-                            }
-                            RESTORE => self.open_saves(RESTORE),
-                            _ => self.start_block(1, 0, 0),
-                        }
-                    }
-                }
-            }
             Stage::Menu => {
                 // The menu reads one key and discards the rest of the BIOS buffer.
-                let first = self
-                    .typed_ahead
-                    .drain(..)
-                    .chain(input.pressed.iter().copied())
-                    .find(|&k| story::is_keystroke(k));
-                if let Some(k) = first {
-                    self.menu_key(ctx, k);
+                let chosen = self.menu.step(input);
+                self.cursor = self.menu.cursor();
+                if let Some(item) = chosen {
+                    self.select(ctx, item);
                 }
             }
             Stage::Saves(s) => {
@@ -708,42 +636,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
             Stage::ScriptChoice(s) | Stage::Sub(s, ..) => s.draw(fb),
             Stage::Campaign(c, _) => c.draw(fb),
             Stage::Saves(s) => s.draw(fb),
-            Stage::Menu | Stage::Confirm(..) | Stage::Start | Stage::Quit => {
-                let Some((image, boxes, pal)) = &self.menu else {
-                    fb.clear(0);
-                    return;
-                };
-                fb.pixels.copy_from_slice(image);
-                fb.palette = pal.clone();
-                for (i, &c) in self.dac.iter().enumerate() {
-                    fb.palette.colors[ITEM_ENTRY + i] = c;
-                }
-                if let Stage::Confirm(_, b) = self.stage {
-                    // Half brightness from the buffer (cursor entry red 63), entries 192..209
-                    // at full; box b of td.men over rows 84..115 (screens §3.1).
-                    let mut buffer = self.buffer;
-                    buffer[usize::from(self.cursor)].r = 63;
-                    for (e, c) in fb.palette.colors.iter_mut().enumerate() {
-                        let full = match e.checked_sub(ITEM_ENTRY) {
-                            Some(i) if i < 10 => buffer[i],
-                            _ => pal.colors[e],
-                        };
-                        *c = if BOX_ENTRIES.contains(&e) {
-                            full
-                        } else {
-                            Rgb6 {
-                                r: full.r / 2,
-                                g: full.g / 2,
-                                b: full.b / 2,
-                            }
-                        };
-                    }
-                    let src = usize::from(b - 1) * 32 * WIDTH;
-                    if let Some(rows) = boxes.get(src..src + 32 * WIDTH) {
-                        fb.pixels[84 * WIDTH..116 * WIDTH].copy_from_slice(rows);
-                    }
-                }
-            }
+            Stage::Menu | Stage::Start | Stage::Quit => self.menu.draw(fb),
         }
     }
 }

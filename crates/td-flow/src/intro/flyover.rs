@@ -6,6 +6,7 @@
 //! of U-370). Fidelity: T1 for the state per step (C-0047 RAM, `tests/intro_parity.rs`), T2 for
 //! the pacing and the audio.
 
+use td_audio::Pcm8;
 use td_sim::rng::BpRandom;
 
 /// The step value that ends the loop (intro §2).
@@ -236,8 +237,8 @@ impl Effect {
         }
     }
 
-    /// The SB Pro voice level set with it (`WORX_SetVoiceVolume(v, v)`, of 15). Not applied by
-    /// the port's mixer yet (T2).
+    /// The SB Pro voice level set with it (`WORX_SetVoiceVolume(v, v)`, of 15; intro §3.6),
+    /// sent with the effect ([`AudioCommand::PlaySfx`](td_audio::AudioCommand::PlaySfx)).
     #[must_use]
     pub fn volume(self) -> u8 {
         match self {
@@ -246,22 +247,19 @@ impl Effect {
             Effect::Whoosh | Effect::Scratch => 12,
         }
     }
+}
 
-    /// How long the effect counts as playing for the "no effect playing" checks, in half
-    /// frames of the 70.086 Hz retrace (intro rev 3 §3.6, U-380). The test is WORX's own
-    /// "digital sound playing" byte, which outlasts the sample; port policy (Classic, T2):
-    /// the measured P1 times of the §3.6 table, not the sample lengths. `whoosh` 317 frames,
-    /// `pulse` and `scratch` 25.5, `ric3` 211, `home` 309 (C-0081). The port starts steps on
-    /// frame boundaries, so 25.5 frames acts as 26.
-    #[must_use]
-    pub fn busy_half_frames(self) -> u64 {
-        match self {
-            Effect::Whoosh => 2 * 317,
-            Effect::Pulse | Effect::Scratch => 51,
-            Effect::Ric3 => 2 * 211,
-            Effect::Home => 2 * 309,
-        }
-    }
+/// How long an effect counts as playing for the "no effect playing" checks, in half frames of
+/// the 70.086 Hz retrace (intro rev 3 §3.6, U-380). The test is WORX's own "digital sound
+/// playing" byte, which outlasts the sample: voc-and-adpcm rev 3 §2.3 with the intro's ring
+/// offset r = 171 ([`td_audio::worx::busy_seconds`], [`td_audio::worx::RING_INTRO`]), rounded
+/// up to a half frame: `whoosh` 634, `pulse` and `scratch` 51, `ric3` 421, `home` 617. Effects
+/// start at frame boundaries, so the status reads 0 from frame 317, 26, 211 and 309 after the
+/// start: C-0081's measurements exactly (U-410, U-470).
+#[must_use]
+pub fn busy_half_frames(sound: &Pcm8) -> u64 {
+    let secs = td_audio::worx::busy_seconds(sound, td_audio::worx::RING_INTRO);
+    (secs * 2.0 * RETRACE_MILLIHZ as f64 / 1000.0).ceil() as u64
 }
 
 /// The effect checks of one step (intro §3.6), run after the grid is drawn. `playing` reports
@@ -504,8 +502,43 @@ mod tests {
         assert!(ticks.windows(2).all(|w| (3..=4).contains(&(w[1] - w[0]))));
     }
 
-    /// The effect onsets of steps 1..=400 with the measured busy times, the steps at the frames
-    /// of the P1 BIOS clock (step 1 in frame 1).
+    /// An effect's sample as far as the busy rule needs it (voc §2.2 table: rate, D, codec).
+    fn spec_sound(e: Effect) -> Pcm8 {
+        let (rate, bytes, codes_per_byte) = match e {
+            Effect::Whoosh => (4_000, 17_689, 1),
+            Effect::Pulse => (4_000, 897, 1),
+            Effect::Ric3 => (11_904, 16_764, 2),
+            Effect::Scratch => (8_000, 595, 2),
+            Effect::Home => (8_000, 16_116, 2),
+        };
+        Pcm8 {
+            rate,
+            samples: Vec::new(),
+            dma: td_audio::DmaStream {
+                bytes,
+                codes_per_byte,
+            },
+        }
+    }
+
+    /// The busy rule against C-0081's per-frame measurements (intro rev 3 §3.6): the status
+    /// reads 0 from the same frame after the start (317, 25.5 → 26, 211, 309 frames).
+    #[test]
+    fn busy_rule_matches_the_measured_times() {
+        for (e, frames) in [
+            (Effect::Whoosh, 317u64),
+            (Effect::Pulse, 26),
+            (Effect::Scratch, 26),
+            (Effect::Ric3, 211),
+            (Effect::Home, 309),
+        ] {
+            let got = busy_half_frames(&spec_sound(e)).div_ceil(2);
+            assert_eq!(got, frames, "{e:?}");
+        }
+    }
+
+    /// The effect onsets of steps 1..=400 with the busy rule, the steps at the frames of the P1
+    /// BIOS clock (step 1 in frame 1).
     fn measured_schedule() -> Vec<(u16, Effect)> {
         let mut st = FlyoverState::new();
         let mut clock = FrameClock::bios(BIOS_PHASE_NUM, BIOS_PHASE_DEN);
@@ -521,7 +554,7 @@ mod tests {
                 || now < busy.get(),
                 |e| {
                     started.borrow_mut().push(e);
-                    busy.set(now + e.busy_half_frames());
+                    busy.set(now + busy_half_frames(&spec_sound(e)));
                 },
             );
             end = busy.get();

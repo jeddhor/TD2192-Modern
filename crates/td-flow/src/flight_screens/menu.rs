@@ -1,13 +1,17 @@
 //! The Esc computer menu (`UI_FlightMenu`), the ship library and the in-flight help.
 //!
-//! Spec: `docs/spec/flow/flight-screens.md` rev 1 §3.1, §3.2, §3.5, §4.1; the E2/E3 ship
-//! library `docs/spec/flow/e2-flight-screens.md` rev 1 §3.3, §4.2. Fidelity: T0 for the
+//! Spec: `docs/spec/flow/flight-screens.md` rev 5 §3.1, §3.2, §3.5, §4.1, §4.5.3; the E2/E3
+//! ship library `docs/spec/flow/e2-flight-screens.md` rev 1 §3.3, §4.2. Fidelity: T0 for the
 //! pictures and DAC values (C-0012), T1 for the abort flag and the keys (OB-030 kept), T2 for
 //! the pacing.
 //!
 //! The routine is a straight-line program with fades, highlight pulses and key waits. The port
-//! runs it as a queue of steps, one retrace per waiting step; a key poll appends the steps of
-//! its outcome.
+//! runs it as a queue of steps; a key poll appends the steps of its outcome. Pace at preset P1
+//! (BUG-8): each of the 17 levels of `FadeIn`/`FadeOut` takes the frames
+//! `td_render::fade::frames_per_level` gives for the palette being faded (two for every flight,
+//! menu and help palette: 33–34 frames a fade, C-0012 f3556..3588 and f3595..3628); the item
+//! highlight ramp makes [`PULSE_STEPS_PER_FRAME`] steps per frame, because its retrace wait
+//! returns at once while the retrace bit is still set (C-0012 f3628..3630: 11, 11, 10).
 
 use std::collections::VecDeque;
 
@@ -15,8 +19,8 @@ use td_assets::Episode;
 use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
 use td_render::flight_palette::{FADE_STEPS, fade_target, write_fade_step};
-use td_render::small_text;
 use td_render::{Framebuffer, Image, Rect};
+use td_render::{fade, small_text};
 
 use super::{FlightScreenAssets, KEY_KP2, KEY_KP8, KeyBytes, ModalStep, blank_below_display};
 
@@ -34,9 +38,13 @@ pub const ITEM_RED_LOW: u8 = 32;
 /// The high end of the highlight pulse.
 pub const ITEM_RED_HIGH: u8 = 63;
 
-/// Retraces per key poll: `Crt.Delay(100)` is 100 ms, 7.0 retraces at 70.086 Hz.
-/// ASSUMPTION (T2): seven whole retraces.
+/// Retraces per key poll: `Crt.Delay(100)` is 100 real milliseconds (flight-screens rev 5
+/// §3.5, timing rev 4 §4.4), 7.0 retraces at 70.086 Hz. ASSUMPTION (T2): seven whole retraces.
 pub const POLL_FRAMES: u8 = 7;
+
+/// Highlight ramp steps per frame at preset P1 (flight-screens rev 5 §3.5: a 32-step ramp in
+/// 3 frames, 11, 11 and 10, C-0012 f3628..3630; T2).
+pub const PULSE_STEPS_PER_FRAME: u32 = 11;
 
 /// Flights from which the library shows the fourth player ship (sprite 8) unhatched (§3.2).
 pub const LIBRARY_SHIP_8_FROM: u8 = 4;
@@ -279,19 +287,23 @@ enum Page {
 /// One step of the menu program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Op {
-    /// A fade step per retrace: DAC entries `first..` := `target` · s / 16, s moving from
-    /// `s` to `end`.
+    /// A fade: DAC entries `first..` := `target` · s / 16, s moving from `s` to `end`. Each
+    /// level is written in the last of its frames ([`fade::frames_per_level`] of `target`;
+    /// `wait` = frames left before the level's writes, this one included); the step after the
+    /// last level starts in the same frame.
     Fade {
         target: Box<Palette>,
         s: u8,
         end: u8,
         first: usize,
+        wait: u32,
     },
     /// Instant: draw a page.
     Show(Page),
     /// Instant: clear key bytes 1..600.
     ClearKeys,
-    /// Highlight pulse of one item, one DAC value per retrace from `k` to `end`.
+    /// Highlight pulse of one item, one DAC value per step from `k` to `end`,
+    /// [`PULSE_STEPS_PER_FRAME`] steps per frame.
     Pulse { entry: usize, k: u8, end: u8 },
     /// `Crt.Delay(100)`, then read the keys.
     Poll { frames: u8 },
@@ -325,8 +337,10 @@ pub struct ComputerMenu {
     ops: VecDeque<Op>,
 }
 
+/// `FadeOut` (flight-screens rev 5 §4.5.3): entries 0..255.
 fn fade_out(target: Palette) -> Op {
     Op::Fade {
+        wait: fade::frames_per_level(&target, 0),
         target: Box::new(target),
         s: FADE_STEPS,
         end: 0,
@@ -334,8 +348,10 @@ fn fade_out(target: Palette) -> Op {
     }
 }
 
+/// `FadeIn` (flight-screens rev 5 §4.5.3): entries 1..255.
 fn fade_in(target: Palette) -> Op {
     Op::Fade {
+        wait: fade::frames_per_level(&target, 1),
         target: Box::new(target),
         s: 0,
         end: FADE_STEPS,
@@ -424,6 +440,7 @@ impl ComputerMenu {
     /// Advances one retrace.
     pub fn tick(&mut self, assets: &FlightScreenAssets, input: &TickInput) -> ModalStep {
         self.keys.update(input);
+        let mut pulse_steps = PULSE_STEPS_PER_FRAME;
         while let Some(op) = self.ops.pop_front() {
             match op {
                 Op::Fade {
@@ -431,28 +448,44 @@ impl ComputerMenu {
                     s,
                     end,
                     first,
+                    wait,
                 } => {
-                    write_fade_step(&mut self.canvas.palette, &target, s, first);
-                    if s != end {
-                        let s = if s < end { s + 1 } else { s - 1 };
+                    if wait > 1 {
                         self.ops.push_front(Op::Fade {
                             target,
                             s,
                             end,
                             first,
+                            wait: wait - 1,
                         });
+                        return ModalStep::Continue;
                     }
-                    return ModalStep::Continue;
+                    write_fade_step(&mut self.canvas.palette, &target, s, first);
+                    if s != end {
+                        let s = if s < end { s + 1 } else { s - 1 };
+                        self.ops.push_front(Op::Fade {
+                            wait: fade::frames_per_level(&target, first),
+                            target,
+                            s,
+                            end,
+                            first,
+                        });
+                        return ModalStep::Continue;
+                    }
                 }
                 Op::Show(page) => self.show(assets, page),
                 Op::ClearKeys => self.keys.clear_all(),
                 Op::Pulse { entry, k, end } => {
+                    if pulse_steps == 0 {
+                        self.ops.push_front(Op::Pulse { entry, k, end });
+                        return ModalStep::Continue;
+                    }
+                    pulse_steps -= 1;
                     self.canvas.palette.colors[entry] = Rgb6 { r: k, g: 0, b: 0 };
                     if k != end {
                         let k = if k < end { k + 1 } else { k - 1 };
                         self.ops.push_front(Op::Pulse { entry, k, end });
                     }
-                    return ModalStep::Continue;
                 }
                 Op::Poll { frames } => {
                     if frames > 1 {

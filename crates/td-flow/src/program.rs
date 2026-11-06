@@ -23,7 +23,7 @@ use std::sync::Arc;
 use td_assets::{DataDir, Episode, ExeResources};
 use td_audio::{AudioCommand, CueRestart, CueTable, MusicCues};
 use td_formats::cmf::Cmf;
-use td_formats::palette::Rgb6;
+use td_formats::palette::{Palette, Rgb6};
 use td_input::{Key, TickInput};
 use td_render::dialogue::Side;
 use td_render::{Framebuffer, WIDTH, title_text};
@@ -155,6 +155,16 @@ impl Program {
         self.cues.play_cue(n, load, ctx.audio);
     }
 
+    /// `g_Palette` (DS:0D2E) as the front-end screens of this program run left it
+    /// ([`Program::front_end`]): all black at program start, then what each screen wrote. The
+    /// mission title card loads no palette and fades this buffer with only entry 85 changed,
+    /// so its fade speed depends on it (screens rev 3 §2.1, text rev 3 §4.5.2, BUG-6); a
+    /// dialogue scene starts from it too.
+    #[must_use]
+    pub fn scene_palette(&self) -> Palette {
+        Palette::parse(&self.front_end.scene_palette).unwrap_or_default()
+    }
+
     /// The flight song of flight `n`.
     pub fn play_flight_song(&mut self, ctx: &mut FlowContext<'_>, n: u8) {
         let load = Self::song_loader(&self.data, &mut self.songs);
@@ -169,7 +179,7 @@ impl Program {
                 Err(e) => tracing::warn!("dialogue unavailable: {e}"),
             }
         }
-        match &self.dialogue {
+        let scene = match &self.dialogue {
             Some(a) => DialogueScene::new(a.clone(), self.episode, id),
             None => DialogueScene::new(
                 DialogueAssets {
@@ -182,7 +192,9 @@ impl Program {
                 self.episode,
                 id,
             ),
-        }
+        };
+        // The scene overwrites only its face, text and prompt entries of g_Palette.
+        scene.with_palette_buffer(&self.scene_palette())
     }
 
     /// The screen of a story step (text card, scene card, stills, hint, orders, dossier).
@@ -190,7 +202,7 @@ impl Program {
         let a = &self.assets;
         let lines = |s: &[u16; 3]| [self.text(s[0]), self.text(s[1]), self.text(s[2])];
         Ok(match step {
-            Step::T(addr) => story::text_card(a, self.text(addr)),
+            Step::T(addr) => story::text_card(a, self.text(addr), &self.scene_palette()),
             Step::C(Bg::Pic4, s) => story::pic4_card(&self.data, a, lines(&s))?,
             Step::C(Bg::Td1_18, s) => story::still_18(&self.data, a, lines(&s))?,
             Step::C(bg, s) => {

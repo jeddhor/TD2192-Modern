@@ -23,7 +23,7 @@ use td_formats::saves::{SLOTS, SaveNames, SaveSlots, Slot};
 use td_input::{Key, Pad, TickInput};
 use td_render::{Framebuffer, WIDTH, fade, small_text};
 
-use crate::dialogue::{FADE_FRAMES_PER_LEVEL, KEY_BUFFER};
+use crate::dialogue::KEY_BUFFER;
 use crate::story::is_keystroke;
 
 /// The Episode 1 file names (E2 and E3 use `td2.*` and `td3.*`, save-screens §4.5).
@@ -173,7 +173,7 @@ impl SaveScreen {
             cursor: 1,
             typed: String::new(),
             phase: Phase::FadeIn(0),
-            wait: FADE_FRAMES_PER_LEVEL,
+            wait: fade::frames_per_level(pal, 1),
             keys: Vec::new(),
             pad: None,
             outcome: None,
@@ -263,7 +263,7 @@ impl SaveScreen {
                     fade::write_level(&mut self.screen.palette, &self.pal, s);
                     if s < 16 {
                         self.phase = Phase::FadeIn(s + 1);
-                        self.wait = FADE_FRAMES_PER_LEVEL;
+                        self.wait = fade::frames_per_level(&self.pal, 1);
                     } else {
                         // The first pass of the loop draws the highlight.
                         self.draw_slot(self.cursor, HIGHLIGHT_INK);
@@ -288,7 +288,7 @@ impl SaveScreen {
                         0 => Phase::Done,
                         _ => Phase::FadeOut(s - 1),
                     };
-                    self.wait = FADE_FRAMES_PER_LEVEL;
+                    self.wait = fade::frames_per_level(&self.pal, 1);
                 }
                 Phase::Done => return,
             }
