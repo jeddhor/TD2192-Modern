@@ -179,6 +179,55 @@ fn computer_menu_library_and_help_match_c0012() {
 }
 
 #[test]
+fn menu_fades_take_two_frames_per_level_and_the_ramp_eleven_steps_per_frame() {
+    // BUG-8, flight-screens rev 5 §4.5.3 and §3.5 (C-0012): 17 levels two frames apart, each
+    // written in the second frame of its pair: the fade-out's DAC writes span 33 frames
+    // (f3556..3588), black in the 34th frame after Esc; the fade-in's span 33 frames (C-0012
+    // f3595..3628: 34; the original's page drawing in between, 6 frames, is instant here);
+    // item 0's ramp 32..63 starts in the frame of the last level and runs 11, 11 and 10 steps
+    // (f3628..3630).
+    let data = require_data!();
+    let (_dir, a, pal) = load(&data);
+    let mut shown = Framebuffer::new();
+    shown.palette = pal.clone();
+    let mut m = ComputerMenu::new(shown, &pal, 0, 1);
+    let black = |p: &Palette| p.colors.iter().all(|c| *c == Rgb6::default());
+    let mut frames = Vec::new();
+    while !m.polling() {
+        assert_eq!(m.tick(&a, &idle()), ModalStep::Continue);
+        frames.push(m.canvas().palette.clone());
+        assert!(frames.len() < 200);
+    }
+    let out = frames.iter().position(black).unwrap() + 1;
+    assert_eq!(out, 34, "fade-out: level 0 in the 34th frame");
+    let first_change = frames.iter().position(|p| *p != pal).unwrap() + 1;
+    assert_eq!(
+        first_change, 4,
+        "level 16 (frame 2) leaves the DAC as it was"
+    );
+    let menu_pal = {
+        let mut p = pal.clone();
+        for e in 107..111 {
+            p.colors[e] = Rgb6 { r: 32, g: 0, b: 0 };
+        }
+        p
+    };
+    let full = frames[out..]
+        .iter()
+        .position(|p| p.colors[1..107] == menu_pal.colors[1..107])
+        .unwrap()
+        + out
+        + 1;
+    assert_eq!(
+        full - out,
+        33,
+        "fade-in: level 0 one frame after the fade-out, 16 levels on"
+    );
+    let ramp: Vec<u8> = frames[full - 1..].iter().map(|p| p.colors[107].r).collect();
+    assert_eq!(ramp, [42, 53, 63], "11, 11 and 10 ramp steps");
+}
+
+#[test]
 fn quit_aborts_without_fading_back() {
     let data = require_data!();
     let (_dir, a, pal) = load(&data);
