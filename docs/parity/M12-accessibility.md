@@ -1,6 +1,6 @@
 # Parity: M12-07 accessibility review (2026-11-06, VE-8)
 
-Verifier: VE-8 (Verifier hat; no disassembly, decompiler output or RE exports read). **Method:** a code and spec review of the port against the accessibility row of [MDG §11](../MASTER_DESIGN_GUIDE.md#11-quality-performance-and-accessibility-targets), MDG §9.5, §9.8, §9.10 and §9.12, [port-front-end](../spec/frontend/port-front-end.md) rev 3 and what the [player guide](../player/README.md) promises. Every screen of the three episode programs was traced for the keys and controller inputs it reads. Flash and legibility figures are computed from the specs' constants (flight tick 19.2015 Hz, retrace 70.086 Hz, the 5 × 5 small font) and the presenter's scaling code. Contrast ratios are WCAG 2.x relative-luminance ratios of the 6-bit palette values (×255/63, sRGB). **Not run:** no build, no tests, no game, no captures, no controller, no real display (§5). **Tree under test:** `cba89f1` (this worktree's HEAD; other agents' uncommitted edits not included).
+Verifier: VE-8 (Verifier hat; no disassembly, decompiler output or RE exports read). **Method:** a code and spec review of the port against the accessibility row of [MDG §11](../MASTER_DESIGN_GUIDE.md#11-quality-performance-and-accessibility-targets), MDG §9.5, §9.8, §9.10 and §9.12, [port-front-end](../spec/frontend/port-front-end.md) rev 3 and what the [player guide](../player/README.md) promises. Every screen of the three episode programs was traced for the keys and controller inputs it reads. Flash and legibility figures are computed from the specs' constants (flight tick 19.2015 Hz, retrace 70.086 Hz, the 5 × 5 small font) and the presenter's scaling code. Contrast ratios are WCAG 2.x relative-luminance ratios of the 6-bit palette values (×255/63, sRGB). **Not run** for the review: no game, no captures, no controller, no real display (§5). **Tree under test:** `cba89f1` (main `7afcae6` plus the M12-06/M12-07 claim). **Fixed by this branch** (VE-8, `fix:` commit `c1485c8`, with tests): F2 (South ends the save-name entry) and F11 (F10–F12 cannot be bound); the player guide got a photosensitivity warning and the controller save (F16). Everything else is a recommendation. New unknown: U-571 (does the original flicker with Alt held, F1).
 
 ## 1. Summary
 
@@ -13,7 +13,7 @@ Verifier: VE-8 (Verifier hat; no disassembly, decompiler output or RE exports re
 | Separate music/SFX volumes | MEETS | 0–100 in tens, applied live (`crates/td2192/src/run.rs:284-291`, `crates/td-flow/src/front/options.rs` audio page) |
 | Pause anywhere | PARTIAL | P pauses in flight, F2 freezes any screen, and the computer menu stops the ticks. A controller has no pause by default and cannot reach F2. Nothing pauses when the window loses focus. Timed screens can be held only with F2 (F5, F12) |
 | Readable scaling at 4K | MEETS | Glyphs are at least 40 px tall at 3840 × 2160 in every mode (§3). Caveats: Enhanced widescreen makes all screen text smaller in narrower windows (F10). HiDPI and xBR on text were not tested (§5) |
-| *Beyond §11:* controller-only play (MDG §9.5, port-front-end §5) | GAP | A controller cannot finish the save-name entry, and in Classic it cannot leave it either (F2) |
+| *Beyond §11:* controller-only play (MDG §9.5, port-front-end §5) | PARTIAL | Fixed here: South now ends the save-name entry (F2). Still: no options, pause or host keys from a controller during play (F5), "hit any key" depends on the keyboard binding (F6), names can only be typed on a keyboard |
 | *Beyond §11:* photosensitivity (WCAG 2.3.1) | GAP | Holding the infra-red key makes the whole screen flicker between dark and red at 5.45 Hz (F1). No setting reduces flashing (F3, §4) |
 
 ## 2. Findings, ranked by impact
@@ -29,7 +29,7 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
     - E1 flights 4 and 8, under both profiles;
     - E2 flights 3 and 10, only with the Enhanced fixes. Under Classic, E2's toggle back to mode 1 rewrites only entries 37 and 255 (OB-023, BUG-9; `crates/td2192/src/flight.rs:847-849`), so the picture stays red and only those entries flicker.
   - That is far above WCAG 2.3.1's general and red flash thresholds over the whole picture.
-  - It follows the original's input model, because an AT keyboard repeats held modifier keys too, so the original very likely does the same. This was not checked against the oracle. A slow key release, common with motor impairments, is enough to trigger it.
+  - It follows the original's input model, because an AT keyboard repeats held modifier keys too, so the original very likely does the same. This was not checked against the oracle (U-571). A slow key release, common with motor impairments, is enough to trigger it.
 - Recommendation:
   - The reduce-flashing option (§4) drops typematic repeats of the infra-red keys.
   - Propose an original-bugs entry for this behaviour and let the owner decide whether to fix it in all profiles on safety grounds. The bug policy (MDG §6.3) does not name health hazards.
@@ -42,6 +42,7 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
   - port-front-end §5 lists the controller additions (menu boxes, script choice, "hit any key") but not this screen, and the player guide does not mention saving with a controller.
   - A controller-only player who chooses save and then a slot is stuck under Classic until the window is closed. Under Enhanced, Start cancels the entry, but saving is impossible. This is not a blocker by the definition, because the campaign can be played without saving.
 - Recommendation: South (joystick button 2) ends the entry like Enter under both profiles. That is a port addition like the menu boxes. Small fix candidate S1. Optionally save a default name when nothing was typed.
+- **Fixed** (VE-8, `c1485c8`): S1 as below; test `save_screens::tests::south_ends_the_name_entry`; port-front-end rev 4 §5 and the player guide §5. A controller-only player can now save (with an empty name); typing a name still needs a keyboard.
 
 **F3. Major, safety: no setting reduces flashing.**
 - The original's flashes are kept exactly, with no option to soften them:
@@ -136,7 +137,7 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
 **F11. Minor: a key capture accepts F10–F12.**
 - The keyboard capture binds the first key pressed (`crates/td-flow/src/front/options.rs:585-597`), F10–F12 included. The host acts on those keys at the same time (`crates/td2192/src/run.rs:300-313`).
 - A flight action bound to F11 therefore toggles fullscreen every time it is used.
-- Small fix candidate S2.
+- Small fix candidate S2. **Fixed** (VE-8, `c1485c8`): test `options::tests::a_capture_skips_the_host_keys`; port-front-end rev 4 §3.1 and the player guide §6.
 
 **F12. Minor: nothing pauses when the window loses focus.**
 - `Platform::poll` handles no window events (`crates/td-platform/src/lib.rs:297-322`), so a flight goes on behind another window. Alt+Tab also presses a game key.
@@ -162,8 +163,8 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
 **F16. Cosmetic: documentation and a release-build developer override.**
 - The player guide:
   - says "hit any key" screens take "a controller button" (F6);
-  - has no photosensitivity warning;
-  - does not say how to save with a controller.
+  - had no photosensitivity warning (added by VE-8 at the top of the guide);
+  - did not say how to save with a controller (added with the F2 fix).
 - MDG §11's "(Enhanced)" for the colour-blind line and for the paging item predates D5. Suggest "(accessibility option, both profiles)".
 - `dialogue.rs:26-27` still says there is no joystick input.
 - `[dev] tick_hz` in `settings.toml` changes the pace of every screen in release builds (`crates/td2192/src/run.rs:101`). MDG §9.12 keeps such overrides out of release, and it is no usable slow-down.
@@ -174,9 +175,28 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
 - The first-run message box and file dialogs are the OS's own. They work by keyboard and screen reader, not by controller.
 - Flights keep the original's time limits, and Classic must keep 19.2015 Hz. An accessibility "game speed" (70–100 % of the flight tick rate) would change only wall-clock pacing: td-sim stays per tick and replays are unaffected. Owner decision.
 
+### 2.0 Recommendations, ranked
+
+| Rank | Finding | Recommendation | Owner | State |
+|---:|---|---|---|---|
+| 1 | F1, F3 | An accessibility option "reduce flashing" (§4): no typematic repeat for the infra-red keys, capped DAC flashes at the presentation stage, softer Enhanced lighting; and decide whether the held-Alt flicker is fixed in every profile on safety grounds (U-571) | user (policy), IM | open |
+| 2 | F2 | South ends the save-name entry | VE-8 | **done** |
+| 3 | F4 | Rebindable menu actions (confirm, back, up, down, next page, skip) and host actions (options, scaling, fullscreen, screenshot) | IM | open |
+| 4 | F5 | A controller default for pause (S3) and a bindable host "options" action | user (defaults), IM | open |
+| 5 | F6 | "Hit any key" waits read joystick buttons 1 and 2 (also a fidelity fix); buttons inject the original key for screens | IM | open |
+| 6 | F7 | "Text waits for a key" option; page breaks ignore keys pressed during typing | IM | open |
+| 7 | F8 | A cursor mark on the port's screens; an "infra-red tint" option | IM | open |
+| 8 | F9 | Port inks 229 and 226 to at least 4.5:1 and 4.3:1 (S4) | user (look), IM | open |
+| 9 | F10 | Present non-flight frames 320 wide (or make `auto` the preset width) | user (presentation §4.3), IM | open |
+| 10 | F11 | F10–F12 cannot be bound | VE-8 | **done** |
+| 11 | F12 | Stop the clock or pause when the window loses focus | IM | open |
+| 12 | F13 | SDL text input for names; the typed character for the yes key | IM | open |
+| 13 | F14, F15 | Controller binding limits; a steady hit indicator | IM | open |
+| 14 | F16 | Player guide and MDG wording; keep `[dev] tick_hz` out of release builds | docs, IM | guide part done |
+
 ### 2.1 Small fix candidates
 
-Each is a few lines. Each needs a test and the spec or guide line named.
+Each is a few lines. Each needs a test and the spec or guide line named. **S1 and S2 are applied** (`c1485c8`, with tests and the spec and guide changes). S3 (a default pause button) and S4 (port ink colours, which change the start screen's snapshot hashes and port-front-end §1's table) change a default the owner chose, so they stay recommendations.
 
 - **S1 (F2), `crates/td-flow/src/save_screens.rs`.**
   - Add the field `south_held: bool` after `pad: Option<Pad>,` in `SaveScreen`, and `south_held: false,` after `pad: None,` in `SaveScreen::new`.
