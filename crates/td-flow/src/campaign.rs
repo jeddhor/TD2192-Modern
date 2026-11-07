@@ -23,6 +23,11 @@
 //! ([`Program::front_end`]) when it ends, and the launcher receives it before each flight
 //! ([`FlightLauncher::set_front_end`]): the flight's two-digit-heading volleys read it
 //! (weapons rev 4 §3.3, OB-017).
+//!
+//! Block 19 also reports what its screens between flights 19 and 21 did on the flight heap
+//! (`FrontEnd::heap`, mission-ships rev 6 §4.1.1, U-500): the songs (music on), the debrief, the
+//! cards and the dialogues with the portraits they loaded, up to the step where a skip jumped to
+//! flight 21. Flight 21 loads no mission file, and its ships start from those leftovers.
 
 use std::fmt;
 
@@ -30,6 +35,7 @@ use td_input::{Key, TickInput};
 use td_render::Framebuffer;
 use td_render::small_text;
 use td_sim::flight::front_end::FrontEnd;
+use td_sim::flight::heap::HeapUse;
 
 use crate::dialogue::DialogueScene;
 use crate::program::Program;
@@ -856,6 +862,9 @@ pub struct Campaign {
     result: BlockResult,
     /// Keys still in the BIOS buffer for the next screen.
     type_ahead: Vec<Key>,
+    /// Block 19, from the end of flight 19 to the launch of flight 21: the front end's uses of
+    /// the flight heap so far (mission-ships rev 6 §4.1.1).
+    heap: Option<Vec<HeapUse>>,
 }
 
 impl fmt::Debug for Campaign {
@@ -906,6 +915,7 @@ impl Campaign {
                 ..BlockResult::default()
             },
             type_ahead: Vec::new(),
+            heap: None,
         }
     }
 
@@ -1019,6 +1029,19 @@ impl Campaign {
             _ => false,
         };
         let step = self.child_step.take();
+        // What the screen did on the flight heap (block 19 before flight 21, §4.1.1): every
+        // scene card, dialogue scene and the debrief load the small font; dialogues and the
+        // debrief load portraits.
+        if let Some(uses) = &mut self.heap {
+            match (&child, step) {
+                (Some(Child::Dialogue(d)), _) => uses.push(d.heap_use()),
+                (Some(Child::Story(_)), Some(C(..))) => uses.push(HeapUse::card()),
+                (Some(Child::Story(_)), None) if self.pos == Pos::Debrief => {
+                    uses.push(HeapUse::debrief());
+                }
+                _ => {}
+            }
+        }
         match (self.pos, child) {
             (Pos::Fly, Some(Child::Flight(f))) if step == Some(Fly21) => {
                 // Flight 21 (episode-program-flow rev 5 §4.4, U-081): only the abort flag is
@@ -1040,6 +1063,8 @@ impl Campaign {
             (Pos::Fly, Some(Child::Flight(f))) => {
                 prog.cues.stop(ctx.audio);
                 self.last = f.result();
+                // Block 19: the heap's leftovers from here to flight 21 are flight 21's paths.
+                self.heap = self.post().contains(&Fly21).then(Vec::new);
                 self.result.mission_kills = self.last.kills;
                 let r = self.last;
                 let offered = r.died
@@ -1147,6 +1172,7 @@ impl Campaign {
             }
             Pos::Debrief => {
                 prog.play_cue(ctx, 8);
+                self.record_song(prog, 8);
                 self.child = Some(Child::Story(Box::new(self.debrief(prog))));
                 return;
             }
@@ -1177,11 +1203,17 @@ impl Campaign {
         self.child_step = Some(step);
         match step {
             M(0) => prog.cues.stop(ctx.audio),
-            M(n) => prog.play_cue(ctx, n),
+            M(n) => {
+                prog.play_cue(ctx, n);
+                self.record_song(prog, n);
+            }
             Glue => {}
             Fly21 => {
                 self.resume_after_fly21 = Pos::Post(self.post_index() + 1);
                 self.pos = Pos::Fly;
+                // Flight 21 places its ships from what the front end left on the heap since
+                // flight 19 (§4.1.1); the launcher gets it with the front-end state.
+                prog.front_end.heap = self.heap.take().unwrap_or_default();
                 self.launch(prog, ctx, 21);
                 self.child_step = Some(Fly21);
                 return;
@@ -1217,8 +1249,22 @@ impl Campaign {
         prog.cues.stop(ctx.audio);
         prog.play_flight_song(ctx, flight);
         prog.launcher.set_front_end(&prog.front_end);
+        // The heap uses belong to this flight only.
+        prog.front_end.heap.clear();
         let f = prog.launcher.launch(ctx, flight);
         self.child = Some(Child::Flight(f));
+    }
+
+    /// `Snd_PlayMusic(n)` on the flight heap while block 19 records (§4.1.1): with music on
+    /// the song file is read at the heap mark; with music off nothing is loaded.
+    fn record_song(&mut self, prog: &Program, n: u8) {
+        if let (Some(uses), true, Some(file)) = (
+            &mut self.heap,
+            prog.music_on,
+            td_audio::music_cues::song_file(n),
+        ) {
+            uses.push(HeapUse::Song(file.to_owned()));
+        }
     }
 
     fn debrief(&self, prog: &Program) -> StoryScreen {

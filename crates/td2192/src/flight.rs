@@ -547,9 +547,16 @@ impl FlightArena {
             TileMap::parse_episode(&dir.read(episode::map_file(ep, number))?)?,
             muzzles,
         );
-        let session = run
+        let mut session = run
             .as_ref()
             .map_or_else(|| Session::for_episode(ep), |r| r.borrow().session.clone());
+        // What the front end did on the flight heap since the last flight goes over the path
+        // arrays (mission-ships rev 6 §4.1.1, U-500): E1 flight 21 loads no mission file and
+        // places its ships from them. The uses belong to this flight only.
+        if let Some(r) = &run {
+            let uses = std::mem::take(&mut r.borrow_mut().front_end.heap);
+            Arc::make_mut(&mut session.paths).apply(&uses, |f| dir.read(f))?;
+        }
         let mut flight = Flight::start(number, mission.as_ref(), &world, session);
         // The host shows the mission events' real-time screens inside the tick.
         flight.stop_for_scenes = true;

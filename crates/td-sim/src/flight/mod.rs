@@ -1,7 +1,7 @@
 //! One flight (`Sim_FlyMission`): the per-tick order and the player's ship.
 //!
 //! Spec: `docs/spec/sim/tick-order.md` rev 1 (step numbers below are its §4 list),
-//! `docs/spec/sim/flight-model.md` rev 2 and `docs/spec/sim/weapons.md` rev 1. Fidelity: T1.
+//! `docs/spec/sim/flight-model.md` rev 3 and `docs/spec/sim/weapons.md` rev 6. Fidelity: T1.
 //!
 //! Implemented: tick counter, turn step, afterburner burst, projectiles and hits, end-sequence
 //! counting, explosions, the white flash, the per-tick page toggle, modal interruptions (comm
@@ -20,8 +20,10 @@
 //! each).
 //!
 //! Session state: the original keeps the RNG, the class tables (patched by some flights,
-//! OB-018) and the ship slots and records across the flights of one program run. [`Session`]
-//! carries them from one [`Flight`] to the next.
+//! OB-018), the ship slots and records (the slots' turn directions included), the player's
+//! turn direction and the path arrays' heap memory across the flights of one program run
+//! (flight-model rev 3 §2, mission-ships rev 6 §2, §4.1.1; U-501, U-500). [`Session`] carries
+//! them from one [`Flight`] to the next.
 //!
 //! Modal screens run *inside* a tick in the original: the tick stops at that point and
 //! continues when the screen closes. [`Flight::tick`] returns [`TickResult::Modal`] there;
@@ -32,6 +34,7 @@ pub mod episode;
 pub mod explosions;
 pub mod front_end;
 pub mod heading;
+pub mod heap;
 pub mod hit_flash;
 pub mod logic;
 pub mod player;
@@ -39,6 +42,8 @@ pub mod setup;
 pub mod ships;
 pub mod shots;
 pub mod tables;
+
+use std::sync::Arc;
 
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
@@ -49,8 +54,9 @@ use crate::rng::BpRandom;
 pub use episode::Episode;
 use explosions::Explosions;
 use heading::Heading;
+use heap::PathMemory;
 use logic::{HudSnapshot, MissionState};
-use player::{Dirs, Event, Player, View};
+use player::{Dirs, Event, Player, Turn, View};
 use ships::{AiContext, Ships};
 use shots::{Combat, Muzzles, Shots};
 use tables::ClassTables;
@@ -160,8 +166,21 @@ pub struct Session {
     pub rng: BpRandom,
     /// Class tables, with the patches of the flights flown so far.
     pub classes: ClassTables,
-    /// Ship slots and records (flight 21 loads no mission file and flies these).
+    /// Ship slots and records. Setup keeps parts of them: the record fields it does not clear,
+    /// the classes in E1 flight 21 (no mission file), and every slot's turn direction
+    /// (DS:3B1A − 1 + s), 0 at program start and never reset by setup (mission-ships rev 6 §2,
+    /// §4.1; U-501).
     pub ships: Ships,
+    /// The player's turn direction `g_PlayerTurnDir` (DS:1A5A): 0 at program start (BSS),
+    /// written only by the steering of flight-model §4.6, so a flight starts with the
+    /// previous flight's last value (flight-model rev 3 §2, §4.6; U-501). From the setup
+    /// heading it cannot change a course; it is state (a byte comparison, the state hash).
+    pub turn: Turn,
+    /// The two ship path arrays on the flight heap (mission-ships rev 6 §4.1.1, U-500): the
+    /// last mission file's, with what the front end wrote over them since
+    /// ([`PathMemory::apply`]). E1 flight 21 loads no mission file and places its ships from
+    /// them. Shared until changed (a flight clones it only to load a mission file).
+    pub paths: Arc<PathMemory>,
     /// The player tile the AI last saw (DS:9766/9767; 0 at program start). The AI reads it
     /// at setup, before the first tick writes it.
     pub ai_player: (u8, u8),
@@ -194,6 +213,8 @@ impl Session {
             rng,
             classes: ClassTables::default(),
             ships,
+            turn: Turn::None,
+            paths: Arc::new(PathMemory::new()),
             ai_player: (0, 0),
             mission: MissionState::default(),
             radar_set2: false,
@@ -248,6 +269,9 @@ pub struct Flight {
     pub classes: ClassTables,
     /// The player tile the AI last saw (session state, see [`Session`]).
     pub ai_player: (u8, u8),
+    /// The path arrays' heap memory (session state, see [`Session::paths`]); not hashed (the
+    /// ship records hold the copied paths).
+    pub paths: Arc<PathMemory>,
     /// Mission phase, ticker, transmission state and the other mission-logic globals.
     pub mission: MissionState,
     /// E2 radar colours of map set 2 in effect (session state, see [`Session`]).
@@ -324,22 +348,30 @@ impl Flight {
             mut rng,
             mut classes,
             mut ships,
+            turn,
+            mut paths,
             ai_player,
             mission: mut logic,
             mut radar_set2,
             weapon,
         } = session;
         ships.reset_records(&mut rng);
+        // Step 2: the mission file's classes and path arrays. E1 flight 21 loads none: its
+        // slots keep their classes, and steps 3 and 4 read what the path arrays' memory holds
+        // (mission-ships rev 6 §4.1.1, U-500, OB-140).
         if let Some(m) = mission {
-            ships.load_mission(m, &classes);
-            // A class-FFh slot reads the bytes after the class tables: shields 34, armour
-            // 2 × 34 = 68 in every episode (E1 DS:03D1 / DS:03C7, confirmed by VE-1 in C-0017,
-            // U-143 and BUG-1; E2 DS:052F / DS:0525, e2-mission-setup §2; E3 the same DS:052F /
-            // DS:0525, e3-mission-setup §2, confirmed in C-0036 and C-0041).
-            for s in ships.0.iter_mut().filter(|s| !s.alive()) {
-                s.shields = 34;
-                s.armour = 68;
-            }
+            Arc::make_mut(&mut paths).load_mission(m);
+            ships.load_classes(m);
+        }
+        // Steps 3 and 4, for every flight.
+        ships.load_paths(&paths, &classes);
+        // A class-FFh slot reads the bytes after the class tables: shields 34, armour
+        // 2 × 34 = 68 in every episode (E1 DS:03D1 / DS:03C7, confirmed by VE-1 in C-0017,
+        // U-143 and BUG-1; E2 DS:052F / DS:0525, e2-mission-setup §2; E3 the same DS:052F /
+        // DS:0525, e3-mission-setup §2, confirmed in C-0036 and C-0041).
+        for s in ships.0.iter_mut().filter(|s| !s.alive()) {
+            s.shields = 34;
+            s.armour = 68;
         }
         if episode == Episode::E2 && episode::map_set(episode, number) == 2 {
             radar_set2 = true;
@@ -364,6 +396,8 @@ impl Flight {
         let mut player = Player::new(class, view);
         player.armour = episode::start_armour(episode, number, classes.armour(class));
         player.shields = classes.shields(class) as i8;
+        // Setup writes the heading and the target, not the turn direction (U-501).
+        player.turn = turn;
         let mut f = Self::with_player(number, player);
         f.episode = episode;
         // Setup writes g_Weapon for classes 2..8 only (weapons §3.2); classes 0 and 1 fly with
@@ -390,6 +424,7 @@ impl Flight {
         f.rng = rng;
         f.classes = classes;
         f.ships = ships;
+        f.paths = paths;
         f.ai_player = ai_player;
         f.mission = logic;
         f.radar_set2 = radar_set2;
@@ -403,6 +438,8 @@ impl Flight {
             rng: self.rng,
             classes: self.classes.clone(),
             ships: self.ships.clone(),
+            turn: self.player.turn,
+            paths: Arc::clone(&self.paths),
             ai_player: self.ai_player,
             mission: self.mission,
             radar_set2: self.radar_set2,
@@ -468,6 +505,7 @@ impl Flight {
             rng: BpRandom::new(),
             classes: ClassTables::default(),
             ai_player: (0, 0),
+            paths: Arc::new(PathMemory::new()),
             mission: MissionState::default(),
             radar_set2: false,
             cells_off: false,
