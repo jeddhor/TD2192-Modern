@@ -1,8 +1,14 @@
 # TD2192-Modern
 
-A clean-room, modern reimplementation of **Traffic Department 2192** (Safari Software, 1994), the top-down hoverskid combat game set on the desert planet Seche, for current Windows, Linux and macOS.
+A clean-room, modern reimplementation of **Traffic Department 2192** (Safari Software, 1994), the top-down hoverskid combat game set on the desert planet Seche, for current Windows and Linux (macOS later).
 
-> **Status:** in development, not yet a release. Episode 1 starts from script choice through the main menu, the story scenes and dialogue, into flights with the original flight model, weapons and mission ships. Each of these is checked against recordings of the original game (see [docs/parity/](docs/parity/)). Still missing: mission objectives (so flights cannot be won yet), the HUD instruments, the in-flight menus, saving, and Episodes 2 and 3. Progress is tracked in [docs/STATUS.md](docs/STATUS.md).
+> **Status:** release candidate **0.9.0**, not yet 1.0.
+>
+> - **What is in it:** all three episodes, which play from the intro to their endings, with saving, the options, controller support, the Enhanced profile and accessibility options.
+> - **How it is checked:** against recordings of the original game. Every flight of the three episodes matches the original tick for tick, and 90.2 % of the parity checklist passes (see [docs/parity/](docs/parity/)).
+> - **What 1.0 waits for:** a 95 % parity bar, two open major bugs and the owner's sign-off.
+>
+> What is in this release and what is still missing: [CHANGELOG.md](CHANGELOG.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
 ## What this is
 
@@ -21,9 +27,10 @@ td2192                     start screen: choose an episode, options, quit
 td2192 --episode N         start Episode N (1, 2 or 3) directly, as the original does
 td2192 --check             report whether the installation is complete
 td2192 --fullscreen
+td2192 --version
 ```
 
-Building from source needs the Rust toolchain pinned in `rust-toolchain.toml`. SDL 3 is built by Cargo, which needs CMake and a C/C++ compiler. Run `cargo run --release -p td2192`.
+Building from source needs the Rust toolchain pinned in `rust-toolchain.toml`. SDL 3 is built by Cargo, which needs CMake and a C/C++ compiler. Run `cargo run --release -p td2192`. The release packages are built with `tools/scripts/package.ps1` (Windows) and `tools/scripts/package.sh` (Linux); see [docs/RELEASE.md](docs/RELEASE.md).
 
 ### Controls (as in the original)
 
@@ -59,6 +66,8 @@ Developer views: `--dev-flight N` (fly flight N), `--dev-dialogue SCENE`, `--dev
 | Document | Purpose |
 |---|---|
 | [docs/player/README.md](docs/player/README.md) | Player guide: install, game data, controls, options, Classic and Enhanced, saves, troubleshooting |
+| [CHANGELOG.md](CHANGELOG.md) | What each release contains, its known differences from the original and known issues |
+| [docs/RELEASE.md](docs/RELEASE.md) | Version scheme, criteria for 1.0, release checklist, install tests |
 | [docs/MASTER_DESIGN_GUIDE.md](docs/MASTER_DESIGN_GUIDE.md) | Vision, scope, architecture, subsystem designs, milestones, risks, open decisions |
 | [docs/AGENT_DEVELOPMENT_GUIDE.md](docs/AGENT_DEVELOPMENT_GUIDE.md) | How AI agents (and humans) work on the project: roles, clean-room protocol, RE/spec/implementation/testing playbooks |
 | [AGENTS.md](AGENTS.md) | Always-on rules for agents (short) |

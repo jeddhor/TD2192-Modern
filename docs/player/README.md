@@ -18,7 +18,7 @@ This guide covers:
 10. [Troubleshooting](#10-troubleshooting)
 11. [Command line](#11-command-line)
 
-> TD2192-Modern is still being developed, and this guide describes the current version. Some parts of the game are not finished yet; see [the project page](../../README.md) for the current state.
+> TD2192-Modern is still being developed, and this guide describes the current version, a release candidate for 1.0. What it contains, how it differs from the original and its known issues are in the changelog: `CHANGELOG.md`, next to this guide in the package ([CHANGELOG.md](../../CHANGELOG.md) in the repository). `td2192 --version` shows which version you have.
 
 > **Photosensitivity warning.** Like the 1994 original, the game flashes the whole screen: white when a homing missile destroys a ship, red and yellow in some explosions and mission events, and dark/red when the infra-red view is switched (holding the infra-red key repeats it several times a second). If you or anyone watching is sensitive to flashing lights, turn on **reduce flashing** before you play (F2, then **accessibility**; see [section 6](#accessibility)). It makes every colour change of the flight picture gradual, so that they stay below the flash limits of the WCAG 2.3.1 guideline, softens the cut-scene's flashes and the lighting effects, and turns off bloom. Under the enhanced profile, explosions still light up their surroundings a little; set **dynamic lighting** to off as well to remove that. Even so, take care, and avoid holding the infra-red key.
 
@@ -37,7 +37,9 @@ This guide covers:
 **Windows:**
 
 1. Download the TD2192-Modern package (`TD2192-Modern-<version>-windows-x64.zip`) and unpack it into a folder of your choice, for example `C:\Games\TD2192-Modern`.
-2. Run `td2192.exe`.
+2. Run `td2192.exe`. Nothing else needs installing; the Visual C++ runtime is built in.
+
+   A console window opens beside the game window. It shows the game's log; closing it also closes the game.
 
 **Linux:**
 
@@ -140,7 +142,7 @@ These are the original keys. You can change every one of them ([section 6](#6-op
 | F6 | Read an incoming transmission (when the indicator lights) |
 | M | Repeat the last message |
 | P | Pause; any key (or any controller button) goes on |
-| S | The original's sound-device switch. Not used by TD2192-Modern yet. |
+| S | Episode 1: sound effects off or on. The original switched them to the PC speaker, which TD2192-Modern does not have yet |
 
 ### The original's cheat keys
 
@@ -366,7 +368,7 @@ Everything TD2192-Modern writes goes into one user folder:
 | System | User folder |
 |---|---|
 | Windows | `%APPDATA%\TD2192-Modern\TD2192-Modern\` (usually `C:\Users\<you>\AppData\Roaming\TD2192-Modern\TD2192-Modern\`) |
-| Linux (planned) | `~/.local/share/TD2192-Modern/TD2192-Modern/` |
+| Linux | `~/.local/share/TD2192-Modern/TD2192-Modern/` (or under `$XDG_DATA_HOME` when that is set) |
 | macOS (planned) | `~/Library/Application Support/TD2192-Modern/TD2192-Modern/` |
 
 Inside it:
@@ -421,5 +423,6 @@ You do not need any of these to play, but they can help:
 | `td2192 --data <folder or zip>` | Use this game folder or ZIP file for this run (it wins over the saved choice) |
 | `td2192 --fullscreen` | Start in fullscreen |
 | `td2192 --no-intro` | Start Episode 1 without the intro |
-| `td2192 --check` | Print which game data is used, its file check and the playable episodes, then exit |
+| `td2192 --check` | Print the version, which game data is used, its file check and the playable episodes, then exit |
+| `td2192 --version` | Print the version |
 | `td2192 --help` | List every option |
