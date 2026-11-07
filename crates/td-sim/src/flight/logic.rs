@@ -979,10 +979,11 @@ impl Flight {
             self.alert(M1(29));
             self.mission.comm_pending = true;
         }
-        // OB-022 (fix-enhanced, decided by the user 2026-11-06): in the original, Vulture IIs 8
+        // OB-022 (fix-all, the user's escalation rule, 2026-11-06): in the original, Vulture IIs 8
         // and 9 gone before the player came within 30 tiles leave phase 3 for ever (rule E
-        // needs a live one, U-182), a soft lock. With the Enhanced fixes the flight moves on
-        // to phase 5, as rule C does when they die with the transmission pending.
+        // needs a live one, U-182, reachable with plain input: C-0342), a soft lock. With the
+        // fix the flight moves on to phase 5, as rule C does when they die with the
+        // transmission pending. The game host turns it on in every profile.
         if self.enhanced_fixes && self.dead(&[8, 9]) && self.phase() == 3 {
             self.set_phase(5);
         }

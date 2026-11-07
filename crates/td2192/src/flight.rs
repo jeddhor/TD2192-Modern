@@ -219,7 +219,12 @@ impl Typematic {
             t.checked_sub(TYPEMATIC_DELAY_US)
                 .map_or(0, |d| d / TYPEMATIC_PERIOD_US + 1)
         };
-        let repeats = self.last.is_none_or(|k| k == host);
+        // OB-176 (fix-all, the user, 2026-11-07): Alt and right Alt make one code per press, no
+        // typematic repeats, so a held Alt toggles the infra-red palette once instead of
+        // strobing the whole screen ten times a second (a photosensitivity hazard; the
+        // original repeats, U-571, C-0341).
+        let no_repeat = matches!(key, KeyByte::Flight(FlightKey::Alt | FlightKey::RightAlt));
+        let repeats = self.last.is_none_or(|k| k == host) && !no_repeat;
         (true, repeats && count(t1) > count(t0))
     }
 
@@ -713,7 +718,8 @@ impl FlightArena {
         let mut flight = Flight::start(number, mission.as_ref(), &world, session);
         // The host shows the mission events' real-time screens inside the tick.
         flight.stop_for_scenes = true;
-        flight.enhanced_fixes = fixes;
+        // OB-022 is fix-all (U-182): the soft-lock fix applies in every profile.
+        flight.enhanced_fixes = true;
         // E2: the map-set-2 colours replace the table for the rest of the run (OB-024,
         // preserved in Classic); the Enhanced fixes restore it for map set 1.
         let radar_set2 = radar_set2_shown(ep, number, flight.radar_set2, fixes);
@@ -859,7 +865,8 @@ impl FlightArena {
         // profile: the Enhanced original-bug fixes apply from the next tick.
         self.binds = bindings(ctx.settings);
         let fixes = ctx.settings.enhanced_fixes();
-        self.flight.enhanced_fixes = fixes;
+        // OB-022 is fix-all (U-182): on whatever the profile.
+        self.flight.enhanced_fixes = true;
         // The original reads the joystick only when it is the chosen controller; the port
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
@@ -1961,6 +1968,35 @@ mod tests {
     }
 
     #[test]
+    fn a_held_alt_makes_one_code_per_press() {
+        // OB-176 (fix-all, the user, 2026-11-07): no typematic repeats for Alt and right Alt,
+        // so holding it toggles the infra-red palette once instead of every tick (U-571).
+        for (host, key) in [
+            (Key::LALT, FlightKey::Alt),
+            (Key::RALT, FlightKey::RightAlt),
+        ] {
+            let binds = [(host, key)];
+            let mut t = Typematic::default();
+            let mut first = TickInput::default();
+            first.held.insert(host);
+            first.pressed.push(host);
+            let held = TickInput {
+                held: first.held.clone(),
+                ..TickInput::default()
+            };
+            let c = t.controls(&first, &binds);
+            assert!(c.is_down(key) && c.any_made(), "{key:?}: the press");
+            for tick in 1..=60 {
+                let c = t.controls(&held, &binds);
+                assert!(
+                    c.is_down(key) && !c.any_made(),
+                    "{key:?}: tick {tick} repeated"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn typematic_repeats_after_the_delay() {
         let binds = [(Key::SPACE, FlightKey::Space)];
         let mut t = Typematic::default();
@@ -2739,11 +2775,11 @@ mod tests {
         let mut modes = Vec::new();
         for t in 0..34 + 160 {
             let mut input = TickInput::default();
-            // From the first flight tick on, Alt is held (pressed once).
+            // From the first flight tick on, Alt is tapped every tick: a held Alt no longer
+            // repeats (OB-176, fix-all), but a player hammering the key still makes the raw
+            // strobe, which the option must contain.
             if t >= 34 {
                 input.held.insert(Key::LALT);
-            }
-            if t == 34 {
                 input.pressed.push(Key::LALT);
             }
             for (i, arena) in arenas.iter_mut().enumerate() {
@@ -2777,7 +2813,10 @@ mod tests {
             }
         }
         let flips = modes.windows(2).filter(|w| w[0] != w[1]).count();
-        assert!(flips > 40, "Alt held flips the view: {flips} flips");
+        assert!(
+            flips > 40,
+            "Alt tapped every tick flips the view: {flips} flips"
+        );
         // The HUD's lamp entries are written over the presented palette: small lamps, outside
         // WCAG's area threshold and outside the option (hud §4.3-§4.8).
         let lamps: Vec<usize> = arenas[0]
@@ -2798,6 +2837,43 @@ mod tests {
             (0, 0),
             "reduced: no flashes"
         );
+    }
+
+    /// OB-176 (fix-all, the user, 2026-11-07): holding Alt in an infra-red flight flips the
+    /// view once, whatever the profile; the original's typematic strobe (U-571, C-0341) is gone.
+    #[test]
+    fn a_held_alt_flips_the_infra_red_view_once() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let settings = td_flow::Settings::default();
+        let mut arena = FlightArena::new(&dir, &res, Episode::E1, 4).unwrap();
+        let mut audio = Vec::new();
+        // E1 flight 4 starts in infra-red mode 1.
+        let mut modes = vec![arena.flight.palette_mode];
+        assert_eq!(modes[0], 1);
+        for t in 0..34 + 160 {
+            let mut input = TickInput::default();
+            if t >= 34 {
+                input.held.insert(Key::LALT);
+            }
+            if t == 34 {
+                input.pressed.push(Key::LALT);
+            }
+            let mut ctx = FlowContext {
+                data: &dir,
+                resources: &res,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, &input);
+            audio.clear();
+            if arena.opening.is_none() {
+                modes.push(arena.flight.palette_mode);
+            }
+        }
+        let flips = modes.windows(2).filter(|w| w[0] != w[1]).count();
+        assert_eq!(flips, 1, "a held Alt flips the view once: {modes:?}");
     }
 
     /// M12-18: the option switched on or off in the middle of a flight changes nothing at

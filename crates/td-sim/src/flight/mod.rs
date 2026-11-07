@@ -322,10 +322,11 @@ pub struct Flight {
     /// tick runs on as if no key changed while the screen showed, which gives the same state
     /// (flight-screens rev 4 §4.10). Not part of the state hash.
     pub stop_for_scenes: bool,
-    /// The Enhanced profile's original-bug fixes (`docs/spec/original-bugs.md`). The only one
-    /// in the simulation is OB-022 (E1 flight 8 also advances when both Vulture IIs are gone;
-    /// decided by the user 2026-11-06, the one gameplay fix under Enhanced). Off (Classic) by
-    /// default; the host sets it. A setting, not state: not part of the state hash.
+    /// The port's gameplay fix for OB-022 (E1 flight 8 also advances when both Vulture IIs are
+    /// gone). The user decided it fix-enhanced on 2026-11-06 with escalation to fix-all if the
+    /// soft lock happens in ordinary play, which U-182 (C-0342) then showed: the game host sets
+    /// it in every profile. Off by default, so the simulation itself, its replays and the
+    /// oracle tests keep the original's soft lock. A setting, not state: not in the state hash.
     pub enhanced_fixes: bool,
     /// E1's in-flight S key (tick-order step 34, tested before the chords; globals §5, U-531):
     /// the original toggles `g_CfgSfx` between 1 (effects off) and 3 (PC speaker). The port

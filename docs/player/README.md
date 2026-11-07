@@ -134,7 +134,7 @@ These are the original keys. You can change every one of them ([section 6](#6-op
 | Space | Fire. Hold it for the guns; press once per missile |
 | Tab | Switch between the guns and missiles |
 | Keypad + or keypad 0 | Afterburner burst (only ships that have one) |
-| Alt (left or right) | Infra-red view on or off, where the ship has it |
+| Alt (left or right) | Infra-red view on or off, where the ship has it (once per press; holding it does not repeat) |
 | Esc | Computer menu (ship library, help, quit the flight) |
 | F5 | Tactical map |
 | F6 | Read an incoming transmission (when the indicator lights) |
@@ -280,7 +280,7 @@ TD2192-Modern has two **profiles**:
 
   Each option can then be changed on its own. What you change is remembered and kept, also when the preset changes in a later version; **restore the enhanced preset** on the profile page forgets your changes. Switching back to Classic turns every Enhanced option off again, but remembers your choices.
 
-The options marked * belong to the profile. The accessibility options and the intro setting are separate options, off by default (they work under either profile). **in the background** follows the profile until you choose. No Enhanced option changes how the game itself plays, except widescreen, which lets you see more, and one bug fix: Episode 1 flight 8 can no longer get stuck (section 8).
+The options marked * belong to the profile. The accessibility options and the intro setting are separate options, off by default (they work under either profile). **in the background** follows the profile until you choose. No Enhanced option changes how the game itself plays, except widescreen, which lets you see more.
 
 Settings files written by earlier versions still load. There every Enhanced option was saved even if you never touched it, so options saved as off or none count as untouched and get the preset; options you had turned on keep their value.
 
@@ -339,7 +339,9 @@ The 1994 game has bugs and quirks. TD2192-Modern records each one it knows about
   - missing save files made the save and load screens crash; now the slots are empty and saving creates the files;
   - a damaged dialogue file could hang the game;
   - timed screens could vanish at once when the computer clock wrapped round;
-  - in Episode 3 a flight-16 effect leaked into later flights after a retry or a loaded game and froze some ships, which could block the campaign.
+  - in Episode 3 a flight-16 effect leaked into later flights after a retry or a loaded game and froze some ships, which could block the campaign;
+  - Episode 1 flight 8 could get stuck for good when both Vulture IIs left or were destroyed before you got near them; the flight now goes on (the only fix that changes play);
+  - holding Alt in an infra-red flight made the whole screen flash between dark and red about ten times a second; now Alt switches the view once per press, as a deliberate press always did.
 - **Fixed in the Enhanced profile only** when it is just an annoyance. The Enhanced preset turns these fixes on, and **original bug fixes** on the profile page turns them off again. Under the classic profile the game keeps them, as the original did:
   - music restarting from the top when the same song is asked for again;
   - colours staying red after leaving the second infra-red view (Episode 2);
@@ -347,7 +349,6 @@ The 1994 game has bugs and quirks. TD2192-Modern records each one it knows about
   - wrong radar colours in Episode 2 flights 1 to 8 after flying one of flights 9 to 20 in the same session;
   - no way to cancel typing a save name (now Escape cancels it and puts the slot back);
   - one piece of the lander in Episode 1 flight 20 drawn wrong after looking at the ship library;
-  - Episode 1 flight 8 getting stuck when both Vulture IIs are gone before you get near them (the flight now goes on; this is the only fix that changes play, chosen by the project owner);
   - a fragment of the hoverskid flashing at the bottom of the intro.
 
   A controller button closes the transmission screen under both profiles, because controller buttons stand for keyboard keys everywhere.
