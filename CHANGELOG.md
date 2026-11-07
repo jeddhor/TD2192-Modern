@@ -10,7 +10,13 @@ Nothing yet.
 
 ## [0.9.0] - 2026-11-07
 
-The first release candidate for 1.0. Everything planned for 1.0 is in it: all three episodes, the faithful Classic profile, the Enhanced profile, the accessibility options and packages for Windows and Linux.
+The first release candidate for 1.0. It contains what is planned for 1.0, except analog steering:
+
+- all three episodes;
+- the faithful Classic profile;
+- the Enhanced profile;
+- the accessibility options;
+- packages for Windows and Linux.
 
 **Why 0.9.0 and not 1.0.0:**
 
@@ -43,7 +49,7 @@ Classic shows the original 320 × 200 picture in its 4:3 shape and keeps the ori
 The port was checked against recordings of the original game running in DOSBox-X:
 
 - **Every flight matches tick for tick:**
-  - Covered: all 62 flights of the three episodes, flown to success with the same inputs.
+  - Covered: all 62 flights of the three episodes, flown through to the end of the mission with the same inputs.
   - Compared after every tick, from setup to the outcome: the random-number stream, the player's ship, every mission ship, every shot, the mission state and the hit flash.
   - Result: no difference in any compared field. That is more than 48,000 ticks. Reports: [M9-playthrough](docs/parity/M9-playthrough.md) and [M10-playthrough](docs/parity/M10-playthrough.md).
 - **More flight recordings also match tick for tick:**
@@ -55,10 +61,10 @@ The port was checked against recordings of the original game running in DOSBox-X
   - music switched off.
 - **Screens match pixel for pixel, with every palette entry:**
   - The front-end screens: 35 screens of the three episodes, among them debriefings, orders, dossiers, story pages, stills, endings and end cards. Report: [M12-screens](docs/parity/M12-screens.md).
-  - The intro, the dialogue scenes and the flight picture.
-- **Music** sends the original's exact sound-chip register stream. **Sound effects** decode to the original's samples.
+  - The intro, the dialogue scenes and the flight playfield.
+- **Music** sends the same sound-chip register writes as the original, checked write for write against recordings. **Sound effects** decode as the original's sound card played them.
 - **Parity checklist:** 339 of the 376 Classic items pass (90.2 %). The rest are partial (29) or not yet covered (8). Each one is documented in [M12-checklist](docs/parity/M12-checklist.md).
-- **Soak tests:** more than a billion ticks of random-input flights, and every recorded replay, run deterministically without a crash once the one crash they found was fixed. Report: [M12-soak](docs/parity/M12-soak.md).
+- **Soak tests:** more than a billion ticks of random-input flights, and every recorded replay, ran deterministically. They found one crash, which is fixed. Report: [M12-soak](docs/parity/M12-soak.md).
 
 #### Enhanced profile (optional; decision D5)
 
@@ -105,8 +111,8 @@ Also:
 Both packages:
 
 - are unsigned;
-- link SDL 3 statically;
-- need nothing installed beside them;
+- link SDL 3 statically, and on Windows also the Visual C++ runtime;
+- need nothing else installed on a usual desktop system;
 - contain `td2192`, the developer helper `tdtool`, `LICENSE`, `README.md`, `CHANGELOG.md`, `THIRD_PARTY.md`, `PLAYER-GUIDE.md` and `THIRD_PARTY_NOTICES.txt` (the licence of every component linked into the program);
 - contain no game data.
 
@@ -118,7 +124,7 @@ The full catalogue, with the reasons, is in [docs/spec/original-bugs.md](docs/sp
 
 - A sound effect played very far away stopped the original with a runtime error. Now it is simply not played.
 - Missing or short save files crashed the save and load screens. Now the slots are empty, and the first save creates the files.
-- A dialogue scene missing from a damaged script file hung the game.
+- A damaged dialogue file could hang the original. It no longer does.
 - In Episode 3, the flight-16 speed patch leaked into retries, New Game and loaded games, and could freeze ships and block the campaign. This was decided by the project owner.
 - Episode 1, flight 8 could never be completed if both Vulture IIs were gone before you got near them. The flight now goes on. This is the only fix that changes play.
 - Holding Alt in an infra-red flight flashed the whole screen about ten times a second. Now Alt switches the view once per press. The project owner decided this on safety grounds.
@@ -133,8 +139,7 @@ The full catalogue, with the reasons, is in [docs/spec/original-bugs.md](docs/sp
 
 **Left out:**
 
-- The original's code path that could change your disk's volume label.
-- The two cheat combinations that touched the host system (decision D9).
+- The two cheat combinations that changed your disk's volume label (decision D9).
 - The TFP "about" and "order" extras run no separate programs. Their pictures are shown in the game instead (decision D4).
 - Saves from the original DOS version are not imported (decision D3).
 
@@ -144,7 +149,7 @@ The full catalogue, with the reasons, is in [docs/spec/original-bugs.md](docs/sp
 
 - **Two major bugs are open:**
   - Episode 1, flight 18: retrying after losing to the bomb is lost at once.
-  - Very long flights: after a mission ship has drifted off the top or bottom edge of the map (for example after about 3 min 40 s in Episode 3, flight 19), the game can stop with an error when that ship fires or is hit.
+  - Very long flights: a mission ship pressed against the top or bottom edge of the map for minutes wraps round, as in the original. For example, this happens after about 3 min 40 s in Episode 3, flight 19. Until it is removed, the game can stop with an error if that ship fires or is hit.
 - **Not yet compared with the original:**
   - what carries over from one flight to the next in a long campaign;
   - the joystick;

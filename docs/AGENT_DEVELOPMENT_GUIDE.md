@@ -753,6 +753,7 @@ Use each playbook with the milestone's task table in MDG §12.
 ### M11–M13
 
 - Standard IM work with VE acceptance. Release tasks (signing, publishing) need explicit user approval at each outward-facing step.
+- Releases follow [RELEASE.md](RELEASE.md): the version scheme, the 1.0 criteria, the checklist and the install tests. Agents bump the version and the changelog and build and test the packages locally; tagging, pushing and publishing are the user's (RELEASE.md §6).
 
 ## 16. Pitfall catalogue
 
