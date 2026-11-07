@@ -425,6 +425,56 @@ pub fn replay(l: &Layout, flight: u8, suffix: &str) -> Option<Replay> {
     Some(Replay::from_bytes(&bytes).unwrap())
 }
 
+/// The DGROUP record of tick value `value` of watcher generation `generation` in the capture
+/// whose scenario starts with `# <tag> ` (VE-9), if there is one.
+pub fn tick_record(
+    l: &Layout,
+    oracle: &Path,
+    tag: &str,
+    generation: usize,
+    value: u32,
+) -> Option<Vec<u8>> {
+    let cap = find_capture(oracle, tag)?;
+    let gs = gen_suffix(generation);
+    let p = mem_file(&cap, "tick_", &format!("-0000_{:X}_ds{gs}.bin", l.ds_len))?;
+    load_packed(&p, l.ds_len)
+        .into_iter()
+        .find(|r| r.value == value)
+        .map(|r| r.bytes)
+}
+
+/// The replays of a two-flight run whose second flight was written as a program-start replay
+/// (`tdtool schedule-replay`; VE-9): the first as it is, the second with the seed the first
+/// leaves in the session (flown here in its direct-start world, weapons rev 7 §3.3) and no
+/// checkpoints (they were computed from a program start).
+pub fn chained(
+    l: &Layout,
+    data: &Path,
+    (f1, s1): (u8, &str),
+    (f2, s2): (u8, &str),
+) -> Option<Vec<Replay>> {
+    let (r1, mut r2) = (replay(l, f1, s1)?, replay(l, f2, s2)?);
+    let dir = DataDir::open(data).unwrap();
+    let res = ExeResources::load(&dir).unwrap();
+    let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
+        panic!("muzzle table");
+    };
+    let ep = l.episode;
+    let muzzles = direct_start_world_music(ep, f1, &table, true, |f| dir.read(f)).unwrap();
+    let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, f1)).unwrap()).unwrap();
+    let world = episode::world(ep, f1, map, muzzles);
+    let mission = episode::mission_file(ep, f1)
+        .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
+    let mut f = Flight::start(f1, mission.as_ref(), &world, Session::for_episode(ep));
+    for &w in &r1.inputs {
+        td_sim::replay::step(&mut f, &world, w);
+    }
+    r2.seed = f.session().rng.seed();
+    r2.interval = 0;
+    r2.checkpoints.clear();
+    Some(vec![r1, r2])
+}
+
 type Fields = Vec<(String, i64, i64)>;
 
 fn field(name: &str, ours: impl Into<i64>, orig: impl Into<i64>) -> (String, i64, i64) {

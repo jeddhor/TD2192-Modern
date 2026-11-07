@@ -361,6 +361,55 @@ fn flight_08_bounces_and_west_limit_match_oracle() {
     );
 }
 
+/// OB-018 (mission-setup rev 2 §3.3): class-table patches persist for the program run (VE-9).
+/// Flight 12 (`e1f12.tdr`, direct start) gives class 3 maximum speed 20h; after its debrief,
+/// Esc at the `helihang` card, the menu's Enter and Esc at block 13's title card, flight 13
+/// flies 1,500 ticks without input with the session flight 12 left, the patched tables
+/// included (its class-3 enemies move at the patched speed). Both flights every tick; and
+/// `k_ClassMaxSpeed` (DS:02BE) at flight 13's tick 1 against the session's tables.
+#[test]
+fn flights_12_and_13_in_one_run_match_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let tag = "ve9-e1f12-f13";
+    let Some(replays) = full_flight::chained(&full_flight::E1, &data, (12, ""), (13, "-after12"))
+    else {
+        eprintln!("SKIPPED: no replays for flights 12 and 13");
+        return;
+    };
+    let legs = [
+        Leg {
+            flight: 12,
+            suffix: "",
+            muzzles: Muzzles::DirectStart,
+            ends: true,
+            front_end: &[],
+        },
+        Leg {
+            flight: 13,
+            suffix: "-after12",
+            muzzles: Muzzles::Capture,
+            ends: false,
+            front_end: &[],
+        },
+    ];
+    full_flight::check_run_with(
+        &full_flight::E1,
+        (&data, &oracle),
+        tag,
+        &legs,
+        &replays,
+        true,
+    );
+    if let Some(first) = full_flight::tick_record(&full_flight::E1, &oracle, tag, 2, 1) {
+        assert_eq!(
+            first[0x02BE + 3],
+            0x20,
+            "class 3 max speed at flight 13's tick 1"
+        );
+    }
+}
+
 /// A flight with no input from setup to its end (VE-9, M12 checklist §0 item 6; `tdtool plan
 /// --idle`, replay `e1f<NN>-idle.tdr`), against the capture `ve9-e1f<NN>-idle` (C-0360..):
 /// every tick, the outcome after teardown.
