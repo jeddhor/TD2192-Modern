@@ -446,17 +446,22 @@ impl Program {
     }
 
     /// The pilot dossier of ending A (`UI_PlayerDossier` `051A:74B2`, screens §3.5): face 1;
-    /// 25 s. E2 (`04EC:712D`), E3 (`04A0:5212`, flushing first): same layout,
+    /// 25 s. Typing cadence after each `Crt.Delay`: screens rev 5 §3.13. E2 (`04EC:712D`), E3 (`04A0:5212`, flushing first): same layout,
     /// `e2.dossier.player` / `e3.dossier.player`.
     pub fn player_dossier(&self, total: i16) -> StoryScreen {
         let t = self.texts(&self.id("e1.dossier.player", "dossier.player"));
         let items = vec![
             TextItem::typed((20, 45), line(&t, 0), 40),
-            TextItem::typed((20, 91), line(&t, 1), 40).after(500),
+            // screens rev 5 §3.13: lines 1 and 5 show two characters in their first frame.
+            TextItem::typed((20, 91), line(&t, 1), 40)
+                .after(500)
+                .first_frame(2),
             TextItem::typed((20, 97), line(&t, 2), 40).after(500),
             TextItem::typed((20, 109), line(&t, 3), 40).after(500),
             TextItem::typed((20, 121), format!("{}{}", line(&t, 4), total), 40).after(500),
-            TextItem::typed((20, 109), line(&t, 5), 39).after(2000),
+            TextItem::typed((20, 109), line(&t, 5), 39)
+                .after(2000)
+                .first_frame(2),
             TextItem::typed((20, 160), line(&t, 6), 40).after(500),
         ];
         let mut s = story::typed_page(

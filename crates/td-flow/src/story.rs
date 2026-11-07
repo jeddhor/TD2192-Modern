@@ -13,8 +13,16 @@
 //! one or two frames depending on the palette being faded (`td_render::fade::level_frames`,
 //! `docs/spec/flow/screens.md` rev 3 §2.1, BUG-6; level 0 one) and is shown from the frame
 //! after its last write (`td_render::fade::first_level_frames`, M12-14). Timed waits are DOS time
-//! ([`crate::timing::dos_seconds_frames`], screens rev 3 §2.2, BUG-7); `Crt.Delay` pauses are
-//! real milliseconds.
+//! ([`crate::timing::dos_seconds_frames`], screens rev 3 §2.2, BUG-7); a `Crt.Delay` between
+//! typed lines takes [`crate::timing::typing_delay_frames`].
+//!
+//! Typing cadence (`docs/spec/render/text.md` rev 5 §4.3, `docs/spec/flow/screens.md` rev 5
+//! §3.13; U-521, BUG-20), counted in frames from the fade start: the frame of the fade-in's
+//! last level shows the first line's first **two** characters; then one character per frame
+//! through every back-to-back line; a line after `Crt.Delay(n)` starts in frame F + 1 +
+//! round(n × 0.0705) (F: the frame of the previous line's last character) with the number of
+//! characters screens §3.13 gives ([`TextItem::first_frame`]). The original's occasional
+//! missed retrace (one frame in about 800, text §4.3 item 6) is not modelled (T2).
 //!
 //! The palette buffer is the original's shared `g_Palette` (DS:0D2E): a screen that sets only
 //! a few entries fades whatever the previous screen left there. Only the mission title card
@@ -43,7 +51,7 @@ use thiserror::Error;
 use crate::dialogue::KEY_BUFFER;
 use crate::scene_card::{Captions, Layout, Shadow, lines, rgb};
 use crate::screen::{FlowContext, Screen, Transition};
-use crate::timing::{delay_ms_frames, dos_seconds_frames};
+use crate::timing::{dos_seconds_frames, typing_delay_frames};
 
 /// Errors while preparing a story screen.
 #[derive(Debug, Error)]
@@ -84,7 +92,9 @@ pub enum Hold {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Phase {
     FadeIn(u8),
-    Typing(usize, Typewriter),
+    /// Line `.0` typing; `.2` characters go into the next frame (2 only in a line's first
+    /// frame, text rev 5 §4.3 items 2 and 4).
+    Typing(usize, Typewriter, u8),
     Hold(u32),
     FadeOut(u8),
     Done,
@@ -100,6 +110,12 @@ pub struct TextItem {
     /// `Crt.Delay` before the line, in milliseconds.
     pub delay_ms: u32,
     pub drawn: bool,
+    /// Characters shown in the line's first frame after its `Crt.Delay`: 2 when the delay
+    /// ends after the beam has passed the line's rows, so that the first character shows
+    /// only in the next frame together with the second (text rev 5 §4.3 item 2; per line in
+    /// screens rev 5 §3.13), else 1. The first line after the fade-in always takes 2 (item
+    /// 4); a back-to-back line 1 (item 3).
+    pub first_frame: u8,
 }
 
 impl TextItem {
@@ -112,6 +128,7 @@ impl TextItem {
             ink,
             delay_ms: 0,
             drawn: false,
+            first_frame: 1,
         }
     }
 
@@ -129,6 +146,16 @@ impl TextItem {
     pub fn after(self, ms: u32) -> Self {
         Self {
             delay_ms: ms,
+            ..self
+        }
+    }
+
+    /// The same line with `n` characters (1 or 2) in its first frame after its delay
+    /// ([`TextItem::first_frame`], screens rev 5 §3.13).
+    #[must_use]
+    pub fn first_frame(self, n: u8) -> Self {
+        Self {
+            first_frame: n,
             ..self
         }
     }
@@ -330,9 +357,15 @@ impl StoryScreen {
                             self.keys.clear();
                         }
                         self.phase = self.next_item(0);
+                        // The first line starts mid-frame, its rows already passed: the frame
+                        // of this last level shows its first two characters (text rev 5 §4.3
+                        // item 4).
+                        if let Phase::Typing(_, _, burst) = &mut self.phase {
+                            *burst = 2;
+                        }
                     }
                 }
-                Phase::Typing(i, t) => {
+                Phase::Typing(i, t, burst) => {
                     let i = *i;
                     let (Some(font), Some(item)) = (&self.font, self.items.get(i)) else {
                         self.phase = self.hold_phase();
@@ -342,6 +375,15 @@ impl StoryScreen {
                         small_text::draw(&mut self.screen, font, &item.text, item.pen, item.ink);
                         self.phase = self.next_item(i + 1);
                     } else if let Some(frames) = t.step(&mut self.screen, font) {
+                        // The second character of a line's first frame (text rev 5 §4.3
+                        // item 2): drawn just after the retrace that ends the frame of the
+                        // first, before either was shown.
+                        for _ in 1..*burst {
+                            if !t.finished() {
+                                t.step(&mut self.screen, font);
+                            }
+                        }
+                        *burst = 1;
                         self.wait = frames;
                     } else {
                         self.phase = self.next_item(i + 1);
@@ -388,15 +430,23 @@ impl StoryScreen {
     }
 
     /// Starts line `n` after its delay, or the wait when the lines are done. On a hint
-    /// screen a key waiting after a line skips the rest (screens §3.3).
+    /// screen a key waiting after a line skips the rest (screens §3.3). A line with no delay
+    /// follows the previous one back to back (one character in its first frame); after a
+    /// delay it takes [`TextItem::first_frame`] (text rev 5 §4.3 items 3 and 5).
     fn next_item(&mut self, n: usize) -> Phase {
         if self.hint_skip && n > 0 && !self.keys.is_empty() {
             return self.hold_phase();
         }
         match self.items.get(n) {
             Some(item) => {
-                self.wait = delay_ms_frames(item.delay_ms);
-                Phase::Typing(n, Typewriter::new(&item.text, item.pen, item.ink, 0))
+                self.wait = typing_delay_frames(item.delay_ms);
+                let burst = if item.delay_ms > 0 {
+                    item.first_frame
+                } else {
+                    1
+                };
+                let t = Typewriter::new(&item.text, item.pen, item.ink, 0);
+                Phase::Typing(n, t, burst.max(1))
             }
             None => self.hold_phase(),
         }
@@ -986,18 +1036,27 @@ mod tests {
                 TextItem::drawn((10, 60), "d", 39).after(100),
             ],
         );
-        for _ in 0..34 {
+        for _ in 0..33 {
             s.step(&TickInput::default());
         }
+        assert_eq!(
+            s.screen().get(12, 41),
+            Some(0),
+            "nothing before the last level"
+        );
+        s.step(&TickInput::default());
+        // text rev 5 §4.3 item 4: the last level's frame shows the first two characters
+        // (a at x 12.., b at 16..) and the closing space.
         assert_eq!(
             s.screen().get(12, 41),
             Some(240),
             "first character with the last level"
         );
-        s.step(&TickInput::default());
+        assert_eq!(s.screen().get(16, 41), Some(240), "and the second");
+        // Line 1 back to back: its character in the next frame.
         s.step(&TickInput::default());
         assert_eq!(s.screen().get(12, 48), Some(240), "second line");
-        assert!(matches!(s.phase, Phase::Typing(1, _)));
+        assert!(matches!(s.phase, Phase::Typing(1, _, _)));
         // The drawn line waits for its Crt.Delay(100) (7 frames), then appears at once.
         for _ in 0..7 {
             s.step(&TickInput::default());
@@ -1023,7 +1082,7 @@ mod tests {
         for _ in 0..33 {
             s.step(&TickInput::default());
         }
-        assert!(matches!(s.phase, Phase::Typing(0, _)));
+        assert!(matches!(s.phase, Phase::Typing(0, _, _)));
         // A key while line 0 types: line 1 is skipped, and the wait consumes the key.
         s.step(&press(Key::SPACE));
         for _ in 0..3 {
