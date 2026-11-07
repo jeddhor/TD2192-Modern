@@ -321,6 +321,8 @@ pub struct FlightArena {
     clock: f64,
     /// Before tick 1: the opening fade-in.
     opening: Option<Opening>,
+    /// Classic, from tick 1 to tick 2: tick 1's page shown unscrolled (OB-151).
+    settle: Option<Settle>,
     /// After the last tick: the fade-out and the wait for the playing status.
     teardown: Option<Teardown>,
 }
@@ -453,6 +455,27 @@ impl Opening {
 /// (E1 flight 4) writes the formula's 257 entries from f490.2 to f491.9, right after the last
 /// level, so it is first shown one frame after that level. T2.
 const OPENING_IR_FRAMES: u32 = 1;
+
+/// Classic, from tick 1 to tick 2 (OB-151, U-511; flight-screens rev 5 §4.5.3): tick 1 draws
+/// into page 1, which the opening fade-in shows from its origin, so the frames from tick 1's
+/// drawing to its first flip show the new playfield without the view's scroll, 16 pixels
+/// right of where it belongs (`page_origin`), the bar unchanged (C-0002 f3473..3474; the flip
+/// at the end of f3474 scrolls it). The arena steps at the retrace rate meanwhile, so tick 2
+/// still comes one flight tick after tick 1. The Enhanced fixes skip it (tick 1 scrolled at
+/// once, the port's behaviour before; OB-151 fix-enhanced).
+#[derive(Debug, Clone)]
+struct Settle {
+    /// Frames still showing page 1 from its origin, this one included.
+    unscrolled: u8,
+    /// `FlightArena::clock` from which tick 2 is due.
+    tick_2_at: f64,
+    /// Keys pressed meanwhile (they reach tick 2).
+    pressed: Vec<Key>,
+}
+
+/// Frames that show tick 1's page unscrolled: its own and the next (OB-151; C-0002 f3473,
+/// f3474).
+const UNSCROLLED_FRAMES: u8 = 2;
 
 /// WORX's ring offset r in `episode`'s program as Classic runs it (voc-and-adpcm rev 3 §2.3:
 /// E1 started by `td1.exe`, E2 and E3 run directly).
@@ -763,6 +786,7 @@ impl FlightArena {
             voice: DigitalVoice::new(worx_ring(ep)),
             clock: 0.0,
             opening: Some(opening),
+            settle: None,
             teardown: None,
         })
     }
@@ -780,6 +804,7 @@ impl Screen for FlightArena {
         // The opening fade-in, the modal screens, E3's magenta fade and the teardown step once
         // per vertical retrace (fades, pulses, typing, the wait for the sound).
         if self.opening.is_some()
+            || self.settle.is_some()
             || self.screen.is_some()
             || self.magenta.is_some()
             || self.teardown.is_some()
@@ -807,6 +832,7 @@ impl Screen for FlightArena {
         // The opening fade-in: no tick until its last level (or the infra-red palette) is on
         // screen; tick 1 then runs in that frame with the keys pressed during the fade.
         let mut first_input = None;
+        let mut tick_1 = false;
         if let Some(o) = &mut self.opening {
             if !o.step(input) {
                 return Transition::None;
@@ -816,6 +842,20 @@ impl Screen for FlightArena {
                 ..input.clone()
             });
             self.opening = None;
+            tick_1 = true;
+        }
+        if let Some(st) = &mut self.settle {
+            // OB-151 (Classic): tick 1's page unscrolled, then tick 2 when it is due.
+            st.pressed.extend(input.pressed.iter().copied());
+            st.unscrolled = st.unscrolled.saturating_sub(1);
+            if now < st.tick_2_at {
+                return Transition::None;
+            }
+            first_input = Some(TickInput {
+                pressed: std::mem::take(&mut st.pressed),
+                ..input.clone()
+            });
+            self.settle = None;
         }
         let input = first_input.as_ref().unwrap_or(input);
         if let Some(t) = &mut self.teardown {
@@ -939,6 +979,14 @@ impl Screen for FlightArena {
         if !tinted && self.flight.mission.tint && self.screen.is_none() {
             self.magenta = Some(1);
         }
+        // OB-151: Classic shows tick 1's page from its origin until its flip.
+        if tick_1 && !fixes && result == TickResult::Done && self.screen.is_none() {
+            self.settle = Some(Settle {
+                unscrolled: UNSCROLLED_FRAMES,
+                tick_2_at: before + 1.0 / FLIGHT_TICK_HZ,
+                pressed: Vec::new(),
+            });
+        }
         match result {
             TickResult::Done | TickResult::Modal(_) => Transition::None,
             TickResult::Finished => {
@@ -1039,8 +1087,9 @@ impl FlightArena {
         let Some(view) = &self.enhanced else {
             return;
         };
-        // The opening fade-in keeps its Classic picture (a black playfield).
-        if self.opening.is_some() {
+        // The opening fade-in keeps its Classic picture (a black playfield), and so do the
+        // Classic frames of tick 1's unscrolled page (OB-151).
+        if self.opening.is_some() || self.settle.is_some() {
             return;
         }
         let paused = match &self.screen {
@@ -1112,6 +1161,32 @@ impl FlightArena {
         }
         self.draw_instruments(fb, map);
         self.draw_overlays(fb);
+        if self.settle.as_ref().is_some_and(|st| st.unscrolled > 0) && vp.is_classic() {
+            self.unscroll_playfield(fb, view);
+        }
+    }
+
+    /// OB-151: the playfield rows of `fb` as page 1 shows from its origin (screen (x, y) =
+    /// page (x, y) instead of page (x, y) + `page_origin`): the frame drawn 2 × ox wider (its
+    /// column c is page column c; tiles, objects, the guidance dots and the overlays the tick
+    /// drew into the page), its first 320 columns, rows shifted by oy (0 at every flight
+    /// start). The bar keeps its rows.
+    fn unscroll_playfield(&self, fb: &mut Framebuffer, view: ViewPos) {
+        let (ox, oy) = view.page_origin();
+        let Ok(margin) = usize::try_from(ox) else {
+            return;
+        };
+        if margin == 0 && oy == 0 {
+            return;
+        }
+        // The page as the tick drew it.
+        let mut page = Framebuffer::with_width(td_render::WIDTH + 2 * margin);
+        self.draw_play(&mut page);
+        for y in 0..flight::PLAYFIELD.h {
+            for x in 0..flight::PLAYFIELD.w {
+                fb.put(x, y, page.get(x, y - oy).unwrap_or(0));
+            }
+        }
     }
 
     /// Steps 4..16 of the frame: tiles, flame, shots, ships, overpasses, explosions.
@@ -2199,6 +2274,17 @@ mod tests {
                 input.pressed.push(p);
             }
             step(&mut arena, &input);
+            // Classic shows tick 1's page unscrolled for two frames; tick 2 comes after them
+            // (OB-151).
+            while arena.flight.ticks < t && arena.screen.is_none() {
+                step(
+                    &mut arena,
+                    &TickInput {
+                        pressed: Vec::new(),
+                        ..input.clone()
+                    },
+                );
+            }
             if t == 10 {
                 assert!(
                     matches!(arena.screen, Some(FlightModal::Pause(_))),
@@ -2272,7 +2358,9 @@ mod tests {
                 arena.draw(&mut fb);
                 audio.clear();
             }
-            assert!(arena.flight.ticks >= 19, "{ep} flight {n}");
+            // Tick 1 in frame 34 (35 in infra-red mode 1), then Classic's two frames of tick
+            // 1's unscrolled page and tick 2 one flight tick after tick 1 (OB-151).
+            assert!(arena.flight.ticks >= 17, "{ep} flight {n}");
         }
     }
 
@@ -2336,6 +2424,106 @@ mod tests {
             }
             eprintln!("{capture} f{f}: {at_next} entries already at the next level");
         }
+    }
+
+    /// OB-151 (fix-enhanced; U-511): C-0002, E1 flight 1, fade start f3439, tick 1 in f3473.
+    /// Classic: tick 1's page is shown from its origin in its own frame and the next (f3474;
+    /// f3473 still lacks the 15 pixels of the guidance dots, which the tick draws after the
+    /// beam passed them), scrolled from the frame after (f3475 = f3474 shifted 16 pixels
+    /// left), then tick 2 one flight tick after tick 1. The Enhanced fixes show tick 1
+    /// scrolled at once (f3475), the flight ticks following at their own rate. Playfield rows
+    /// 0..159, every pixel.
+    #[test]
+    fn tick_1_page_unscrolled_for_two_frames_in_classic() {
+        let data = require_data!();
+        let oracle = require_oracle!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let dump = |f: u32| {
+            let name = format!("f{f:08}_320x192_flight.vga");
+            std::fs::read(oracle.join("C-0002").join("fb").join(name)).unwrap()[768..].to_vec()
+        };
+        let playfield = |fb: &Framebuffer| fb.pixels[..320 * 160].to_vec();
+        for (profile, want) in [
+            (td_flow::settings::Profile::Classic, &[3474, 3474, 3475][..]),
+            (td_flow::settings::Profile::Enhanced, &[3475][..]),
+        ] {
+            let settings = td_flow::Settings {
+                profile,
+                ..Default::default()
+            };
+            assert_eq!(
+                settings.enhanced_fixes(),
+                profile != td_flow::settings::Profile::Classic
+            );
+            let mut audio = Vec::new();
+            let mut arena = FlightArena::new(&dir, &res, Episode::E1, 1).unwrap();
+            let mut frames = Vec::new();
+            let mut ticks = Vec::new();
+            for _ in 0..33 + want.len() {
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &res,
+                    settings: &settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &TickInput::default());
+                let mut fb = Framebuffer::new();
+                arena.draw_frame(&mut fb);
+                frames.push(playfield(&fb));
+                ticks.push(arena.flight.ticks);
+            }
+            assert_eq!(ticks[32..], [0, 1, 1, 1][..want.len() + 1], "{profile:?}");
+            for (k, &f) in want.iter().enumerate() {
+                let theirs = dump(f);
+                let diff = (0..theirs.len().min(320 * 160))
+                    .filter(|&i| frames[33 + k][i] != theirs[i])
+                    .count();
+                assert_eq!(diff, 0, "{profile:?}: frame {} against C-0002 f{f}", 34 + k);
+            }
+            if profile != td_flow::settings::Profile::Classic {
+                continue;
+            }
+            // Tick 2 one flight tick (3.65 frames) after tick 1.
+            let mut n = 36;
+            while arena.flight.ticks < 2 {
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &res,
+                    settings: &settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &TickInput::default());
+                n += 1;
+                assert!(n < 40, "{profile:?}: tick 2 by frame 39");
+            }
+        }
+        // f3473 differs from f3474 only where the tick had not drawn yet.
+        let (a, b) = (dump(3473), dump(3474));
+        assert!((0..320 * 160).filter(|&i| a[i] != b[i]).count() <= 15);
+        // E3 flight 1 (C-0036, fade start f660): tick 1's frame f694 shows its page unscrolled
+        // too (Classic).
+        let settings = td_flow::Settings::default();
+        let mut audio = Vec::new();
+        let mut arena = FlightArena::new(&dir, &res, Episode::E3, 1).unwrap();
+        for _ in 0..34 {
+            let mut ctx = FlowContext {
+                data: &dir,
+                resources: &res,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, &TickInput::default());
+        }
+        assert_eq!(arena.flight.ticks, 1);
+        let mut fb = Framebuffer::new();
+        arena.draw_frame(&mut fb);
+        let name = "f00000694_320x192_flight.vga";
+        let theirs = std::fs::read(oracle.join("C-0036").join("fb").join(name)).unwrap();
+        let diff = (0..320 * 160)
+            .filter(|&i| fb.pixels[i] != theirs[768 + i])
+            .count();
+        assert_eq!(diff, 0, "E3 frame 34 against C-0036 f694");
     }
 
     /// sfx-policy rev 4 §4.2 in the host: sounds before tick-order step 26 are judged before
