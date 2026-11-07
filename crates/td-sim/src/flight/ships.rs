@@ -464,7 +464,7 @@ impl Ships {
             s.turn_step();
             if sinking {
                 s.heading = 8;
-                s.sub_y += 2;
+                s.sub_y = s.sub_y.wrapping_add(2);
             } else {
                 let flags = s.thrust(classes);
                 s.choose_target_heading(flags);
@@ -946,62 +946,67 @@ impl Ship {
     }
 
     /// Drift, drag, carry and edge removal (§4.2.3).
+    ///
+    /// The offsets are 16-bit and wrap silently, as the original's `{$Q-}` arithmetic does
+    /// (bp7-runtime-semantics §3): a ship parked against row 199 or row 1 keeps moving its offset
+    /// and wraps after a few thousand ticks (BUG-18; what the original does after the wrap is
+    /// U-570).
     fn drift(&mut self) {
         while self.sub_x > 80 || self.sub_x < -16 {
             if self.sub_x > 80 {
-                self.sub_x -= 32;
+                self.sub_x = self.sub_x.wrapping_sub(32);
             }
             if self.sub_x < -16 {
-                self.sub_x += 32;
+                self.sub_x = self.sub_x.wrapping_add(32);
             }
         }
         let [u, d, l, r] = &mut self.speed;
         if *u > 16 {
-            self.sub_y += 16 - i16::from(*u);
+            self.sub_y = self.sub_y.wrapping_add(16 - i16::from(*u));
             *u -= 1;
         }
         if self.sub_y < 16 && self.tile_y > 1 {
             self.tile_y -= 1;
-            self.sub_y += 32;
+            self.sub_y = self.sub_y.wrapping_add(32);
         }
         if self.sub_y < 16 && self.tile_y == 1 {
             self.class = NO_SHIP;
         }
         if *d > 16 {
-            self.sub_y += i16::from(*d) - 16;
+            self.sub_y = self.sub_y.wrapping_add(i16::from(*d) - 16);
             *d -= 1;
         }
         if self.sub_y > 48 && self.tile_y < 199 {
             self.tile_y += 1;
-            self.sub_y -= 32;
+            self.sub_y = self.sub_y.wrapping_sub(32);
         }
         if self.tile_y == 200 || self.tile_x == 200 || self.tile_x == 0 || self.tile_y == 0 {
             self.class = NO_SHIP;
         }
         if *l > 16 {
-            self.sub_x += 16 - i16::from(*l);
+            self.sub_x = self.sub_x.wrapping_add(16 - i16::from(*l));
             *l -= 1;
         }
         if self.sub_x < 16 && self.tile_x > 1 {
             self.tile_x -= 1;
-            self.sub_x += 32;
+            self.sub_x = self.sub_x.wrapping_add(32);
         }
         if self.sub_x < 16 && self.tile_x == 1 {
             self.class = NO_SHIP;
         }
         if *r > 16 {
-            self.sub_x += i16::from(*r) - 16;
+            self.sub_x = self.sub_x.wrapping_add(i16::from(*r) - 16);
             *r -= 1;
         }
         if self.sub_x > 48 && self.tile_x < 199 {
             self.tile_x += 1;
-            self.sub_x -= 32;
+            self.sub_x = self.sub_x.wrapping_sub(32);
         }
         if self.sub_x > 48 && self.tile_x == 199 {
             self.class = NO_SHIP;
         }
         if self.sub_x > 48 {
-            self.sub_x -= 32;
+            self.sub_x = self.sub_x.wrapping_sub(32);
         }
     }
 }

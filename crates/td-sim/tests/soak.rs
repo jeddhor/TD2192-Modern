@@ -637,10 +637,9 @@ fn long_soak() {
 /// speed 23..24 and a goal of (102, 200); its offset Y grows by about 8.5 a tick (mission-ships
 /// §4.2.3: "Y never wraps at row 199 (offsetY grows)") and overflows i16 in tick 4235, which
 /// panics in every build (td-sim keeps overflow checks in release, MDG §8.6): the game crashes
-/// 3 minutes 40 seconds into the flight. Ignored until the overflow follows the original's
-/// 16-bit arithmetic (U-570); then this runs to tick 6000.
+/// 3 minutes 40 seconds into the flight. Fixed: the drift's offsets wrap like the original's
+/// 16-bit arithmetic (bp7-runtime-semantics §3); the flight now runs to tick 6000.
 #[test]
-#[ignore = "BUG-18: i16 overflow in ship drift at row 199 (E3 flight 19, tick 4235)"]
 fn e3_flight_19_idle_outlives_tick_4235() {
     let Some(data) = data_dir() else {
         eprintln!("SKIPPED: TD2192_DATA not set (data-gated test soak)");
@@ -658,10 +657,9 @@ fn e3_flight_19_idle_outlives_tick_4235() {
 /// BUG-18, the top edge: with these random inputs, a class-7 ship of E1 flight 6 (slot 19) and
 /// of E1 flight 7 (slot 13) keeps flying up at tile row 1 toward a goal on row 0; the edge rule
 /// removes it, the mission logic brings the class back, and its offset Y falls by about 6 a
-/// tick until `sub_y += 16 - up` overflows i16 (ticks 5528 and 8831). Ignored with the bottom
-/// edge case above (U-570).
+/// tick until `sub_y += 16 - up` passes the i16 range (ticks 5528 and 8831). Fixed with the bottom
+/// edge case above: the offset wraps (U-570 asks what the original does afterwards).
 #[test]
-#[ignore = "BUG-18: i16 overflow in ship drift at row 1 (E1 flights 6 and 7, random inputs)"]
 fn e1_flights_6_and_7_outlive_the_top_edge_overflow() {
     let Some(data) = data_dir() else {
         eprintln!("SKIPPED: TD2192_DATA not set (data-gated test soak)");

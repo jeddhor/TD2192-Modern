@@ -496,6 +496,7 @@ Template: ADG §17.5.
 - Spec reference: sim/mission-ships §4.2.3 (offsets i16; the wrap is not stated); U-570
 - Severity: **major** (a crasher on a reachable path: any slow E3 flight 19)
 - Fix: RE/SP answer U-570 and state the wrap in §4.2.3 (both edges); IM makes the offset arithmetic of the drift step wrap as the original's (`wrapping_add` on offset Y, so the port matches the original after the wrap), then un-ignores the two tests and runs `long_soak`
+- **Status: FIXED** (main session, 2026-11-06): the drift step's offset arithmetic (and the sinking ship's +2) wraps as the original's `{$Q-}` 16-bit arithmetic does (bp7-runtime-semantics §3; `td_sim::flight::ships`); the two soak tests are un-ignored and pass (E3 flight 19 idle to tick 6000; E1 flights 6 and 7 past their overflow ticks). Still open for RE: U-570, what the original does after the wrap where it computes world positions in 16 bits (the port computes `Ship::world` in i32), and the wrap note in mission-ships §4.2.3
 
 ### BUG-20 (filed by RE-19 as BUG-14; renumbered at merge): typed lines show one character fewer than the original in their first frame after a fade-in (and after some `Crt.Delay`s); 2000 ms delays are one frame short
 - Found by / date / milestone: RE-19 (from VE-7's M12-screens D1), 2026-11-06, M12 (M12-16)
