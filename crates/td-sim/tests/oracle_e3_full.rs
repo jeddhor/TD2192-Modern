@@ -205,3 +205,40 @@ fn flight_10_hangar_return_b_matches_oracle() {
 fn flight_10_hangar_return_c_matches_oracle() {
     hangar("-hangar-c", "re17-e3f10-hangar-c");
 }
+
+/// C-0340 (RE-20; U-570, BUG-18, BUG-30): E3 flight 19 with no flight input to tick 4,500. Slot
+/// 3 (class 0) parks on row 199 with its goal on row 200; its offset Y passes 32,767 and wraps
+/// in tick 4235, the ship then climbs one row per tick and the row-1 rule removes it in tick
+/// 4433 (mission-ships rev 8 §4.2.3, §6 vector 7). Every tick 1..4,499 against the capture (the
+/// record of tick 4,500 holds the state after tick 4,499; the flight goes on, so there is no
+/// outcome to compare).
+#[test]
+fn flight_19_idle_through_the_offset_wrap_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    use td_sim::flight::{Episode, Session};
+    use td_sim::replay::Replay;
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let r = Replay {
+        episode: 3,
+        mission: 19,
+        seed: Session::for_episode(Episode::E3).rng.seed(),
+        inputs: vec![0; 4_499],
+        interval: 0,
+        checkpoints: vec![],
+    };
+    let leg = Leg {
+        flight: 19,
+        suffix: "",
+        muzzles: Muzzles::Capture,
+        ends: false,
+        front_end: &[],
+    };
+    full_flight::check_run_with(
+        &full_flight::E3,
+        (&data, &oracle),
+        "re20-e3f19-idle",
+        &[leg],
+        &[r],
+        false,
+    );
+}

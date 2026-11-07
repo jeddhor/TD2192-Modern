@@ -336,6 +336,38 @@ pub struct ShipMark {
     pub marker: u8,
 }
 
+/// A mission ship's sprite coordinates as the original computes them (mission-ships rev 8
+/// §4.2.5 rows 2 and 3): x = (tileX − viewX) × 32 + offsetX and y = (tileY − viewY) × 32 +
+/// offsetY, 16-bit two's-complement sums (they wrap once an offset has wrapped at a map edge,
+/// §4.2.3, U-570).
+fn ship_xy16(view: ViewPos, s: &ShipMark) -> (i16, i16) {
+    let axis = |tile: u8, view: i32, off: i16| {
+        i16::from(tile)
+            .wrapping_sub(view as i16)
+            .wrapping_mul(32)
+            .wrapping_add(off)
+    };
+    (
+        axis(s.tile_x, view.tile_x, s.sub_x),
+        axis(s.tile_y, view.tile_y, s.sub_y),
+    )
+}
+
+/// The draw test's row part, `y + 232 × page > 32`: a 16-bit sum and a signed compare
+/// (mission-ships rev 8 §4.2.5 row 2).
+fn ship_row_test(y: i16, page: i32) -> bool {
+    y.wrapping_add((232 * page) as i16) > 32
+}
+
+/// Screen position of the sprite blitted at the ship's sprite coordinates `(x, y)`: the blit
+/// uses only the low byte of y (`flight-screens.md` §2), so the sprite's corner is at page row
+/// (y and FFh) − 32 (mission-ships rev 8 §4.2.5 row 3). x is never negative in the window (the
+/// X offset cannot wrap, §4.2.3).
+fn ship_sprite_screen(view: ViewPos, (x, y): (i16, i16)) -> (i32, i32) {
+    let (ox, oy) = view.page_origin();
+    (i32::from(x) - ox, i32::from(y as u16 & 0xFF) - 32 - oy)
+}
+
 /// Screen position of a mission ship's 32 × 32 frame (top-left corner) drawn into back page
 /// `page`, or `None` when the original's window test leaves it out (`mission-ships.md` rev 2
 /// §4.7).
@@ -346,17 +378,20 @@ pub struct ShipMark {
 /// rows (a ship at the top edge is drawn on page-1 ticks only). Black-box (U-127,
 /// `tests/hud_parity.rs`): this reading puts every bracket pixel of C-0009 where the capture
 /// has it.
+///
+/// The position and the row test are 16-bit (mission-ships rev 8 §4.2.5 rows 2 and 3, BUG-30):
+/// a ship whose offset Y wrapped at a map edge and lies within about 400 of +32,767 fails the
+/// test (the sum wraps negative); one that passes with a large offset Y is drawn as a ghost at
+/// page row (y and FFh) − 32. Its brackets follow their own rule ([`bracket_pixel`]).
 pub fn mission_ship_pos(view: ViewPos, page: i32, s: &ShipMark) -> Option<(i32, i32)> {
     let (tx, ty) = (i32::from(s.tile_x), i32::from(s.tile_y));
-    let (sx, sy) = (i32::from(s.sub_x), i32::from(s.sub_y));
-    let (x, row) = ((tx - view.tile_x) * 32 + sx, (ty - view.tile_y) * 32 + sy);
+    let (x, y) = ship_xy16(view, s);
     let inside = view.tile_x - 1 < tx
         && tx < view.tile_x + 10
         && (view.tile_y..=view.tile_y + 5).contains(&ty)
-        && (tx < view.tile_x + 9 || sx < view.sub_x)
-        && row + 232 * page > 32;
-    let (ox, oy) = view.page_origin();
-    inside.then_some((x - ox, row - 32 - oy))
+        && (tx < view.tile_x + 9 || i32::from(s.sub_x) < view.sub_x)
+        && ship_row_test(y, page);
+    inside.then(|| ship_sprite_screen(view, (x, y)))
 }
 
 /// [`mission_ship_pos`] for viewport `vp`: in a widescreen frame a ship also shows whenever its
@@ -371,20 +406,73 @@ pub fn mission_ship_pos_in(
     if classic.is_some() || vp.is_classic() {
         return classic;
     }
-    let (tx, ty) = (i32::from(s.tile_x), i32::from(s.tile_y));
-    let (sx, sy) = (i32::from(s.sub_x), i32::from(s.sub_y));
-    let (x, row) = ((tx - view.tile_x) * 32 + sx, (ty - view.tile_y) * 32 + sy);
-    let (ox, oy) = view.page_origin();
-    let pos = (x - ox, row - 32 - oy);
-    let rows_ok = (view.tile_y..=view.tile_y + 5).contains(&ty) && row + 232 * page > 32;
+    let ty = i32::from(s.tile_y);
+    let (x, y) = ship_xy16(view, s);
+    let pos = ship_sprite_screen(view, (x, y));
+    let rows_ok = (view.tile_y..=view.tile_y + 5).contains(&ty) && ship_row_test(y, page);
     (rows_ok && vp.spans(pos.0 & !3, 40)).then_some(pos)
+}
+
+/// VGA rows of one flight page (`flight-screens.md` §2).
+const PAGE_ROWS: i32 = 232;
+
+/// Screen position of bracket pixel `(dx, dy)` of mission ship `s`, drawn into page `page` with
+/// its sprite at `pos` (from [`mission_ship_pos`] or [`mission_ship_pos_in`]), or `None` when it
+/// does not land on that page (mission-ships rev 8 §4.7, §4.2.5 row 3).
+///
+/// `Gfx_PutPixel` writes VGA byte (y × 88 + x `SHR` 2) mod 65,536, plane x and 3, with x and y
+/// (which includes 232 × page) 16-bit words. With the ship's y in 0..=255, as it always is
+/// unless its offset wrapped at a map edge, that is the pixel `pos + (dx, dy)` (a pixel past
+/// column 351 is the same byte as the start of the next row, which no Classic view shows). A
+/// ghost (y above 255, [`mission_ship_pos`]) has its brackets at scattered places of VGA
+/// memory: those that land on the drawn page are drawn there. **Port limitation** (T2): pixels
+/// that land in the HUD rows, on the other page or past the pages are not drawn (the port does
+/// not keep VGA memory; the original would show them in the HUD bar, or overwrite them when it
+/// next draws there).
+#[must_use]
+pub fn bracket_pixel(
+    view: ViewPos,
+    page: i32,
+    s: &ShipMark,
+    pos: (i32, i32),
+    (dx, dy): (i32, i32),
+) -> Option<(i32, i32)> {
+    let (x, y) = ship_xy16(view, s);
+    if (0..=255).contains(&y) {
+        return Some((pos.0 + dx, pos.1 + dy));
+    }
+    let px = x.wrapping_add(dx as i16) as u16;
+    let vy = y
+        .wrapping_add(dy as i16)
+        .wrapping_add((PAGE_ROWS * page) as i16) as u16;
+    let addr = i32::from(vy.wrapping_mul(88).wrapping_add(px >> 2));
+    let (row, col) = (addr / 88, (addr % 88) * 4 + i32::from(px & 3));
+    let page_row = row - 32 - PAGE_ROWS * page;
+    let (ox, oy) = view.page_origin();
+    (0..PAGE_ROWS)
+        .contains(&page_row)
+        .then_some((col - ox, page_row - oy))
+}
+
+/// The bracket pixels of `marker` (32h target, 39h friend; none for other markers): offset
+/// from the frame's corner and colour.
+fn bracket_pixels(marker: u8) -> impl Iterator<Item = ((i32, i32), u8)> {
+    BRACKETS.iter().flat_map(move |&(pixels, target, friend)| {
+        let c = match marker {
+            0x32 => Some(target),
+            0x39 => Some(friend),
+            _ => None,
+        };
+        pixels.iter().filter_map(move |&d| c.map(|c| (d, c)))
+    })
 }
 
 /// Draws a mission ship at `pos` (from [`mission_ship_pos`]): its heading frame (colour 0
 /// transparent; `size` 32, or 40 for a heading frame whose box starts at its corner,
 /// `flight-screens.md` rev 3 §4.9) with x rounded down to a multiple of 4 like every planar
 /// sprite blit (`flight-screens.md` §2), then the target brackets of its marker, which are
-/// single pixels at the exact x.
+/// single pixels at the exact x. The brackets sit at `pos + (dx, dy)`, which is where the
+/// original puts them unless the ship's offset wrapped ([`draw_mission_ship_in`] covers that).
 pub fn draw_mission_ship(
     fb: &mut Framebuffer,
     frame: Option<(&[u8], usize)>,
@@ -394,16 +482,34 @@ pub fn draw_mission_ship(
     if let Some((frame, size)) = frame {
         draw_sprite(fb, frame, size, (x & !3, y));
     }
-    for (pixels, target, friend) in BRACKETS {
-        let c = match marker {
-            0x32 => target,
-            0x39 => friend,
-            _ => return,
-        };
-        for &(dx, dy) in pixels {
-            put_playfield(fb, x + dx, y + dy, c);
+    for ((dx, dy), c) in bracket_pixels(marker) {
+        put_playfield(fb, x + dx, y + dy, c);
+    }
+}
+
+/// Tick-order step 10's drawing of mission ship `s` into back page `page` (`mission-ships.md`
+/// rev 8 §4.7 with the 16-bit rules of §4.2.5 rows 2 and 3): the window test, the sprite
+/// ([`mission_ship_pos_in`] for the framebuffer's viewport) and the brackets of its marker,
+/// each by [`bracket_pixel`]. Returns whether the ship passed the test.
+pub fn draw_mission_ship_in(
+    fb: &mut Framebuffer,
+    frame: Option<(&[u8], usize)>,
+    view: ViewPos,
+    page: i32,
+    s: &ShipMark,
+) -> bool {
+    let Some(pos) = mission_ship_pos_in(view, page, s, Viewport::of(fb)) else {
+        return false;
+    };
+    if let Some((frame, size)) = frame {
+        draw_sprite(fb, frame, size, (pos.0 & !3, pos.1));
+    }
+    for (d, c) in bracket_pixels(s.marker) {
+        if let Some((x, y)) = bracket_pixel(view, page, s, pos, d) {
+            put_playfield(fb, x, y, c);
         }
     }
+    true
 }
 
 /// Plots one pixel at Classic screen position (x, y) if it lies in the playfield rows (shots,
@@ -833,6 +939,94 @@ mod tests {
             "page 0 skips the top row"
         );
         assert_eq!(mission_ship_pos(VIEW, 1, &top), Some((176, -12)));
+    }
+
+    /// BUG-30 (mission-ships rev 8 §4.2.5 rows 2 and 3): the draw test and the positions are
+    /// 16-bit. A top-edge ship after its wrap descends with offset Y ≈ 32,000 and is drawn as a
+    /// ghost: the sprite at page row (y and FFh) − 32, the brackets by the address rule.
+    #[test]
+    fn wrapped_ships_are_drawn_by_the_16_bit_rules() {
+        // VIEW's page origin is (16, 0). Tile (107, 106), offsets (16, 32,000): x = 5 × 32 + 16
+        // = 176, y = 2 × 32 + 32,000 = 32,064 (low byte 64).
+        let ghost = ShipMark {
+            tile_x: 107,
+            tile_y: 106,
+            sub_x: 16,
+            sub_y: 32_000,
+            marker: 0x32,
+        };
+        for page in [0, 1] {
+            let pos = mission_ship_pos(VIEW, page, &ghost);
+            assert_eq!(
+                pos,
+                Some((160, 32)),
+                "page {page}: sprite at page row 64 − 32"
+            );
+            // Bracket pixel (1, 1): VGA byte ((32,065 + 232 × page) × 88 + 177 SHR 2) mod 65,536
+            // = 3,716 (page 0) or 24,132 (page 1): row 42 or 274, i.e. page row 10, column
+            // 20 × 4 + 1 = 81.
+            assert_eq!(
+                bracket_pixel(VIEW, page, &ghost, pos.unwrap(), (1, 1)),
+                Some((65, 10)),
+                "page {page}"
+            );
+        }
+        // y = 31,000: the sprite at page row 24 − 32; bracket (1, 1) at VGA byte 41,156 (row
+        // 467), past page 0: not drawn.
+        let high = ShipMark {
+            sub_y: 30_936,
+            ..ghost
+        };
+        let pos = mission_ship_pos(VIEW, 0, &high).unwrap();
+        assert_eq!(pos, (160, -8));
+        assert_eq!(bracket_pixel(VIEW, 0, &high, pos, (1, 1)), None);
+        // y within about 400 of 32,767 wraps negative in the test: not drawn.
+        let wrapped = ShipMark {
+            tile_y: 109,
+            sub_y: 32_700,
+            ..ghost
+        };
+        assert_eq!(mission_ship_pos(VIEW, 1, &wrapped), None);
+        // The bottom-edge ship after its wrap (offset Y ≈ −32,700 → −24,700) is never drawn.
+        let low = ShipMark {
+            sub_y: -30_000,
+            ..ghost
+        };
+        assert_eq!(mission_ship_pos(VIEW, 1, &low), None);
+        // The whole drawing: the sprite at (160, 32), bracket (1, 1) at (65, 10), the ordinary
+        // place of that pixel (161, 33) untouched.
+        let mut fb = Framebuffer::new();
+        let frame = vec![9u8; 32 * 32];
+        assert!(draw_mission_ship_in(
+            &mut fb,
+            Some((&frame, 32)),
+            VIEW,
+            0,
+            &ghost
+        ));
+        assert_eq!(fb.get(160, 32), Some(9));
+        assert_eq!(fb.get(65, 10), Some(0x5C));
+        assert_eq!(fb.get(161, 33), Some(9), "the sprite, no bracket");
+        // An ordinary ship: draw_mission_ship_in draws what draw_mission_ship does.
+        let ship = ShipMark {
+            tile_x: 107,
+            tile_y: 107,
+            sub_x: 33,
+            sub_y: 32,
+            marker: 0x39,
+        };
+        let pos = mission_ship_pos(VIEW, 0, &ship).unwrap();
+        let mut a = Framebuffer::new();
+        let mut b = Framebuffer::new();
+        draw_mission_ship(&mut a, Some((&frame, 32)), pos, ship.marker);
+        assert!(draw_mission_ship_in(
+            &mut b,
+            Some((&frame, 32)),
+            VIEW,
+            0,
+            &ship
+        ));
+        assert!(a == b, "ordinary ships: the same pixels");
     }
 
     #[test]

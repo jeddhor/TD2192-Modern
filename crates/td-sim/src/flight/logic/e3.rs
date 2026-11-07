@@ -86,15 +86,16 @@ impl Flight {
 }
 
 impl MissionState {
-    /// The mission-logic part of E3 flight start (e3-mission-setup §4.1 steps 1 and 3, §3.2):
-    /// comm pending, the trigger (`g_CutsceneRequest`, unused in E3) and the ticker are
-    /// cleared, then `Msn_Setup` sets phase 1 (none in flight 7, OB-043; 100 in flight 17), the
-    /// home marker 3Dh (not in the dead block 20) and draws the objective (ink 37 for flights
-    /// 1–7, 10, 11, 21; 42 for 8, 9, 12–20).
+    /// The mission-logic part of E3 flight start (e3-mission-setup §4.1 steps 1, 3 and 9, §3.2):
+    /// the clears of mission-logic rev 5 §3.3 ([`MissionState::clear_flight_start`]: comm
+    /// pending, the trigger `g_CutsceneRequest` and the event counter, both unused in E3, the
+    /// base-hit bytes, the ion timer, the indicator phase) and the ticker, then `Msn_Setup`
+    /// sets phase 1 (none in flight 7, OB-043; 100 in flight 17), the home marker 3Dh (not in
+    /// the dead block 20) and draws the objective (ink 37 for flights 1–7, 10, 11, 21; 42 for
+    /// 8, 9, 12–20).
     pub fn setup_e3(&mut self, flight: u8) {
         self.scripted = true;
-        self.comm_pending = false;
-        self.cutscene = false;
+        self.clear_flight_start();
         self.transmission = 0;
         self.scene = 0;
         self.tint = false;

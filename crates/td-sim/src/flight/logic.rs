@@ -3,7 +3,8 @@
 //! (step 15), the flight-7 rule of the guidance routine and the HUD ticker and transmission
 //! indicator steps (step 19), and the teardown outcome tests.
 //!
-//! Spec: `docs/spec/sim/mission-logic.md` rev 1 (section numbers below are its own),
+//! Spec: `docs/spec/sim/mission-logic.md` rev 1 (section numbers below are its own; rev 5 for
+//! the 16-bit ΔY of `Msn_PlayerTouches`, §2/§3.1, and the flight-start clears, §3.3),
 //! `docs/spec/render/hud.md` rev 2 §4.3, §4.7, §4.8 (the ticker step decides the "ticker idle"
 //! gate of the rules, so it is simulation state) and `docs/spec/sim/flight-model.md` rev 2 §4.4
 //! (edge alert). Fidelity: T1. Confidence: flight 1 CONFIRMED (C-0010), flights 2–21 LIKELY.
@@ -18,7 +19,7 @@
 
 use super::player::Event;
 use super::ships::{NO_SHIP, SHIP_SLOTS};
-use super::shots::Shot;
+use super::shots::{self, Shot};
 use super::{Episode, Flight};
 use crate::hash::{HashState, StateHasher};
 use crate::real48::Real48;
@@ -175,8 +176,11 @@ impl Ticker {
 }
 
 /// Mission-logic state. The whole struct carries from flight to flight in
-/// [`super::Session`]: per-flight setup re-initialises only what §3.3 says it does (phase,
-/// home marker, objective and ticker); the other globals keep their values (U-144).
+/// [`super::Session`]: every flight start clears the globals of mission-logic rev 5 §3.3
+/// ([`MissionState::clear_flight_start`], U-144, BUG-31), and the episode's setup then sets the
+/// phase, the home marker, the objective and the ticker. What is left keeps its value: flight
+/// 19's copy of slot 19 ([`MissionState::truck`], not cleared by the original either) and the
+/// ticker's last text and window (the strip in VGA memory).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MissionState {
     /// The rules run (flights built by `Flight::start`; the dev and test constructors build
@@ -205,13 +209,15 @@ pub struct MissionState {
     pub hit: [bool; SHIP_SLOTS],
     /// Flight 17: the cut-scene request (DS:32B6).
     pub cutscene: bool,
-    /// Flight 17: the base tiles (105..108, 104..107) are rubble (tile 49).
+    /// Flight 17: the base tiles (105..108, 104..107) are rubble (tile 49). Cleared at every
+    /// flight start (the flight reads the map again).
     pub base_rubble: bool,
     /// Flight 18: ticks since the ion truck was found (DS:32B4).
     pub ion_timer: u16,
     /// Flight 18: the bomb went off (DS:32B1).
     pub bomb: bool,
-    /// Flights 18 and 20: the DAC and the flight palette are all white (presentation).
+    /// Flights 18 and 20: the DAC and the flight palette are all white (presentation). Cleared
+    /// at every flight start (the flight reads `td.pal` again).
     pub white_out: bool,
     /// Flight 19: slot 19's tile and offsets while the player flies the Vulture II
     /// (DS:16EE/16F0/16F2/16F4).
@@ -250,9 +256,38 @@ impl Default for MissionState {
 }
 
 impl MissionState {
-    /// The mission-logic part of `Msn_Setup` (§3.3): phase 1, home marker, the objective in
-    /// the ticker (all flights except 20).
+    /// The globals `Sim_FlyMission` clears at every flight start, retries included, in all three
+    /// episodes (mission-logic rev 5 §3.3, U-144, BUG-31; E1 `0E8B:B880..B924` and `C63C`, E2
+    /// `td2:0E96:A76E..A801`, E3 `td3:0C5D:A9CC..AA5F` and e3-mission-setup §4.1 step 9): comm
+    /// pending, the cut-scene request, the event counter (DS:329D; E2 DS:31C5, which flights 18
+    /// and 20 use as scratch), the 20 base-hit bytes DS:32A0..32B3 with flight 18's bomb flag
+    /// DS:32B1 (element 18; the port keeps it in [`MissionState::bomb`]), the ion timer DS:32B4
+    /// and the comm indicator phase DS:1705. `g_MissionSucceeded` and `g_MissionLost` are
+    /// cleared too: they live in [`Flight`], which every start builds anew.
+    ///
+    /// With them go the port's flags for what the original reloads at every flight start:
+    /// flight 17's rubble (the map file) and the white-out of flights 18 and 20 (`td.pal`, the
+    /// DAC black before the fade-in). Not cleared, as in the original: flight 19's copy of slot
+    /// 19's position DS:16EE..16F4 ([`MissionState::truck`]).
+    pub fn clear_flight_start(&mut self) {
+        self.comm_pending = false;
+        self.cutscene = false;
+        self.count = 0;
+        self.hit = [false; SHIP_SLOTS];
+        self.bomb = false;
+        self.ion_timer = 0;
+        self.comm_phase = 0;
+        self.base_rubble = false;
+        self.white_out = false;
+    }
+
+    /// E1 flight start: the clears of §3.3 ([`MissionState::clear_flight_start`]), the ticker
+    /// stopped (`Sim_FlyMission` step 3, e2-mission-setup §4.1: E1 behaviour at E2 addresses),
+    /// then the mission-logic part of `Msn_Setup`: phase 1, home marker, the objective in the
+    /// ticker (all flights except 20).
     pub fn setup(&mut self, flight: u8) {
+        self.clear_flight_start();
+        self.ticker.pos = 0;
         self.scripted = true;
         self.phase = 1;
         self.home_marker = if flight == 19 { MARK_TARGET } else { MARK_HOME };
@@ -272,14 +307,15 @@ impl MissionState {
     }
 
     /// The mission-logic part of E2 flight start (e2-mission-setup §4.1 steps 1 and 3, §3.2):
-    /// the debris counter, comm pending and the trigger (`g_CutsceneRequest`) are cleared,
-    /// then `Msn_Setup` sets phase 1, the home marker 3Dh and the objective (ink 37 for flights
+    /// the debris counter and the clears of mission-logic rev 5 §3.3
+    /// ([`MissionState::clear_flight_start`]: comm pending, the trigger `g_CutsceneRequest`,
+    /// the event counter, the base-hit bytes, the ion timer, the indicator phase), then
+    /// `Msn_Setup` sets phase 1, the home marker 3Dh and the objective (ink 37 for flights
     /// 1–7 and 9–11, 42 for 8 and 12–20); flight 11 starts with a transmission waiting.
     pub fn setup_e2(&mut self, flight: u8) {
         self.scripted = true;
         self.debris = 0;
-        self.comm_pending = false;
-        self.cutscene = false;
+        self.clear_flight_start();
         self.transmission = 0;
         self.scene = 0;
         self.ticker.pos = 0;
@@ -516,7 +552,11 @@ impl Flight {
         self.mission.phase = p;
     }
 
-    /// `Msn_PlayerTouches(s)` (`2404:0616`).
+    /// `Msn_PlayerTouches(s)` (`2404:0616`; §3.1, rev 5): ΔX is the 16-bit sum
+    /// `(tileX − viewX) × 32 + offsetX`, sign-extended, minus `4·Round(viewSubX / 4) + 128` in
+    /// 32 bits; ΔY is computed entirely in 16 bits and compared with the original's absolute
+    /// value, which leaves −32,768 negative, so it passes (mission-ships rev 8 §4.2.5 row 10,
+    /// U-570).
     fn player_touches(&self, s: usize) -> bool {
         let sh = &self.ships.0[s - 1];
         let v = self.player.view;
@@ -525,11 +565,15 @@ impl Flight {
             .checked_div(four)
             .and_then(Real48::round)
             .map_or(0, |r| 4 * r);
-        let dx =
-            (i32::from(sh.tile_x) - i32::from(v.tile_x)) * 32 + i32::from(sh.sub_x) - (ox + 128);
-        let dy = (i32::from(sh.tile_y) - i32::from(v.tile_y)) * 32 + i32::from(sh.sub_y)
-            - (i32::from(v.sub_y) + 84);
-        dx.abs() < 32 && dy.abs() < 32 && sh.alive()
+        let rel = |tile: u8, view: i16, off: i16| {
+            i16::from(tile)
+                .wrapping_sub(view)
+                .wrapping_mul(32)
+                .wrapping_add(off)
+        };
+        let dx = i32::from(rel(sh.tile_x, v.tile_x, sh.sub_x)) - (ox + 128);
+        let dy = rel(sh.tile_y, v.tile_y, sh.sub_y).wrapping_sub(v.sub_y.wrapping_add(84));
+        dx.abs() < 32 && shots::abs16(dy) < 32 && sh.alive()
     }
 
     /// The base test (§4.4).
@@ -1566,10 +1610,17 @@ impl Flight {
             let l = self.ships.0[0];
             for k in 0..3 {
                 let slot = self.shots.highest_free(0..=40).unwrap_or(40);
+                // Slot 1's offset + 32 (X) or − 10 (Y), 16-bit sums (mission-ships rev 8
+                // §4.2.5 row 9).
                 let (dx, ox, oy, heading) = match k {
                     0 => (0, l.sub_x, l.sub_y, 2),
-                    1 => (1, l.sub_x + 32, l.sub_y, 2),
-                    _ => (1, l.sub_x, l.sub_y - 10, self.rng.random(9) as u8),
+                    1 => (1, l.sub_x.wrapping_add(32), l.sub_y, 2),
+                    _ => (
+                        1,
+                        l.sub_x,
+                        l.sub_y.wrapping_sub(10),
+                        self.rng.random(9) as u8,
+                    ),
                 };
                 self.shots.0[slot] = Shot {
                     tile_x: l.tile_x.wrapping_add(dx),
@@ -1612,7 +1663,8 @@ impl Flight {
         for (limit, d) in [(160, 2), (170, 4)] {
             if ty > limit {
                 for s in &mut self.ships.0[..5] {
-                    s.sub_y += d;
+                    // A 16-bit add, as every offset add of the original (bp7 §4.3).
+                    s.sub_y = s.sub_y.wrapping_add(d);
                 }
             }
         }
