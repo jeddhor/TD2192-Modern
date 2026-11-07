@@ -151,7 +151,7 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 
 Checked every tick after the player specials. A chord is several key bytes down at once. Recorded for completeness: the port implements none of the hostile ones (AGENTS.md rule 10) and the others only by decision.
 
-Port (IM-22, 2026-11-06, D9): the five harmless chords are tick-order step 34 in `td_sim::Flight` (`cheat_chords`), in both profiles; E2 and E3 keep only T + I + M ([episode-deltas](episode-deltas.md) §4.1 step 32). The letters reach the key table as `td_sim::ChordKey` (not remappable; replay format 3). The chords are tested in the order of this table (U-531). Confirmed against the original: M + K + A + R switches class, armour and shields in the same tick as C-0007 (tick 69) and C-0008 (tick 75) (`oracle_flight.rs`), and T + I + M is the chord C-0010 holds (`oracle_mission.rs`).
+Port (IM-22, 2026-11-06, D9): the five harmless chords are tick-order step 34 in `td_sim::Flight` (`cheat_chords`), in both profiles; E2 and E3 keep only T + I + M ([episode-deltas](episode-deltas.md) §4.1 step 32). The letters reach the key table as `td_sim::ChordKey` (not remappable; replay format 3). The port tests them in the order of this table (U-531). Confirmed against the original: M + K + A + R switches class, armour and shields in the same tick as C-0007 (tick 69) and C-0008 (tick 75) (`oracle_flight.rs`), and T + I + M is the chord C-0010 holds (`oracle_mission.rs`).
 
 | Keys held | Effect | Port |
 |---|---|---|
@@ -163,6 +163,8 @@ Port (IM-22, 2026-11-06, D9): the five harmless chords are tick-order step 34 in
 | E + V + L | `Dos_Exec` of the drive-relabel program with the pilot's name (strings `0E8B:B84F`/`B860`) | **never port** |
 | P + L + A + Y | `Dos_Exec` of the relabel program with the title (strings `0E8B:B86A`/`B874`) | **never port** |
 | (flight 20) view tile x > 170 and y > 170 | `g_PlayerArmour` := 64 | preserve (mission rule) |
+
+**Order and key bytes (U-531, RE-19, static: `0E8B:F6B5..F80A`, key bytes DS:1A5C + scan code).** Every tick, right after `Sim_PlayerSpecials`, the code tests in this order: **S** alone (scan 1Fh: `g_CfgSfx` 1 ↔ 3, effects off ↔ PC speaker; the only test that **clears its key byte**, so one toggle per key press or typematic repeat), then **T + I + M**, **H + A + R + D**, **J + D + W**, E + V + L (hostile), P + L + A + Y (hostile), **J + O + H + N**, **M + K + A + R**. Each test reads the key bytes as they are and changes none of them, so a chord held for n ticks fires n times. The only difference from the table order is J + D + W before J + O + H + N; the two touch disjoint state (class and class table versus DS:13DE), so no combination of held keys gives a different result. Combinations: H + A + R + D with M + K + A + R → DS:13DE = 8 (increment, then 8); H + A + R + D with J + O + H + N → 0; J + D + W with M + K + A + R → class 0 (6, then 0; the class-6 table patch stays). E2 (`td2:0E96:E9E1..E9FB`) and E3 (`td3:0C5D:E9FE..EA18`) keep only T + I + M, which clears nothing either, and have no S toggle. Port: the order of `td_sim::Flight::cheat_chords` gives the same results; no change needed (the S toggle is a settings matter, not a chord).
 
 ## 6. Mission slots, projectiles and explosions (arrays)
 

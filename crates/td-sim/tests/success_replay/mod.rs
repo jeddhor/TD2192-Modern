@@ -22,6 +22,7 @@ use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
 use td_sim::flight::front_end::direct_start_world;
+use td_sim::flight::heap::block_19_to_voffice;
 use td_sim::flight::{Episode, Session, TickResult, episode};
 use td_sim::replay::Replay;
 use td_sim::{Flight, World, state_hash};
@@ -68,12 +69,21 @@ pub fn check_ending(data: &Path, ep: Episode, flight: u8, suffix: &str, death: b
 /// Runs the replay of `prev` (success), then the replay `e<E>f<NN>.tdr` of `flight` with the
 /// session `prev` left, as the next flight of the same block (VE-5: E1 flight 21 after 19, E3
 /// flight 7 after 6, E3 flight 21 after 11): checkpoints, then the flight ends on its last
-/// tick by success, or by the end of a death (`death`).
+/// tick by success, or by the end of a death (`death`). E1 flight 21 follows the front end of
+/// VE-5's capture C-0200 (the debrief times out, Esc at the voffice card), as `tdtool` flies it:
+/// its ships start from those heap leftovers (mission-ships rev 6 §4.1.1, U-500).
 pub fn check_after(data: &Path, ep: Episode, prev: u8, flight: u8, death: bool) {
     let Some(first) = fly(data, ep, prev, "", false, Session::for_episode(ep)) else {
         return;
     };
-    fly(data, ep, flight, "", death, first.session());
+    let mut session = first.session();
+    if (ep, flight) == (Episode::E1, 21) {
+        let dir = DataDir::open(data).unwrap();
+        std::sync::Arc::make_mut(&mut session.paths)
+            .apply(&block_19_to_voffice(true), |f| dir.read(f))
+            .unwrap();
+    }
+    fly(data, ep, flight, "", death, session);
 }
 
 /// Runs one replay from `session`; `None` when there is no replay.

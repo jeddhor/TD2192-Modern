@@ -41,8 +41,10 @@
 //! **Runs of several flights** (VE-5, oracle build 3, ORACLE.md §5b; [`check_run`]): each
 //! `tickwatch` line of the scenario starts a watcher generation, and the second flight's dumps
 //! carry the suffix `_g2`. The first flight starts at program start, each later one with the
-//! session the flight before it left (`Flight::session`), its muzzle bytes from its own tick-1
-//! record. The afterburner's burst frame (and its heading during a burst) is compared too.
+//! session the flight before it left (`Flight::session`: the turn directions too, U-501), after
+//! the front end's heap uses between the two flights ([`Leg::front_end`]: E1 flight 21's path
+//! arrays, mission-ships rev 6 §4.1.1, U-500), its muzzle bytes from its own tick-1 record. The
+//! afterburner's burst frame (and its heading during a burst) is compared too.
 //! A [`Leg`] with `ends: false` compares a replay that covers only part of a flight (RE
 //! captures keyed by hand, U-430).
 
@@ -51,6 +53,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
@@ -58,6 +61,7 @@ use td_formats::mission::Mission;
 use td_sim::flight::front_end::{
     MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, direct_start_world, muzzle_base,
 };
+use td_sim::flight::heap::HeapUse;
 use td_sim::flight::player::Turn;
 use td_sim::flight::ships::{NO_SHIP, RECORD_LEN, SHIP_SLOTS, Ship};
 use td_sim::flight::shots::{SHOT_SLOTS, Shot};
@@ -576,9 +580,14 @@ fn slot_diff(f: &Flight, d: &Dump, i: usize) -> Option<String> {
 }
 
 fn differences(f: &Flight, d: &Dump, shots: bool) -> Vec<String> {
+    // E1 flight 21 ends itself in step 1 of tick 25 (tick-order step 1, `0E8B:CC9A`), so the
+    // record of value 25, which holds tick 25's steps 1–3, already shows the mission over and
+    // the end-sequence counter at 1.
+    let ends_next = f.episode == Episode::E1 && f.number == 21 && f.ticks == 24;
+    let next_tick = |n: &str, b: i64| ends_next && matches!(n, "over" | "end ticks") && b == 1;
     let mut errs: Vec<String> = fields(f, d)
         .iter()
-        .filter(|(_, a, b)| a != b)
+        .filter(|(n, a, b)| a != b && !next_tick(n, *b))
         .map(|(n, a, b)| format!("{n} ours {a} orig {b}"))
         .collect();
     errs.extend(heading_ok(f, d));
@@ -702,6 +711,10 @@ pub struct Leg<'a> {
     /// original's records end there too, and the capture has the outcome dump `end240`.
     /// Otherwise the replay covers part of the flight and each of its ticks is compared.
     pub ends: bool,
+    /// What the capture's front end did on the flight heap before this flight, after the
+    /// previous one (`PathMemory::apply`; only E1 flight 21 reads it, mission-ships rev 6
+    /// §4.1.1).
+    pub front_end: &'a [HeapUse],
 }
 
 /// The frame of the next generation's first record, if the capture flew a next flight.
@@ -765,6 +778,7 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
             suffix,
             muzzles,
             ends: true,
+            front_end: &[],
         }],
     );
 }
@@ -772,7 +786,8 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
 /// Compares the flights of one program run with the capture whose scenario starts with
 /// `# <tag> ` (VE-5, oracle 3: the second flight's records are generation 2): the first flight
 /// starts at program start (`Session::for_episode`), each later one with the session the one
-/// before it left (`Flight::session`; the front end between them draws no `Random`).
+/// before it left (`Flight::session`; the front end between them draws no `Random`), after the
+/// leg's heap uses ([`Leg::front_end`]).
 pub fn check_run(l: &Layout, data: &Path, oracle: &Path, tag: &str, legs: &[Leg]) {
     let Some(cap) = find_capture(oracle, tag) else {
         eprintln!("SKIPPED: no {tag} capture under the oracle root");
@@ -786,8 +801,12 @@ pub fn check_run(l: &Layout, data: &Path, oracle: &Path, tag: &str, legs: &[Leg]
         };
         replays.push(Replay::from_bytes(&bytes).unwrap());
     }
+    let dir = DataDir::open(data).unwrap();
     let mut session = Session::for_episode(l.episode);
     for (i, (leg, r)) in legs.iter().zip(&replays).enumerate() {
+        Arc::make_mut(&mut session.paths)
+            .apply(leg.front_end, |f| dir.read(f))
+            .unwrap();
         let f = check_leg(l, data, &cap, i + 1, leg, r, session);
         session = f.session();
     }
@@ -860,20 +879,9 @@ fn check_leg(
     let world = episode::world(ep, flight, map, muzzles);
     let mission = episode::mission_file(ep, flight)
         .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
+    // Nothing is copied from the capture: the session carries the turn directions (U-501,
+    // flight-model rev 3 §2) and, for E1 flight 21, the path arrays (U-500).
     let mut f = Flight::start(flight, mission.as_ref(), &world, session);
-    if generation > 1 {
-        // Known divergence copied (U-501, VE-5): flight setup does not write the player's turn
-        // direction `g_PlayerTurnDir`, so a later flight of the run starts with the value the
-        // flight before it left (E1 block 19: 2 after flight 19); td-sim starts every flight with
-        // 0 (flight-model §2 "starts at 0"). From a principal heading every steering input that
-        // changes the target also sets the direction (flight-model §4.6), so the stale value
-        // is not seen until then.
-        f.player.turn = match first.u8(l.turn) {
-            1 => Turn::CounterClockwise,
-            2 => Turn::Clockwise,
-            _ => Turn::None,
-        };
-    }
     let has_proj = proj.is_some();
 
     // Setup: the record of tick 1 holds the state after setup (plus tick 1's turn step).

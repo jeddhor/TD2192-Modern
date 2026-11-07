@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 6 |
+| **Revision** | 7 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
 | **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014), the 16 heading blits (C-0080) |
@@ -295,6 +295,7 @@ latch := 0; P byte := 0
 
 - The key that ends the pause stays down in the key table, so it acts in the same tick: Esc opens the computer menu (step 25), Space fires, F6 requests a comm, and so on.
 - Ticks stop; `g_TickPrevTime` keeps its old value, so the first tick after a pause does not wait.
+- **Keys held through the pause stay cleared** (U-450, C-0325): the clear at entry zeroes every byte, and the keyboard repeats only the last key pressed (P, then the key that ends the pause), so a movement key held from before the pause does not come back until it is released and pressed again. In C-0325 kp8 and kp4, held from ticks 3 and 6 to tick 25, read 0 from tick 11; the key that ended the pause (B) read 1 for ticks 11..13 until released. The same holds for every screen that clears the key table and is opened by its own key (flight menu, map, comm viewer); the real-time screens of §4.10 clear nothing.
 - C-0012 frame 5724: ink-37 pixels at x 102..242, rows 77..81 (the string starts with one space); DAC 37 = `td.pal` 37 in mode 0.
 
 ### 4.5 Infra-red palette modes (`g_PaletteMode` DS:1704)
@@ -317,6 +318,8 @@ latch := 0; P byte := 0
 So the exact IR picture depends on how mode 1 or 2 was entered last (OB-029). Alt toggles only between 1 and 2 (a flight that starts in mode 0 never enters IR; E1 flight 8 starts in mode 1, [mission-setup](../sim/mission-setup.md)); it is ignored when the mission is over, and it zeroes `g_HitFlash`.
 
 Entry 37 is the ink of the IR notice and of the pause line; in mode 1 it keeps the **normal** colour of entry 255, so the text stays readable.
+
+**Episode 2: Alt from mode 2 back to mode 1 (OB-023, U-530).** E2's copy of the toggle (`td2:0E96:E510..E5EA`) lost the body of its loop over the entries: the loop only zeroes `g_HitFlash` 256 times. After it, with the loop index left at 255, it writes **DAC 255 := (Round(R / 8), Round(G / 8), Round(B / 4)) of P[255]** (the mode-1 start formula of that one entry) and **DAC 37 := P[255]**; every other entry keeps its mode-2 red until something rewrites the whole DAC (a hit flash ending, a fade, the Esc menu). The palette mode becomes 1 at once. Alt from mode 1 to mode 2 and both directions in E1 and E3 are as the table. With the shipped flight palette P[255] = (63, 0, 0), so DAC 255 becomes (8, 0, 0) and DAC 37 stays (63, 0, 0), the same value mode 2 gave it (C-0320, vector 14a).
 
 #### 4.5.2 IR notice (tick-order step 21)
 
@@ -406,7 +409,9 @@ Visibility and drawing per projectile slot, in step 6 after the hit tests (`0E8B
 
 Kind 3 is never drawn (no class fires it). Shots on a two-digit heading (U-160) are not drawn.
 
-**Kinds 4..6** (sprites): drawn when viewX ≤ tileX ≤ viewX + 8 and viewY + 2 ≤ tileY ≤ viewY + 5, with the heading's blit (8 plain, 2 `386E:0C02`, 4 `0926`, 6 `07BC`, 7 `0391`, 9 `04E9`, 1 `0A93`, 3 `0650`) at sprite (x, y) = (X, Y). Sprite slot: kind 4 → 16, kind 5 → 15, kind 6 → 9 (`td.shp` 16, 15, 9). Kind 6 is drawn after its heading update (weapons §4.3 step 6).
+**Kinds 4..6** (sprites): drawn when viewX ≤ tileX ≤ viewX + 8 and viewY + 2 ≤ tileY ≤ viewY + 5, with the heading's blit (8 plain, 2 `386E:0C02`, 4 `0926`, 6 `07BC`, 7 `0391`, 9 `04E9`, 1 `0A93`, 3 `0650`) at sprite (x, y) = (X, Y). Sprite slot: kind 4 → 16, kind 5 → 15, kind 6 → 9 (`td.shp` 16, 15, 9). Every kind is drawn with the heading latched at the start of the slot's update (weapons rev 6 §4.3 step 0): kind 6 is drawn **before** its steering, and the new heading the steering stores is used from the next tick (drawing, map test and move alike; U-502, C-0207).
+
+**A shot is drawn in the tick that frees it for age.** Step 6 draws every shot still in use (after the map test of step 2 and the hit tests of steps 3–5, which free a shot before it is drawn); step 7 then frees a shot whose life is above 25, after it was drawn. So a shot's last tick of life is on screen: the frame of that tick shows it at its position before the move of step 8. In the shipped game this is visible where a homing launch has written life 200 into projectile slot 40 (OB-143) while slot 40 holds a shot near the player: C-0321 (C-0207's run) tick 118 shows the enemy shots of slots 39 and 40 side by side (frames 1870–1872, rows 86 and 108, the offsets 31 and 53 of tile row 37), although slot 40 is freed in that tick; a player shot reaching life 26 is about 25 tiles from where it was fired and off screen. Port rule (T2): take the drawn shot list after step 6 (or keep the shots step 7 frees in it), not after steps 7 and 8.
 
 ### 4.9 Mission-specific sprites (flights 7, 12, 15, 20, 21)
 
@@ -591,6 +596,7 @@ E3 sets no cut-scene request ([e3-mission-logic](../sim/e3-mission-logic.md) §2
 | 12 | E1 flight 8 start (mode 1) | DAC = (Round(R/8), Round(G/8), Round(B/4)) of `g_FlightPalette` for all entries but 37; DAC 37 = P[255]; the only other differences are entries the flight itself patches (36, 38, 46..49, ...) | C-0014 f522..f1222 |
 | 13 | Same, ticks ≤ 200 | IR notice ink-37 pixels at rows 77..81, x 106..232 | C-0014 f522..f1222 |
 | 14 | Alt (mode 2), then Alt (mode 1) | mode 2: (min(63, Round(1.5 R)), 0, 0); mode 1 again: as #12 | C-0014 f1322, f1422 |
+| 14a | E2 flight 3 (mode 1 at start), Alt at tick 20 (mode 2), Alt at tick 35 (back to mode 1), no other input | start: DAC = #12's formula for all 256 entries (0 differences, f1043); after tick 20: mode 2 formula for all but the flight-patched entries 38, 47, 133, 134, 193; after tick 35: **only DAC 255 changed** to (8, 0, 0) = Round of P[255] = (63, 0, 0) by (8, 8, 4); DAC 37 = P[255] = (63, 0, 0); the other 247 entries keep the mode-2 red (f1170 to the end of the capture, tick 70) | C-0320 f1043, f1117, f1170 |
 | 15 | P in mode 1 | pause ink 37 rows 77..81, x 102..242, DAC 37 = P[255] | C-0014 f1522 |
 | 16 | Esc menu in mode 1, then "return to game" | menu in mode 0 (normal palette); after the return DAC = (Round(R/8), Round(G/8), Round(B/8)), DAC 37 = (8, 6, 8) (not P[255]): OB-029 | C-0014 f1822, f1982 |
 
@@ -616,6 +622,8 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 - U-224: are ink 40/43/45 and the font background (178) in the comm screen meant to follow the IR palette (they do in the code)?
 - U-225: the code's extra exclusions 85h, 86h, C1h, 90h in the hit-flash loop are dead; was the intended range wider (the HUD lamp entries)?
 - U-226: which flight-21 entries the F5 map shows (nothing is loaded for flight 21).
+- [x] IM-23 (M10-47, SP): §4.8's last sentence contradicted weapons rev 6 §4.3 step 6. Resolved (RE-19, rev 7): §4.8 now says every kind is drawn with the latched heading, kind 6 before its steering.
+- [x] IM-23 (VE): does the original show a shot on the tick step 7 frees it? Yes (RE-19, rev 7, C-0321 tick 118): §4.8's new paragraph; port: the drawn list is taken after step 6.
 
 ## 9. Provenance
 
@@ -648,3 +656,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | 4 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.10 new: the flight-17 cut-scene and the flight-19 V.C.I. screen in full (frame, image rows, text pens and inks, delays, DAC flashes, page-0 clear, keys, tick); list of the other mission-requested real-time effects of E1–E3 (BUG-3) |
 | 5 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.3: flight fades take 2 frames per level at P1, 33–34 frames (BUG-8, C-0012); §3.5: menu item ramp 11 steps per frame (C-0012), poll delay in real ms; §4.10 delays are `Crt.Delay` (real ms) |
 | 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §5 OB-029 row: the comm viewer has no fade (U-231 resolved: the flight fades' callers are the menu, help, ship library, joystick calibration, the flight-17/19 screens and flight start/end; C-0058) |
+| 7 | 2026-11-06 | RE-19 (Archaeologist + Spec author) | §4.5.1: E2 Alt back from mode 2 to mode 1 writes only DAC 255 (mode-1 start formula of P[255]) and DAC 37 (P[255]) (U-530, OB-023; `td2:0E96:E52D..E5E0`, C-0320), vector 14a. §4.8: every shot kind is drawn with the heading latched at the start of its update (kind 6 before steering; the old sentence contradicted weapons rev 6, IM-23); a shot freed for age in step 7 is drawn in that tick first (C-0321 tick 118); §8 IM-23 items closed; §4.4: held keys stay cleared after a pause (U-450, C-0325) |

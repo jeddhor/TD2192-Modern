@@ -9,12 +9,14 @@
 //! Shared by `tdtool plan` and `tdtool replay` (VE-2 M9-21, VE-4 M10-45).
 
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
 use td_sim::flight::front_end::direct_start_world;
+use td_sim::flight::heap::{HeapUse, block_19_to_voffice};
 use td_sim::flight::{Episode, Session, episode};
 use td_sim::{Flight, World};
 
@@ -63,6 +65,18 @@ pub fn predecessor(episode: Episode, number: u8) -> Option<u8> {
     }
 }
 
+/// What the front end does on the flight heap between flight `number` and its [`predecessor`],
+/// as the replays fly it: E1 flight 21 follows flight 19 the way VE-5's capture C-0200 does
+/// (the debrief times out, Esc at the voffice card; music on), which places flight 21's ships
+/// (mission-ships rev 6 §4.1.1 vector 1, U-500). The other flights read no path arrays they
+/// did not load.
+pub fn between(episode: Episode, number: u8) -> Vec<HeapUse> {
+    match (episode, number) {
+        (Episode::E1, 21) => block_19_to_voffice(true),
+        _ => Vec::new(),
+    }
+}
+
 impl FlightSetup {
     /// Loads flight `number` of `episode` (E1 1..=21, E2 1..=20, E3 1..=21 without 20) as the
     /// first flight of a program run.
@@ -103,7 +117,7 @@ impl FlightSetup {
     /// `prev` is run from its own start (its predecessor first, if it has one, from the same
     /// directory) and the session it leaves is this flight's (`Flight::session`; the front end
     /// between the two flights draws no `Random` when the first one succeeds, e3-program-flow
-    /// §4.3, episode-program-flow §4.3).
+    /// §4.3, episode-program-flow §4.3), after the front end's heap uses ([`between`]).
     pub fn load_after(root: &Path, episode: Episode, number: u8, prev: &Path) -> Result<Self> {
         let bytes = std::fs::read(prev).with_context(|| format!("read {}", prev.display()))?;
         let r = td_sim::replay::Replay::from_bytes(&bytes)
@@ -117,7 +131,10 @@ impl FlightSetup {
             td_sim::replay::step(&mut f, &first.world, w);
         }
         let mut setup = Self::load(root, episode, number)?;
-        setup.prior = Some(f.session());
+        let mut session = f.session();
+        let dir = DataDir::open(root)?;
+        Arc::make_mut(&mut session.paths).apply(&between(episode, number), |f| dir.read(f))?;
+        setup.prior = Some(session);
         Ok(setup)
     }
 

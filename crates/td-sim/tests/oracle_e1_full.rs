@@ -7,6 +7,7 @@
 
 mod full_flight;
 
+use td_sim::flight::heap::{self, HeapUse, PortraitLoad};
 use td_test_support::{require_data, require_oracle};
 
 fn check(flight: u8) {
@@ -196,38 +197,61 @@ fn flight_03_after_its_story_matches_oracle() {
             suffix: "",
             muzzles: Muzzles::Capture,
             ends: true,
+            front_end: &[],
         }],
     );
 }
 
-/// Block 19 in one program run (VE-5, oracle build 3): flight 19 (`e1f19.tdr`, direct start),
-/// the debrief, Esc at the voffice card, then flight 21 (`e1f21.tdr`: no input; it ends itself
-/// after 25 ticks through the end sequence) with the session flight 19 left (episode-program-
-/// flow §4.4 row 19).
-#[test]
-#[ignore = "U-500: at flight 21's setup the original places the ships from path buffers flight 21 \
-            never loads (flight 19 matches; flight 21 diverges at setup in the slots' positions)"]
-fn flights_19_and_21_in_one_run_match_oracle() {
+/// Block 19 in one program run: flight 19 (`e1f19.tdr`, direct start), the front end's heap
+/// uses, then flight 21 (`e1f21.tdr`: no input; it ends itself after 25 ticks through the end
+/// sequence) with the session flight 19 left (episode-program-flow §4.4 row 19). Flight 21's
+/// ships start from the path arrays' leftovers (mission-ships rev 6 §4.1.1, U-500).
+fn block_19(tag: &str, front_end: &[HeapUse]) {
     use full_flight::{Leg, Muzzles};
     let (data, oracle) = (require_data!(), require_oracle!());
     full_flight::check_run(
         &full_flight::E1,
         &data,
         &oracle,
-        "ve5-e1f19-f21",
+        tag,
         &[
             Leg {
                 flight: 19,
                 suffix: "",
                 muzzles: Muzzles::DirectStart,
                 ends: true,
+                front_end: &[],
             },
             Leg {
                 flight: 21,
                 suffix: "",
                 muzzles: Muzzles::Capture,
                 ends: true,
+                front_end,
             },
         ],
     );
+}
+
+/// C-0200 (VE-5, oracle build 3): the debrief times out, Esc at the voffice card jumps to
+/// flight 21 (`M8`, the debrief, `M5`, the card; §4.1.1 vector 1).
+#[test]
+fn flights_19_and_21_in_one_run_match_oracle() {
+    block_19("ve5-e1f19-f21", &heap::block_19_to_voffice(true));
+}
+
+/// C-0300 (RE-18): the whole post-flight story with no Esc (§4.1.1 vector 2): after the card,
+/// dialogue 88 (faces 24 left, 11 right), `M3`, the hangar card and dialogue 89 (faces 1 left,
+/// 2 right). `td-flow/tests/e1_block_flow.rs` checks that the campaign reports these uses.
+#[test]
+fn flights_19_and_21_after_the_whole_story_match_oracle() {
+    let p = |face, right| PortraitLoad { face, right };
+    let mut front_end = heap::block_19_to_voffice(true);
+    front_end.extend([
+        HeapUse::Screen(vec![p(24, false), p(11, true)]),
+        HeapUse::Song("hangar.cmf".to_owned()),
+        HeapUse::card(),
+        HeapUse::Screen(vec![p(1, false), p(2, true)]),
+    ]);
+    block_19("re18-e1f19-f21-full", &front_end);
 }

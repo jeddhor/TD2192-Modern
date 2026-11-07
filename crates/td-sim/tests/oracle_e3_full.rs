@@ -123,12 +123,14 @@ fn block_run(first: u8, second: u8, tag: &str) {
                 suffix: "",
                 muzzles: Muzzles::Capture,
                 ends: true,
+                front_end: &[],
             },
             Leg {
                 flight: second,
                 suffix: "",
                 muzzles: Muzzles::Capture,
                 ends: true,
+                front_end: &[],
             },
         ],
     );
@@ -165,6 +167,7 @@ fn flight_09_after_its_story_matches_oracle() {
             suffix: "",
             muzzles: Muzzles::Capture,
             ends: true,
+            front_end: &[],
         }],
     );
 }
@@ -184,6 +187,7 @@ fn hangar(suffix: &str, tag: &str) {
             suffix,
             muzzles: full_flight::Muzzles::Capture,
             ends: false,
+            front_end: &[],
         }],
     );
 }
