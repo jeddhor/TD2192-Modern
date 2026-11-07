@@ -2,24 +2,26 @@
 
 Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7af9` (IM-19 merged) plus this branch's docs. Main's later `c2ab363` (the user's D3–D6 decisions) changes only docs and is merged here. Inputs: every spec in `docs/spec/`, `docs/re/FORMATS.md`, the parity reports [M3-audio](M3-audio.md), [M6-flight](M6-flight.md), [M8-missions](M8-missions.md), [M9-playthrough](M9-playthrough.md), [M10-playthrough](M10-playthrough.md), [M12-timing](M12-timing.md), the tests, and the oracle captures (`re-work\captures\oracle`, `MANIFEST.md`). No new oracle run was made.
 
+**Updated 2026-11-07 by VE-9 (M12-19)** for the L5 coverage work of §10 (tree: main `948cc5f` plus VE-9's branch): the coverage table below, §0 items 1, 3, 6, 11 and 13 ("VE-9 update"), the §2 rows and totals, and 24 rows of §4 (each says "VE-9 update"; the E3 row "1–9: 17–20" is split in two, same four items).
+
 **Updated 2026-11-06 by VE-8 (M12-06)** for what IM-21, IM-22, IM-23, VE-5's two-flight runs, RE-18, RE-19 and VE-8 did after this review (tree: main `b158e78` plus VE-8's branch): the notes marked "VE-8 update" in §0, seven rows of §4 (each says "VE-8 update"), the §2 rows and totals they change, §5 (regenerated), and §7 (IM-22's Enhanced fixes, every OB now decided, OB-140..151 added), §7.1 and §7.2. The other rows are as VE-6 left them.
 
 ## 0. What remains for Classic 1.0 (ordered by impact on play)
 
 **VE-8 update, before item 1: a crasher.** BUG-18 (major): E3 flight 19 panics in tick 4235 with any input or none, an i16 overflow in ship drift at row 199 (mission-ships §4.2.3, U-570). Found by the random-input soak ([M12-soak](M12-soak.md) §2.2); no other flight panicked in 7,808 random flights of up to 100,000 ticks.
 
-1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10). **Done after this review (VE-7, M12-15, [M12-screens](M12-screens.md)):** captures C-0270..C-0291 and `td-flow/tests/screens_parity.rs` compare 35 such screens in all three episodes, every dump from the fade-in to the hold: exact except typing 1–2 frames early (U-521), the E1 enemy dossier's line 9 (BUG-12, U-520) and `td1-20` one pixel left (BUG-13, U-522). E1 ending B is still not captured (a planned flight-17 "lost" run is needed); E2 ending B is unreachable (OB-025).
+1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10). **Done after this review (VE-7, M12-15, [M12-screens](M12-screens.md)):** captures C-0270..C-0291 and `td-flow/tests/screens_parity.rs` compare 35 such screens in all three episodes, every dump from the fade-in to the hold: exact except typing 1–2 frames early (U-521), the E1 enemy dossier's line 9 (BUG-12, U-520) and `td1-20` one pixel left (BUG-13, U-522). E1 ending B is still not captured (a planned flight-17 "lost" run is needed); E2 ending B is unreachable (OB-025). *VE-9 update: E1 ending B was captured by RE-19 (C-0324); its screens (IM-24) and now dialogue 75 are compared (BUG-33: the dialogue types two frames late, T2).*
 2. ~~E2/E3 two-digit muzzle bytes~~ **Done after this review (IM-20, merged 90bd09f):** the E2/E3 worlds are built from front-end state, equal all 58 whole-flight captures and the C-0015/C-0036/C-0180/C-0121/C-0128 campaign states, every L5 flight uses the built bytes, and the dual replays were rewritten.
-3. **Session state across flights is unverified.** *VE-8 update:* VE-5's two-flight runs now compare the second flight of a run every tick with the session the first left: E1 19 → 21 (C-0200, C-0300), E3 6 → 7 (C-0201) and E3 11 → 21 (C-0202). No captured flight follows one that patches the class tables (OB-018) or changes E2's radar colours, so those stay unverified. Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481).
+3. **Session state across flights is unverified.** *VE-8 update:* VE-5's two-flight runs now compare the second flight of a run every tick with the session the first left: E1 19 → 21 (C-0200, C-0300), E3 6 → 7 (C-0201) and E3 11 → 21 (C-0202). No captured flight follows one that patches the class tables (OB-018) or changes E2's radar colours, so those stay unverified. Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481). *VE-9 update: E1 flights 12 → 13 (C-0377: the class-3 patch persists, OB-018) and E3 flights 16 → 17 (C-0376: the tables restored) match every tick (§10).*
 4. ~~The flight-start fade-in is not ported~~ **Done after this review (IM-21, BUG-10; `td2192::flight::tests::opening_frames_match_the_original`, C-0017, C-0015, C-0036).** VE-6 wrote: the flight-start fade-in is not ported (M12-timing §7). Every flight starts with a cut where the original runs a 34-frame `FadeIn` before tick 1. BUG-10 is filed for it.
 5. ~~Flights never compared~~ **Done after this review (VE-5, IM-23):** E1 flight 21 (`oracle_e1_full::flights_19_and_21_*`, C-0200, C-0300; IM-23's heap-built path arrays, U-500) and E3 flights 7 and 21 (`oracle_e3_full::flights_06_and_07_*`, `::flights_11_and_21_*`, C-0201, C-0202) match the original every tick.
 6. **Inputs and outcomes no capture exercised inside whole flights:**
    - missiles and Tab (C-0011 is 30 s long); *VE-8 update: done by VE-5 and IM-23: `oracle_e1_full::flight_08_weapons_*` (C-0205), `::flight_15_weapons_*` (C-0206), `oracle_e2_full::flight_20_weapons_matches_oracle` (C-0207, all 233 ticks after BUG-11), with afterburner bursts in C-0205;*
    - the afterburner burst;
-   - vertical bounces and the map-edge push-back (flight-model, LIKELY parts);
+   - vertical bounces and the map-edge push-back (flight-model, LIKELY parts); *VE-9 update: done (C-0342, C-0373, C-0374);*
    - the joystick (U-024);
-   - E2/E3 deaths and end sequences, aborts and "lost" outcomes;
-   - E1 failures (lost in flights 13, 17, 18 and 20; the flight-18 bomb).
+   - E2/E3 deaths and end sequences, aborts and "lost" outcomes; *VE-9 update: done (C-0363..C-0365, C-0372, C-0375; §10);*
+   - E1 failures (lost in flights 13, 17, 18 and 20; the flight-18 bomb). *VE-9 update: outcome 0 (C-0360) and lost 17 (C-0324) and 20 (C-0362) compared; 13 and 18 still need planned flights.*
 7. ~~Original cheat chords are not ported~~ **Done after this review (IM-22, D9).** VE-6 wrote: original cheat chords are not ported (T+I+M, M+K+A+R, tick-order step 34; `td-sim/src/flight/mod.rs:13`, "decision D5/D9"). Players who remember them will miss them, and the debrief's cheater text (D9) depends on them. This needs the user's decision.
 8. ~~A Classic deviation found here~~ **Fixed after this review (IM-22, BUG-9; U-530 confirmed by RE-19).** VE-6 wrote: a Classic deviation found here (BUG-9, OB-023). In E2, Alt from infra-red mode 2 back to mode 1 should leave the screen red-tinted: only DAC 255 and 37 are rewritten. The port restores the whole mode-1 palette in every episode and profile (`td_render::flight_palette::FlightDac::toggle`). The player guide therefore says the wrong thing about it.
 9. ~~Missing Enhanced bug fixes~~ **Done after this review (IM-22):** OB-012, 022, 023, 024, 032, 056, 057 and 058 follow the Enhanced fixes setting (§7.2). VE-6 wrote: missing Enhanced bug fixes. The user's D5 decision (2026-11-06) puts every fix-enhanced fix in the Enhanced preset, so these are now 1.0 scope. OB-012, OB-024, OB-032, OB-056 and OB-057 are fix-enhanced and not implemented. OB-031 and OB-023 behave as fixed in both profiles, against their policy. The candidates OB-022, OB-036, OB-038, OB-041, OB-043, OB-046 and OB-102 have no decision (§7.2).
@@ -30,26 +32,39 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
     - U-461: the fade crossover at 380 is an estimate;
     - after a menu fade-out the original spends 1–2 frames more than the port (M12-timing §7);
     - nobody has counted ticks at runtime in the real binary (BUG-5 re-check); *VE-8 update: done, campaign flights of E1–E3 run at 19.18–19.20 ticks/s and the front end at 70.08 ([M12-soak](M12-soak.md) §5);*
-    - the comm-screen typing pace was not measured (M12-timing row 13).
+    - the comm-screen typing pace was not measured (M12-timing row 13). *VE-9 update: measured in C-0380, one character per frame like the port.*
 12. **Spec, test and documentation drift:**
     - mission-logic §7 vector 12 says the flight-18 bomb goes off at t + 1000, but the test pins t + 999 (§4); *VE-8 update: resolved by RE-18 (mission-logic rev 4: t + 999);*
     - four stale or closable ASSUMPTIONs: U-313, U-001, U-146 and the `fade.rs` header (§5); *VE-8 update: removed by IM-22; §5 lists the current ones;*
     - text.md §5 item 3 and hud.md's "low-armour colour after recovery" are "preserve" quirks with no OB entry.
 13. **Lower impact:**
     - the PC-speaker mode is not ported (M12-05, OB-011; sfx-policy vectors 8–9);
-    - positioned effects (panning, the 15-tile cut-off) were never captured (M3 row 20);
+    - positioned effects (panning, the 15-tile cut-off) were never captured (M3 row 20); *VE-9: still not captured;*
     - parsers have no fuzz targets or property tests except `saves.rs` (M12-06; MDG §11 asks for 1 h of fuzzing). *VE-8 update: done ([M12-soak](M12-soak.md) §3; BUG-14..BUG-17 fixed).*
 
-**Coverage.** The checklist has 394 items (spec vectors and numbered behaviours; VE-7, M12-15, updated the front-end screen rows and added one E3 row; VE-8 updated seven rows for later work):
+**Coverage.** The checklist has 394 items (spec vectors and numbered behaviours; VE-7, M12-15, updated the front-end screen rows and added one E3 row; VE-8 updated seven rows for later work; VE-9 updated 24 rows):
 
 | Status | Items | Share of the 376 Classic items |
 |---|---:|---:|
-| PASS | 339 | 90.2 % |
-| PARTIAL | 29 | 7.7 % |
-| NOT COVERED | 8 | 2.1 % |
+| PASS | 363 | 96.5 % |
+| PARTIAL | 10 | 2.7 % |
+| NOT COVERED | 3 | 0.8 % |
 | N/A (Enhanced, T3, not used by the game) | 18 | not counted |
 
-**M12 exit criterion not met** (90.2 % after the VE-8 update; VE-6 counted 87.2 %, VE-7 88.3 %). It asks for at least 95 % PASS with the rest documented. Every non-PASS item is documented below. Items 1–6 above account for most of the gap.
+**M12 exit criterion met after the VE-9 update** (96.5 %; it asks for at least 95 % PASS with the rest documented). VE-6 counted 87.2 %, VE-7 88.3 %, VE-8 90.2 %. VE-9 recount: the §2 columns summed to 340 PASS, 29 PARTIAL and 7 NOT COVERED before this update, so the stated 339 and 8 were one item off; 23 items moved to PASS (§10). The remaining items:
+
+| Remaining item | Status | What would settle it |
+|---|---|---|
+| core/timing 9: `Crt.Delay` length (U-451) | PARTIAL | the IM decision on real ms against a retrace count |
+| audio/cmf C3: song durations | PARTIAL | a length per song from a data survey or OPL captures |
+| audio/music-cues 1, 2: E1 cue order end to end | PARTIAL (2) | a flow test against the `.cmf` opens of a whole E1 block (`int21.tsv`) |
+| audio/sfx-policy 8–9: PC speaker | NOT COVERED (2) | M12-05 (not ported) |
+| audio/sfx-policy: positioned effects | NOT COVERED | a WAV capture with effects at known distances against the mixer |
+| sim/camera-viewport 2: the C-0008 frame | PARTIAL | render C-0008 tick 70 and compare |
+| sim/flight-model: joystick predicates | PARTIAL | an oracle run with an emulated joystick |
+| sim/mission-logic (E1): lost in flights 13 and 18 | PARTIAL | planned flights to those losses |
+| sim/e3-mission-logic 18, 20 | PARTIAL (2) | planned kills (flight 3 Vultures first, flight 6 convoy) |
+| flow/flight-screens 17: helicopter sprite by page (C-0027) | PARTIAL | a frame comparison |
 
 **L5 re-run.** All 789 tests pass with and without `TD2192_DATA` and `TD2192_ORACLE`: 0 failed, 4 ignored, the same in both runs. The ignored tests are timing benchmarks and developer tools. Counts per binary are in §3.
 
@@ -66,45 +81,45 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 
 | Spec | Rev | Tiers | Items | PASS | PARTIAL | NOT COV. | N/A | Main gaps |
 |---|---|---|---:|---:|---:|---:|---:|---|
-| re/FORMATS.md | — | T0 | 15 | 11 | 1 | 0 | 3 | stills never compared; `td.cfg`, `tdstatus.dat`, TFP are T3/D4 |
-| core/bp7-runtime-semantics | 2 | T1, T3 | 11 | 9 | 1 | 0 | 1 | Real `Random` values 2–3 |
+| re/FORMATS.md | — | T0 | 15 | 12 | 0 | 0 | 3 | — (stills exact since BUG-13, VE-9 update); `td.cfg`, `tdstatus.dat`, TFP are T3/D4 |
+| core/bp7-runtime-semantics | 2 | T1, T3 | 11 | 10 | 0 | 0 | 1 | — (VE-9 update) |
 | core/real48 | 1 | T1 | 2 | 2 | 0 | 0 | 0 | — (1,705 file vectors) |
 | core/timing | 5 | T1, T2 | 9 | 4 | 1 | 0 | 4 | U-451; ADR-0007 accepted 2026-11-06 |
 | audio/cmf | 3 | T1, T2 | 12 | 11 | 1 | 0 | 0 | song lengths except `menu` |
 | audio/music-cues | 2 | T1, T2 | 5 | 2 | 2 | 0 | 1 | E1 cue order not asserted end to end |
 | audio/sfx-policy | 4 | T1, T2 | 11 | 8 | 0 | 3 | 0 | PC speaker (M12-05); positioned effects |
 | audio/voc-and-adpcm | 3 | T0, T2 | 4 | 4 | 0 | 0 | 0 | — |
-| render/hud | 3 | T0, T1 | 9 | 8 | 1 | 0 | 0 | E2/E3 home-point table |
+| render/hud | 3 | T0, T1 | 9 | 9 | 0 | 0 | 0 | — (VE-9 update) |
 | render/text | 3 | T0, T2 | 4 | 4 | 0 | 0 | 0 | — |
 | narrative/dialogue-player | 2 | T0, T1, T2 | 7 | 7 | 0 | 0 | 0 | — |
 | sim/camera-viewport | 1 | T1, T2 | 2 | 1 | 1 | 0 | 0 | C-0008 frame |
-| sim/collision | 2 | T1 | 9 | 7 | 2 | 0 | 0 | vertical bounce, map edge |
+| sim/collision | 2 | T1 | 9 | 9 | 0 | 0 | 0 | — (C-0342, C-0373, C-0374; VE-9 update) |
 | sim/flight-model | 2 | T1 | 8 | 7 | 1 | 0 | 0 | LIKELY parts not captured |
 | sim/tick-order | 1 | T1 | 3 | 3 | 0 | 0 | 0 | — |
-| sim/hit-flash | 4 | T0, T1 | 12 | 9 | 3 | 0 | 0 | C-0041 flash and DAC frames |
-| sim/mission-setup | 2 | T1 | 3 | 2 | 0 | 1 | 0 | OB-018 persistence |
+| sim/hit-flash | 4 | T0, T1 | 12 | 12 | 0 | 0 | 0 | — (C-0372, C-0041 DACs; VE-9 update) |
+| sim/mission-setup | 2 | T1 | 3 | 3 | 0 | 0 | 0 | — (OB-018: C-0377; VE-9 update) |
 | sim/mission-ships | 5 | T1, T2 | 6 | 6 | 0 | 0 | 0 | — |
 | sim/weapons | 5 | T1, T2 | 11 | 11 | 0 | 0 | 0 | — (missiles in whole flights: C-0205..C-0207, VE-8 update) |
-| sim/mission-logic (E1) | 3 | T1, T2 | 16 | 15 | 1 | 0 | 0 | failure paths (vector 12 and flight 21 done, VE-8 update) |
-| sim/e2-mission-setup | 1 | T1, T2 | 10 | 9 | 1 | 0 | 0 | home points |
+| sim/mission-logic (E1) | 3 | T1, T2 | 16 | 15 | 1 | 0 | 0 | lost in flights 13 and 18 (outcome 0, lost 17 and 20 captured, VE-9 update) |
+| sim/e2-mission-setup | 1 | T1, T2 | 10 | 10 | 0 | 0 | 0 | — (VE-9 update) |
 | sim/e2-mission-ships | 1 | T1 | 5 | 5 | 0 | 0 | 0 | — |
-| sim/e2-mission-logic | 1 | T1, T2 | 36 | 33 | 1 | 2 | 0 | vector 11; flight-16 transmission (OB-038) |
+| sim/e2-mission-logic | 1 | T1, T2 | 36 | 36 | 0 | 0 | 0 | — (VE-9 update) |
 | sim/e3-mission-setup | 1 | T1, T2 | 14 | 14 | 0 | 0 | 0 | — (flight 7: C-0201, VE-8 update) |
 | sim/e3-mission-ships | 1 | T1 | 9 | 9 | 0 | 0 | 0 | — |
-| sim/e3-mission-logic | 1 | T1, T2 | 55 | 46 | 8 | 0 | 1 | branch vectors (flights 7, 21 and U-430 done, VE-8 update) |
-| flow/screens | 3 | T0, T1, T2 | 10 | 8 | 2 | 0 | 0 | enemy dossier line 9 (BUG-12), `td1-20` (BUG-13) |
-| flow/episode-program-flow | 6 | T2, T1, T3 | 6 | 5 | 1 | 0 | 0 | endings: no capture |
+| sim/e3-mission-logic | 1 | T1, T2 | 55 | 52 | 2 | 0 | 1 | vectors 18 and 20 (flight 3 Vultures first, flight 6 convoy destroyed; VE-9 update) |
+| flow/screens | 3 | T0, T1, T2 | 10 | 10 | 0 | 0 | 0 | — (BUG-12, BUG-13 fixed; VE-9 update) |
+| flow/episode-program-flow | 6 | T2, T1, T3 | 6 | 6 | 0 | 0 | 0 | — (ending B and D75: C-0324; VE-9 update) |
 | flow/launcher | 1 | T3, T1 | 4 | 3 | 0 | 0 | 1 | — |
 | flow/intro | 3 | T0, T1, T2 | 10 | 10 | 0 | 0 | 0 | — |
 | flow/save-screens | 1 | T0, T1, T2 | 7 | 7 | 0 | 0 | 0 | — |
-| flow/flight-screens | 5 | T0, T1, T2 | 24 | 22 | 1 | 1 | 0 | comm pace; C-0027 (fade-in done, VE-8 update) |
+| flow/flight-screens | 5 | T0, T1, T2 | 24 | 23 | 1 | 0 | 0 | C-0027 helicopter frame (comm pace: C-0380, VE-9 update) |
 | flow/e2-flight-screens | 1 | T0, T1, T2 | 5 | 4 | 0 | 0 | 1 | — |
 | flow/e2-program-flow | 3 | T2, T1, T0 | 15 | 15 | 0 | 0 | 0 | — |
 | flow/e3-program-flow | 3 | T2, T1, T0 | 19 | 19 | 0 | 0 | 0 | — |
 | frontend/credits | 1 | T3 | 2 | 0 | 0 | 0 | 2 | — |
 | frontend/port-front-end | 2 | T3 | 2 | 0 | 0 | 0 | 2 | — |
 | enhanced/presentation | 4 | T3 | 2 | 0 | 0 | 0 | 2 | Classic invariance passes |
-| **Total** | | | **394** | **339** | **29** | **8** | **18** | |
+| **Total** | | | **394** | **363** | **10** | **3** | **18** | |
 
 `original-bugs.md` is reviewed in §7.
 
@@ -201,7 +216,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | §7 | Missions (U-060) | `td-formats/src/mission.rs` (3), `original_text_and_missions.rs::mission_files_parse`; every full flight's setup | C-0009.. | PASS |
 | §8 | Dialogue scripts | `td-formats/src/dialogue.rs` (3), `original_text_and_missions.rs::dialogue_scripts_parse_strictly`, `::player_reader_agrees_with_the_strict_parser` | data | PASS |
 | §9 | Fonts | `td-formats/src/font.rs` (2), `original_graphics.rs::fonts_parse_with_visible_glyphs`; text L5 tests | C-0002 | PASS |
-| §10–§11 | Portraits, stills | `original_graphics.rs::portraits_stills_and_cell_sheets_parse`; portraits pixel-exact in `oracle_parity`; stills: `td-flow/tests/screens_parity.rs::e1_stills_match_c0274_c0275_c0276_c0281_c0282` (VE-7, M12-15) | C-0002 (portraits); C-0274, C-0275, C-0276, C-0281, C-0282 | PARTIAL (`td1-13`, `14`, `15`, `16`, `18` exact; `td1-20` sits one pixel right of §11's (0, 50) in the original: BUG-13 / U-522) |
+| §10–§11 | Portraits, stills | `original_graphics.rs::portraits_stills_and_cell_sheets_parse`; portraits pixel-exact in `oracle_parity`; stills: `td-flow/tests/screens_parity.rs::e1_stills_match_c0274_c0275_c0276_c0281_c0282` (VE-7, M12-15) | C-0002 (portraits); C-0274, C-0275, C-0276, C-0281, C-0282 | PASS (VE-9 update: every still exact since IM-24's BUG-13 fix, `td1-20` at x = 1 + c, OB-150; re-run 2026-11-07) |
 | §12 | Raw UI graphics (`td.men`, `td.win`, `td.cmm`, `td*.ccm`, `td.sss`, `td.wea` …) | `td-formats/src/picture.rs` (2); used pixel-exact in `flight_screens_parity`, `hud_parity`, `save_parity` | C-0012, C-0013, C-0002, C-0042 | PASS |
 | §13.1 | `td.cfg` | none (T3: the port keeps `settings.toml`; no configuration screen) | C-0048 | N/A |
 | §13.2–§13.3 | Saves `td*.sav`, names `td*.stt` | `td-formats/src/saves.rs` (4, incl. arbitrary bytes), `save_parity.rs` | C-0042, C-0043 | PASS |
@@ -217,7 +232,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 1 | Seed sequence from 0 | `td-sim/src/rng.rs::spec_vector_1_seed_sequence` | static; the seed is compared every tick in every full flight | PASS |
 | 2–5 | `Random(100)`, `(320)`, `(2)`, `(65535)` from seed 0 | `td-sim/src/rng.rs::spec_vectors_2_to_5` | static | PASS |
 | 6–7 | Mixed ranges; `Random(0)` | `td-sim/src/rng.rs::spec_vectors_6_and_7` | static | PASS |
-| 8 | Real `Random` × 3 (Real48 bytes) | `td-sim/src/rng.rs::real_random_is_exact` asserts only the first value (2⁻³²) | static | PARTIAL (values 2 and 3 not asserted; no game path known to use Real `Random`) |
+| 8 | Real `Random` × 3 (Real48 bytes) | `td-sim/src/rng.rs::real_random_is_exact`; `td-sim/tests/spec_vectors.rs::bp7_vector_8_real_random_from_seed_0` (all three values' bytes, VE-9) | static | PASS (VE-9 update) |
 | 9 | `Randomize` (never called by the game) | none | static | N/A |
 | 10 | LongInt → Real | `td-sim/src/real48.rs::matches_all_vectors_from_the_original` (the `from_long` rows 1, −1, 65536 are in `real48-vectors.csv`) | static | PASS |
 | 11 | `Round` halves away from zero | `td-sim/src/real48.rs::rounding_is_half_away_from_zero` | static | PASS |
@@ -298,7 +313,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 6 | `k_TileRadarColour` from the executable | as row 2 (radar drawn from the table, 0 differences) | exe resource | PASS |
 | §5 | Weapon-0 icon (OB-090) | `td-render/tests/hud_parity.rs::weapon_0_icon_matches_c0069` | C-0069 | PASS |
 | §4.7 | Mission-ship brackets | `td-render/tests/hud_parity.rs::c0009_mission_ship_brackets_match` | C-0009 | PASS |
-| — | E2/E3 home points of the guidance line (e2-mission-setup vector 8, e3 vector 12) | none asserts the table (`td_render::hud` holds it) | static | PARTIAL |
+| — | E2/E3 home points of the guidance line (e2-mission-setup vector 8, e3 vector 12) | `td-render/tests/hud_parity.rs::e2_and_e3_home_points_follow_the_spec_vectors` (VE-9) | static | PASS (VE-9 update) |
 
 ### render/text.md (rev 3; T0)
 
@@ -332,8 +347,8 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 
 | # | Rule | Test(s) | Evidence | Status |
 |---|---|---|---|---|
-| 1 | Player ↔ map, bounce | `td-sim/tests/oracle_flight.rs::flight_matches_the_original_tick_by_tick`, `td-sim/tests/flight_e1.rs::vector_4_bounce_sequence` | C-0007, C-0008 (horizontal only) | PARTIAL (vertical bounces LIKELY, not captured) |
-| 2 | Player ↔ map edge | `td-sim/src/flight/tests.rs` (unit only) | none | PARTIAL (not captured) |
+| 1 | Player ↔ map, bounce | `td-sim/tests/oracle_flight.rs::flight_matches_the_original_tick_by_tick`, `td-sim/tests/flight_e1.rs::vector_4_bounce_sequence`; vertical bounces: `oracle_e1_full.rs::flight_08_bounces_and_west_limit_match_oracle` (about 900), `oracle_e3_full.rs::flight_09_movement_matches_oracle` (VE-9) | C-0007, C-0008; C-0373, C-0374 | PASS (VE-9 update) |
+| 2 | Player ↔ map edge | `td-sim/src/flight/tests.rs`; `oracle_e1_full.rs::flight_08_soft_lock_matches_oracle` (east limit, RE-20's C-0342), `::flight_08_bounces_and_west_limit_match_oracle` (west limit and edge alert) (VE-9) | C-0342, C-0373 | PASS (VE-9 update) |
 | 3 | Projectile ↔ map | `td-sim/tests/oracle_weapons.rs::player_weapons_match_the_original` | C-0011 | PASS |
 | 4 | Projectile ↔ map edge | full flights | C-0051..C-0159 | PASS |
 | 5 | Projectile ↔ mission ship | full flights (kills, shields, armour) | C-0051..C-0159 | PASS |
@@ -353,7 +368,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 5 | Opposite key ignored, steady bounce | `td-sim/tests/flight_e1.rs::vector_5_opposite_key_and_steady_bounce` | C-0007 | PASS |
 | 6 | Turn ring | `td-sim/src/flight/tests.rs::steering_turns_one_step_per_tick`, `oracle_flight` | C-0007 | PASS |
 | 7 | Down thrust without carry | `td-sim/tests/flight_e1.rs::vector_7_down_without_carry` | C-0008 | PASS |
-| — | Vertical bounces, map limits, diagonal steering, joystick predicates, afterburner burst (LIKELY parts) | unit only (`afterburner_bursts_once_per_make_code`, `bounce_swaps_opposite_components`) | none | PARTIAL (no capture; the plans never press KP+/KP0 or use a joystick) |
+| — | Vertical bounces, map limits, diagonal steering, joystick predicates, afterburner burst (LIKELY parts) | unit tests; L5: vertical bounces and the west limit (C-0373), the east limit (C-0342), diagonal keypad 8 + 6 out of a hangar (C-0374), afterburner bursts (C-0205) | C-0205, C-0342, C-0373, C-0374 | PARTIAL (VE-9 update: all but the joystick predicates are captured; no oracle run has a joystick) |
 
 ### sim/tick-order.md (rev 1; T1)
 
@@ -367,8 +382,8 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 
 | # | Behaviour | Test(s) | Evidence | Status |
 |---|---|---|---|---|
-| 1 | E3 end-sequence flash 17, 15, …, 0 | `oracle_e3.rs::e3_flight_8_matches_c0041` does not compare the hit flash; the E1 end sequence (same code) is compared every tick in `oracle_e1_full.rs::flight_01_idle_death_matches_oracle` | C-0041; C-0157 | PARTIAL |
-| 2–3 | DAC during and after the flash | `td-render/src/flight_palette.rs::hit_flash_decays_and_restores_per_mode` (synthetic); no captured frame compared | C-0041 fb | PARTIAL |
+| 1 | E3 end-sequence flash 17, 15, …, 0 | `oracle_e3_full.rs::flight_08_hazard_death_matches_oracle`: C-0041's route tick-keyed, the hazard death and the whole end sequence, hit flash every tick (VE-9) | C-0372 | PASS (VE-9 update) |
+| 2–3 | DAC during and after the flash | `td-render/tests/e3_flight_parity.rs::hit_flash_dac_matches_c0041`: 20 complete DACs (before, levels 15..1, after) = `FlightDac` from the dumped palette and level (VE-9) | C-0041 fb + DGROUP | PASS (VE-9 update) |
 | 4 | Kill at sq 25: 13, 11, …, 0 | `td-sim/tests/oracle_ships.rs::mission_ships_match_c0009_tick_by_tick` | C-0009 | PASS |
 | 5–6 | Mode 1 and mode 0 kills | `td-sim/src/flight/hit_flash.rs::black_box_kills` | C-0023, C-0033 | PASS |
 | 7–12 | Static decay and distance rules (wrapped square) | `td-sim/src/flight/hit_flash.rs::distance_table`, `::decay_per_mode`, `::wrapped_and_negative_squares`, `::integer_round_sqrt_equals_real48` | static | PASS |
@@ -379,7 +394,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 |---|---|---|---|---|
 | 1 | Flight 1 setup | `td-sim/tests/oracle_ships.rs::mission_ships_match_c0009_tick_by_tick`, full flight 1 | C-0009, C-0051 | PASS |
 | 2 | Flight 12 setup (class patch, late draw) | full flight 12, `oracle_e1_flights.rs` flight 12 | C-0027, C-0062 | PASS |
-| §3.3 | Class patches persist for the run (OB-018) | none (every capture is a direct start) | none | NOT COVERED |
+| §3.3 | Class patches persist for the run (OB-018) | `oracle_e1_full.rs::flights_12_and_13_in_one_run_match_oracle`: flight 13 after flight 12 every tick, `k_ClassMaxSpeed[3]` = 20h at its tick 1 (VE-9) | C-0377 | PASS (VE-9 update) |
 
 ### sim/mission-ships.md (rev 5; T1)
 
@@ -418,7 +433,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | — | Flights 1–20 scripts to success, setup to teardown | `td-sim/tests/oracle_e1_full.rs` (20 flights), `oracle_e1_flights.rs` (first ~387 ticks, 4 comm runs), `replays_e1.rs` | C-0017..C-0040, C-0051..C-0069, C-0090 | PASS |
 | — | Death, end sequence, in-flight pause/F5/Esc menu | `oracle_e1_full.rs::flight_01_idle_death_matches_oracle`, `::flight_01_modal_screens_match_oracle` | C-0157, C-0158 | PASS |
 | — | Flight 21 (scripted, no mission file; U-044) | `oracle_e1_full.rs::flights_19_and_21_in_one_run_match_oracle`, `::flights_19_and_21_after_the_whole_story_match_oracle` (VE-5, RE-18; IM-23's path arrays from the heap, OB-140, U-500) | C-0200, C-0300 | PASS (VE-8 update) |
-| — | Teardown outcome 0 paths, failures (lost) in flights 13, 17, 18, 20 | unit tests only (`logic/tests.rs::outcomes`, `::flight_18_bomb_after_1000_ticks`) | none | PARTIAL |
+| — | Teardown outcome 0 paths, failures (lost) in flights 13, 17, 18, 20 | unit tests; L5: outcome 0 `oracle_e1_full.rs::flight_12_idle_outcome_0_matches_oracle`, lost `::flight_17_lost_matches_oracle` (RE-19), `::flight_20_idle_lost_matches_oracle`, succeeded and died in one end sequence `::flight_16_idle_matches_oracle` (VE-9) | C-0324, C-0360, C-0361, C-0362 | PARTIAL (VE-9 update: lost in flights 13 and 18 not captured; the idle flights never end) |
 
 ### sim/e2-mission-setup.md (rev 1; T1)
 
@@ -430,7 +445,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 4–5 | Flights 8 and 7 | `td-sim/src/flight/logic/e2/tests.rs::setup_vectors_flights_7_and_8`, full flights | C-0131, C-0132 | PASS |
 | 6 | Flight 2 slot 8 (OB-035) | full flight E2 2 (tick 1, every slot) | C-0121 | PASS |
 | 7 | Tile attributes, both sets | `td-sim/src/flight/episode.rs::e2_tile_attribute_sets` | map files | PASS |
-| 8 | Guidance home points | none (table in `td_render::hud`) | static | PARTIAL |
+| 8 | Guidance home points | `td-render/tests/hud_parity.rs::e2_and_e3_home_points_follow_the_spec_vectors` (VE-9) | static | PASS (VE-9 update) |
 | 9 | Flight song | `td-audio/src/music_cues.rs::flight_song_rotates_by_mission`, `::episode_2_table` | static | PASS |
 | 10 | F5 board, flight 1 | `td-flow/src/flight_screens/map.rs::e2_board` | static | PASS |
 
@@ -449,7 +464,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 1–3 | `Msn_NearLive` on the player tile | `logic/e2/tests.rs::vectors_1_to_3_near_live_uses_the_player_tile` | static | PASS |
 | 4–9 | Base tests, flights 1, 5–9 | `logic/e2/tests.rs::base_tests` | static; full flights | PASS |
 | 10 | Flight 3 arrival | `logic/e2/tests.rs::vector_10_flight_3_arrival` | static | PASS |
-| 11 | Flight 3 truck shot down (step 6 vs 10 timing) | none | static | NOT COVERED |
+| 11 | Flight 3 truck shot down (step 6 vs 10 timing) | `td-sim/src/flight/logic/e2/tests.rs::vector_11_flight_3_truck_shot_down` (VE-9) | static | PASS (VE-9 update) |
 | 12 | Flight 9 truck exit | `logic/e2/tests.rs::outcome_tests` (exit at (177, 169)) | static | PASS |
 | 13 | Flight 8 wave 2 | `logic/e2/tests.rs::vector_13_flight_8_wave_2` | static | PASS |
 | 14 | Flight 5 announcement after the ticker | full flight E2 5 (t157 phase 2) | C-0124 | PASS |
@@ -461,7 +476,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 10–20: 3 | Flight 10 phase 18 | `logic/e2/tests.rs::flight_10_phase_18` | static; C-0134 | PASS |
 | 10–20: 4–5 | Outcomes, flights 10, 11 (OB-040) | `logic/e2/tests.rs::outcome_tests` | static | PASS |
 | 10–20: 6 | Flight 13 `Random(9)` and ghost fire (OB-039) | `logic/e2/tests.rs::flight_13_random_and_ghost_fire` | static (U-246 open) | PASS |
-| 10–20: 7 | Flight 16 transmission only after M (OB-038, U-245) | none | static | NOT COVERED |
+| 10–20: 7 | Flight 16 transmission only after M (OB-038, U-245) | `logic/e2/tests.rs::flights_10_20_vector_7_flight_16_transmission_after_m` (two whole ticks, with and without M; VE-9) | static | PASS (VE-9 update) |
 | 10–20: 8 | Flight 16 slot 2 exit | `logic/e2/tests.rs::outcome_tests` | static | PASS |
 | 10–20: 9 | Flight 17 lost after M2[15] | `logic/e2/tests.rs::flight_17_lost_after_the_message` | static | PASS |
 | 10–20: 10 | Flight 17 transports escape | full flight E2 17 | C-0143 | PASS |
@@ -470,7 +485,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 10–20: 13 | Flight 19 announcement range 45 | full flight E2 19 (t199 phase 2) | C-0145 | PASS |
 | 10–20: 14 | Flight 20 base test | `logic/e2/tests.rs::base_tests` | static; C-0146 | PASS |
 | — | All 20 E2 flights to success | `oracle_e2_full.rs` (20), `replays_e2.rs` (20) | C-0120..C-0146 | PASS |
-| — | E2 deaths, aborts, outcome-0 and lost paths in a capture | unit and flow tests only | none | PARTIAL |
+| — | E2 deaths, aborts, outcome-0 and lost paths in a capture | `oracle_e2_full.rs::flight_07_idle_death_matches_oracle`, `::flight_07_abort_matches_oracle` (Quit in the flight menu, `g_MissionAborted` = 1), `::flight_09_idle_outcome_0_matches_oracle`, `::flight_18_idle_lost_matches_oracle` (VE-9) | C-0363, C-0375, C-0364, C-0365 | PASS (VE-9 update) |
 
 ### sim/e3-mission-setup.md (rev 1; T1)
 
@@ -504,14 +519,15 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 |---|---|---|---|---|
 | 1–9: C1 | Flight 1 tick 1 | `oracle_e3.rs::e3_flight_1_matches_c0036` | C-0036 | PASS |
 | 1–9: C2 | Tick 1 of flights 1–9: no rule fires | full flights E3 1–6, 8, 9 | C-0125..C-0136, C-0156 | PASS |
-| 1–9: 1 | `Msn_NearLive` (E3 numbers) | shared primitive tested for E1/E2 only | static | PARTIAL |
+| 1–9: 1 | `Msn_NearLive` (E3 numbers) | `logic/e3/tests.rs::vector_1_near_live_uses_the_player_tile` (VE-9) | static | PASS (VE-9 update) |
 | 1–9: 2–4 | Base tests, flights 1, 6, 7, 9 | `logic/e3/tests.rs::base_tests` | static | PASS |
 | 1–9: 5–7 | Flight 1 waves, completion set (OB-045) | `logic/e3/tests.rs::flight_1_waves` | static; C-0125 | PASS |
 | 1–9: 8–9 | Flight 5 arrival, lost rule | `logic/e3/tests.rs::flight_5_arrival_and_outcome`, `::flight_5_lost_rule` | static; C-0129 | PASS |
 | 1–9: 10–11 | Flight 7 inherited phase (OB-043) | `logic/e3/tests.rs::flight_7_phase` | static | PASS |
 | 1–9: 12–15 | Flight 8 silent window, attack phase, outcome (OB-044) | `logic/e3/tests.rs::flight_8` | static; C-0135 | PASS |
-| 1–9: 16 | Flight 9 truck exit | full flight E3 9 (only the captured path) | C-0136 | PARTIAL |
-| 1–9: 17–20 | Flights 2, 3, 4, 6 completion and outcome branches | full flights E3 2, 3, 4, 6 (only the captured paths) | C-0126..C-0128, C-0156 | PARTIAL |
+| 1–9: 16 | Flight 9 truck exit | `oracle_e3_full.rs::flight_09_idle_truck_exit_matches_oracle`: the vector's path, player unmoved, outcome 0 (VE-9) | C-0136, C-0369 | PASS (VE-9 update) |
+| 1–9: 17, 19 | Flights 2 and 4: trucks escaping (outcome 0) and destroyed (outcome 1) | full flights E3 2, 4 (success replays, outcome 1); `oracle_e3_full.rs::flight_02_idle_trucks_escape_matches_oracle`, `::flight_04_idle_trucks_escape_matches_oracle` (outcome 0; VE-9) | C-0126, C-0128, C-0366, C-0367 | PASS (VE-9 update) |
+| 1–9: 18, 20 | Flight 3 with the Vultures gone first; flight 6 with the convoy destroyed | full flights E3 3, 6 take the other branches (trucks gone first; convoy escaped) | C-0127, C-0156 | PARTIAL (VE-9 update: split from 17–20; these two branches need planned kills) |
 | 10–21: C1 | Tick 1 of flights 10–19, 21 | full flights E3 10–19 (not 21) | C-0147..C-0159 | PASS |
 | 10–21: 1–5 | Base tests | `logic/e3/tests.rs::base_tests` | static | PASS |
 | 10–21: 6–9 | Flight 10 counter phases, truck, outcome | `logic/e3/tests.rs::flight_10`, `::timers` | static; C-0159 | PASS |
@@ -519,7 +535,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 10–21: 12 | Flight 12 cells at tick 6480 | `logic/e3/tests.rs::flight_12_cells_return_at_tick_6480` | static | PASS |
 | 10–21: 13 | Flight 14 timeline | `logic/e3/tests.rs::flight_14_timeline` | static; C-0150 | PASS |
 | 10–21: 14–15 | Flight 15 Kreel | `logic/e3/tests.rs::flight_15` | static; C-0151 | PASS |
-| 10–21: 16–17 | Flight 16 forced transmission (pages 0 and 1) | `logic/e3/tests.rs::flight_16_chain` (vector 16); vector 17 (draw page 1) not asserted | static; C-0152 | PARTIAL |
+| 10–21: 16–17 | Flight 16 forced transmission (pages 0 and 1) | `logic/e3/tests.rs::flight_16_chain`, `::vectors_16_and_17_flight_16_transmission_by_page` (screen in tick t on page 0, t + 1 on page 1; VE-9) | static; C-0152 | PASS (VE-9 update) |
 | 10–21: 18 | Flight 16 magenta fade values | `td-render/src/flight_palette.rs::magenta_fade_and_tint` | static | PASS |
 | 10–21: 19 | Flight 16 freeze tables | `logic/e3/tests.rs::flight_16_freeze` | static | PASS |
 | 10–21: 20 | Esc menu after phase 5: entry 0 tinted (OB-049) | `td-render/src/flight_palette.rs::fades_round_halves_up` | static | PASS |
@@ -546,8 +562,8 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | §2.1 | Fade speed by palette (BUG-6, U-461) | `td-flow/tests/story_parity.rs::the_first_title_card_fades_at_one_frame_per_level`, `::a_title_card_after_the_story_so_far_fades_at_two_frames_per_level` | C-0002, C-0170 | PASS |
 | §3.3 | Hint screens | `td-flow/tests/story_parity.rs::hint_1_matches_the_original`; hints 2 and 6: `td-flow/tests/screens_parity.rs::e1_hint_2_matches_c0273`, `::e1_hint_6_matches_c0280` (VE-7, M12-15) | C-0002, C-0273, C-0280 | PASS |
 | §3.2 | Script choice | `td-flow/tests/story_parity.rs::script_choice_matches_the_original` | C-0002 f710 | PASS |
-| §3.4–3.5 | Assignment orders, enemy and pilot dossiers | `td-flow/tests/screens_parity.rs::e1_assignment_orders_match_c0273`, `::e1_pilot_dossier_matches_c0270`, `::e1_enemy_dossier_matches_c0271` (VE-7, M12-15) | C-0270, C-0271, C-0273 | PARTIAL (orders and pilot dossier exact but for typing 1–2 frames early, U-521; enemy dossier: the original never types line 9, BUG-12 / U-520) |
-| §3.8–3.10 | Story so far, `td1-15`, other stills (`td1-13..20.pic`, `secret.pic`) | `td-flow/tests/screens_parity.rs::e1_story_so_far_matches_c0272`, `::e1_stills_match_c0274_c0275_c0276_c0281_c0282` (VE-7, M12-15; `secret.pic` through the hints) | C-0272, C-0274, C-0275, C-0276, C-0281, C-0282 | PARTIAL (all exact except `td1-20`, one pixel to the right in the original: BUG-13 / U-522) |
+| §3.4–3.5 | Assignment orders, enemy and pilot dossiers | `td-flow/tests/screens_parity.rs::e1_assignment_orders_match_c0273`, `::e1_pilot_dossier_matches_c0270`, `::e1_enemy_dossier_matches_c0271` (VE-7, M12-15) | C-0270, C-0271, C-0273 | PASS (VE-9 update: exact since IM-24's BUG-12 and BUG-20 fixes, quirks pinned per frame; re-run 2026-11-07) |
+| §3.8–3.10 | Story so far, `td1-15`, other stills (`td1-13..20.pic`, `secret.pic`) | `td-flow/tests/screens_parity.rs::e1_story_so_far_matches_c0272`, `::e1_stills_match_c0274_c0275_c0276_c0281_c0282` (VE-7, M12-15; `secret.pic` through the hints) | C-0272, C-0274, C-0275, C-0276, C-0281, C-0282 | PASS (VE-9 update: all exact since BUG-13 was fixed) |
 | §3.12 | Esc in the pre-flight story | `td-flow/tests/story_parity.rs::keys_typed_ahead_carry_into_the_next_screen`, `td-flow/tests/e1_block_flow.rs::block_19_esc_before_flight_21_jumps_to_flight_21` | static | PASS |
 
 ### flow/episode-program-flow.md (rev 6; T2 order, T1 state, T3 hand-off)
@@ -559,7 +575,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 3 | Debrief tiers | `td-flow/src/campaign.rs::debrief_tiers` | static | PASS |
 | 4 | Music index 12, 13 | `td-audio/src/music_cues.rs::cue_table` | static | PASS |
 | §4.4 | Blocks 19–21 (U-081, U-207, U-420) | `td-flow/tests/e1_block_flow.rs` (5 tests) | static | PASS |
-| §4.5 | Endings A, B, C and the episode end | `td-flow/tests/story_parity.rs::death_without_retry_is_game_over`, `::every_block_plays_to_the_end` (flow); `td-flow/tests/screens_parity.rs::e1_pilot_dossier_matches_c0270` (A), `::ending_c_cards_match_c0279_and_c0285` (C), `::episode_end_cards_match_c0276_c0286_c0288` (end card) (VE-7, M12-15) | C-0270, C-0276, C-0279 | PARTIAL (ending B not captured: flight 17 never ends idle, a planned "lost" flight is needed; `td1-20` BUG-13) |
+| §4.5 | Endings A, B, C and the episode end | `td-flow/tests/story_parity.rs::death_without_retry_is_game_over`, `::every_block_plays_to_the_end` (flow); `td-flow/tests/screens_parity.rs::e1_pilot_dossier_matches_c0270` (A), `::ending_c_cards_match_c0279_and_c0285` (C), `::episode_end_cards_match_c0276_c0286_c0288` (end card) (VE-7, M12-15) | C-0270, C-0276, C-0279, C-0324 | PASS (VE-9 update: ending B every screen, `screens_parity::e1_ending_b_screens_match_c0324` (RE-19, IM-24), and D75, `dialogue_parity::ending_b_dialogue_75_matches_c0324` (typing two frames late, BUG-33, T2)) |
 
 ### flow/launcher.md (rev 1; T3 launcher, T1 order)
 
@@ -605,7 +621,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | §4.1 | Menu fades 2 frames per level, ramp 11 (BUG-8) | `…::menu_fades_take_two_frames_per_level_and_the_ramp_eleven_steps_per_frame` | C-0012 | PASS |
 | §4.10 | Flight-17 cut-scene, flight-19 V.C.I. screen (BUG-3) | `td-flow/tests/interlude_parity.rs::flight_17_cut_scene_matches_c0067`, `::flight_19_vci_screen_matches_c0069` | C-0067, C-0069 | PASS |
 | §4.5.3 | Flight-start fade-in (34 frames before tick 1) | `td2192/src/flight.rs::opening_frames_match_the_original` (IM-21, BUG-10) | C-0017 f490, C-0015 f660, C-0036 f690 | PASS (VE-8 update: pixels exact, DACs within one level) |
-| — | Comm typing pace (M12-timing row 13) | none | not measured | NOT COVERED |
+| — | Comm typing pace (M12-timing row 13) | `td-flow/tests/flight_screens_parity.rs::comm_typing_pace_matches_c0380`: one character per frame, 176 frames equal (two missed retraces, five scroll frames; VE-9) | C-0380 | PASS (VE-9 update) |
 
 ### flow/e2-flight-screens.md (rev 1; as flight-screens)
 
@@ -682,7 +698,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 
 Regenerated by VE-8 on 2026-11-06 (main `b158e78` plus VE-8's branch) with `grep -rn "#\[ignore\|ASSUMPTION\|TODO\|FIXME" crates tools`. VE-6's list is replaced: IM-22 removed the four stale ASSUMPTIONs it named (U-313, `DEFAULT_TICK_HZ`, U-146, the `fade.rs` header), and IM-23 re-enabled `flight_20_weapons_matches_oracle` (BUG-11).
 
-### 5.1 `#[ignore]` tests (11)
+### 5.1 `#[ignore]` tests (12; VE-9 update: the two BUG-18 soak tests run again since the wrap was fixed, BUG-34 added)
 
 | Test | Reason | Note |
 |---|---|---|
@@ -697,6 +713,7 @@ Regenerated by VE-8 on 2026-11-06 (main `b158e78` plus VE-8's branch) with `grep
 | `td-sim/tests/soak.rs::long_soak` | long random-input and replay soak | M12-06; fails while BUG-18 is open |
 | `td-sim/tests/soak.rs::e3_flight_19_idle_outlives_tick_4235` | **BUG-18** (U-570) | re-enable with the fix |
 | `td-sim/tests/soak.rs::e1_flights_6_and_7_outlive_the_top_edge_overflow` | **BUG-18**, top edge (U-570) | re-enable with the fix |
+| `td-sim/tests/oracle_e3_full.rs::flight_16_idle_trucks_leave_at_168_199_bug_34` | **BUG-34** (U-276, OB-046) | VE-9: C-0378 beyond tick 872; re-enable with the fix |
 
 ### 5.2 ASSUMPTIONs and TODOs in the code
 
@@ -992,3 +1009,54 @@ Not changed, for the coordinator:
   - `cargo test --workspace --no-fail-fast`, with and without `TD2192_DATA`/`TD2192_ORACLE`;
   - `cargo test -p td-sim --test oracle_e2_full -- --nocapture` prints one PASS line per flight with its events;
   - `cargo test --workspace -- --nocapture` (with the variables) shows any `SKIPPED` line (§3.1).
+
+## 10. VE-9 L5 coverage (M12-19, 2026-11-07)
+
+Verifier: VE-9 (Verifier hat; no disassembly, Ghidra project or decompiler export read). Private rig `re-work\ve9` (two game copies, a copy of the pinned oracle 3, preset P1; scripts in the session scratchpad, copies in the rig). Every flight was first flown in td-sim (`tdtool plan --idle`, `tdtool schedule-replay`, a scratch search), then captured with tick-keyed inputs (ORACLE.md §5a) and per-tick DGROUP and projectile dumps, stall records and the outcome dump after teardown, then compared in the `full_flight` harness on every tick before it was registered. Captures C-0360..C-0380 (MANIFEST rows appended one at a time; the earlier rows were checked to survive each append).
+
+### 10.1 Captures and results
+
+| Capture | Run | Test | Ticks | Result |
+|---|---|---|---:|---|
+| C-0360 | E1 flight 12 idle: success, outcome 0 | `oracle_e1_full::flight_12_idle_outcome_0_matches_oracle` | 697 | PASS |
+| C-0361 | E1 flight 16 idle: succeeded and died in the same end sequence | `::flight_16_idle_matches_oracle` | 1,537 | PASS |
+| C-0362 | E1 flight 20 idle: lost | `::flight_20_idle_lost_matches_oracle` | 2,673 | PASS |
+| C-0363 | E2 flight 7 idle: death, end sequence | `oracle_e2_full::flight_07_idle_death_matches_oracle` | 617 | PASS |
+| C-0364 | E2 flight 9 idle: success, outcome 0 | `::flight_09_idle_outcome_0_matches_oracle` | 1,466 | PASS |
+| C-0365 | E2 flight 18 idle: lost (base destroyed) | `::flight_18_idle_lost_matches_oracle` | 968 | PASS |
+| C-0366 | E3 flight 2 idle: trucks escape, outcome 0 (e3 vector 17) | `oracle_e3_full::flight_02_idle_trucks_escape_matches_oracle` | 752 | PASS |
+| C-0367 | E3 flight 4 idle: trucks escape, outcome 0 (vector 19) | `::flight_04_idle_trucks_escape_matches_oracle` | 761 | PASS |
+| C-0368 | E3 flight 8 idle: outcome 0 (vector 15) | `::flight_08_idle_matches_oracle` | 1,312 | PASS |
+| C-0369 | E3 flight 9 idle: the truck exit, player unmoved (vector 16) | `::flight_09_idle_truck_exit_matches_oracle` | 1,054 | PASS |
+| C-0370 | E3 flight 10 idle: outcome 0 | `::flight_10_idle_matches_oracle` | 1,049 | PASS |
+| C-0371 | E3 flight 12 idle: outcome 0 (vector 11) | `::flight_12_idle_matches_oracle` | 645 | PASS |
+| C-0372 | E3 flight 8: C-0041's route tick-keyed into the hazard cells, death | `::flight_08_hazard_death_matches_oracle` | 297 | PASS (hit flash every tick: hit-flash vector 1) |
+| C-0373 | E1 flight 8: about 900 vertical bounces, the west limit with the edge alert, death | `oracle_e1_full::flight_08_bounces_and_west_limit_match_oracle` | 1,453 | PASS |
+| C-0374 | E3 flight 9: hangar bounces, keypad 8 + 6 diagonal | `oracle_e3_full::flight_09_movement_matches_oracle` | 700 | PASS |
+| C-0375 | E2 flight 7: Esc in tick 300, Up, Enter (Quit) | `oracle_e2_full::flight_07_abort_matches_oracle` | 300 | PASS (`g_MissionAborted` = 1 after teardown) |
+| C-0376 | E3 flights 16 and 17 in one run (U-284 vector 7) | `oracle_e3_full::flights_16_and_17_in_one_run_match_oracle` | 908 + 300 | PASS (class tables patched after the freeze, restored at flight 17 tick 1) |
+| C-0377 | E1 flights 12 and 13 in one run (OB-018) | `oracle_e1_full::flights_12_and_13_in_one_run_match_oracle` | 697 + 1,500 | PASS (`k_ClassMaxSpeed[3]` = 20h in flight 13) |
+| C-0378 | E3 flight 16 idle (U-276) | `oracle_e3_full::flight_16_idle_convoy_matches_oracle`; `::flight_16_idle_trucks_leave_at_168_199_bug_34` (ignored) | 872 / 887 | PASS to tick 872; **BUG-34** from tick 873 |
+| C-0379 | E2 flight 13: the Areo-1 destroyed in tick 77, then ghost volleys (U-246) | `oracle_e2_full::flight_13_ghost_volleys_match_oracle` | 227 | PASS (projectiles included) |
+| C-0380 | E1 flight 2 comm screen, every frame dumped (M12-timing row 13) | `td-flow flight_screens_parity::comm_typing_pace_matches_c0380` | f577..f757 | PASS (one character per frame; two missed retraces, five scroll frames) |
+
+Committed from RE-20's scratch tests: `oracle_e1_full::flight_08_soft_lock_matches_oracle` (C-0342, 999 ticks, the east map limit; td-sim's default `Flight::enhanced_fixes` false keeps the original soft lock; main `948cc5f` applies OB-022's fix in the host only) and `oracle_e3_full::flight_19_idle_past_the_bottom_edge_wrap_matches_oracle` (C-0340, 4,499 ticks through the BUG-18 wrap): both PASS.
+
+Without a new capture:
+
+- **D75 after E1 ending B** (C-0324): `dialogue_parity::ending_b_dialogue_75_matches_c0324`, all 63 dumps f7710..f8330 equal under the alignment fade start (f7713) plus 2 frames from the first line on, minus the five retraces the original missed (f7872, f7907, f8088, f8129, f8234; `frames.tsv`). The two frames are **BUG-33** (T2).
+- **Hit-flash DACs** (C-0041): `e3_flight_parity::hit_flash_dac_matches_c0041`, 20 complete DACs (before, levels 15..1, after) equal `FlightDac` from the dumped `g_FlightPalette` and `g_HitFlash` (vectors 2 and 3).
+- **Static vectors** (the status rules count a test that asserts the vector's values): bp7 vector 8; E2/E3 home points; e2-mission-logic vector 11 and flights 10–20 vector 7 (OB-038: two whole ticks with and without M); e3-mission-logic vector 1 (E3 `Msn_NearLive`) and vectors 16/17 (the forced transmission by draw page).
+- **Soak**: `soak::e1_flights_6_and_7_outlive_the_top_edge_overflow` had stopped reaching the top edge (RE-20). New seeds (E1 flight 6 slot 20, wrap in tick 6760; flight 7 slot 14, tick 5578), and the test now asserts that the wrap happens.
+
+### 10.2 Divergences
+
+| # | What | Evidence | Disposition |
+|---|---|---|---|
+| V1 | After the dialogue fade-in the original shows the first line two frames before the port; the rest of the scene follows at one character per frame, the original one frame further behind after each missed retrace | C-0324 f7750.. (D75) | **BUG-33** (cosmetic, T2); U-610 asks for the rule (text rev 5 §4.3 rule 2 at row 176) |
+| V2 | E3 flight 16: each convoy truck is removed in the tick after it reaches (168, 199) (slot 4 in tick 873, slot 3 in 880, slot 2 in 887); rule A then posts M2[4] and forces the transmission in tick 888 with no truck destroyed. e3-mission-logic rev 1 §5.16 calls the exit rules inert (transposed to (199, 168), OB-046) and the port keeps the trucks, which drive back | C-0378 | **BUG-34** (U-276; spec and OB-046 need an Archaeologist; flight 15's truck 1 likely the same) |
+| V3 | Comm screen: a frame that caught the six-row scroll of a text box mid-copy shows rows of neither step | C-0380 f594, f636, f676, f716, f748 | T2, one frame per typed line; pinned in the test |
+
+### 10.3 Evidence added to unknowns
+
+U-246 (C-0379: td-sim equal; ghost volleys of kinds 14, 26, 38; the player never hit in this run), U-274 (C-0152, already compared every tick: seven moving ships stop within about 12 ticks of the patch and keep their headings; the player keeps its speed), U-276 (C-0378: the trucks are removed at (168, 199), against OB-046), U-284 vector 7 (C-0376: flight 17's tick-1 record and the restored tables). Details in `docs/re/UNKNOWNS.md`; resolving them is an Archaeologist's call.

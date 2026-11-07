@@ -55,7 +55,7 @@ An SP revision of timing.md and an ADR for the user should record the decision. 
 | 10 | E1 main-menu cursor pulse | 11 levels per frame (U-302, C-0002 f868..872) | 11 per frame, 5 f per sweep (`main_menu.rs:50`) | 0 | T2 | **PASS** | none |
 | 11 | Flight Esc-menu fades | **33–34 f** (C-0012: 3556..3588 out, 3595..3628 in, and 3976/4015, 4175/4212 pairs) | 17 f, 1 level per retrace (`flight_screens/menu.rs:329-341`) | −17 f | T2 | **FAIL** (BUG-8) | 2 f per level as the front-end fade; flight-screens §4.1 needs the measured rate (SP) |
 | 12 | Flight menu pulse, key poll | pulse not measured; poll `Crt.Delay(100)` | 1 step per retrace; 7 f per poll (`menu.rs:33-39`) | — | T2 | not measured | measure the pulse in C-0012's fb dumps (next VE) |
-| 13 | Comm screen (F6) | 1 character per retrace (flight-screens §4.2, static) | 1 per retrace (`comm.rs:40`) | — | T2 | not measured | a frame-cadence check on C-0037..C-0040 fb dumps (next VE) |
+| 13 | Comm screen (F6) | 1 character per retrace (flight-screens §4.2, static) | 1 per retrace (`comm.rs:40`) | C-0380 (VE-9: every frame of E1 flight 2 transmission 1) | T2 | **PASS** (VE-9, 2026-11-07) | frames f577..f757 equal the port's steps 2..180 (one character per frame) apart from two missed retraces (frames.tsv) and five frames that caught a box scroll mid-copy; `flight_screens_parity::comm_typing_pace_matches_c0380` |
 | 14 | Tactical map (F5), pause, help, retry, hint | wait for a key | wait for a key | 0 | T1 | PASS | none |
 | 15 | Intro: date card, cards, holds 132/366/334 f, full fades 65 f, colour fades 7 f | C-0047 | the same constants (`intro/mod.rs:62-70`) | 0 | T2 | **PASS** | none (`intro_parity.rs` v3, v5, v7; `intro/tests.rs`) |
 | 16 | Intro flyover steps | 1,618 steps at the 19.2 Hz BIOS tick, 3 or 4 f each, span 5,899 f (C-0047) | modelled BIOS clock 19.2015 Hz (`flyover.rs:291-356`) | worst 3 f, span ±3 | T2 | **PASS** | none |
@@ -65,7 +65,7 @@ An SP revision of timing.md and an ADR for the user should record the decision. 
 | 20 | Flight 17 cut-scene, flight 19 V.C.I. screen (`Crt.Delay` 1000/2000 ms) | per spec | not shown: the host never reads `mission.scene` | — | T2 | **FAIL** (missing; BUG-3, VE-2) | IM task |
 | 21 | Rate switch between screens | — | a new `FixedStep` on each change drops the accumulator remainder (`run.rs:167-172`) | < 1 tick per switch | T2 | PASS | none |
 
-Summary: **10 PASS** (row 3 with a vsync note, row 17 timing only), **8 FAIL** (rows 2, 5–8, 11, 19, 20), 2 not measured, 1 n/a. The one large deviation is row 2: real-campaign flights run 3.65× fast.
+Summary: **10 PASS** (row 3 with a vsync note, row 17 timing only), **8 FAIL** (rows 2, 5–8, 11, 19, 20), 2 not measured, 1 n/a. *VE-9 update (2026-11-07): row 13 measured, PASS (C-0380); the rows fixed since are tracked in M12-checklist.* The one large deviation is row 2: real-campaign flights run 3.65× fast.
 
 ## 5. Changes in this task
 
