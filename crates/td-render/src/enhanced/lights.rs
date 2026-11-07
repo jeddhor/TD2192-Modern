@@ -103,7 +103,14 @@ pub struct FrameContext<'a> {
     pub page: i32,
     /// Widescreen margin m = (W − 320) / 2.
     pub margin: i32,
+    /// Reduce flashing (accessibility, M12-18): no muzzle flashes, and explosions at
+    /// [`SOFT_EXPLOSION`] of their intensity.
+    pub soft: bool,
 }
+
+/// The explosions' share of their intensity under reduce flashing (M12-18,
+/// frontend/port-front-end rev 5 §3.5).
+pub const SOFT_EXPLOSION: f32 = 0.4;
 
 /// The view the tick drew.
 fn drawn_view(f: &Flight) -> ViewPos {
@@ -234,6 +241,11 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
         let x = (i32::from(e.tile_x) - view.tile_x) * 32 + i32::from(e.sub_x);
         let y = (i32::from(e.tile_y) - view.tile_y) * 32 + i32::from(e.sub_y) + 1;
         let centre = ((x & !3) - ox + 16, y - 32 - oy + 16);
+        let intensity = if ctx.soft {
+            intensity * SOFT_EXPLOSION
+        } else {
+            intensity
+        };
         push(
             Source {
                 intensity,
@@ -285,7 +297,8 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
             v.1 += 1;
         }
     }
-    for &((sx, sy), n) in volleys.iter().filter(|v| v.1 > 0) {
+    // Reduce flashing: no muzzle flashes (they flicker at 9.6 Hz while the guns are held).
+    for &((sx, sy), n) in volleys.iter().filter(|v| v.1 > 0 && !ctx.soft) {
         let n = n as f32;
         push(MUZZLE, ((sx + m) as f32 / n + 0.5, sy as f32 / n + 0.5));
     }
@@ -367,8 +380,13 @@ mod tests {
     }
 
     fn scene_of(f: &Flight, margin: i32, mode: LightMode) -> LightScene {
+        scene_with(f, margin, mode, false)
+    }
+
+    fn scene_with(f: &Flight, margin: i32, mode: LightMode, soft: bool) -> LightScene {
         let (w, pal) = (world(), palette());
         let ctx = FrameContext {
+            soft,
             world: &w,
             palette: &pal,
             page: 1,
@@ -482,6 +500,45 @@ mod tests {
         let engine = s.lights.last().unwrap();
         assert_eq!(engine.radius, PLAYER_ENGINE.radius);
         assert_eq!(engine.pos, (160.0 + 32.0 - PLAYER_ENGINE_BACK, 84.0));
+    }
+
+    /// Reduce flashing (M12-18): no muzzle flashes, explosions at 0.4 of their intensity, the
+    /// rest unchanged.
+    #[test]
+    fn reduce_flashing_softens_the_scene() {
+        let mut f = flight();
+        f.drawn.explosions.0[0] = Explosion {
+            frame: 1,
+            tile_x: 107,
+            tile_y: 107,
+            sub_x: 16,
+            sub_y: 16,
+        };
+        f.drawn.shots.0[0] = Shot {
+            tile_x: 107,
+            tile_y: 105,
+            off_x: 16,
+            off_y: 16,
+            heading: 8,
+            kind: 0,
+            life: 2,
+            owner: 0,
+        };
+        let plain = scene_of(&f, 0, LightMode::Full);
+        let soft = scene_with(&f, 0, LightMode::Full, true);
+        let muzzle = |s: &LightScene| s.lights.iter().any(|l| l.color == MUZZLE.color);
+        assert!(muzzle(&plain) && !muzzle(&soft));
+        assert_eq!(plain.lights.len(), soft.lights.len() + 1);
+        let blast = |s: &LightScene| {
+            s.lights
+                .iter()
+                .find(|l| l.color == EXPLOSION.color)
+                .map(|l| l.intensity)
+        };
+        assert_eq!(blast(&plain), Some(1.6));
+        assert_eq!(blast(&soft), Some(1.6 * SOFT_EXPLOSION));
+        // The shot's own light stays.
+        assert!(soft.lights.iter().any(|l| l.radius == SHOT_RADIUS[0]));
     }
 
     #[test]

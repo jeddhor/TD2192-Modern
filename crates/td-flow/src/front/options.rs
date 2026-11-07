@@ -73,6 +73,13 @@ pub enum Row {
     /// Drops every explicit Enhanced choice (Enhanced only).
     Preset,
     ColorblindGuidance,
+    /// Reduce flashing (accessibility, M12-18).
+    ReduceFlashing,
+    /// Timed text waits for a key (accessibility, M12-18).
+    TextWaits,
+    /// Pause or keep running while the window is in the background (M12-18; the default
+    /// follows the profile).
+    Background,
     Binding(FlightKey),
     ResetControls,
     /// Game data: choose an installed folder.
@@ -93,9 +100,10 @@ const MAIN_ROWS: [Row; 7] = [
     Row::Open(Page::Data),
     Row::Back,
 ];
-const VIDEO_ROWS: [Row; 7] = [
+const VIDEO_ROWS: [Row; 8] = [
     Row::Fullscreen,
     Row::Scale,
+    Row::Background,
     Row::Widescreen,
     Row::Upscaler,
     Row::Lighting,
@@ -104,7 +112,12 @@ const VIDEO_ROWS: [Row; 7] = [
 ];
 const AUDIO_ROWS: [Row; 4] = [Row::MusicVolume, Row::SfxVolume, Row::SfxMode, Row::Back];
 const PROFILE_ROWS: [Row; 5] = [Row::Profile, Row::Fixes, Row::Intro, Row::Preset, Row::Back];
-const ACCESSIBILITY_ROWS: [Row; 2] = [Row::ColorblindGuidance, Row::Back];
+const ACCESSIBILITY_ROWS: [Row; 4] = [
+    Row::ColorblindGuidance,
+    Row::ReduceFlashing,
+    Row::TextWaits,
+    Row::Back,
+];
 const DATA_ROWS: [Row; 4] = [Row::PickFolder, Row::PickZip, Row::Extract, Row::Back];
 
 /// The rows of `page`, top to bottom.
@@ -184,6 +197,9 @@ fn label(row: Row) -> String {
         Row::Intro => "intro before episode 1".into(),
         Row::Preset => "restore the enhanced preset".into(),
         Row::ColorblindGuidance => "colour-blind guidance line".into(),
+        Row::ReduceFlashing => "reduce flashing".into(),
+        Row::TextWaits => "text waits for a key".into(),
+        Row::Background => "in the background".into(),
         Row::Binding(k) => flight_key_action(k).into(),
         Row::ResetControls => "reset to defaults".into(),
         Row::PickFolder => "choose a folder".into(),
@@ -254,6 +270,14 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
         }
         .into(),
         Row::ColorblindGuidance => on_off(s.accessibility.colorblind_guidance),
+        Row::ReduceFlashing => on_off(s.accessibility.reduce_flashing),
+        Row::TextWaits => on_off(s.accessibility.text_waits_for_key),
+        Row::Background => if s.pauses_in_background() {
+            "pause"
+        } else {
+            "keep running"
+        }
+        .into(),
         Row::Open(_)
         | Row::Binding(_)
         | Row::ResetControls
@@ -275,6 +299,9 @@ fn note(row: Row) -> Option<&'static str> {
         Row::Fixes => Some("fixes small bugs of the original game"),
         Row::Preset => Some("every enhanced option back to the preset"),
         Row::ColorblindGuidance => Some("the guidance line in colours safe for colour blindness"),
+        Row::ReduceFlashing => Some("slower colour changes - softer lights - no bloom"),
+        Row::TextWaits => Some("timed text stays until a key - early keys do not skip"),
+        Row::Background => Some("when another window is in front"),
         Row::Intro => Some("the classic profile always plays it"),
         Row::PickFolder => Some("an installed copy - used where it is"),
         Row::PickZip => Some("the original zip - read where it is"),
@@ -348,6 +375,13 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
         Row::ColorblindGuidance => {
             s.accessibility.colorblind_guidance = !s.accessibility.colorblind_guidance;
         }
+        Row::ReduceFlashing => {
+            s.accessibility.reduce_flashing = !s.accessibility.reduce_flashing;
+        }
+        Row::TextWaits => {
+            s.accessibility.text_waits_for_key = !s.accessibility.text_waits_for_key;
+        }
+        Row::Background => s.video.pause_in_background = Some(!s.pauses_in_background()),
         Row::Open(_)
         | Row::Binding(_)
         | Row::ResetControls
@@ -1041,6 +1075,8 @@ mod tests {
         rig.key(&mut s, Key::ENTER); // video
         rig.key(&mut s, Key::DOWN);
         rig.key(&mut s, Key::DOWN);
+        assert_eq!(s.row(), Row::Background, "both profiles");
+        rig.key(&mut s, Key::DOWN);
         assert_eq!(
             s.row(),
             Row::Back,
@@ -1062,6 +1098,7 @@ mod tests {
         rig.key(&mut s, Key::UP);
         rig.key(&mut s, Key::UP);
         rig.key(&mut s, Key::ENTER); // video
+        rig.key(&mut s, Key::DOWN);
         rig.key(&mut s, Key::DOWN);
         rig.key(&mut s, Key::DOWN);
         assert_eq!(s.row(), Row::Widescreen);

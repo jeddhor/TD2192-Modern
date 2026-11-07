@@ -85,6 +85,11 @@ pub enum SfxMode {
 pub struct VideoSettings {
     pub scale: Scale,
     pub fullscreen: bool,
+    /// Whether the game pauses while its window is in the background (M12-18,
+    /// port-front-end rev 5 §3.7); `None` takes the profile's default
+    /// ([`Settings::pauses_in_background`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pause_in_background: Option<bool>,
 }
 
 impl Default for VideoSettings {
@@ -92,6 +97,7 @@ impl Default for VideoSettings {
         Self {
             scale: Scale::Aspect,
             fullscreen: false,
+            pause_in_background: None,
         }
     }
 }
@@ -307,6 +313,15 @@ pub struct AccessibilitySettings {
     /// Colour-blind-safe colours for the guidance line (MDG §6.2, M12-04): drawn at the RGBA
     /// stage in a colour pair per marker (spec frontend/port-front-end rev 2 §3.3).
     pub colorblind_guidance: bool,
+    /// Reduce flashing (M12-18, port-front-end rev 5 §3.5): the colours on screen change at a
+    /// limited rate in flight (`td_render::flash`), the cut-scene's flash steps are capped, and
+    /// the Enhanced lighting is softened (no muzzle flashes, weaker explosions, no bloom).
+    /// Presentation only.
+    pub reduce_flashing: bool,
+    /// Text waits for a key (M12-18, port-front-end rev 5 §3.6): timed text screens wait for a
+    /// key instead of closing by themselves, and keys pressed while a page types or fades in
+    /// do not end its wait.
+    pub text_waits_for_key: bool,
 }
 
 /// Developer overrides (ignored unless set).
@@ -444,6 +459,15 @@ impl Settings {
         self.is_enhanced() && self.fixes_value()
     }
 
+    /// Whether the game pauses while its window is in the background: the player's choice,
+    /// else the profile's default. Enhanced pauses; Classic keeps running, as the original did
+    /// (a DOS program has no background).
+    pub fn pauses_in_background(&self) -> bool {
+        self.video
+            .pause_in_background
+            .unwrap_or(self.profile == Profile::Enhanced)
+    }
+
     /// Drops every explicit Enhanced choice, so the whole preset applies again.
     pub fn restore_preset(&mut self) {
         self.enhanced = EnhancedChoices::default();
@@ -540,6 +564,7 @@ mod tests {
             video: VideoSettings {
                 scale: Scale::Integer,
                 fullscreen: true,
+                pause_in_background: None,
             },
             ..Settings::default()
         };
@@ -610,8 +635,10 @@ mod tests {
         );
         assert_eq!(s.effective_sfx_mode(), SfxMode::Polyphonic);
         assert!(s.enhanced_fixes());
-        // The options of D5 stay off by default.
+        // The options of D5 stay off by default, and so do the M12-18 options.
         assert!(!s.accessibility.colorblind_guidance);
+        assert!(!s.accessibility.reduce_flashing);
+        assert!(!s.accessibility.text_waits_for_key);
         assert_eq!(s.intro.play, crate::intro::IntroPolicy::Always);
         // Explicit choices override the preset, one feature at a time.
         s.enhanced.lighting = Some(Lighting::Off);
@@ -721,6 +748,7 @@ mod tests {
             video: VideoSettings {
                 scale: Scale::Stretch,
                 fullscreen: true,
+                pause_in_background: Some(false),
             },
             audio: AudioSettings {
                 music_volume: 0.25,
@@ -736,6 +764,8 @@ mod tests {
             },
             accessibility: AccessibilitySettings {
                 colorblind_guidance: true,
+                reduce_flashing: true,
+                text_waits_for_key: true,
             },
             ..Settings::default()
         };
@@ -823,6 +853,8 @@ mod tests {
             },
             accessibility: AccessibilitySettings {
                 colorblind_guidance: true,
+                reduce_flashing: true,
+                ..AccessibilitySettings::default()
             },
             ..Settings::default()
         };
@@ -831,10 +863,34 @@ mod tests {
         assert!(!s.enhanced_fixes());
         // The accessibility options are not Enhanced features (MDG §6.2, D5).
         assert!(s.accessibility.colorblind_guidance);
+        assert!(s.accessibility.reduce_flashing);
         // The choices themselves are kept for when the profile changes back.
         assert_eq!(s.enhanced.lighting, Some(Lighting::Full));
         assert_eq!(s.sfx_mode_value(), SfxMode::Polyphonic);
         assert_eq!(Settings::default().profile, Profile::Classic);
+    }
+
+    /// M12-18: the window in the background pauses under Enhanced and keeps running under
+    /// Classic (the original's behaviour), unless the player chose; the choice is kept in the
+    /// file and the default is not written.
+    #[test]
+    fn pausing_in_the_background_follows_the_profile_unless_chosen() {
+        let mut s = Settings::default();
+        assert!(!s.pauses_in_background(), "Classic keeps running");
+        s.profile = Profile::Enhanced;
+        assert!(s.pauses_in_background(), "Enhanced pauses");
+        let text = toml::to_string_pretty(&s).unwrap();
+        assert!(!text.contains("pause_in_background"), "{text}");
+        s.video.pause_in_background = Some(false);
+        assert!(!s.pauses_in_background());
+        let back: Settings = toml::from_str(&toml::to_string_pretty(&s).unwrap()).unwrap();
+        assert_eq!(back.video.pause_in_background, Some(false));
+        s.profile = Profile::Classic;
+        s.video.pause_in_background = Some(true);
+        assert!(
+            s.pauses_in_background(),
+            "a choice applies under Classic too"
+        );
     }
 
     #[test]

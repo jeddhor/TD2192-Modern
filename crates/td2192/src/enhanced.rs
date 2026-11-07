@@ -137,6 +137,8 @@ pub struct Enhanced {
     settings: EnhancedSettings,
     /// The accessibility setting `colorblind_guidance` (not governed by the profile).
     guidance: bool,
+    /// The accessibility setting `reduce_flashing`: bloom is off while it is on (M12-18).
+    reduce_flashing: bool,
     view: SharedView,
     pipeline: Pipeline,
     post: Box<dyn PostStage>,
@@ -184,6 +186,7 @@ impl Enhanced {
             profile: settings.profile,
             settings: settings.enhanced_values(),
             guidance: settings.accessibility.colorblind_guidance,
+            reduce_flashing: settings.accessibility.reduce_flashing,
             view,
             pipeline: Pipeline::default(),
             post,
@@ -267,13 +270,14 @@ impl Enhanced {
         }
     }
 
-    /// Takes the profile, `[enhanced]` and the colour-blind guidance setting from `settings` at
-    /// once (the options screen, M11-03). The settings file the host has just saved is not
+    /// Takes the profile, `[enhanced]` and the colour-blind guidance and reduce-flashing settings
+    /// from `settings` at once (the options screen, M11-03). The settings file the host has just saved is not
     /// read again.
     pub fn apply(&mut self, settings: &Settings) {
         self.profile = settings.profile;
         self.settings = settings.enhanced_values();
         self.guidance = settings.accessibility.colorblind_guidance;
+        self.reduce_flashing = settings.accessibility.reduce_flashing;
         if let Some(r) = &mut self.reload {
             r.modified = modified(&r.path);
         }
@@ -322,7 +326,8 @@ impl Enhanced {
         let cfg = Config {
             upscaler: upscaler(s.upscaler),
             lighting: self.view.borrow().request.and_then(|r| r.lighting),
-            bloom: s.bloom,
+            // Reduce flashing turns bloom off (M12-18, port-front-end rev 5 §3.5).
+            bloom: s.bloom && !self.reduce_flashing,
         };
         let view = self.view.borrow();
         let Some(req) = view.request else {

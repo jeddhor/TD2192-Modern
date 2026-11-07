@@ -24,16 +24,20 @@ pub(super) fn emissive_of(bank: &SpriteSheet) -> Emissive {
 impl FlightArena {
     /// The light sources and occluders of the frame `draw` shows for a widescreen margin of
     /// `margin` pixels, or `None` while a modal screen is shown. `mode` is the user's setting;
-    /// infra-red limits it to `subtle` (§6.4).
+    /// infra-red limits it to `subtle` (§6.4). Reduce flashing softens it (no muzzle flashes,
+    /// weaker explosions; M12-18).
     pub(crate) fn light_scene(&self, margin: i32, mode: LightMode) -> Option<LightScene> {
         if self.screen.is_some() {
             return None;
         }
+        // The palette on screen: under reduce flashing the presented one (M12-18).
+        let palette = self.presented_palette();
         let ctx = FrameContext {
             world: &self.world,
-            palette: self.dac.current(),
+            palette: &palette,
             page: self.drawn_page(),
             margin,
+            soft: self.reduce_flashing,
         };
         let mut scene = LightScene::default();
         flight_scene(&self.flight, &ctx, mode, &mut scene);
