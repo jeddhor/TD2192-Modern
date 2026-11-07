@@ -9,12 +9,12 @@
 //! into the key table.
 //!
 //! The parser loops over its declared counts but stops at the first word or hash that is not
-//! there, so a count can only cost time in proportion to the input. BUG-17: it does reserve
-//! memory in proportion to the declared counts before checking the input length (replay.rs:89,
-//! :97; capped at 2^24 input words = 256 MiB and 2^20 checkpoints = 8 MiB), so a 24-byte
-//! header declaring `u32::MAX` ticks reserves 256 MiB. The tests here cannot observe
-//! allocations (no allocator hooks without `unsafe`); `huge_declared_counts_fail_fast` checks
-//! that such headers fail quickly and without a panic.
+//! there, so a count can only cost time in proportion to the input. BUG-17 (fixed): it used to
+//! reserve memory in proportion to the declared counts before checking the input length (up to
+//! 256 MiB for a 24-byte header declaring `u32::MAX` ticks); the reservations now follow the
+//! input length. The tests here cannot observe allocations (no allocator hooks without
+//! `unsafe`); `huge_declared_counts_fail_fast` checks that such headers fail quickly and
+//! without a panic.
 //!
 //! `long_fuzz` (ignored) loops with fresh seeds for `TD2192_FUZZ_SECS` seconds (default 60)
 //! from `TD2192_FUZZ_SEED` (default: from the clock) and prints the inputs tried:

@@ -27,8 +27,9 @@ pub struct SpriteSheet {
 impl SpriteSheet {
     /// Parses `data` as whole `size` x `size` frames; the length must be an exact multiple.
     pub fn parse(data: &[u8], size: usize) -> Result<Self> {
-        let frame = size * size;
-        if size == 0 || data.is_empty() || !data.len().is_multiple_of(frame) {
+        // An overflowing frame size matches no input (BUG-15).
+        let frame = size.checked_mul(size).unwrap_or(0);
+        if frame == 0 || data.is_empty() || !data.len().is_multiple_of(frame) {
             return Err(FormatError::Invalid {
                 format: "sprite sheet",
                 offset: 0,
@@ -99,5 +100,12 @@ mod tests {
                 .len(),
             24
         );
+    }
+
+    #[test]
+    fn overflowing_frame_size_is_an_error() {
+        // BUG-15 (M12-06 fuzzing): the square of the size overflows.
+        assert!(SpriteSheet::parse(&[0; 4], 1 << 32).is_err());
+        assert!(SpriteSheet::parse(&[0; 4], usize::MAX).is_err());
     }
 }

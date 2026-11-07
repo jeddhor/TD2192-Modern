@@ -739,12 +739,10 @@ fn run_pstring(d: &[u8], rng: &mut Rng) {
         if let Ok(s) = mz::pstring(d, at) {
             assert_eq!(s.len(), usize::from(d[at]));
         }
-        // BUG-16: `pstring_seq` reserves `count` slots before reading anything (mz.rs:77), so
-        // a count above isize::MAX / 16 panics ("capacity overflow"; minimal case:
-        // `pstring_seq(&[], 0, usize::MAX)`) and one in the terabytes aborts the process on
-        // allocation failure. Counts are bounded here and in `pstrings_never_panic`.
+        // BUG-16 (fixed): `pstring_seq` used to reserve `count` slots before reading anything,
+        // so `pstring_seq(&[], 0, usize::MAX)` panicked ("capacity overflow").
         let random = rng.below(1024);
-        let count = rng.pick(&[0, 1, 2, 255, 256, random]);
+        let count = rng.pick(&[0, 1, 2, 255, 256, random, 1 << 59, usize::MAX]);
         if let Ok(seq) = mz::pstring_seq(d, at, count) {
             assert_eq!(seq.len(), count);
         }
@@ -1552,7 +1550,7 @@ proptest! {
     fn pstrings_never_panic(
         data in vec(any::<u8>(), 0..600),
         at in prop_oneof![0usize..700, any::<usize>()],
-        count in 0usize..300,
+        count in prop_oneof![0usize..300, any::<usize>()],
     ) {
         if let Ok(s) = mz::pstring(&data, at) {
             prop_assert_eq!(s.len(), usize::from(data[at]));
@@ -1585,10 +1583,8 @@ proptest! {
         size in prop_oneof![0usize..80, 0usize..=0xFFFF_FFFF, any::<usize>()],
         seed in any::<u64>(),
     ) {
-        // BUG-15: `SpriteSheet::parse` squares the caller's frame size unchecked
-        // (sprites.rs:30), so a size above u32::MAX panics with an overflow in debug builds
-        // (and wraps in release). Minimal case: `SpriteSheet::parse(&[], 1 << 32)`.
-        prop_assume!(size.checked_mul(size).is_some());
+        // BUG-15 (fixed): `SpriteSheet::parse` used to square the caller's frame size
+        // unchecked, so `SpriteSheet::parse(&[], 1 << 32)` overflowed.
         let data = Rng::new(seed).bytes(len);
         if let Ok(s) = SpriteSheet::parse(&data, size) {
             prop_assert_eq!(s.len() * s.size() * s.size(), len);
@@ -1612,10 +1608,9 @@ proptest! {
         let small = |n: Option<usize>| n.filter(|&n| n <= 4096);
         let mut rng = Rng::new(seed);
 
-        // BUG-15: `Picture::parse` computes `width * height` and `+ 768` unchecked
-        // (picture.rs:99, :101): an overflow panics in debug builds. Minimal case: a
-        // `StillLayout` of width `usize::MAX / 4 + 1` and height 5, on empty data.
-        if pixels.and_then(|p| p.checked_add(PALETTE_LEN)).is_some() {
+        // BUG-15 (fixed): `Picture::parse` used to compute `width * height + 768` unchecked; a
+        // `StillLayout` of width `usize::MAX / 4 + 1` and height 5 overflowed.
+        {
             let still = StillLayout { name: "fuzz", width, height, has_palette };
             let mut data = if has_palette { valid_palette(&mut rng) } else { Vec::new() };
             let n = small(pixels).unwrap_or_else(|| rng.below(64)) + extra;
@@ -1625,11 +1620,10 @@ proptest! {
             }
         }
 
-        // BUG-14: `parse_cells` panics in every build when a layout's cell is empty
-        // (`cell_width * cell_height == 0`): `chunks_exact(0)` (picture.rs:130). Minimal case:
+        // BUG-14 (fixed): `parse_cells` panicked on an empty cell (`chunks_exact(0)`), e.g.
         // `parse_cells(&[], &CellLayout { cell_width: 0, cell_height: 0, count: 0, .. })`.
-        // BUG-15 again: `cell_width * cell_height * count` is unchecked (picture.rs:128, :129).
-        if sheet.is_some() && pixels != Some(0) {
+        // BUG-15 (fixed): `cell_width * cell_height * count` was unchecked.
+        {
             let cells = CellLayout { name: "fuzz", cell_width: width, cell_height: height, count };
             let len = small(sheet).unwrap_or_else(|| rng.below(64)) + extra;
             let data = rng.bytes(len);

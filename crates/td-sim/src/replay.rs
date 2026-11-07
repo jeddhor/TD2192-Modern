@@ -86,7 +86,9 @@ impl Replay {
         let interval = u32_at(16)?;
         let n_checks = u32_at(20)? as usize;
         let mut at = 24;
-        let mut inputs = Vec::with_capacity(ticks.min(1 << 24));
+        // Reserve no more than the input can hold (BUG-17): the counts are only claims.
+        let rest = b.len().saturating_sub(at);
+        let mut inputs = Vec::with_capacity(ticks.min(rest / word));
         for _ in 0..ticks {
             let s = take(at, word)?;
             let mut w = [0u8; 16];
@@ -94,7 +96,7 @@ impl Replay {
             inputs.push(u128::from_le_bytes(w));
             at += word;
         }
-        let mut checkpoints = Vec::with_capacity(n_checks.min(1 << 20));
+        let mut checkpoints = Vec::with_capacity(n_checks.min(b.len().saturating_sub(at) / 8));
         for _ in 0..n_checks {
             let s = take(at, 8)?;
             checkpoints.push(u64::from_le_bytes(s.try_into().expect("8 bytes")));
@@ -177,6 +179,17 @@ mod tests {
     }
 
     /// Version-2 files (64-bit words) load as the same words zero-extended.
+    #[test]
+    fn huge_declared_counts_are_truncation_errors() {
+        // BUG-17 (M12-06 fuzzing): the counts are claims; the reservations follow the input.
+        let mut b = sample().to_bytes();
+        b[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(Replay::from_bytes(&b), Err(ReplayError::Truncated));
+        let mut b = sample().to_bytes();
+        b[20..24].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(Replay::from_bytes(&b), Err(ReplayError::Truncated));
+    }
+
     #[test]
     fn version_2_files_still_load() {
         let mut r = sample();
