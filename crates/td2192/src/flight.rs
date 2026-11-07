@@ -136,14 +136,26 @@ fn chord_keys(binds: &[(Key, FlightKey)]) -> Vec<(Key, ChordKey)> {
 }
 
 /// Turns tick-sampled host key state into the original's make codes, with typematic repeats.
+///
+/// An AT keyboard repeats only the **last key pressed**, and only while it is held; a key held
+/// before another is pressed sends no more make codes (flight-screens rev 7 §4.4, U-450,
+/// C-0325). So after a screen that clears the key bytes, a key held through it stays clear
+/// until it is pressed again ([`Typematic::after_screen`], BUG-23). Before the first key press
+/// of the flight the last key is unknown; ASSUMPTION(U-582): a key held since before the flight
+/// repeats then, as the only key held would.
 #[derive(Debug, Default)]
 struct Typematic {
     /// Microseconds each held key has been down.
     held_us: BTreeMap<KeyByte, u64>,
+    /// The host key pressed last (the keyboard's typematic key), once one was pressed.
+    last: Option<Key>,
 }
 
 impl Typematic {
     fn controls(&mut self, input: &TickInput, binds: &[(Key, FlightKey)]) -> TickControls {
+        if let Some(&k) = input.pressed.last() {
+            self.last = Some(k);
+        }
         let mut c = TickControls::default();
         if let Some(p) = input.pad {
             c.set_joystick(Joystick {
@@ -190,12 +202,72 @@ impl Typematic {
         let t0 = *self.held_us.get(&key).unwrap_or(&0);
         let t1 = t0 + tick_us;
         self.held_us.insert(key, t1);
-        // A repeat fires at DELAY + n·PERIOD; did one fall in (t0, t1]?
+        // A repeat fires at DELAY + n·PERIOD; did one fall in (t0, t1]? Only the last key
+        // pressed repeats.
         let count = |t: u64| {
             t.checked_sub(TYPEMATIC_DELAY_US)
                 .map_or(0, |d| d / TYPEMATIC_PERIOD_US + 1)
         };
-        (true, count(t1) > count(t0))
+        let repeats = self.last.is_none_or(|k| k == host);
+        (true, repeats && count(t1) > count(t0))
+    }
+
+    /// The key bytes' input when a modal or real-time screen closes and its tick goes on:
+    /// `pressed` are the host keys pressed since the screen opened (the closing frame's
+    /// included). A key is down if held now and has a make code if it was pressed meanwhile;
+    /// a key held through the screen has none (it is not the keyboard's last key: the screen
+    /// was opened or closed by another, or by none), so after a screen that cleared the key
+    /// bytes (pause, flight menu, map, comm viewer: `Flight::resume`) only keys pressed while
+    /// it showed and still held are set, and after a real-time screen, which clears nothing,
+    /// held keys keep their bytes and released ones are cleared (flight-screens rev 7 §4.4 and
+    /// §4.10, U-450; C-0325, C-0067, C-0069). The pressed keys restart their typematic delay.
+    fn after_screen(
+        &mut self,
+        input: &TickInput,
+        binds: &[(Key, FlightKey)],
+        pressed: &[Key],
+    ) -> TickControls {
+        if let Some(&k) = pressed.last() {
+            self.last = Some(k);
+        }
+        let mut c = TickControls::default();
+        if let Some(p) = input.pad {
+            c.set_joystick(Joystick {
+                x: p.x,
+                y: p.y,
+                button1: p.button1,
+                button2: p.button2,
+            });
+        }
+        let mut key = |host: Key, byte: KeyByte| {
+            let down = input.held.contains(&host);
+            let made = pressed.contains(&host);
+            if !down {
+                self.held_us.remove(&byte);
+            } else if made {
+                self.held_us.insert(byte, 0);
+            }
+            (down, made)
+        };
+        for &(host, k) in binds {
+            let (down, made) = key(host, KeyByte::Flight(k));
+            if down {
+                c.set_down(k);
+            }
+            if made {
+                c.set_made(k);
+            }
+        }
+        for (host, k) in chord_keys(binds) {
+            let (down, made) = key(host, KeyByte::Chord(k));
+            if down {
+                c.set_chord_down(k);
+            }
+            if made {
+                c.set_chord_made(k);
+            }
+        }
+        c
     }
 }
 
@@ -231,6 +303,8 @@ pub struct FlightArena {
     run: Option<Rc<RefCell<RunState>>>,
     binds: Vec<(Key, FlightKey)>,
     typematic: Typematic,
+    /// Host keys pressed since the open screen opened ([`Typematic::after_screen`]).
+    screen_pressed: Vec<Key>,
     events: Vec<Event>,
     /// E3 flight 16: the magenta fade step on screen (1..=5), while it runs.
     magenta: Option<u8>,
@@ -680,6 +754,7 @@ impl FlightArena {
             run,
             binds: bindings(&td_flow::Settings::default()),
             typematic: Typematic::default(),
+            screen_pressed: Vec::new(),
             events: Vec::new(),
             magenta: None,
             blank_page: None,
@@ -759,6 +834,7 @@ impl Screen for FlightArena {
         let tinted = self.flight.mission.tint;
         let mode = self.flight.palette_mode;
         let mut result = if let Some(screen) = &mut self.screen {
+            self.screen_pressed.extend(input.pressed.iter().copied());
             match screen.tick(&self.screens, input) {
                 ModalStep::Continue => return Transition::None,
                 ModalStep::Close { abort } => {
@@ -793,7 +869,7 @@ impl Screen for FlightArena {
                         }
                         self.flight.hit_flash = 0;
                     }
-                    let r = if scene {
+                    if scene {
                         // The screen's closing FadeIn (mode 0 in flights 17 and 19) ended any hit
                         // flash; its key changes reach the tick's input steps (§4.10). The page
                         // it cleared is this tick's back page when that is page 0.
@@ -802,12 +878,12 @@ impl Screen for FlightArena {
                         if self.flight.draw_page == 0 {
                             self.blank_page = Some(self.flight.ticks);
                         }
-                        let c = held_controls(input, &self.binds);
-                        self.flight.resume(&self.world, &c, &mut self.events)
-                    } else {
-                        let c = self.typematic.controls(input, &self.binds);
-                        self.flight.resume(&self.world, &c, &mut self.events)
-                    };
+                    }
+                    // Keys held through the screen keep their bytes after a real-time screen
+                    // and stay cleared after the others (BUG-23).
+                    let pressed = std::mem::take(&mut self.screen_pressed);
+                    let c = self.typematic.after_screen(input, &self.binds, &pressed);
+                    let r = self.flight.resume(&self.world, &c, &mut self.events);
                     // The rest of the tick runs as the screen closes.
                     self.issue_sounds(ctx, 0, now, now);
                     r
@@ -834,12 +910,13 @@ impl Screen for FlightArena {
             self.modal = Some(m);
             if let Some(screen) = self.open_screen(m) {
                 self.screen = Some(screen);
+                self.screen_pressed.clear();
                 break;
             }
             // Nothing to show: continue the tick at once (a scene keeps the key bytes).
             self.modal = None;
             let c = if m == Modal::Scene {
-                held_controls(input, &self.binds)
+                self.typematic.after_screen(input, &self.binds, &[])
             } else {
                 TickControls::default()
             };
@@ -1187,35 +1264,6 @@ fn flight_palette_of(palette: &Palette, hud: &Hud) -> Palette {
         };
     }
     p
-}
-
-/// The key bytes after a real-time screen of the mission events (flight-screens §4.10): the
-/// INT 09h handler kept running, so a key released meanwhile has cleared its byte and a key
-/// still down has it set (pressed meanwhile, or held for more than the 500 ms typematic delay,
-/// whose repeats re-set a byte the game had cleared; both screens last longer).
-fn held_controls(input: &TickInput, binds: &[(Key, FlightKey)]) -> TickControls {
-    let mut c = TickControls::default();
-    if let Some(p) = input.pad {
-        c.set_joystick(Joystick {
-            x: p.x,
-            y: p.y,
-            button1: p.button1,
-            button2: p.button2,
-        });
-    }
-    for &(host, key) in binds {
-        if input.held.contains(&host) {
-            c.set_down(key);
-            c.set_made(key);
-        }
-    }
-    for (host, key) in chord_keys(binds) {
-        if input.held.contains(&host) {
-            c.set_chord_down(key);
-            c.set_chord_made(key);
-        }
-    }
-    c
 }
 
 /// Whether the radar shows the map-set-2 colours (`k_TileRadarColour`, e2-mission-setup rev 1
@@ -1742,8 +1790,12 @@ mod tests {
         assert!(!chord_keys(&binds).iter().any(|&(_, c)| c == ChordKey::K));
         let c = t.controls(&first, &binds);
         assert!(!c.is_chord_down(ChordKey::K) && c.is_down(FlightKey::Space));
-        // After a real-time screen a held letter is set again (held_controls).
-        let c = held_controls(&held, &bindings(&td_flow::Settings::default()));
+        // After a screen a held letter is down, with a make code only if it was pressed while
+        // the screen showed (BUG-23).
+        let binds = bindings(&td_flow::Settings::default());
+        let c = t.after_screen(&held, &binds, &[]);
+        assert!(c.is_chord_down(ChordKey::K) && !c.any_made());
+        let c = t.after_screen(&held, &binds, &[k]);
         assert!(c.is_chord_down(ChordKey::K) && c.any_made());
     }
 
@@ -1765,6 +1817,31 @@ mod tests {
         assert_eq!(&repeats[..9], &[false; 9]);
         assert!(repeats[9]);
         assert!(repeats[9..].iter().filter(|&&r| r).count() >= 2);
+        // Only the last key pressed repeats (U-450): Space held, then Up pressed and held.
+        let binds = [(Key::SPACE, FlightKey::Space), (Key::UP, FlightKey::Up)];
+        let mut t = Typematic::default();
+        assert!(made(t.controls(&first, &binds)));
+        let mut both = held.clone();
+        both.held.insert(Key::UP);
+        both.pressed.push(Key::UP);
+        let c = t.controls(&both, &binds);
+        assert!(c.is_down(FlightKey::Space) && c.is_down(FlightKey::Up));
+        both.pressed.clear();
+        let mut space_repeats = 0;
+        let mut up_repeats = 0;
+        // A make code of `k` alone, as a replay word.
+        let made_of = |k: FlightKey| {
+            let mut m = TickControls::default();
+            m.set_made(k);
+            m.to_word()
+        };
+        for _ in 0..30 {
+            let w = t.controls(&both, &binds).to_word();
+            space_repeats += usize::from(w & made_of(FlightKey::Space) != 0);
+            up_repeats += usize::from(w & made_of(FlightKey::Up) != 0);
+        }
+        assert_eq!(space_repeats, 0, "Space was not the last key pressed");
+        assert!(up_repeats >= 2);
     }
 
     /// E1 flight 1 after `ticks` ticks (P pressed in the last one when `pause`), composing
@@ -2068,6 +2145,103 @@ mod tests {
             assert_eq!(arena.flight.ticks, 1);
             assert_eq!(arena.flight.keys.get(FlightKey::Up), set, "{pressed_at:?}");
         }
+    }
+
+    /// BUG-23 (flight-screens rev 7 §4.4, U-450): C-0325, E1 flight 1 at a direct start: kp8
+    /// pressed at tick 3 and kp4 at tick 6, both held to tick 25; P at tick 10 (the pause,
+    /// released after 5 frames), B 60 frames into the pause ends it. The pause cleared the key
+    /// bytes and the keyboard repeats only the last key pressed (B), so kp8 and kp4 read 0 from
+    /// tick 11 although both are held. Compared with the capture's key bytes (DS:1A5C + scan
+    /// code) after every tick 1..25: the per-tick record of counter value t + 1 holds the state
+    /// after tick t.
+    #[test]
+    fn keys_held_through_a_pause_stay_cleared_as_in_c0325() {
+        let data = require_data!();
+        let oracle = require_oracle!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let settings = td_flow::Settings::default();
+        let mut audio = Vec::new();
+        let mut arena = FlightArena::new(&dir, &res, Episode::E1, 1).unwrap();
+        let (kp8, kp4) = (Key(0x60), Key(0x5C));
+        let (p, b) = (Key::letter('p').unwrap(), Key::letter('b').unwrap());
+        let mut step = |arena: &mut FlightArena, input: &TickInput| {
+            let mut ctx = FlowContext {
+                data: &dir,
+                resources: &res,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, input);
+        };
+        let bytes = |a: &FlightArena| {
+            (
+                a.flight.keys.get(FlightKey::Kp8),
+                a.flight.keys.get(FlightKey::Kp4),
+            )
+        };
+        while arena.flight.ticks == 0 {
+            step(&mut arena, &TickInput::default());
+        }
+        let mut ours = BTreeMap::from([(1, bytes(&arena))]);
+        for t in 2..=25u32 {
+            let mut input = TickInput::default();
+            for (key, from) in [(kp8, 3), (kp4, 6)] {
+                if (from..25).contains(&t) {
+                    input.held.insert(key);
+                }
+                if t == from {
+                    input.pressed.push(key);
+                }
+            }
+            if t == 10 {
+                input.held.insert(p);
+                input.pressed.push(p);
+            }
+            step(&mut arena, &input);
+            if t == 10 {
+                assert!(
+                    matches!(arena.screen, Some(FlightModal::Pause(_))),
+                    "paused"
+                );
+                for frame in 1..=60 {
+                    let mut i = TickInput::default();
+                    i.held.extend([kp8, kp4]);
+                    if frame < 5 {
+                        i.held.insert(p);
+                    }
+                    if frame == 60 {
+                        i.held.insert(b);
+                        i.pressed.push(b);
+                    }
+                    step(&mut arena, &i);
+                }
+                assert!(arena.screen.is_none(), "B ended the pause");
+            }
+            assert_eq!(arena.flight.ticks, t);
+            ours.insert(t, bytes(&arena));
+        }
+        // The capture's per-tick DGROUP records (16-byte header: counter value, frame; stall
+        // records flagged in bit 31).
+        const DS_LEN: usize = 0x9DF0;
+        let path = oracle
+            .join("C-0325")
+            .join("mem")
+            .join("tick_4467-0000_9DF0_ds.bin");
+        let raw = std::fs::read(path).unwrap();
+        let mut theirs = BTreeMap::new();
+        for r in raw.chunks(16 + DS_LEN) {
+            let value = u32::from_le_bytes(r[0..4].try_into().unwrap());
+            if value & 0x8000_0000 == 0 {
+                let key = |k: FlightKey| r[16 + 0x1A5C + usize::from(k.scan_code())] != 0;
+                theirs.insert(value, (key(FlightKey::Kp8), key(FlightKey::Kp4)));
+            }
+        }
+        for (t, &b) in &ours {
+            assert_eq!(Some(&b), theirs.get(&(t + 1)), "kp8, kp4 after tick {t}");
+        }
+        assert_eq!(ours[&9], (true, true));
+        assert!((10..=25).all(|t| ours[&t] == (false, false)));
     }
 
     /// Every flight of every episode opens (fade-in, tick 1) and flies a few ticks, drawn each
