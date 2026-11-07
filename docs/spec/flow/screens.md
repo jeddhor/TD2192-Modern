@@ -246,6 +246,7 @@ Then one character per frame as usual.
 - U-228: hint screens: does the line-skip test see keys typed during the fade-in (the buffer is flushed only after the fade)? Static answer: no, the flush comes after the fade-in, so earlier keys are lost.
 - U-229: the menu's `MemAvail` print and DAC 255 := white look like a leftover debug feature; is anything else drawn in ink 255 on the menu? (no other call found)
 - U-581 (IM-24, M12-16): hint lines after the key test can start mid-frame and show their first character a frame late (C-0273 f3615, C-0280 f1883); §3.13 has no hint rows.
+- U-585 (IM-24, M12-16): the retry prompt's taunt is typed while black, so its fade-in starts about one frame per character later (C-0324: f5804 → f5841); the port types it at once (§3.7 gives no timing).
 - U-583 (IM-24, M12-16): §3.13's debrief row for y 75 (one character in F + 36) does not hold in C-0324 (two, the delay ending 0.8 into F + 35, f6014).
 - U-302 (IM-7, M9-19): details the port had to assume: the box colour of the cursor entry on item 3, the pulse after a cancelled quit box, what item 5 reloads, the joystick delay after Down, and whether keys typed before a flight survive it. Also: §3.1 says "one per retrace start" for the pulse, but C-0002 f868..872 show 11 steps per frame at P1 (the wait returns at once while the retrace bit is set); the port uses 11.
 
