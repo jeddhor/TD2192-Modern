@@ -102,7 +102,15 @@ Also noted, not filed: `Cmf::parse` reserves up to 65,535 instrument slots (704 
 
 ### 3.1 One-hour run
 
-LONG_FUZZ_RESULTS
+After the BUG-14..BUG-17 fixes, release, `TD2192_DATA` set, `TD2192_FUZZ_SEED=20261106`, the three long tests run at the same time, 2026-11-06:
+
+| Test | Time | Inputs | Result |
+|---|---:|---|---|
+| `td-formats/tests/fuzz.rs::long_fuzz` | 3,600 s | 497,804 rounds: 2,489,020 inputs to each of the 16 parser targets, 39,824,320 in all | **PASS**, no panic, no input over the hang limit |
+| `td-assets/tests/fuzz.rs::long_fuzz` | 1,800 s | 3,621,249 rounds: 3,621,249 archives on each of the five ZIP paths (18.1 million), 57,939,984 `dos83` names, 56,583 `ExeResources::load` + `validate` runs | **PASS** |
+| `td-sim/tests/fuzz_replay.rs::long_fuzz` | 1,200 s | 62,957,624 rounds, 251,830,496 replay inputs | **PASS** |
+
+MDG §11's "parsers fuzzed for 1 h without failure" is met for every `td-formats` parser (each was fed throughout the hour), and for the ZIP import, exe resources and replays over 30 and 20 minutes.
 
 ## 4. Frame cost (CPU)
 
