@@ -4,7 +4,7 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 
 ## 0. What remains for Classic 1.0 (ordered by impact on play)
 
-1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10).
+1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10). **Done after this review (VE-7, M12-15, [M12-screens](M12-screens.md)):** captures C-0270..C-0291 and `td-flow/tests/screens_parity.rs` compare 34 such screens in all three episodes, every dump from the fade-in to the hold: exact except typing 1–2 frames early (U-521), the E1 enemy dossier's line 9 (BUG-12, U-520) and `td1-20` one pixel left (BUG-13, U-522). E1 ending B is still not captured (a planned flight-17 "lost" run is needed); E2 ending B is unreachable (OB-025).
 2. ~~E2/E3 two-digit muzzle bytes~~ **Done after this review (IM-20, merged 90bd09f):** the E2/E3 worlds are built from front-end state, equal all 58 whole-flight captures and the C-0015/C-0036/C-0180/C-0121/C-0128 campaign states, every L5 flight uses the built bytes, and the dual replays were rewritten.
 3. **Session state across flights is unverified.** Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481).
 4. **The flight-start fade-in is not ported** (M12-timing §7). Every flight starts with a cut where the original runs a 34-frame `FadeIn` before tick 1. BUG-10 is filed for it.
@@ -36,13 +36,13 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
     - positioned effects (panning, the 15-tile cut-off) were never captured (M3 row 20);
     - parsers have no fuzz targets or property tests except `saves.rs` (M12-06; MDG §11 asks for 1 h of fuzzing).
 
-**Coverage.** The checklist has 393 items (spec vectors and numbered behaviours):
+**Coverage.** The checklist has 394 items (spec vectors and numbered behaviours; VE-7, M12-15, updated the front-end screen rows and added one E3 row):
 
-| Status | Items | Share of the 375 Classic items |
+| Status | Items | Share of the 376 Classic items |
 |---|---:|---:|
-| PASS | 327 | 87.2 % |
-| PARTIAL | 33 | 8.8 % |
-| NOT COVERED | 15 | 4.0 % |
+| PASS | 332 | 88.3 % |
+| PARTIAL | 32 | 8.5 % |
+| NOT COVERED | 12 | 3.2 % |
 | N/A (Enhanced, T3, not used by the game) | 18 | not counted |
 
 **M12 exit criterion not met.** It asks for at least 95 % PASS with the rest documented. Every non-PASS item is documented below. Items 1–6 above account for most of the gap.
@@ -88,19 +88,19 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 | sim/e3-mission-setup | 1 | T1, T2 | 14 | 13 | 1 | 0 | 0 | flight 7 |
 | sim/e3-mission-ships | 1 | T1 | 9 | 9 | 0 | 0 | 0 | — |
 | sim/e3-mission-logic | 1 | T1, T2 | 55 | 44 | 8 | 2 | 1 | flights 7, 21; U-430; branch vectors |
-| flow/screens | 3 | T0, T1, T2 | 10 | 7 | 1 | 2 | 0 | debrief, orders, dossiers, story so far, stills |
+| flow/screens | 3 | T0, T1, T2 | 10 | 8 | 2 | 0 | 0 | enemy dossier line 9 (BUG-12), `td1-20` (BUG-13) |
 | flow/episode-program-flow | 6 | T2, T1, T3 | 6 | 5 | 1 | 0 | 0 | endings: no capture |
 | flow/launcher | 1 | T3, T1 | 4 | 3 | 0 | 0 | 1 | — |
 | flow/intro | 3 | T0, T1, T2 | 10 | 10 | 0 | 0 | 0 | — |
 | flow/save-screens | 1 | T0, T1, T2 | 7 | 7 | 0 | 0 | 0 | — |
 | flow/flight-screens | 5 | T0, T1, T2 | 24 | 21 | 1 | 2 | 0 | flight-start fade-in; comm pace; C-0027 |
 | flow/e2-flight-screens | 1 | T0, T1, T2 | 5 | 4 | 0 | 0 | 1 | — |
-| flow/e2-program-flow | 3 | T2, T1, T0 | 15 | 13 | 1 | 1 | 0 | item 6; endings |
-| flow/e3-program-flow | 3 | T2, T1, T0 | 18 | 17 | 1 | 0 | 0 | items 6/7 timing |
+| flow/e2-program-flow | 3 | T2, T1, T0 | 15 | 15 | 0 | 0 | 0 | — |
+| flow/e3-program-flow | 3 | T2, T1, T0 | 19 | 19 | 0 | 0 | 0 | — |
 | frontend/credits | 1 | T3 | 2 | 0 | 0 | 0 | 2 | — |
 | frontend/port-front-end | 2 | T3 | 2 | 0 | 0 | 0 | 2 | — |
 | enhanced/presentation | 4 | T3 | 2 | 0 | 0 | 0 | 2 | Classic invariance passes |
-| **Total** | | | **393** | **327** | **33** | **15** | **18** | |
+| **Total** | | | **394** | **332** | **32** | **12** | **18** | |
 
 `original-bugs.md` is reviewed in §7.
 
@@ -197,7 +197,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | §7 | Missions (U-060) | `td-formats/src/mission.rs` (3), `original_text_and_missions.rs::mission_files_parse`; every full flight's setup | C-0009.. | PASS |
 | §8 | Dialogue scripts | `td-formats/src/dialogue.rs` (3), `original_text_and_missions.rs::dialogue_scripts_parse_strictly`, `::player_reader_agrees_with_the_strict_parser` | data | PASS |
 | §9 | Fonts | `td-formats/src/font.rs` (2), `original_graphics.rs::fonts_parse_with_visible_glyphs`; text L5 tests | C-0002 | PASS |
-| §10–§11 | Portraits, stills | `original_graphics.rs::portraits_stills_and_cell_sheets_parse`; portraits pixel-exact in `oracle_parity`; stills never compared with a capture | C-0002 (portraits) | PARTIAL (stills: no capture) |
+| §10–§11 | Portraits, stills | `original_graphics.rs::portraits_stills_and_cell_sheets_parse`; portraits pixel-exact in `oracle_parity`; stills: `td-flow/tests/screens_parity.rs::e1_stills_match_c0274_c0275_c0276_c0281_c0282` (VE-7, M12-15) | C-0002 (portraits); C-0274, C-0275, C-0276, C-0281, C-0282 | PARTIAL (`td1-13`, `14`, `15`, `16`, `18` exact; `td1-20` sits one pixel right of §11's (0, 50) in the original: BUG-13 / U-522) |
 | §12 | Raw UI graphics (`td.men`, `td.win`, `td.cmm`, `td*.ccm`, `td.sss`, `td.wea` …) | `td-formats/src/picture.rs` (2); used pixel-exact in `flight_screens_parity`, `hud_parity`, `save_parity` | C-0012, C-0013, C-0002, C-0042 | PASS |
 | §13.1 | `td.cfg` | none (T3: the port keeps `settings.toml`; no configuration screen) | C-0048 | N/A |
 | §13.2–§13.3 | Saves `td*.sav`, names `td*.stt` | `td-formats/src/saves.rs` (4, incl. arbitrary bytes), `save_parity.rs` | C-0042, C-0043 | PASS |
@@ -538,12 +538,12 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 1 | Main menu after start-up | `td-flow/tests/story_parity.rs::main_menu_matches_the_original`, `::main_menu_boxes_and_fades` | C-0002 f997 | PASS |
 | 2 | Retry prompt: one `Random(10)` | `td-flow/tests/story_parity.rs::a_retry_draws_one_random_number`, `::retry_prompt_matches_the_original` | C-0002 f6300 | PASS |
 | 3 | Esc on the title card | `td-flow/tests/story_parity.rs::esc_on_the_title_card_goes_straight_to_the_flight` | static | PASS |
-| 4 | Debrief layout (lines at y 45..140) | `td-flow/src/campaign.rs::debrief_tiers` checks the tier only; no pixel test | static (no capture) | PARTIAL |
+| 4 | Debrief layout (lines at y 45..140) | `td-flow/tests/screens_parity.rs::e1_success_debrief_matches_c0200`, `::e1_failure_debrief_matches_c0274`, `::e1_success_debriefs_match_c0275_and_c0282` (VE-7, M12-15: every dump from the fade-in to the hold, success and failure, tiers; typing 1–2 frames early, M12-screens D1) | C-0200, C-0274, C-0275, C-0282 | PASS |
 | §2.1 | Fade speed by palette (BUG-6, U-461) | `td-flow/tests/story_parity.rs::the_first_title_card_fades_at_one_frame_per_level`, `::a_title_card_after_the_story_so_far_fades_at_two_frames_per_level` | C-0002, C-0170 | PASS |
-| §3.3 | Hint screens | `td-flow/tests/story_parity.rs::hint_1_matches_the_original` | C-0002 | PASS |
+| §3.3 | Hint screens | `td-flow/tests/story_parity.rs::hint_1_matches_the_original`; hints 2 and 6: `td-flow/tests/screens_parity.rs::e1_hint_2_matches_c0273`, `::e1_hint_6_matches_c0280` (VE-7, M12-15) | C-0002, C-0273, C-0280 | PASS |
 | §3.2 | Script choice | `td-flow/tests/story_parity.rs::script_choice_matches_the_original` | C-0002 f710 | PASS |
-| §3.4–3.5 | Assignment orders, enemy and pilot dossiers | none | no capture | NOT COVERED |
-| §3.8–3.10 | Story so far, `td1-15`, other stills (`td1-13..20.pic`, `secret.pic`) | none (C-0170 holds the story-so-far run but no frame test) | C-0170 (unused) | NOT COVERED |
+| §3.4–3.5 | Assignment orders, enemy and pilot dossiers | `td-flow/tests/screens_parity.rs::e1_assignment_orders_match_c0273`, `::e1_pilot_dossier_matches_c0270`, `::e1_enemy_dossier_matches_c0271` (VE-7, M12-15) | C-0270, C-0271, C-0273 | PARTIAL (orders and pilot dossier exact but for typing 1–2 frames early, U-521; enemy dossier: the original never types line 9, BUG-12 / U-520) |
+| §3.8–3.10 | Story so far, `td1-15`, other stills (`td1-13..20.pic`, `secret.pic`) | `td-flow/tests/screens_parity.rs::e1_story_so_far_matches_c0272`, `::e1_stills_match_c0274_c0275_c0276_c0281_c0282` (VE-7, M12-15; `secret.pic` through the hints) | C-0272, C-0274, C-0275, C-0276, C-0281, C-0282 | PARTIAL (all exact except `td1-20`, one pixel to the right in the original: BUG-13 / U-522) |
 | §3.12 | Esc in the pre-flight story | `td-flow/tests/story_parity.rs::keys_typed_ahead_carry_into_the_next_screen`, `td-flow/tests/e1_block_flow.rs::block_19_esc_before_flight_21_jumps_to_flight_21` | static | PASS |
 
 ### flow/episode-program-flow.md (rev 6; T2 order, T1 state, T3 hand-off)
@@ -555,7 +555,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 3 | Debrief tiers | `td-flow/src/campaign.rs::debrief_tiers` | static | PASS |
 | 4 | Music index 12, 13 | `td-audio/src/music_cues.rs::cue_table` | static | PASS |
 | §4.4 | Blocks 19–21 (U-081, U-207, U-420) | `td-flow/tests/e1_block_flow.rs` (5 tests) | static | PASS |
-| §4.5 | Endings A, B, C and the episode end | `td-flow/tests/story_parity.rs::death_without_retry_is_game_over`, `::every_block_plays_to_the_end` (flow only); no capture (U-080 open) | none | PARTIAL |
+| §4.5 | Endings A, B, C and the episode end | `td-flow/tests/story_parity.rs::death_without_retry_is_game_over`, `::every_block_plays_to_the_end` (flow); `td-flow/tests/screens_parity.rs::e1_pilot_dossier_matches_c0270` (A), `::ending_c_cards_match_c0279_and_c0285` (C), `::episode_end_cards_match_c0276_c0286_c0288` (end card) (VE-7, M12-15) | C-0270, C-0276, C-0279 | PARTIAL (ending B not captured: flight 17 never ends idle, a planned "lost" flight is needed; `td1-20` BUG-13) |
 
 ### flow/launcher.md (rev 1; T3 launcher, T1 order)
 
@@ -625,11 +625,11 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 8 | Block 20 completed | `…::episode_complete_and_game_over_bookkeeping`, `::block_20_end_sequence_plays_death_looping` | static | PASS |
 | 9 | Block 3 death declined → ending A | `…::death_declined_is_ending_a` | static | PASS |
 | 10 | Block 17 lost → ending C | `…::lost_flights_17_and_18` | static | PASS |
-| 11 | Menu item 6: about screen 30 s | none for E2 (E1 items in `launcher_shell`) | static | NOT COVERED |
+| 11 | Menu item 6: about screen 30 s | `td-flow/tests/screens_parity.rs::about_and_order_screens_match_c0290_and_c0291` (VE-7, M12-15: every dump from the fade-in to the hold) | C-0290 | PASS |
 | 12 | 124 dialogue ids | `td-flow/src/campaign_e2.rs::dialogue_coverage` | file scan | PASS |
 | §4.2 | Menu fades and ramp | `td-flow/tests/menu_pacing.rs::e2_menu_fades_and_ramp_match_c0120` | C-0120 | PASS |
 | — | Scene cards (marauder, tdoffic2, hyde) | `…::marauder_card_matches_c0015`, `::tdoffic2_card_matches_c0016`, `::hyde_card_matches_c0046` | C-0015, C-0016, C-0046 | PASS |
-| — | Endings, dossier, end card pixels | flow tests only | no capture (U-249) | PARTIAL |
+| — | Endings, dossier, end card, debrief pixels | `td-flow/tests/screens_parity.rs::e2_debriefs_match_c0277_c0283_c0286`, `::e2_and_e3_pilot_dossiers_match_c0284_and_c0289`, `::ending_c_cards_match_c0279_and_c0285`, `::episode_end_cards_match_c0276_c0286_c0288` (VE-7, M12-15) | C-0277, C-0283..C-0286 | PASS (typing 1–2 frames early, U-521; ending B unreachable, OB-025; the end card after an Esc in block 20 not captured) |
 
 ### flow/e3-program-flow.md (rev 3; as e2-program-flow)
 
@@ -648,7 +648,8 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 13 | OB-050 shortcut | `…::esc_on_the_about_screen_skips_block_1`, `::block_1_skip_shortcut` | static | PASS |
 | 14 | OB-051 restore of mission 7 | `…::missions_without_a_block_add_the_stale_kills` | static | PASS |
 | 15 | 111 dialogue ids | `td-flow/src/campaign_e3.rs::dialogue_coverage` | file scan | PASS |
-| 16 | Menu items 6 and 7 (30 s / 45 s) | `td-flow/src/scenes_e3.rs::waits` (wait lengths only) | static | PARTIAL |
+| 16 | Menu items 6 and 7 (30 s / 45 s) | `td-flow/src/scenes_e3.rs::waits`; `td-flow/tests/screens_parity.rs::about_and_order_screens_match_c0290_and_c0291` (VE-7, M12-15) | C-0291 | PASS |
+| — | Debriefs (15 s, success and failure), dossier, end card | `td-flow/tests/screens_parity.rs::e3_debriefs_match_c0278_and_c0287`, `::e2_and_e3_pilot_dossiers_match_c0284_and_c0289`, `::episode_end_cards_match_c0276_c0286_c0288` (VE-7, M12-15) | C-0278, C-0287..C-0289 | PASS (typing 1–2 frames early, U-521) |
 | §4.2 | Menu fades and ramp | `td-flow/tests/menu_pacing.rs::e3_menu_fades_and_ramp_match_c0125` | C-0125 | PASS |
 | — | Cards, restore screen | `…::maraud3_card_matches_c0041`, `::restore_screen_and_menu_match_c0041` | C-0036, C-0041 | PASS |
 
