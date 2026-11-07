@@ -1,7 +1,7 @@
 //! What the front end leaves in DGROUP for the flight: the bytes a volley on a two-digit
 //! heading reads as its muzzle offsets (OB-017, preserved), in all three episodes.
 //!
-//! Spec: `docs/spec/sim/weapons.md` rev 5 §3.3 (E1, U-160), §3.3.2 (E2) and §3.3.3 (E3)
+//! Spec: `docs/spec/sim/weapons.md` rev 7 §3.3 (E1, U-160; music off: U-560), §3.3.2 (E2) and §3.3.3 (E3)
 //! (U-441), and `docs/spec/sim/mission-ships.md` rev 5 §4.4.2. Fidelity: T1 (the offsets decide
 //! where a two-digit-heading shot makes its one hit test).
 //!
@@ -91,8 +91,19 @@ mod later {
 /// E1 DS:0504: `g_MemAvailText` = `Str(MemAvail)` of the reference machine, `203352` (length
 /// byte, digits; every later byte stays 0; U-440 asks whether it ever changes).
 const MEM_AVAIL_DIGITS: [u8; 7] = [6, b'2', b'0', b'3', b'3', b'5', b'2'];
+/// E1 DS:0504 with music off (`g_CfgMusic` ≠ 2): the menu song is not on the heap when the
+/// menu loads, so MemAvail is larger by `menu.cmf`'s 6,166 bytes rounded up to 8: `209520`
+/// (weapons rev 7 §3.3 item 2; C-0322, C-0323; U-560, BUG-22).
+const MEM_AVAIL_DIGITS_MUSIC_OFF: [u8; 7] = [6, b'2', b'0', b'9', b'5', b'2', b'0'];
 /// Offset word of E1 `g_FontTitle` (the title-font block starts 8 bytes into its allocation).
 const FONT_TITLE_OFFSET: u16 = 0x0008;
+/// Heap bytes the menu song `menu.cmf` (6,166 bytes, rounded up to 8) takes below the E1
+/// title-font block when music is on (weapons rev 7 §3.3 item 2: the `g_MemAvailText`
+/// difference). ASSUMPTION(U-580): with music off the block, and with it `g_FontTitle`, sits
+/// that much lower, as a BP7 normalised pointer (offset = linear address mod 16): C-0322 and
+/// C-0323 (direct start, `td.cfg` 01 02 02) hold `5C11:0000` at DS:1032..1035, which is
+/// `5D92:0008` − 6,168 bytes; no spec states it yet.
+const MENU_SONG_HEAP: u32 = 6_168;
 /// E2/E3 DS:066A..066D: `g_CfgWork` and `g_CfgCursor` of the reference start `TD2.EXE /sb` /
 /// `TD3.EXE /sb` with the shipped `td.cfg` and no joystick: music device 2, SFX device 2
 /// (Sound Blaster), controller 1 (keyboard), cursor 0 (weapons §3.3.2 item 4).
@@ -227,6 +238,11 @@ pub struct FrontEnd {
     pub reader: DialogueReader,
     /// E1: how the program was started (the title-font pointer).
     pub launch: Launch,
+    /// E1: the run's music setting, `g_CfgMusic` = 2 (music on, the reference start and the
+    /// port's default). With music off the main menu loads no song before it writes
+    /// `g_MemAvailText`, so the text is `209520`, not `203352` (weapons rev 7 §3.3 item 2,
+    /// U-560, BUG-22).
+    pub music: bool,
     /// E2/E3 `g_SceneFile`'s name field (DS:0E8E): the last name a front-end screen assigned,
     /// as `Assign` stores it (the characters, then a NUL; the bytes after the NUL keep their
     /// old values). Empty at program start.
@@ -260,6 +276,7 @@ impl FrontEnd {
             lit: false,
             reader: DialogueReader::default(),
             launch: Launch::Direct,
+            music: true,
             scene_file: [0; SCENE_FILE_NAME_LEN],
             drain_key: 0,
             heap: Vec::new(),
@@ -274,6 +291,12 @@ impl FrontEnd {
             launch: Launch::Launcher,
             ..Self::direct_start()
         }
+    }
+
+    /// The same state with the run's music setting `on` ([`FrontEnd::music`]).
+    #[must_use]
+    pub fn with_music(self, on: bool) -> Self {
+        Self { music: on, ..self }
     }
 
     /// The state a direct start of flight `flight` leaves ([`direct_start`]): E1
@@ -357,24 +380,35 @@ impl FrontEnd {
         }
     }
 
+    /// E1 `g_FontTitle` (DS:1032..1035): offset word, then segment word, little-endian
+    /// (weapons rev 7 §3.3 item 7; music off: [`MENU_SONG_HEAP`], U-580).
+    #[must_use]
+    pub fn title_font_pointer(&self) -> [u8; 4] {
+        let segment = u32::from(self.launch.title_font_segment());
+        let mut linear = (segment << 4) + u32::from(FONT_TITLE_OFFSET);
+        if !self.music {
+            linear -= MENU_SONG_HEAP;
+        }
+        let [o0, o1] = ((linear & 0xF) as u16).to_le_bytes();
+        let [s0, s1] = ((linear >> 4) as u16).to_le_bytes();
+        [o0, o1, s0, s1]
+    }
+
     /// The E1 construction table (weapons §3.3). Only `tdmen.pal` bytes 70..103 are read,
     /// which the menu never changes.
     fn e1_byte(&self, addr: u16, menu: &MenuBytes) -> u8 {
         let rel = |base: u16| usize::from(addr - base);
-        let segment = self.launch.title_font_segment().to_le_bytes();
-        let font = FONT_TITLE_OFFSET.to_le_bytes();
+        let font = self.title_font_pointer();
         let irq = SB_IRQ_REFERENCE.to_le_bytes();
         match addr {
             e1::RUNTIME..e1::SB_IRQ => RUNTIME_CONSTANTS[rel(e1::RUNTIME)],
             e1::SB_IRQ..e1::MEM_AVAIL_TEXT => irq[rel(e1::SB_IRQ)],
-            e1::MEM_AVAIL_TEXT..=0x050A => MEM_AVAIL_DIGITS[rel(e1::MEM_AVAIL_TEXT)],
+            e1::MEM_AVAIL_TEXT..=0x050A if self.music => MEM_AVAIL_DIGITS[rel(e1::MEM_AVAIL_TEXT)],
+            e1::MEM_AVAIL_TEXT..=0x050A => MEM_AVAIL_DIGITS_MUSIC_OFF[rel(e1::MEM_AVAIL_TEXT)],
             e1::MENU_PALETTE..e1::SCENE_PALETTE => byte(&menu.palette, rel(e1::MENU_PALETTE)),
             e1::SCENE_PALETTE..e1::SCREEN_LIT => self.scene_palette[rel(e1::SCENE_PALETTE)],
             e1::SCREEN_LIT => u8::from(self.lit),
-            e1::FONT_TITLE => font[0],
-            0x1033 => font[1],
-            0x1034 => segment[0],
-            0x1035 => segment[1],
+            e1::FONT_TITLE..=0x1035 => font[rel(e1::FONT_TITLE)],
             e1::READER_CODE => self.reader.code,
             e1::READER_FIELDS..=0x103C => self.reader.fields[rel(e1::READER_FIELDS)],
             e1::READER_TEXT..=0x113D => self.reader.text[rel(e1::READER_TEXT)],
@@ -529,10 +563,25 @@ pub fn direct_start_world<E>(
     episode: Episode,
     flight: u8,
     table: &[u8],
+    read: impl FnMut(&str) -> Result<Vec<u8>, E>,
+) -> Result<Vec<u8>, E> {
+    direct_start_world_music(episode, flight, table, true, read)
+}
+
+/// [`direct_start_world`] for a run started with music on or off (`music`,
+/// [`FrontEnd::music`]; E1 `g_MemAvailText`, weapons rev 7 §3.3 item 2).
+///
+/// # Errors
+/// What `read` returns.
+pub fn direct_start_world_music<E>(
+    episode: Episode,
+    flight: u8,
+    table: &[u8],
+    music: bool,
     mut read: impl FnMut(&str) -> Result<Vec<u8>, E>,
 ) -> Result<Vec<u8>, E> {
     let menu = MenuBytes::load(&mut read)?;
-    let fe = FrontEnd::after_direct_start(episode, flight, &menu, read)?;
+    let fe = FrontEnd::after_direct_start(episode, flight, &menu, read)?.with_music(music);
     Ok(muzzle_world(episode, table, &menu, &fe))
 }
 

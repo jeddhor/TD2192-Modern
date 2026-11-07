@@ -1248,6 +1248,9 @@ impl Campaign {
     fn launch(&mut self, prog: &mut Program, ctx: &mut FlowContext<'_>, flight: u8) {
         prog.cues.stop(ctx.audio);
         prog.play_flight_song(ctx, flight);
+        // The menu wrote `g_MemAvailText` with or without its song on the heap (weapons rev 7
+        // §3.3 item 2, BUG-22).
+        prog.front_end.music = prog.music_on;
         prog.launcher.set_front_end(&prog.front_end);
         // The heap uses belong to this flight only.
         prog.front_end.heap.clear();

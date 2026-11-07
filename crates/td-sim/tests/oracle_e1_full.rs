@@ -207,6 +207,11 @@ fn flight_03_after_its_story_matches_oracle() {
 /// sequence) with the session flight 19 left (episode-program-flow §4.4 row 19). Flight 21's
 /// ships start from the path arrays' leftovers (mission-ships rev 6 §4.1.1, U-500).
 fn block_19(tag: &str, front_end: &[HeapUse]) {
+    block_19_with(tag, full_flight::Muzzles::DirectStart, front_end);
+}
+
+/// [`block_19`] with flight 19's direct-start muzzle world `start` (music on or off).
+fn block_19_with(tag: &str, start: full_flight::Muzzles, front_end: &[HeapUse]) {
     use full_flight::{Leg, Muzzles};
     let (data, oracle) = (require_data!(), require_oracle!());
     full_flight::check_run(
@@ -218,7 +223,7 @@ fn block_19(tag: &str, front_end: &[HeapUse]) {
             Leg {
                 flight: 19,
                 suffix: "",
-                muzzles: Muzzles::DirectStart,
+                muzzles: start,
                 ends: true,
                 front_end: &[],
             },
@@ -254,4 +259,26 @@ fn flights_19_and_21_after_the_whole_story_match_oracle() {
         HeapUse::Screen(vec![p(1, false), p(2, true)]),
     ]);
     block_19("re18-e1f19-f21-full", &front_end);
+}
+
+/// C-0323 (RE-19, U-540): C-0300's run with music off (`td.cfg` 01 02 02). No song is ever
+/// loaded, so flight 19's muzzle bytes hold the music-off `g_MemAvailText` `209520` (weapons
+/// rev 7 §3.3 item 2, U-560, BUG-22) and flight 21's path arrays come from the fonts and
+/// portraits at the heap mark (mission-ships rev 7 §4.1.1 vector 3): the debrief, the card,
+/// dialogue 88, the hangar card and dialogue 89, without `low`, `vulture` and `hangar`. Both
+/// flights every tick, flight 21's 58 ticks included.
+#[test]
+fn flights_19_and_21_with_music_off_match_oracle() {
+    let p = |face, right| PortraitLoad { face, right };
+    let mut front_end = heap::block_19_to_voffice(false);
+    front_end.extend([
+        HeapUse::Screen(vec![p(24, false), p(11, true)]),
+        HeapUse::card(),
+        HeapUse::Screen(vec![p(1, false), p(2, true)]),
+    ]);
+    block_19_with(
+        "re19-e1f19-f21-musicoff",
+        full_flight::Muzzles::DirectStartMusicOff,
+        &front_end,
+    );
 }

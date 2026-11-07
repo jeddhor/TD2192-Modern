@@ -59,7 +59,7 @@ use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
 use td_sim::flight::front_end::{
-    MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, direct_start_world, muzzle_base,
+    MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, direct_start_world_music, muzzle_base,
 };
 use td_sim::flight::heap::HeapUse;
 use td_sim::flight::player::Turn;
@@ -73,13 +73,13 @@ use td_sim::{Flight, FlightKey};
 const MUZZLE_LEN: usize = 34 * 99 + 36;
 const STALL: u32 = 0x8000_0000;
 
-/// The direct-start muzzle world of flight `flight` of `ep` (weapons rev 5 §3.3, §3.3.2,
-/// §3.3.3), checked against `captured` (the capture's DGROUP from the muzzle table on, at
-/// tick 1): the table and the eight two-digit ranges.
+/// The direct-start muzzle world of flight `flight` of `ep` (weapons rev 7 §3.3, §3.3.2,
+/// §3.3.3) for a run with `music` on or off (E1 `g_MemAvailText`, U-560), checked against
+/// `captured` (the capture's DGROUP from the muzzle table on, at tick 1): the table and the
+/// eight two-digit ranges.
 fn direct_start_muzzles(
     dir: &DataDir,
-    ep: Episode,
-    flight: u8,
+    (ep, flight, music): (Episode, u8, bool),
     captured: &[u8],
     name: &str,
 ) -> Vec<u8> {
@@ -87,7 +87,7 @@ fn direct_start_muzzles(
     let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
         panic!("muzzle table");
     };
-    let world = direct_start_world(ep, flight, &table, |f| dir.read(f)).unwrap();
+    let world = direct_start_world_music(ep, flight, &table, music, |f| dir.read(f)).unwrap();
     assert_eq!(
         world[..MUZZLE_TABLE_LEN],
         captured[..MUZZLE_TABLE_LEN],
@@ -128,8 +128,7 @@ pub fn check_world(l: &Layout, data: &Path, oracle: &Path, flight: u8) -> bool {
     let dir = DataDir::open(data).unwrap();
     let world = direct_start_muzzles(
         &dir,
-        l.episode,
-        flight,
+        (l.episode, flight, true),
         &first.bytes[l.muzzles..l.muzzles + MUZZLE_LEN],
         &name,
     );
@@ -694,6 +693,9 @@ pub enum Muzzles {
     /// E1 direct start: built by td-sim (`FrontEnd::direct_start`) and checked against the
     /// capture's tick-1 record.
     DirectStart,
+    /// The same with music off (`td.cfg` 01 02 02): `g_MemAvailText` `209520` (weapons rev 7
+    /// §3.3 item 2, U-560, BUG-22).
+    DirectStartMusicOff,
     /// The capture's tick-1 record (E2/E3, whose ranges td-sim does not build yet; a flight
     /// after a played story or after another flight, whose front-end state only td-flow keeps:
     /// `td-flow/tests/front_end_state.rs` checks those bytes against the same records).
@@ -873,7 +875,10 @@ fn check_leg(
     let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, flight)).unwrap()).unwrap();
     let captured = &first.ds[l.muzzles..l.muzzles + MUZZLE_LEN];
     let muzzles = match leg.muzzles {
-        Muzzles::DirectStart => direct_start_muzzles(&dir, ep, flight, captured, &name),
+        Muzzles::DirectStart => direct_start_muzzles(&dir, (ep, flight, true), captured, &name),
+        Muzzles::DirectStartMusicOff => {
+            direct_start_muzzles(&dir, (ep, flight, false), captured, &name)
+        }
         Muzzles::Capture => captured.to_vec(),
     };
     let world = episode::world(ep, flight, map, muzzles);

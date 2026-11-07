@@ -530,34 +530,20 @@ fn e1_pilot_dossier_matches_c0270() {
 
 #[test]
 fn e1_enemy_dossier_matches_c0271() {
-    // screens §3.5: C-0271, block 5's pre-flight story without keys; the dossier from its
-    // fade-in through line 8 (f2945..f3206).
+    // screens rev 5 §3.5: C-0271, block 5's pre-flight story without keys; the dossier from
+    // its fade-in through the typing and the 10 s hold (f2945..f3886). The shipped call
+    // passes variant 1, so line 9 (ink 39 over line 4) is never typed: line 10 follows line 8
+    // (U-520, BUG-12 fixed).
     let _data = require_data!();
     let oracle = require_oracle!();
     let (dir, res) = load().unwrap();
     let prog = program(&dir, &res, Episode::E1);
     let s = prog.story(Step::A).unwrap();
-    assert_sequence(s, &oracle, "C-0271", "enemy", 3206, 2);
-    // BUG-12 / U-520: the original types line 10 straight after line 8 (f3211) and never types
-    // line 9 (ink 39 over line 4 at pen y 109); the port follows screens §3.5 and types it.
-    // In the hold (f3501) the screens differ exactly in line 9's pixels: rows 110..114, the
-    // port's ink 39 or its opaque background where the original keeps line 4 in ink 40.
+    assert_sequence(s, &oracle, "C-0271", "enemy", 3886, 2);
+    // No ink-39 pixel in the hold (f3501).
     let s = run(prog.story(Step::A).unwrap(), 900);
-    let (pal, px) = frame(&oracle, "C-0271", 3501);
-    assert_eq!(s.screen().palette, pal, "DAC in the hold");
-    let differ: Vec<usize> = (0..64_000)
-        .filter(|&i| s.screen().pixels[i] != px[i])
-        .collect();
-    assert!(!differ.is_empty(), "BUG-12 fixed: update this test");
-    for i in differ {
-        let (x, y, ours, theirs) = (i % 320, i / 320, s.screen().pixels[i], px[i]);
-        assert!(
-            (110..=114).contains(&y) && (40..160).contains(&x),
-            "({x}, {y}): {ours} vs {theirs}"
-        );
-        assert!(ours == 39 || ours == 0, "({x}, {y}): {ours}");
-        assert!(theirs == 40 || theirs == 0, "({x}, {y}): {theirs}");
-    }
+    assert!(!s.screen().pixels.contains(&39), "line 9 not typed");
+    assert_frame(s.screen(), &oracle, "C-0271", 3501, Dac::All);
 }
 
 #[test]
