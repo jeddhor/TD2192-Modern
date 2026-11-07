@@ -34,7 +34,7 @@ use super::ui::{
     Fader, INK_CURSOR, INK_DISABLED, INK_HEADING, INK_NOTE, INK_TEXT, INK_VALUE, Nav, PadNav,
     UiAssets, nav,
 };
-use crate::controls::{KeyBindings, PadBindings, flight_key_action, flight_key_name};
+use crate::controls::{ControlsSettings, flight_key_action, flight_key_name};
 use crate::intro::IntroPolicy;
 use crate::screen::{FlowContext, Screen, Transition};
 use crate::settings::{Lighting, Profile, Scale, Settings, SfxMode, Upscaler, Widescreen};
@@ -81,6 +81,8 @@ pub enum Row {
     /// follows the profile).
     Background,
     Binding(FlightKey),
+    /// The controller button that opens the options during play (the host's F2, M12-18).
+    OptionsButton,
     ResetControls,
     /// Game data: choose an installed folder.
     PickFolder,
@@ -129,7 +131,7 @@ pub fn rows(page: Page) -> Vec<Row> {
         Page::Controls => FlightKey::ALL
             .into_iter()
             .map(Row::Binding)
-            .chain([Row::ResetControls, Row::Back])
+            .chain([Row::OptionsButton, Row::ResetControls, Row::Back])
             .collect(),
         Page::Profile => PROFILE_ROWS.to_vec(),
         Page::Accessibility => ACCESSIBILITY_ROWS.to_vec(),
@@ -201,6 +203,7 @@ fn label(row: Row) -> String {
         Row::TextWaits => "text waits for a key".into(),
         Row::Background => "in the background".into(),
         Row::Binding(k) => flight_key_action(k).into(),
+        Row::OptionsButton => "options".into(),
         Row::ResetControls => "reset to defaults".into(),
         Row::PickFolder => "choose a folder".into(),
         Row::PickZip => "choose a zip file".into(),
@@ -280,6 +283,7 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
         .into(),
         Row::Open(_)
         | Row::Binding(_)
+        | Row::OptionsButton
         | Row::ResetControls
         | Row::Preset
         | Row::PickFolder
@@ -384,6 +388,7 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
         Row::Background => s.video.pause_in_background = Some(!s.pauses_in_background()),
         Row::Open(_)
         | Row::Binding(_)
+        | Row::OptionsButton
         | Row::ResetControls
         | Row::Preset
         | Row::PickFolder
@@ -421,7 +426,7 @@ pub struct OptionsScreen {
     cursor: usize,
     column: Column,
     /// A binding being captured, and the frames left.
-    capture: Option<(FlightKey, Column, u32)>,
+    capture: Option<(Target, Column, u32)>,
     message: Option<(String, u32)>,
     fader: Fader,
     leaving: bool,
@@ -552,16 +557,23 @@ impl OptionsScreen {
         }
     }
 
-    fn bind(&mut self, k: FlightKey, column: Column, v: Option<BindingInput>) {
-        let lost = match (column, v) {
-            (Column::Keyboard, Some(BindingInput::Key(key))) => {
-                self.settings.controls.keyboard.bind(k, Some(key))
+    fn bind(&mut self, target: Target, column: Column, v: Option<BindingInput>) {
+        let c = &mut self.settings.controls;
+        let button = match v {
+            Some(BindingInput::Button(b)) => Some(b),
+            _ => None,
+        };
+        let (lost, options) = match (target, column, v) {
+            (Target::Flight(k), Column::Keyboard, Some(BindingInput::Key(key))) => {
+                (c.keyboard.bind(k, Some(key)), false)
             }
-            (Column::Gamepad, Some(BindingInput::Button(b))) => {
-                self.settings.controls.gamepad.bind(k, Some(b))
+            (Target::Flight(k), Column::Keyboard, None) => (c.keyboard.bind(k, None), false),
+            (Target::Flight(k), Column::Gamepad, Some(BindingInput::Button(_)) | None) => {
+                c.bind_pad(k, button)
             }
-            (Column::Keyboard, None) => self.settings.controls.keyboard.bind(k, None),
-            (Column::Gamepad, None) => self.settings.controls.gamepad.bind(k, None),
+            (Target::Options, Column::Gamepad, Some(BindingInput::Button(_)) | None) => {
+                (c.bind_options(button), false)
+            }
             _ => return,
         };
         if let Some(other) = lost {
@@ -570,6 +582,8 @@ impl OptionsScreen {
                 flight_key_action(other),
                 flight_key_name(other)
             ));
+        } else if options {
+            self.say("taken from options".into());
         }
         self.submit();
     }
@@ -647,6 +661,13 @@ enum BindingInput {
     Button(PadButton),
 }
 
+/// What a binding is for: a flight key, or the host's options (controller only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    Flight(FlightKey),
+    Options,
+}
+
 impl Screen for OptionsScreen {
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         if !self.started {
@@ -681,12 +702,18 @@ impl Screen for OptionsScreen {
             return Transition::None;
         }
         let row = self.row();
-        if let Row::Binding(k) = row
-            && step.pressed.is_empty()
-            && input.pressed.contains(&Key::DELETE)
-        {
-            self.bind(k, self.column, None);
-            return Transition::None;
+        if step.pressed.is_empty() && input.pressed.contains(&Key::DELETE) {
+            match row {
+                Row::Binding(k) => {
+                    self.bind(Target::Flight(k), self.column, None);
+                    return Transition::None;
+                }
+                Row::OptionsButton => {
+                    self.bind(Target::Options, Column::Gamepad, None);
+                    return Transition::None;
+                }
+                _ => {}
+            }
         }
         match nav(input, &step) {
             Some(Nav::Up) => self.move_cursor(-1),
@@ -708,11 +735,15 @@ impl Screen for OptionsScreen {
                 Row::Back => self.back(),
                 Row::Binding(k) => {
                     self.message = None;
-                    self.capture = Some((k, self.column, CAPTURE_FRAMES));
+                    self.capture = Some((Target::Flight(k), self.column, CAPTURE_FRAMES));
+                }
+                Row::OptionsButton => {
+                    // Only the controller's: F2 stays the keyboard's options key.
+                    self.message = None;
+                    self.capture = Some((Target::Options, Column::Gamepad, CAPTURE_FRAMES));
                 }
                 Row::ResetControls => {
-                    self.settings.controls.keyboard = KeyBindings::default();
-                    self.settings.controls.gamepad = PadBindings::default();
+                    self.settings.controls = ControlsSettings::default();
                     self.say("controls reset to the defaults".into());
                     self.submit();
                 }
@@ -944,10 +975,28 @@ impl OptionsScreen {
             let selected = i == self.cursor;
             let ink = if selected { INK_CURSOR } else { INK_TEXT };
             ui.text(fb, &label(row), (X[0], y), ink);
+            if row == Row::OptionsButton {
+                // The host's options: F2 on the keyboard (fixed), a controller button.
+                ui.text(fb, "-", (X[1], y), INK_TEXT);
+                ui.text(fb, "f2", (X[2], y), INK_DISABLED);
+                let capturing = matches!(self.capture, Some((Target::Options, _, _)));
+                let bound = s.controls.options_button.map(|b| b.name().to_string());
+                let (text, ink) = if capturing {
+                    ("press a button".to_string(), INK_HEADING)
+                } else if selected {
+                    (bound.unwrap_or_else(|| "-".into()), INK_CURSOR)
+                } else if let Some(b) = bound {
+                    (b, INK_VALUE)
+                } else {
+                    ("-".into(), INK_DISABLED)
+                };
+                ui.text(fb, &text, (X[3], y), ink);
+                continue;
+            }
             let Row::Binding(k) = row else { continue };
             ui.text(fb, flight_key_name(k), (X[1], y), INK_TEXT);
             for (col, x) in [(Column::Keyboard, X[2]), (Column::Gamepad, X[3])] {
-                let capturing = matches!(self.capture, Some((ck, cc, _)) if ck == k && cc == col);
+                let capturing = matches!(self.capture, Some((ck, cc, _)) if ck == Target::Flight(k) && cc == col);
                 let bound = match col {
                     Column::Keyboard => s.controls.keyboard.get(k).map(|v| v.name()),
                     Column::Gamepad => s.controls.gamepad.get(k).map(|v| v.name().to_string()),
@@ -1259,6 +1308,58 @@ mod tests {
             rig.settings.controls,
             crate::controls::ControlsSettings::default()
         );
+    }
+
+    /// M12-18: the controls page's options row binds the controller button that opens the
+    /// options (F2 stays the keyboard's); a button stands for one thing; Delete clears it.
+    #[test]
+    fn the_options_button_row() {
+        let mut rig = Rig::new();
+        let mut s = rig.screen();
+        rig.settle(&mut s);
+        rig.key(&mut s, Key::DOWN);
+        rig.key(&mut s, Key::DOWN);
+        rig.key(&mut s, Key::ENTER);
+        for _ in 0..3 {
+            rig.key(&mut s, Key::UP);
+        }
+        assert_eq!(s.row(), Row::OptionsButton);
+        assert_eq!(
+            rig.settings.controls.options_button,
+            Some(PadButton::LeftStick)
+        );
+        let pad = |b: u32| TickInput {
+            pad: Some(Pad {
+                buttons: b,
+                ..Pad::default()
+            }),
+            ..TickInput::default()
+        };
+        // A keyboard key does not bind it.
+        rig.key(&mut s, Key::ENTER);
+        assert!(s.capturing());
+        rig.key(&mut s, Key::letter('q').unwrap());
+        assert!(s.capturing(), "only a button");
+        rig.tick(&mut s, &pad(PadButton::RightTrigger.bit()));
+        rig.tick(&mut s, &pad(0));
+        assert!(!s.capturing());
+        assert_eq!(
+            rig.settings.controls.options_button,
+            Some(PadButton::RightTrigger)
+        );
+        // North is switch weapon's: it moves.
+        rig.key(&mut s, Key::ENTER);
+        rig.tick(&mut s, &pad(PadButton::North.bit()));
+        rig.tick(&mut s, &pad(0));
+        assert_eq!(rig.settings.controls.options_button, Some(PadButton::North));
+        assert_eq!(rig.settings.controls.gamepad.get(FlightKey::Tab), None);
+        assert!(
+            s.message
+                .as_ref()
+                .is_some_and(|(m, _)| m.contains("switch weapon"))
+        );
+        rig.key(&mut s, Key::DELETE);
+        assert_eq!(rig.settings.controls.options_button, None);
     }
 
     /// M12-07: the host keys F10..F12 never become a binding; the capture waits for another

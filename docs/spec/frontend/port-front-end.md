@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Spec ID** | `frontend/port-front-end` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, port additions. The original screens are unchanged except where §5 says so |
-| **Tasks** | M11-01 (start screen), M11-03 (settings screens incl. game data), M11-04 (controller navigation), M13-02 (first run), M12-04 (colour-blind guidance line; the D5 Enhanced preset, §3.4) |
-| **Code** | `td_flow::front` (`start`, `options`, `data`, `ui`), `td_flow::controls`, `td_flow::settings`, `td2192::run`, `td2192::data`, `td_assets::{archive, import}`, `td_render::enhanced::guidance` |
+| **Tasks** | M11-01 (start screen), M11-03 (settings screens incl. game data), M11-04 (controller navigation), M13-02 (first run), M12-04 (colour-blind guidance line; the D5 Enhanced preset, §3.4), M12-18 (reduce flashing §3.5, text waits §3.6, the window in the background §3.7, controller options and pause §4, any button on waits and typed names §5) |
+| **Code** | `td_flow::front` (`start`, `options`, `data`, `ui`), `td_flow::controls`, `td_flow::settings`, `td2192::run`, `td2192::data`, `td_assets::{archive, import}`, `td_render::enhanced::guidance`, `td_render::flash` |
 | **Decisions** | D5 (user, 2026-11-06): the Enhanced preset (§3.4) |
 
 ## 1. Summary
@@ -18,10 +18,10 @@ The original has no screen that chooses an episode: each episode is its own prog
 |---:|---|---|
 | 224 | text | 42, 42, 42 |
 | 225 | selected item (the main menu's cursor red) | 63, 0, 0 |
-| 226 | unavailable | 18, 18, 18 |
+| 226 | unavailable | 28, 28, 28 (rev 5: 4.30:1 on black; was 18, 18, 18) |
 | 227 | headings, prompts (the main menu's yellow) | 63, 63, 0 |
 | 228 | values | 63, 63, 63 |
-| 229 | notes and hints | 40, 10, 10 |
+| 229 | notes and hints | 56, 32, 32 (rev 5: 7.78:1 on black; was 40, 10, 10) |
 
 The small font has no capitals, `:`, `/` or brackets, so every label is lower case and uses `-` and `x` (for example `16x9`, `affects gameplay - visibility`).
 
@@ -67,11 +67,11 @@ Reached from the start screen and with **F2** during play (the original reads no
 | Page | Rows |
 |---|---|
 | main | video, audio, controls, profile, accessibility, game data, back |
-| video | fullscreen, scaling (aspect 4x3, integer, stretch), widescreen\*, pixel upscaler\*, dynamic lighting\*, bloom\* |
+| video | fullscreen, scaling (aspect 4x3, integer, stretch), in the background (pause, keep running; §3.7), widescreen\*, pixel upscaler\*, dynamic lighting\*, bloom\* |
 | audio | music volume, sound volume (0..100 in tens, with a bar), sound effects\* (classic, polyphonic) |
-| controls | one row per original flight key: action, original key, keyboard binding, gamepad binding; reset to defaults |
+| controls | one row per original flight key: action, original key, keyboard binding, gamepad binding; `options` (the controller button that opens the options, §3.1); reset to defaults |
 | profile | classic or enhanced, with a two-line description; original bug fixes\* (on, off); intro before episode 1 (always, first launch, never: `[intro] play`, read only under Enhanced, so it is drawn in entry 226 under Classic, which always plays the intro); restore the enhanced preset\* |
-| accessibility | colour-blind guidance line (§3.3) |
+| accessibility | colour-blind guidance line (§3.3), reduce flashing (§3.5), text waits for a key (§3.6) |
 | game data | the folder or ZIP in use, who set it, its file check and the playable episodes; choose a folder, choose a zip file, extract the zip, back (§3.2) |
 
 \* Enhanced features (MDG §6.2, D5; §3.4). Under the Enhanced profile each row shows the value in effect: the player's choice, else the preset's. Under the Classic profile they are drawn in entry 226 with the values Enhanced would use, cannot be chosen, and the page notes `enhanced options need the enhanced profile`; the choices are kept, and everything they control is off (`Settings::effective_enhanced`, `effective_sfx_mode`, `enhanced_fixes`). The accessibility options and the intro setting are separate options that default to off. Widescreen is marked `affects gameplay` on its row at all times, and shows the note `affects gameplay - visibility` while selected (spec enhanced/presentation §2).
@@ -85,7 +85,12 @@ Reached from the start screen and with **F2** during play (the original reads no
 - Enter (or South) on a cell waits up to 5 s for a key (keyboard column) or a controller button (gamepad column). Esc cancels a key capture, East cancels too; Esc cancels a button capture. Delete clears the selected cell.
 - F10, F11 and F12 are never bound: a key capture ignores them and waits for another key (rev 4, M12-07). They belong to the host (scaling, fullscreen, screenshot), which acts on them whatever the screen.
 - A key or button stands for one flight key: binding it to another flight key takes it away from the first, and the screen says `taken from <action> - <key>`.
-- `reset to defaults` restores both columns.
+- The `options` row (rev 5, M12-18) holds the controller button that opens the options during play, as F2 does (`[controls] options_button`, default the left stick's press, `none` for none). Its keyboard cell shows `f2`, which cannot be changed; Enter captures a button, Delete clears it. The button stands for one thing: binding it to a flight key takes it from the options (`taken from options`) and the other way round.
+- `reset to defaults` restores both columns and the options button.
+
+**What cannot be rebound, and why** (rev 5, M12-18; VE-8's F4). Only the flight keys and the controller's options button are bindings:
+- **Menu keys** (confirm, back, up, down, page, the script choice's 1 and 2, the yes key) stay fixed. The original screens read the BIOS keys themselves: the main menu, the save screens, the dialogue and story waits, the computer menu, the comm viewer and the tactical map each read their own set, some through the type-ahead buffer and some as characters. Rebinding them would need a layer that turns the player's keys into the original keys per screen, kept apart from the name entry and the flight's key bytes. That is not a cheap change, so it is left for later. A controller reaches every screen already (§5).
+- **Host keys** F2, F10, F11 and F12 stay fixed on the keyboard: a host binding would have to be taken out of the input before any screen sees it and excluded from every capture. The controller gets the options button instead; scaling, fullscreen and screenshots have no natural button and keep their keys (the options screen has scaling and fullscreen rows).
 
 ### 3.2 Game data (M11-03, M13-02)
 
@@ -151,7 +156,7 @@ The user's decision D5 (2026-11-06): choosing the Enhanced profile turns on a pr
 | Sound effects | `audio.sfx_mode` | polyphonic | classic (one at a time, sfx-policy §4) |
 | Original-bug fixes | `enhanced.fixes` | on: every fix-enhanced fix of `original-bugs.md` | off: every bug preserved |
 
-- Colour-blind guidance (§3.3), the intro setting (`[intro] play`, default `always`, so the intro is not skipped) and analog steering are options, off by default, outside the preset. Analog steering is not implemented yet (MDG §9.5).
+- Colour-blind guidance (§3.3), reduce flashing (§3.5), text waits for a key (§3.6), the intro setting (`[intro] play`, default `always`, so the intro is not skipped) and analog steering are options, off by default, outside the preset. Analog steering is not implemented yet (MDG §9.5). The background setting (§3.7) has a default per profile.
 - **Explicit choices.** Changing a preset row records the player's choice, which overrides the preset under Enhanced. The choice is kept when the profile changes and when a later version changes the preset. `restore the enhanced preset` (profile page, Enhanced only) drops every choice: the message is `enhanced preset restored`.
 - **Classic** forces every row of the table off, whatever the choices say.
 - The fixes in effect (`Settings::enhanced_fixes`) are read where each bug lives: OB-012 (music cues, `td_flow::program::cue_restart`), OB-022 (`td_sim::Flight::enhanced_fixes`), OB-023 and OB-032 (`td_render::flight_palette`), OB-024 and OB-057 (`td2192::flight`), OB-056 (`td_flow::save_screens`), OB-058 (`td_flow::intro::IntroOptions`). OB-024's radar table is chosen when a flight starts; the others follow a change at once.
@@ -172,9 +177,36 @@ sfx_volume = 0.8      # no sfx_mode: the preset (polyphonic)
 
 **Older files** (format 1, no `version` key; written before D5) wrote every key, so their values cannot be told from untouched defaults. On loading, a format-1 value equal to the old default (`widescreen = "off"`, `upscaler = "none"`, `lighting = "off"`, `bloom = false`, `sfx_mode = "classic"`) is read as no choice, and any other value as an explicit choice. The next save writes format 2. A format-1 Enhanced player therefore keeps what was turned on and gets the preset for the rest.
 
+### 3.5 Reduce flashing (M12-18)
+
+An accessibility option (`accessibility.reduce_flashing`, default off), outside the preset and under either profile, against VE-8's F1 and F3 (`docs/parity/M12-accessibility.md` §4). It changes only what is presented: td-sim, the flight's DAC state (`FlightDac`, OB-029 and OB-032 included) and replays never see it, so it can be switched at any time.
+
+- **Flight picture.** The palette presented for the flight picture follows the DAC at no more than 0.375 per second per entry, measured as the sum of the three channels' changes in linear light (`td_render::flash::FlashLimiter`), stepped once per host tick. A pixel's relative luminance and WCAG's red quantity max(0, R − G − B) then change at most that fast, so no one-second window can hold more than 1.9 general or 3 red flashes (WCAG 2.3.1: pairs of opposing changes of 0.1, or of more than 0.0625 for saturated red). A 6-bit level is shown only once the linear value has passed it, so the shown change never exceeds the linear one and a steady palette is shown exactly. This covers:
+  - the hit flash and the white flash of a homing kill (small swells instead of flashes);
+  - the infra-red toggle: a cross-fade of up to about 2.5 s for the brightest reds, about 1 s for most of the picture; with Alt held (10.9 flips a second by typematic repeat, U-571) the picture settles near the middle with a ripple of at most 0.034;
+  - E3 flight 16's magenta wash.
+- **Not limited:** the fades (the flight's opening and teardown, the fade-ins that close the computer menu and the real-time screens), which are gradual; the HUD's lamp entries, written over the presented palette (small areas, below WCAG's area threshold; they carry the transmission and low-armour cues); the flight's own modal screens, which draw their own pictures. The teardown starts from the presented palette, so a flash in progress is not shown at full strength.
+- **Cut-scene.** The flight-17 cut-scene's flash steps (black, yellow-white, black; flight-screens §4.10.1) write each entry only within 0.05 (L1, linear) of its steady colour, the flight palette (`td_render::flash::cap_excursion`); the steps, their timing and the pixels are unchanged.
+- **Enhanced lighting** (presentation §6.1): no muzzle-flash lights (they flicker at 9.6 Hz while the guns are held), explosions at 0.4 of their intensity, and bloom off.
+- Other screens: no full-screen flash was found outside the flights. The intro, the menus and the story screens change their palettes only by fades; the main menu's highlight pulse is one item.
+- Tests: `td_render::flash::tests` (exact steady palette, the rate bound, a held infra-red key gives no WCAG flash, white and hit flashes become swells, the cap), `td2192::flight::tests::reduce_flashing_*` (with data: E1 flight 4 with Alt held, flown twice, option off and on: identical td-sim state hashes, DAC and pixels every tick; the raw palette flashes 4 or more times a second, the presented one never; the option switches live), `interlude_parity::reduce_flashing_caps_the_cut_scene_flash`, `lights::tests::reduce_flashing_softens_the_scene`.
+
+### 3.6 Text waits for a key (M12-18)
+
+An accessibility option (`accessibility.text_waits_for_key`, default off, so Classic timing is unchanged), against VE-8's F7:
+- the timed waits of the story screens (assignment orders, dossiers, debriefs, the story so far, stills, scene and title cards) wait for a key instead of closing after their seconds;
+- keys typed before a wait begins (during the fade-in, the typing, or on the previous screen) do not end it, and neither do keys typed while a dialogue page types: each page break waits for a new key. Esc still skips, when pressed at the wait;
+- the screen layer only (`StoryScreen::set_text_waits`, `DialogueScene::set_text_waits`; their owners pass the setting each tick). Nothing reaches td-sim.
+
+### 3.7 The window in the background (M12-18)
+
+`video.pause_in_background` (the video page's `in the background`: `pause` or `keep running`), against VE-8's F12. Absent, it follows the profile: Enhanced pauses; Classic keeps running, as the original did (a DOS program has no background). While the window has lost the keyboard focus and the setting says pause, the run loop runs no ticks and renders no sound, and its clock starts again when the window comes back (the time away is not caught up). Whatever the setting, the keys held when the focus goes count as released (their releases go to the other window, Alt+Tab).
+
 ## 4. Bindings (`[controls]`)
 
 ```toml
+[controls]
+options_button = "left-stick"   # the controller button that opens the options, or "none"
 [controls.keyboard]     # flight key = host key, or "none"
 keypad-8 = "keypad-8"
 esc = "escape"
@@ -185,7 +217,7 @@ esc = "start"
 - Flight-key names: `keypad-8 up keypad-2 down keypad-4 left keypad-6 right keypad-plus keypad-0 alt right-alt space esc p f5 f6 s tab m` (`td_sim::FlightKey`). Host keys use `td_input::Key::name` (letters, digits, `f1`..`f12`, `keypad-0`..`keypad-9`, named keys such as `left-alt`, else `key-N` with the USB HID usage ID). Buttons use `td_input::PadButton::name` (`south east west north back guide start left-stick right-stick left-shoulder right-shoulder dpad-up dpad-down dpad-left dpad-right left-trigger right-trigger`).
 - Missing entries keep their defaults; unknown names are ignored with a warning.
 - Keyboard defaults are the original's keys (`docs/re/globals.md` §3), including Tab (switch weapon) and M (repeat message), which the hard-coded table before M11-03 lacked.
-- Gamepad defaults: space = south, esc = start, f5 = back, tab = north, alt = west, f6 = left-shoulder, m = right-shoulder.
+- Gamepad defaults: space = south, esc = start, f5 = back, tab = north, alt = west, f6 = left-shoulder, m = right-shoulder, p = right-stick (rev 5, M12-18: the pause); the options button is left-stick. The triggers and Guide stay free (the system often takes Guide). No natural button is left for F10–F12, which keep their keys.
 - The stick and D-pad stay the original joystick (x, y), and East and South its buttons 1 (afterburner) and 2 (fire), as the original menus read them.
 - **A bound button acts as its flight key's keyboard key.** While it is held the host adds that key to the input, and its press counts as a key press (`ControlsSettings::pad_keys`). So the flight reads it like the key, and every original screen sees a key it understands: Start is Esc everywhere, South is Space (fire, menu select, "hit any key"). A flight key without a keyboard key gets nothing from its button.
 
@@ -197,6 +229,9 @@ esc = "start"
   - the script-choice screen, which reads only 1 and 2: South is 1 (original script), East is 2 (edited script);
   - the save screen's name entry ([save-screens](../flow/save-screens.md)), which ends only on Enter: a press of South (joystick button 2) ends it as Enter does, and the keys its binding stands for in that frame are not typed (rev 4, M12-07). The press that chooses the slot comes before the entry, so it does not save at once. Without this a controller-only player could not save, and under Classic (OB-056) could not leave the entry either.
 - "Hit any key" screens (story cards, dialogue, pause, the tactical map, the comm viewer) take the keys of bound buttons, for example South (Space) or Start (Esc).
+- (rev 5, M12-18; VE-8's F5, F6) The waits that end on any key (the story screens' holds, the dialogue's page breaks, the flight's pause) also end on a press of **any controller button**, bound or not (`td_flow::controls::AnyButton`): the original reads joystick buttons 1 and 2 there (dialogue-player §4.7, screens §2.2), the port every button. A press counts in the frame it happens and is not kept for a later wait, and a button already held when the screen starts does not count. The script choice keeps its own rule (South is 1, East is 2). Keyboard behaviour is unchanged.
+- (rev 5) The options button (§3.1) opens the options during play, and the right stick's press pauses a flight (its default binding, P).
+- (rev 5, VE-8's F13) **Typed names.** While the save-name entry runs (`Screen::wants_text`), the host turns the system's text input on, and the entry takes the characters the keyboard layout types (`TickInput::text`), with the same filter (a–z with upper case lowered, 0–9, space, `-`, `.`), so AZERTY and QWERTZ players get the letters on their keys. A frame without text (synthetic input) uses the keys' positions as before. Text input is off elsewhere, because an input method can take key presses while it is on. The main menu's yes key is still the `y` position (a menu key, §3.1).
 
 ## 6. Tests
 
@@ -213,6 +248,7 @@ esc = "start"
   - `td_flow::front::start`: a pending choice is switched to and the episodes follow;
   - `td2192::data`: unusable choices change nothing; with data, a synthetic ZIP is chosen, extracted and switched to.
 - Colour-blind guidance (rev 2): the colours stay apart under simulated deficiencies, marks are built per marker with an outline, the pipeline changes only the marked pixels and only in flight frames, and (with data) the Classic invariance above.
+- Rev 5 (M12-18): reduce flashing (§3.5); `story::tests::text_waits_for_a_key_holds_timed_screens`, `any_controller_button_ends_the_wait`, `dialogue::tests::buttons_turn_pages_and_text_waits_drops_early_keys`, `flight_screens::tests::any_button_ends_the_pause`; `controls::tests::the_options_button`, `options::tests::the_options_button_row`; `settings::tests::pausing_in_the_background_follows_the_profile_unless_chosen`; `td_input::tests::focus_loss_releases_the_keys`; `save_screens::tests::names_take_the_typed_characters`; `ui::tests::inks_have_enough_contrast`.
 
 ## 7. Revision history
 
@@ -222,3 +258,4 @@ esc = "start"
 | 2 | 2026-11-06 | IM-16 | First run from a folder or the original ZIP (§2.1, M13-02); the game-data page and the data switch at the start screen (§2, §3.2, M11-03); the colour-blind guidance line design (§3.3, M12-04) |
 | 3 | 2026-11-06 | IM-22 | The D5 Enhanced preset (§3.4): preset table, explicit choices, `settings.toml` format 2 (absent key = preset) and the format-1 migration; the sound effects and the original-bug fixes join the Enhanced rows (§3); the profile page's `original bug fixes` and `restore the enhanced preset` rows |
 | 4 | 2026-11-06 | VE-8 | M12-07 small fixes: South ends the save-name entry (§5); F10..F12 cannot be bound (§3.1) |
+| 5 | 2026-11-06 | IM-25 | M12-18 (VE-8's M12-07 findings): reduce flashing (§3.5), text waits for a key (§3.6), the window in the background (§3.7), the controller's options button and the pause on the right stick (§3.1, §4), what cannot be rebound and why (§3.1), any button ends a "hit any key" wait and typed save names (§5), inks 226 and 229 raised to 4.3:1 and 7.8:1 (§1) |

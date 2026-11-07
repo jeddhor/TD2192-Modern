@@ -794,6 +794,10 @@ impl Screen for Episode1 {
         }
     }
 
+    fn wants_text(&self) -> bool {
+        matches!(&self.stage, Stage::Saves(s) if s.entering_name())
+    }
+
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         match &mut self.stage {
             Stage::Start => {
@@ -817,10 +821,13 @@ impl Screen for Episode1 {
                     // A controller answers too (M11-04, port addition).
                     keys.extend(crate::front::ui::pad_script_choice(input.pad));
                 }
+                // The controller answered above; no other button ends this wait.
+                s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(&TickInput {
                     pressed: keys,
                     held: input.held.clone(),
-                    pad: input.pad,
+                    pad: None,
+                    text: String::new(),
                 });
                 if s.finished() {
                     s.apply_front_end(&mut self.prog.front_end);
@@ -834,6 +841,7 @@ impl Screen for Episode1 {
                 }
             }
             Stage::Notice(s) => {
+                s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(input);
                 if s.finished() {
                     s.apply_front_end(&mut self.prog.front_end);
@@ -841,6 +849,7 @@ impl Screen for Episode1 {
                 }
             }
             Stage::Sub(s, how) => {
+                s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(input);
                 if s.finished() {
                     s.apply_front_end(&mut self.prog.front_end);

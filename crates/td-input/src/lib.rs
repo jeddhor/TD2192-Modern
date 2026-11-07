@@ -274,6 +274,8 @@ pub struct InputSnapshot {
     pub quit: bool,
     /// The first connected game controller, if any.
     pub pad: Option<Pad>,
+    /// The window is in the background: it has lost the keyboard focus (M12-18).
+    pub background: bool,
 }
 
 impl InputSnapshot {
@@ -303,6 +305,8 @@ pub struct InputState {
     pub quit: bool,
     /// Set by the platform layer after each poll.
     pub pad: Option<Pad>,
+    /// The window has lost the keyboard focus.
+    pub background: bool,
 }
 
 impl InputState {
@@ -320,6 +324,15 @@ impl InputState {
         self.held.remove(&key);
     }
 
+    /// The window lost (`false`) or regained (`true`) the keyboard focus. Keys held when it was
+    /// lost count as released: their releases go to the other window (Alt+Tab).
+    pub fn focus(&mut self, focused: bool) {
+        self.background = !focused;
+        if !focused {
+            self.held.clear();
+        }
+    }
+
     /// Returns everything since the previous snapshot.
     pub fn snapshot(&mut self) -> InputSnapshot {
         InputSnapshot {
@@ -329,6 +342,7 @@ impl InputState {
             text: std::mem::take(&mut self.text),
             quit: self.quit,
             pad: self.pad,
+            background: self.background,
         }
     }
 }
@@ -342,6 +356,10 @@ pub struct TickInput {
     pub pressed: Vec<Key>,
     /// The game controller at the tick, if one is connected.
     pub pad: Option<Pad>,
+    /// Text typed since the previous tick, in the keyboard layout's characters (the platform's
+    /// text input, while a screen asks for it; M12-18). Screens that read characters rather
+    /// than key positions (the save-name entry) use it.
+    pub text: String,
 }
 
 impl TickInput {
@@ -377,6 +395,19 @@ mod tests {
         assert!(!b.was_pressed(Key::UP) && b.is_held(Key::UP));
         s.key_up(Key::UP);
         assert!(!s.snapshot().is_held(Key::UP));
+    }
+
+    /// M12-18: losing the focus releases the held keys and marks the snapshot.
+    #[test]
+    fn focus_loss_releases_the_keys() {
+        let mut s = InputState::default();
+        s.key_down(Key::LALT, false);
+        s.focus(false);
+        let a = s.snapshot();
+        assert!(a.background && a.held.is_empty());
+        assert_eq!(a.pressed, [Key::LALT], "the press itself happened");
+        s.focus(true);
+        assert!(!s.snapshot().background);
     }
 
     #[test]

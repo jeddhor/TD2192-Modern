@@ -1037,6 +1037,9 @@ impl FlightArena {
         let Some(view) = &self.enhanced else {
             return;
         };
+        if let Ok(mut v) = view.try_borrow_mut() {
+            v.mark_flight();
+        }
         // The opening fade-in keeps its Classic picture (a black playfield).
         if self.opening.is_some() {
             return;

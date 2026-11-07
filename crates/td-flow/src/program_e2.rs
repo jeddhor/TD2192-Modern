@@ -559,6 +559,10 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
         }
     }
 
+    fn wants_text(&self) -> bool {
+        matches!(&self.stage, Stage::Saves(s) if s.entering_name())
+    }
+
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         match &mut self.stage {
             Stage::Start => {
@@ -587,10 +591,13 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                     // A controller answers too (M11-04, port addition).
                     keys.extend(crate::front::ui::pad_script_choice(input.pad));
                 }
+                // The controller answered above; no other button ends this wait.
+                s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(&TickInput {
                     pressed: keys,
                     held: input.held.clone(),
-                    pad: input.pad,
+                    pad: None,
+                    text: String::new(),
                 });
                 if s.finished() {
                     // g_Palette cleared but for five entries; g_SceneFile := td.lt2.
@@ -606,6 +613,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
             }
             Stage::Sub(s, back, rule) => {
                 let (back, rule) = (*back, *rule);
+                s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(input);
                 if s.finished() {
                     if rule != SkipRule::Keep && s.skipped() {

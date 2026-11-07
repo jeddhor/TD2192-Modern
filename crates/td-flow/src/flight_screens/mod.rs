@@ -397,6 +397,8 @@ pub fn shows_ir_notice(palette_mode: u8, ticks: u32) -> bool {
 #[derive(Debug, Clone)]
 pub struct Pause {
     canvas: Framebuffer,
+    /// Controller presses (M12-18: any button goes on, as any key does).
+    any_button: crate::controls::AnyButton,
 }
 
 impl Pause {
@@ -404,13 +406,17 @@ impl Pause {
     #[must_use]
     pub fn new(mut shown: Framebuffer, assets: &FlightScreenAssets) -> Self {
         draw_pause_line(&mut shown, assets);
-        Self { canvas: shown }
+        Self {
+            canvas: shown,
+            any_button: crate::controls::AnyButton::default(),
+        }
     }
 
     /// The key bytes were cleared when the pause began, so only a new make code ends it; that
-    /// key stays down and acts in the resumed tick.
+    /// key stays down and acts in the resumed tick. A press of any controller button ends it
+    /// too (port addition, M12-18; a button held when the pause began does not).
     pub fn tick(&mut self, input: &TickInput) -> ModalStep {
-        if input.any_pressed() {
+        if self.any_button.pressed(input.pad) || input.any_pressed() {
             ModalStep::Close { abort: false }
         } else {
             ModalStep::Continue
@@ -468,6 +474,34 @@ fn blank_below_display(fb: &mut Framebuffer) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// M12-18: the pause ends on any controller button too, but not on one held from before.
+    #[test]
+    fn any_button_ends_the_pause() {
+        use td_input::{Pad, PadButton};
+        // The pause line needs the game's font; the canvas does not matter here.
+        let mut p = Pause {
+            canvas: Framebuffer::new(),
+            any_button: crate::controls::AnyButton::default(),
+        };
+        let pad = |b: PadButton| TickInput {
+            pad: Some(Pad {
+                buttons: b.bit(),
+                ..Pad::default()
+            }),
+            ..TickInput::default()
+        };
+        assert_eq!(
+            p.tick(&pad(PadButton::RightStick)),
+            ModalStep::Continue,
+            "held"
+        );
+        assert_eq!(p.tick(&TickInput::default()), ModalStep::Continue);
+        assert_eq!(
+            p.tick(&pad(PadButton::North)),
+            ModalStep::Close { abort: false }
+        );
+    }
 
     #[test]
     fn key_bytes_see_taps_and_releases() {

@@ -23,8 +23,11 @@
 //! prompt entries, so the rest is what the previous screens left
 //! ([`DialogueScene::with_palette_buffer`]; black when the scene is played on its own).
 //!
-//! Not modelled: the joystick button that also ends a page wait (§4.7; there is no joystick
-//! input yet).
+//! A joystick button also ends a page wait (§4.7): the port takes a press of any controller
+//! button, in the frame it happens (M12-18, [`crate::controls::AnyButton`]). With the
+//! accessibility option "text waits for a key" ([`DialogueScene::set_text_waits`]) a page break
+//! ignores the keys typed while its page was typing or fading in, so hurrying the typing
+//! never skips a page unread (port-front-end rev 5 §3.6; off by default).
 //!
 //! What the scene leaves for the flights (weapons rev 4 §3.3 items 5, 6, 8; OB-017): the
 //! palette entries it wrote into `g_Palette` (faces, speaker entries, the scene-1 prompt; the
@@ -376,6 +379,10 @@ pub struct DialogueScene {
     /// The portraits loaded so far, in order (each a block on the flight heap,
     /// mission-ships rev 6 §4.1.1).
     portraits: Vec<PortraitLoad>,
+    /// Text waits for a key (accessibility, M12-18).
+    text_waits: bool,
+    /// Controller presses for the page waits.
+    any_button: crate::controls::AnyButton,
 }
 
 impl fmt::Debug for DialogueScene {
@@ -439,7 +446,16 @@ impl DialogueScene {
             pages: 0,
             stopped_at: None,
             portraits: Vec::new(),
+            text_waits: false,
+            any_button: crate::controls::AnyButton::default(),
         }
+    }
+
+    /// The accessibility option "text waits for a key" (`accessibility.text_waits_for_key`,
+    /// M12-18): a page break ignores the keys typed before it. The scene's owner passes the
+    /// setting before each step.
+    pub fn set_text_waits(&mut self, on: bool) {
+        self.text_waits = on;
     }
 
     /// Starts the palette buffer from `left`, what the previous screens left in `g_Palette`
@@ -523,6 +539,9 @@ impl DialogueScene {
                 self.keys.push_back(k);
             }
         }
+        // A controller button pressed in this frame ends a page wait (§4.7, port addition for
+        // every button; the bound buttons' keys arrived above already).
+        let mut button = self.any_button.pressed(input.pad);
         self.wait = self.wait.saturating_sub(1);
         while self.wait == 0 {
             match &mut self.state {
@@ -560,6 +579,7 @@ impl DialogueScene {
                     };
                 }
                 State::WaitKey => match self.keys.pop_front() {
+                    None if std::mem::take(&mut button) => self.state = State::Run,
                     None => return,
                     Some(Key::ESCAPE) => {
                         self.skip = true;
@@ -618,6 +638,10 @@ impl DialogueScene {
             Command::SegmentEnd => self.start_fade(false, false),
             Command::PageBreak => {
                 self.pages += 1;
+                if self.text_waits {
+                    // Only a key pressed from now on turns the page (M12-18).
+                    self.keys.clear();
+                }
                 self.state = State::WaitKey;
             }
         }
@@ -682,7 +706,8 @@ impl Screen for DialogueScene {
         RETRACE_HZ
     }
 
-    fn tick(&mut self, _ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+    fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+        self.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
         self.step(input);
         if self.finished() {
             Transition::Pop
@@ -898,6 +923,45 @@ mod tests {
                 .iter()
                 .all(|c| *c == Rgb6::default())
         );
+    }
+
+    /// M12-18: a controller button turns the page (§4.7's joystick button, any button in the
+    /// port); "text waits for a key" drops the keys typed while the page was typing.
+    #[test]
+    fn buttons_turn_pages_and_text_waits_drops_early_keys() {
+        use td_input::{Pad, PadButton};
+        let pad = |b: u32| TickInput {
+            pad: Some(Pad {
+                buttons: b,
+                ..Pad::default()
+            }),
+            ..TickInput::default()
+        };
+        let mut s = basic_scene();
+        s.step(&pad(0));
+        run_until(&mut s, DialogueScene::waiting_for_key);
+        let pages = s.pages;
+        s.step(&pad(PadButton::LeftShoulder.bit()));
+        assert!(!s.waiting_for_key() || s.pages > pages, "the page turned");
+        // Typing ahead: off, the key typed during the page ends its wait at once.
+        let mut s = basic_scene();
+        s.step(&press(Key::SPACE));
+        run_until(&mut s, |s| s.pages > 0);
+        assert!(
+            !s.waiting_for_key() || s.keys.is_empty(),
+            "taken by the first page"
+        );
+        // On: the page waits for a new key.
+        let mut s = basic_scene();
+        s.set_text_waits(true);
+        s.step(&press(Key::SPACE));
+        run_until(&mut s, DialogueScene::waiting_for_key);
+        for _ in 0..10 {
+            s.step(&TickInput::default());
+        }
+        assert!(s.waiting_for_key(), "the early Space did not turn the page");
+        s.step(&press(Key::SPACE));
+        assert!(!s.waiting_for_key() || s.pages > 1);
     }
 
     #[test]

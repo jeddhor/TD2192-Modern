@@ -36,12 +36,14 @@ const INKS: [(u8, Rgb6); 6] = [
         },
     ),
     (INK_CURSOR, Rgb6 { r: 63, g: 0, b: 0 }),
+    // M12-18 (VE-8's F9, WCAG 1.4.3): (28, 28, 28) on black is 4.30:1 (was 18, 18, 18:
+    // 2.33:1), and still 2.1:1 darker than the text grey.
     (
         INK_DISABLED,
         Rgb6 {
-            r: 18,
-            g: 18,
-            b: 18,
+            r: 28,
+            g: 28,
+            b: 28,
         },
     ),
     (INK_HEADING, Rgb6 { r: 63, g: 63, b: 0 }),
@@ -53,12 +55,14 @@ const INKS: [(u8, Rgb6); 6] = [
             b: 63,
         },
     ),
+    // M12-18 (F9): (56, 32, 32) on black is 7.78:1 (was 40, 10, 10: 2.87:1), still reddish
+    // and 1.48:1 from the cursor red.
     (
         INK_NOTE,
         Rgb6 {
-            r: 40,
-            g: 10,
-            b: 10,
+            r: 56,
+            g: 32,
+            b: 32,
         },
     ),
 ];
@@ -524,6 +528,34 @@ mod tests {
         let end = ui.path(&mut fb, path, (10, 20), INK_VALUE, 60);
         assert!(end - 10 <= 60, "{end}");
         assert!(end - 10 > 50, "fills the room: {end}");
+    }
+
+    /// WCAG 2.x contrast ratio of a 6-bit colour against black (6-bit values as the DAC's
+    /// share of full scale, sRGB).
+    fn contrast_on_black(c: Rgb6) -> f64 {
+        let lin = |v: u8| {
+            let s = f64::from(v) / 63.0;
+            if s <= 0.04045 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let l = 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+        (l + 0.05) / 0.05
+    }
+
+    /// M12-18 (F9): the inks of text read at least 4.5:1 on black (WCAG 1.4.3), and the
+    /// unavailable grey at least 4.3:1 while staying well below the text grey.
+    #[test]
+    fn inks_have_enough_contrast() {
+        let ink = |e: u8| INKS.iter().find(|(i, _)| *i == e).map(|&(_, c)| c).unwrap();
+        for e in [INK_TEXT, INK_HEADING, INK_VALUE, INK_NOTE] {
+            assert!(contrast_on_black(ink(e)) >= 4.5, "ink {e}");
+        }
+        let disabled = contrast_on_black(ink(INK_DISABLED));
+        assert!(disabled >= 4.3, "{disabled}");
+        assert!(disabled < contrast_on_black(ink(INK_TEXT)) / 1.5);
     }
 
     #[test]

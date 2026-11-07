@@ -706,12 +706,15 @@ impl Child {
 
     /// Runs the screen for one frame; true when it is over.
     pub(crate) fn step(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> bool {
+        let waits = ctx.settings.accessibility.text_waits_for_key;
         match self {
             Child::Story(s) => {
+                s.set_text_waits(waits);
                 s.step(input);
                 s.finished()
             }
             Child::Dialogue(d) => {
+                d.set_text_waits(waits);
                 d.step(input);
                 d.finished()
             }
