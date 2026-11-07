@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/e2-mission-logic` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, success and outcome decide the result of a flight; the order of the per-tick rules matters where two rules write the same ship) · T2 for the ticker text itself ([hud](../render/hud.md) §4.7) |
 | **Confidence** | Architecture, primitives, comm viewer table, start views and outcome tests: CONFIRMED (code). Flights 1–9: LIKELY (static only: every rule read from a gap-free listing of `2236:0ADB..1D29`, push order of every call read from the instructions). Flights 10–20 and `Msn_E2FlightEvents`: rule text CONFIRMED (all 107 calls and every store of `2236:240A..31DD` accounted for), gameplay consequences LIKELY. Captures C-0015 (flight 1) and C-0016 (flight 9) confirm the start state and the tick-1 engagements of flight 1 (§7 vector C1); no capture yet of a phase change |
@@ -538,7 +538,7 @@ exit 7 @ (1,123);  exit 8 @ (1,122);  exit 9 @ (1,123);  exit 10 @ (1,124); exit
 Notes:
 - No rule orders any ship to attack the player in this flight; the enemies attack the convoys and the escorts 4, 7, 11 attack the enemies. The inner loop runs from 11 down to 2, so when several convoy ships are in range the lowest-numbered one is the enemy's final target in that tick. Slot 20 is empty.
 - Waves 1 and 2 need only their trucks gone; wave 3 also needs its escort (slot 11) gone.
-- **Slot 11 never leaves through its exit rule:** its path ends at (1, 123) but the rule tests (1, 122). At the path end the AI wraps the path, so slot 11 flies back east and loops its route; phase 3 waits until it is destroyed (OB-036, U-242).
+- **Slot 11's exit rule tests (1, 122), but its path ends at (1, 123)** (OB-036, U-242 resolved, C-0132). At the path end the AI wraps the cursor to 1 and the waypoint steps diagonally toward path[2] ((2, 122) first), so the ship turns back east and loops its route. Whether the turn crosses tile (1, 122) depends on its sub-tile offsets: the rule removes it only if its tile is (1, 122) at the rule's test, i.e. when the Y carry to row 122 comes a tick before the X carry to column 2. C-0132: on the first lap (ticks 1302..1310) the tile goes (2, 123) → (1, 123) → (2, 122), both carries in one tick, and the ship flies back to (104, 118); on the second lap the tile goes (1, 123) → (1, 122) in tick 1859 and the rule removes it in tick 1860 (class FFh, armour unchanged, no kill), phase 100 in tick 1861. So phase 3 waits for slot 11's destruction **or** for a lap whose turn passes (1, 122); a lap takes about 550 ticks. td-sim reproduces both laps (L5, C-0132).
 - Spawned ships appear at the hangar tile (107, 106), not near the player.
 - Outcome (§4.8): 1 when at least one of slots 2..11 is on column 1 at teardown (normally a truck removed at its exit), else 0.
 
@@ -911,7 +911,7 @@ Notes:
 | Flight 2 slot 8 | Setup's class loop 4..8 gives the empty slot 8 class 3 at tile (0, 0); the map-edge rule removes it in tick 1 | Preserve; harmless (U-243) |
 | Flight 3 arrival before the path end | The truck is hidden at x 85..87 and its tile moved to (84, 135) | Preserve (outcome depends on it) |
 | Flight 4 slot 9 exit | Its exit rule tile is not on its (looping) path | Preserve; inert |
-| Flight 8 slot 11 exit tile | Rule tests (1, 122), path ends at (1, 123); slot 11 loops and must be destroyed for phase 3 to end | Preserve in Classic; **fix-enhanced** candidate (OB-036, U-242) |
+| Flight 8 slot 11 exit tile | Rule tests (1, 122), path ends at (1, 123); slot 11 loops until it is destroyed or a turn at the path end happens to cross (1, 122) (C-0132: the second lap, tick 1860) | Preserve in Classic (OB-036, U-242) |
 | Flight 8 never targets the player | No engagement rule names the player | Preserve |
 | Flight 5 stale indicator | Comm pending stays 1 if phase 100 comes before F6; F6 then does nothing | Preserve (OB-037) |
 | Flight 7 one-tick indicator | Slot 2 dead: B sets the flag after A cleared it; indicator and sound for one tick | Preserve (OB-037) |
@@ -924,7 +924,7 @@ New rows for [original-bugs](../original-bugs.md) (proposed; RE-9 integrates):
 
 | ID | Bug | Where | Impact | Policy |
 |---|---|---|---|---|
-| OB-036 | E2 flight 8: the exit rule of slot 11 (last convoy's escort) tests tile (1, 122) but its path ends at (1, 123). It never leaves, its path loops back to the hangar, and phase 3 (and so the flight) waits until it is destroyed by an enemy or by the player. | §5.8; `td2:2236:1C47..1C50`; `m8.td2` slot 11 path | Prolongs the flight; with no enemy left the player must shoot its own escort | preserve (Classic); fix-enhanced candidate: exit at (1, 123) |
+| OB-036 | E2 flight 8: the exit rule of slot 11 (last convoy's escort) tests tile (1, 122) but its path ends at (1, 123). Its path loops back to the hangar, and phase 3 (and so the flight) waits until it is destroyed by an enemy or by the player, or until a turn at the path end happens to cross (1, 122) (U-242, C-0132: the second lap). | §5.8; `td2:2236:1C47..1C50`; `m8.td2` slot 11 path | Prolongs the flight; with no enemy left the player must shoot its own escort | preserve (Classic); fix-enhanced candidate: exit at (1, 123) |
 | OB-037 | E2 transmission flag quirks: flight 5 never clears comm pending when the transports are gone before F6 (indicator pulses to the end, F6 does nothing); flight 7 clears the flag before it may set it, so with slot 2 already gone the announcement lights the indicator and plays sound 200 for one tick. | §5.5, §5.7; `td2:2236:177C`, `2236:1922..195E` | Cosmetic | preserve |
 
 ### Flights 10–20
@@ -996,7 +996,7 @@ Static unless the evidence column names a capture. "Tick *t*" means the tick in 
 
 ## 8. Open questions
 
-- [ ] U-242: E2 flight 8 slot 11 (OB-036): confirm in a capture that it reaches (1, 123), turns back, and that phase 3 waits for its destruction.
+- [x] U-242: E2 flight 8 slot 11 (OB-036): it reaches (1, 123) and turns back; phase 3 waits for its destruction or for a turn that crosses (1, 122) (C-0132, §5.8; RE-20).
 - [ ] U-243: E2 flight 2 slot 8: confirm that the class-3 ship that setup creates at tile (0, 0) is removed in tick 1 by the map-edge rule and is never drawn, plotted or counted.
 - [ ] U-244: Base test during the end sequence (all episodes): can a flight end as succeeded with `g_PlayerDied` = 0 after the player was destroyed, when the base condition becomes true before end tick 35 (most likely in E2 flights 6 and 7, which have no phase condition)? Needs a capture and a decision for the flow spec.
 - [ ] U-204 (existing): the one-tick delay of kills (§4.1) follows from P3; confirm with the first E2 capture (flight 1 or 9 is the simplest).
@@ -1050,3 +1050,4 @@ U-205 (first waypoint and RNG order without the setup `AI_ChooseWaypoint` loop) 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-9b and RE-9c (Archaeologist + Spec author, for RE-9); merged by RE-9 | Initial: E2 architecture, primitives, base tests, comm viewer, outcome tests, flights 1–9 (RE-9b); flights 10–20, `Msn_E2FlightEvents`, U-200 (RE-9c, §4.7, §5.10–§5.20); capture vector C1 (RE-9, C-0015) |
+| 2 | 2026-11-06 | RE-20 (Archaeologist + Spec author) | §5.8 and the OB-036 rows: slot 11 also leaves when a turn at its path end crosses (1, 122) (U-242 resolved from C-0132: removed on its second lap, tick 1860) |

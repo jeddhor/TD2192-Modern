@@ -29,7 +29,7 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
     - E1 flights 4 and 8, under both profiles;
     - E2 flights 3 and 10, only with the Enhanced fixes. Under Classic, E2's toggle back to mode 1 rewrites only entries 37 and 255 (OB-023, BUG-9; `crates/td2192/src/flight.rs:847-849`), so the picture stays red and only those entries flicker.
   - That is far above WCAG 2.3.1's general and red flash thresholds over the whole picture.
-  - It follows the original's input model, because an AT keyboard repeats held modifier keys too, so the original very likely does the same. This was not checked against the oracle (U-571). A slow key release, common with motor impairments, is enough to trigger it.
+  - It follows the original's input model, because an AT keyboard repeats held modifier keys too, so the original very likely does the same. This was not checked against the oracle (U-571). **Confirmed (RE-20, U-571):** the original toggles once per tick on every typematic make code in all three episodes, with no debounce (static), and C-0341 shows it under DOSBox-X (a flip in every tick while Alt is held, after the 500 ms delay); OB-176 proposed. A slow key release, common with motor impairments, is enough to trigger it.
 - Recommendation:
   - The reduce-flashing option (§4) drops typematic repeats of the infra-red keys.
   - Propose an original-bugs entry for this behaviour and let the owner decide whether to fix it in all profiles on safety grounds. The bug policy (MDG §6.3) does not name health hazards.
