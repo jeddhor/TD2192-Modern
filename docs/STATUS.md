@@ -549,6 +549,7 @@ Template: ADG §17.5.
 - Actual (port): `Ship::world`, `Shot::world`, `player_ref` and `near` (`td_sim::flight::shots`) are i32, so a difference of exactly ±32,768 is a miss where the original hits; `shots.rs` `off_y: dy + s.sub_y - 16` and `(ship.sub_x + rx, ship.sub_y + ry)` are plain i16 adds and **panic** (overflow checks) when a wrapped ship fires or is hit; `td_render::flight::mission_ship_pos` tests and places in i32 (no ghost)
 - Spec reference: mission-ships rev 8 §4.2.3, §4.2.5; weapons rev 8 §2; mission-logic rev 5 §2; OB-175 (proposed: preserve)
 - Severity: major for (b) and (c) (crashers on a reachable but slow path), minor for (a), (d), (e) (only after an edge wrap)
+- **Status: IN PROGRESS** (IM-26, 2026-11-07)
 
 ### BUG-31 (filed by RE-20; renumbered at merge, IM-25 holds BUG-24..29): E1 flight start does not clear the mission globals the original clears
 - Found by / date / milestone: RE-20 (U-144), 2026-11-06, M12
@@ -558,6 +559,7 @@ Template: ADG §17.5.
 - Actual (port): `MissionState::setup` (`td_sim::flight::logic`) keeps `comm_pending`, `comm_phase`, `count`, `hit`, `cutscene`, `ion_timer` and `bomb` from the previous flight (its doc comment cites U-144 as open): a flight-18 retry after the bomb is lost in tick 1, a flight-17 retry starts with the old counts
 - Spec reference: mission-logic rev 5 §3.3; U-144
 - Severity: major (a retry of flight 18 after a loss to the bomb cannot be won). E2 and E3 clear the same set (`setup_e2` and `setup_e3` should be checked against the list)
+- **Status: IN PROGRESS** (IM-26, 2026-11-07)
 
 ### BUG-32 (filed by RE-20; renumbered at merge, IM-25 holds BUG-24..29): E2/E3 palette effects use E1's step order
 - Found by / date / milestone: RE-20 (U-204), 2026-11-06, M12
@@ -565,3 +567,4 @@ Template: ADG §17.5.
 - Expected (original, episode-deltas rev 5 §4.1): in E2 and E3 tick-order step 14 runs the white-flash DAC writes, then the hit-flash cancel, then the hit-flash step (which then writes nothing while a white flash runs)
 - Actual (port): `td_render::flight_palette::FlightDac::step` runs E1's order in every episode
 - Severity: cosmetic (differs only for white-flash frame 1 in palette mode 2 with a hit flash running, practically unreachable)
+- **Status: IN PROGRESS** (IM-26, 2026-11-07)
