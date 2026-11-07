@@ -6,7 +6,11 @@ TD2192-Modern contains no part of the original game. You need your own copy of *
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Episode 1, flight 18:** a retry after losing to the bomb is no longer lost at once. Every flight now starts with the mission's counters, alarms and transmission lamp cleared, as in the original, in all three episodes (BUG-31).
+- **Very long flights:** a mission ship that wraps round at the top or bottom edge of the map no longer stops the game with an error when it fires or is hit. Hits, shots and the drawing of such a ship now follow the original's 16-bit arithmetic (BUG-30). Checked against the original in Episode 3, flight 19, for 4,499 ticks.
+- **Episodes 2 and 3:** the white flash of a homing-missile kill and the red hit flash are applied in the original's order (BUG-32; visible only in one rare case in the red infra-red mode).
 
 ## [0.9.0] - 2026-11-07
 
