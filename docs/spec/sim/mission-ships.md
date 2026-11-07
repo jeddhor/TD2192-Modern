@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-ships` |
-| **Revision** | 7 |
+| **Revision** | 8 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (positions, waypoints, AI state, fire requests and RNG use per tick) · T2 for drawing |
 | **Confidence** | **CONFIRMED** for §4.1–§4.6: a model written from this text reproduces 3,342 of 3,343 slot-ticks of capture C-0009 byte for byte (slot arrays and the whole 1,065-byte ship record), the one exception being a ship destroyed by a projectile (step 6, [weapons](weapons.md)); shot spawns match in 49 of 51 events (§6). LIKELY for the paths the capture does not exercise (mode +422h, flights 7 and 20 specials, map edges) |
 | **Tasks** | M8-01, M8-03 (feeds M8-04, M7-02) |
-| **Unknowns** | U-038, U-039, U-040, U-042, U-045, U-047 (resolved here); U-160, U-161, U-162 (new); U-500 and the slots' part of U-501 (resolved here, RE-18) |
+| **Unknowns** | U-038, U-039, U-040, U-042, U-045, U-047 (resolved here); U-160, U-161, U-162 (new); U-500 and the slots' part of U-501 (resolved here, RE-18); U-570 (resolved here, RE-20) |
 
 ## 1. Summary
 
@@ -23,7 +23,7 @@ Every tick `AI_UpdateShips` (`3292:0011`, tick-order step 10) regenerates shield
 | Slot s | 1..20 | — | Index of every array below and of `record[s]` |
 | Class | `g_SlotClass` DS:3A7A − 1 + s | u8 | Class code ([structures §6](../../re/structures.md)); FFh = empty, gone or destroyed |
 | Tile X / Y | DS:3B2E − 1 + s / DS:3B42 − 1 + s | u8 | Map column / row; map cell (x, y) is byte `x × 201 + y` of `td.map` |
-| Offset X / Y | DS:3ACA + 2(s − 1) / DS:3AF2 + 2(s − 1) | i16 | Pixels; world pixel = tile × 32 + offset; kept in 16..48 by the carry |
+| Offset X / Y | DS:3ACA + 2(s − 1) / DS:3AF2 + 2(s − 1) | i16 | Pixels; world pixel = tile × 32 + offset; kept in 16..48 by the carry, except offset Y at rows 1 and 199 (§4.2.3). Every sum with an offset is 16-bit two's complement and wraps (§4.2.5) |
 | Speed up / down / left / right | DS:3B6A + 4(s − 1) + 0 / 1 / 2 / 3 | u8 | Biased by 16 (16 = still), capped at 42; 0 at setup |
 | Heading | `g_SlotHeading` DS:3AA2 − 1 + s | u8 | Keypad code ([structures §7](../../re/structures.md)); 6 at setup |
 | Target heading | DS:3AB6 − 1 + s | u8 | Heading the ship turns toward; 6 at setup |
@@ -241,7 +241,16 @@ if offsetX > 48 and tileX = 199: class := FFh
 if offsetX > 48: offsetX -= 32                     (no tile change)
 ```
 
-Drag: each component above 16 loses 1 after it moved the ship (as the player, [flight-model §4.2](flight-model.md)). A ship removed here still finishes steps (h)–(j) of this tick: if it is inside the view window it is drawn once more, with sprite number FFh (the class byte is passed unchanged; in practice the map edge is outside the view, which stays within tiles 6..183 × 7..190). There is **no map collision** for ships: they fly over solid tiles; only the AI keeps the waypoints on open cells (§4.3). Y never wraps at row 199 (offsetY grows), and there is no removal at row 199.
+Drag: each component above 16 loses 1 after it moved the ship (as the player, [flight-model §4.2](flight-model.md)). A ship removed here still finishes steps (h)–(j) of this tick: if it is inside the view window it is drawn once more, with sprite number FFh (the class byte is passed unchanged; in practice the map edge is outside the view, which stays within tiles 6..183 × 7..190). There is **no map collision** for ships: they fly over solid tiles; only the AI keeps the waypoints on open cells (§4.3).
+
+**The two Y edges and the 16-bit wrap (U-570, C-0340).** Every addition above is a 16-bit two's-complement `ADD`/`SUB` (`{$Q-}`, [bp7-runtime-semantics](../core/bp7-runtime-semantics.md) §3): offsets wrap at ±32,768 and nothing tests for it. Two cases leave offset Y outside 16..48 for good:
+
+- **Bottom edge (row 199, D > 16).** There is no carry below row 199 and no removal at row 199, so a ship whose goal lies below it (goal row 200, or a waypoint the thrust keeps chasing) stays on row 199 and its offset Y grows by D − 16 per tick. When it passes 32,767 it wraps to about −32,768 (in that same tick nothing else happens: the carry-down test sees a negative offset). From the next tick the carry-up line (`offsetY < 16 and tileY > 1`) fires once per tick: the ship climbs **one row per tick** (offset Y + 32 + (D − 16) per tick) while still thrusting down, never drawn (§4.7), until it reaches row 1, where the row-1 line removes it **in the same tick** (offset Y is still far below 16). From row 199 that takes 198 ticks. Its tile is real all the way: the radar, `Msn_NearLive` and every other tile test see a ship moving north at one tile per tick.
+- **Top edge (row 1, U > 16, the class restored by mission logic).** The row-1 line sets class FFh every tick; if the mission logic writes the class back every tick (E1 flights 6 and 7 respawn rules), the ship keeps thrusting up and offset Y falls by U − 16 per tick. When it passes −32,768 it wraps to about +32,767. From then on the row-1 line no longer fires, and the carry-down line (`offsetY > 48 and tileY < 199`) moves the ship **down one row per tick** (offset Y − 32 − (U − 16) per tick) to row 199, where it stays while offset Y falls back by U − 16 per tick; once below 16 the normal carry resumes and the ship flies up its path again.
+
+The X axis cannot do this: the `while` loop at the start of the step keeps offset X in −16..80 before the speeds are applied, and the column carries remove a ship at columns 1 and 199. Port: wrapping 16-bit arithmetic on both offsets in every line of this step (and the +2 of flight 20, §4.2.4); everything else that reads an offset must use the 16-bit rules of §4.2.5.
+
+Test vector (C-0340, E3 flight 19, no input; slot 3, class 0, goal (102, 200), down speed 23..24): offset Y after tick 500 = 1,023, after tick 4234 = 32,762, after tick 4235 = −32,766 (still row 199), after tick 4236 = −32,725 at row 198, after tick 4299 = −30,174 at row 135 (one row per tick), after tick 4433 class FFh at (102, 1) with offset Y −24,747 (td-sim's probe: removed in tick 4433). td-sim with the wrapping offsets reproduces every DGROUP byte the full-flight harness compares, and the projectile arrays, in all 4,499 ticks.
 
 C-0009, slot 1 (class 0, max 24, acc 2), down speed per tick from setup: 0, 2, 4, … 16 (tick 8), then 17 (offset Y 16 → 18), 18 (→ 21), 19 (→ 25), 20 (→ 30), 21 (→ 36), 22 (→ 43), 23 (→ 51 → carry: tile Y 73 → 74, offset 19), 24 (→ 28), 23 (→ 36; no thrust at max) …
 
@@ -252,6 +261,31 @@ C-0009, slot 1 (class 0, max 24, acc 2), down speed per tick from setup: 0, 2, 4
 | 7 | After each live ship's movement, slots 2..12 are reset to fixed tiles with offsets (16, 16), heading 8 and target heading 8: 2 (50, 182), 3 (50, 167), 4 (50, 123), 5 (79, 122), 6 (111, 122), 7 (151, 122), 8 (184, 122), 9 (13, 122), 10 (18, 124), 11 (50, 101), 12 (50, 36) (stationary objects; `mine.td` sprites). Their AI and speeds still run but their position never changes | `3292:0011` |
 | 20 | Slots 1..5 never call the AI; heading := 8 and offset Y += 2 every tick (they sink 2 px per tick, carrying into the next row at 48) | `3292:0011` |
 | 19 | After `AI_UpdateShips`, when the mission phase DS:32BA > 1: player shields capped at 10, and slot 19's tile and offsets are copied from DS:16EE/16F0/16F2/16F4 (set by mission logic) | `0E8B:D646..D675` |
+
+#### 4.2.5 Where positions are computed in 16 bits (U-570)
+
+The original never forms a 32-bit world position. Every position sum below is a 16-bit two's-complement value (`ADD`/`SUB`/`SHL` on words, no overflow check), tiles are zero-extended bytes, and every comparison is a signed 16-bit compare unless the row says otherwise. "abs16" is the original's absolute value: `CWD; XOR AX,DX; SUB AX,DX`, which leaves −32,768 unchanged (**negative**, so it passes every `abs16(d) < r` test). This is the complete list: an operand scan of every listing of the three episodes finds the slot offset arrays (E1 DS:3ACA/3AF2, E2 DS:39F2/3A1A, E3 DS:39EE/3A16) only in `AI_UpdateShips`, `Sim_ProjectilesAndHits`, `Sim_FlyMission` (setup and the volley spawner), and in E1 also `Msn_UpdateEvents` (flight 20) and `Msn_PlayerTouches`. No AI routine, radar, sound, hit-flash or mission-logic tile test reads an offset.
+
+| # | Computation | Rule | E1 / E2 / E3 | Differs from i32 arithmetic when |
+|---|---|---|---|---|
+| 1 | Drift, drag and carry (§4.2.3), flight 20's +2 (§4.2.4) | every add and subtract wraps | `3292:0DC6..12A2` / `2D26:0011` (the E3 routine byte for byte) / `2935:0DB2..112A` | an offset passes ±32,767 (§4.2.3 edges) |
+| 2 | Draw test (§4.7) | `(tileY − viewY) × 32 + offsetY + 232 × drawPage > 32`, the sum in 16 bits, signed compare | `3292:12A3..134D` / `2D26:0011` / `2935:112B..11D7` | offset Y within about 400 of +32,767 (the sum wraps negative: not drawn) |
+| 3 | Sprite and bracket positions (§4.7) | x = (tileX − viewX) × 32 + offsetX and y = (tileY − viewY) × 32 + offsetY in 16 bits; the sprite blit uses x `SHR` 2 (logical) and **only the low byte of y** (flight-screens §2); each bracket pixel goes to VGA byte (y × 88 + x `SHR` 2) mod 65,536 with y including 232 × drawPage (`Gfx_PutPixel`) | `3292:134F..250F` (sprite blits and bracket pixels) / `2D26:0011` / `2935:11DA..` | a drawn ship with offset Y far outside 16..48: the sprite lands at page row (y and FFh) − 32, the bracket pixels at scattered rows |
+| 4 | Homing hit test, weapons §4.3 step 3 | `d = tileS × 32 + offS − tileP × 32 − offP` per axis in 16 bits (S = ship, P = shot), hit when abs16(dX) < 40 and abs16(dY) < 40 | `0E8B:0C3E..0CC3` / `0E96:0C94`, `0CE5` / `0C5D:0C92`, `0CE3` | the true difference is ±32,768 (abs16 passes) |
+| 5 | Shot–ship hit test, step 4 | as 4 with 20 | `0E8B:0F6C..100D` / `0E96:0FE1`, `1032` / `0C5D:0FC3`, `1014` | as 4 |
+| 6 | Shot–player hit test, step 5 | `d = (view + 5 or 3) × 32 + viewSub − tileP × 32 − offP` in 16 bits, abs16 < 20 | `0E8B:1595..160E` / `0E96:15BD`, `15FC` / `0C5D:15CA`, `1609` | a shot offset far outside 0..63 (spawned by a ship of rows 1 or 199 after its wrap, row 8) |
+| 7 | Hit explosion at a ship, step 4 | offset + `Random(16)`, sign-extended and added in 32 bits, **low byte** stored (explosion offsets are bytes) | `0E8B:1514..153F` / `0E96` same routine / `0C5D:1512..1546` | never (only the low byte is kept) |
+| 8 | Ship volley spawn, tick-order step 30 | shot offset = sign-extended muzzle byte + ship offset − 16, 16 bits, wraps | `0E8B:F439..F471` / `0E96:E1CE..E206` / `0C5D:E1BB..E201` | the ship's offset is within 48 of ±32,768 |
+| 9 | E1 flight 20 lander shots (`Msn_UpdateEvents`) | slot 1 offset + 32 (X) or − 10 (Y), 16 bits | `0E8B:9DC6`, `9E8D` | never (the lander's offsets stay in 16..48) |
+| 10 | E1 `Msn_PlayerTouches` (mission-logic §2) | ΔX: the 16-bit sum (tileX − viewX) × 32 + offsetX, then sign-extended and compared in 32 bits; **ΔY entirely in 16 bits with abs16** | `2404:0616..06CB` | ΔY's true value is ±32,768 (passes); only flight 7's pinned mines use it, whose offsets are always 16 |
+
+What follows for a port that keeps `tile × 32 + offset` in i32 (td-sim `Ship::world`, `Shot::world`):
+
+- Rows 4–6 must compute the difference in i16 with wrapping arithmetic and take `wrapping_abs`, then compare `< r` signed. With offsets in the normal range this is identical to i32; after a wrap it differs only when the true difference is exactly ±32,768. That case is reachable: a ship parked on row 199 with offset Y between 26,400 and 32,767 has the true world Y 6,368 + offset Y, so a shot whose world Y is exactly offset Y − 26,400 (anywhere on the map) and whose X is within the hit box passes both tests and hits the ship. In C-0340's flight 19 that is any player shot fired along column 102 that happens to sit on that pixel row in the tick of the test.
+- Row 8: `dx + offset − 16` must wrap; with overflow checks a top-edge ship that fires after its wrap would panic.
+- Row 7: the add must not overflow (wrap or widen); only the low byte is stored.
+- Rows 2 and 3 (T2): the draw test in i16; a ship that passes it is drawn with the sprite at page row (y and FFh) − 32 and the brackets by the 16-bit address rule. With offsets in 16..48, y ≤ 192 and both rules reduce to the ordinary drawing. Only a top-edge ship after its wrap can be in the view window with a large offset (it descends through rows 2..199 with offset Y ≈ 32,000 → 23,000): the original then draws a ghost of it at a wrong row for every tick it is in the window's rows (except the first few ticks after the wrap, where row 2's sum wraps negative); the port's i32 test draws nothing.
+- The bottom-edge ship after its wrap (offset Y ≈ −32,700 → −24,700 while it climbs) fails row 2's test in both arithmetics, so it is never drawn.
 
 ### 4.3 AI (`AI_ChooseWaypoint(s)`, `34E6:3449`)
 
@@ -495,7 +529,7 @@ A removed ship keeps its record and slot values (tile, offsets, speeds); nothing
 
 ### 4.7 Drawing (T2, `3292:0011` step (i))
 
-A live ship is drawn when `viewX − 1 < tileX < viewX + 10`, `viewY ≤ tileY ≤ viewY + 5`, (`tileX < viewX + 9` or offsetX < viewSubX), and `(tileY − viewY) × 32 + offsetY + 232 × drawPage > 32`. The sprite is drawn with the per-heading blit of [structures §7](../../re/structures.md) (`386E:024A` for heading 8 … `386E:172D` for 0Ch) at page position x = (tileX − viewX) × 32 + offsetX, y = (tileY − viewY) × 32 + offsetY, with **sprite number = class code** (U-042). These are the same routines and sprite numbering the player uses (`g_PlayerSprite` = class), so ship class c looks like player class c; which image each heading routine takes from `td.shp` and the rotation sets is the renderer's business (M7-01). Flights 7, 12, 15, 20 and 21 overwrite parts of the sprite data with `mine.td`, `td.hel`/`td.h2` and `lander.td` ([globals §6](../../re/globals.md)), so the same class codes show other images there; which slots, headings and ships: [flight-screens §4.9](../flow/flight-screens.md). Then, if marker = 32h or 39h, 20 single pixels form four corner brackets around the 32 × 32 cell (page y includes 232 × drawPage):
+A live ship is drawn when `viewX − 1 < tileX < viewX + 10`, `viewY ≤ tileY ≤ viewY + 5`, (`tileX < viewX + 9` or offsetX < viewSubX), and `(tileY − viewY) × 32 + offsetY + 232 × drawPage > 32`. The sprite is drawn with the per-heading blit of [structures §7](../../re/structures.md) (`386E:024A` for heading 8 … `386E:172D` for 0Ch) at page position x = (tileX − viewX) × 32 + offsetX, y = (tileY − viewY) × 32 + offsetY, with **sprite number = class code** (U-042). All of this arithmetic is 16-bit (§4.2.5 rows 2 and 3): the test's sum can wrap, the blit keeps only the low byte of y, and each bracket pixel's address is (y × 88 + x `SHR` 2) mod 65,536; with offsets in 16..48 none of that is visible. These are the same routines and sprite numbering the player uses (`g_PlayerSprite` = class), so ship class c looks like player class c; which image each heading routine takes from `td.shp` and the rotation sets is the renderer's business (M7-01). Flights 7, 12, 15, 20 and 21 overwrite parts of the sprite data with `mine.td`, `td.hel`/`td.h2` and `lander.td` ([globals §6](../../re/globals.md)), so the same class codes show other images there; which slots, headings and ships: [flight-screens §4.9](../flow/flight-screens.md). Then, if marker = 32h or 39h, 20 single pixels form four corner brackets around the 32 × 32 cell (page y includes 232 × drawPage):
 
 | Pixel (dx, dy) from (x, y) | Colour (32h) | Colour (39h) |
 |---|---|---|
@@ -523,6 +557,8 @@ Ships are drawn after the player ship (unless `g_PlayerDrawLate`) and before the
 | Record fields not cleared between flights | +411h, +41Ah, +41Bh, +418h keep the previous flight's values | preserve (OB-144) |
 | Ships removed at the map edge are drawn once more | Removal happens inside the movement; drawing follows | preserve (OB-144) |
 | Speed components below 16 after a brake | 13..15 behave as 16 (no drift, no drag) and resume from there | preserve |
+| Offsets wrap at ±32,768 (U-570) | At row 199 (D > 16) or row 1 with the class restored every tick (U > 16) offset Y grows or falls without bound and wraps; the ship then climbs (bottom edge) or descends (top edge) one row per tick (§4.2.3, C-0340) | preserve: 16-bit wrapping arithmetic (BUG-18) |
+| 16-bit hit tests after a wrap (OB-175) | A hit-box difference of exactly ±32,768 passes `abs16(d) < r` (§4.2.5 rows 4–6): a shot on the right pixel row hits a ship parked on row 199 with offset Y above 26,400; a top-edge ship descending with offset Y ≈ 32,000 is drawn as a ghost at page row (y and FFh) − 32 (rows 2, 3) | preserve (Classic, T1 for the hits, T2 for the ghost), proposed |
 
 ## 6. Test vectors (capture C-0009, E1 flight 1, no input)
 
@@ -536,6 +572,7 @@ Sampling: ship state "after tick t" is the **last** frame whose tick counter DS:
 | 4 | Slot 19 in line: tick 110 waypoint (105, 107), target (107, 107) (D = 4, same row) | waypoint unchanged, fire request 6, attackCounter 118 → 169; tick 111: holdCount 1, returnMode 1, waypoint → (104, 108) toward return point (92, 111), second request 6 (counter 220) |
 | 5 | Enemy shot spawns (51 volleys by slots 17–20) | life 1, owner, tile = ship tile, heading = ship heading, kind 1 (class 7), offset = muzzle + ship offset − 16: 49 / 51 settled exactly; the other 2 are two-digit-heading shots deleted before their offsets were dumped |
 | 6 | Setup, flight 1 | classes 0, 0, FFh × 6, 0, 0, 7, 1, 1, 7 × 7 (slots 9–11 removed by mission logic at tick 1); armour 3 (slots 1–17), 1000 (12, 13), 50 (18–20); aggression 100 (8), 50 (11, 14–20); handBits 1 1 1 0 0 0 0 0 1 0 0 0 1 0 1 1 0 1 1 0 |
+| 7 | C-0340 (E3 flight 19, no input, ticks 1..4500): slot 3 on row 199 with goal (102, 200) | offset Y 1,023 after tick 500; 32,762 after tick 4234; −32,766 after tick 4235 (row 199); −32,725 at row 198 after tick 4236; one row per tick up to (102, 1), removed in tick 4433 (§4.2.3); td-sim equal in every compared byte of all 4,499 ticks |
 
 Scratch models used for these checks are outside the repo (RE work area); the numbers above are the facts an implementation must reproduce.
 
@@ -545,7 +582,7 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 - [ ] U-161: confirm Real48 `Sqrt` is exact for 121 (out-of-range boundary); D = 9 is confirmed.
 - [ ] U-162: policy for a detour with moveDir ∉ {2, 4, 6, 8} (endless loop in the original; not reachable in E1 as far as known).
 - [ ] When and why the mission logic calls `AI_SetTarget` and writes slot classes: RE-6's mission-logic spec (`2404`).
-- [ ] VE: a capture of flights 7 and 20 (pins, sinking landers) and of a ship leaving at the map edge.
+- [ ] VE: a capture of flights 7 and 20 (pins, sinking landers). A ship removed at the map edge (row 1, after the row-199 wrap) is in C-0340 (U-570, RE-20); the top-edge wrap (§4.2.3) is not captured.
 
 ## 8. Provenance
 
@@ -562,6 +599,8 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | Sprite = class code, per-heading blits, markers | `3292:0011` draw section | static | LIKELY (not pixel-checked) |
 | Flight 7 pins, flight 20 sinking, flight 19 copy | `3292:0011`, `0E8B:D646..D675` | static | LIKELY |
 | Turn directions: only writer `AI_UpdateShips`'s steering; none at setup | `3292:0A27..0D68` (16 writes), reads `3292:039A`, `03B5` | static (operand scan of every listing); C-0200, C-0202 | CONFIRMED |
+| 16-bit offsets wrap at both Y edges; climb/descent one row per tick (§4.2.3) | `3292:0DC6..12A2`, `td3:2935:0DB2..112A` (the `ADD`/`SUB` lines carry no overflow test; `{$Q-}`) | static + C-0340 (the wrap in tick 4235, the climb, the removal in tick 4433; td-sim equal for 4,499 ticks) | CONFIRMED (bottom edge); top edge static (the same lines mirrored) |
+| Every 16-bit position computation (§4.2.5) | operand scan of the RE-7, RE-9 and RE-11 listings and instruction tables of all three episodes for the slot offset arrays; the sites listed in §4.2.5 | static | CONFIRMED (list complete for the disassembled code) |
 | Flight heap layout and the flight-21 path rule (§4.1.1) | `0E8B:B8A4..BA68` (free music, `BP_Mark`, 17 `GetMem`s), `0E8B:F9C1..F9DE` (release); `051A:701A`, `051A:92CC`, `051A:59CA`, `051A:1EB5` (975-byte font blocks), `051A:163E`, `051A:17E0..182C` (portrait block and pixel rule), `051A:70E6..70F1` (debrief face 1, right), `0E8B:07ED`, `2C37:0273` (music), `3A9A:041E..04DB` (free writes the size field) | static; C-0200 and C-0300 path buffers (5800:0000 window), model = capture in all 20,001 bytes it defines | CONFIRMED |
 
 ## 9. Revision history
@@ -575,3 +614,4 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | 5 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.4.2 and OB-017: the two-digit muzzle bytes are specified in weapons rev 4 §3.3 (U-160 resolved, policy *preserve* proposed) |
 | 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §2 and §4.1: slot turn directions are not reset at setup, 0 only at program start (U-501, slots' part). §4.1.1 new: flight 21's path arrays, the flight heap layout and the front-end writers that fill them, port rule and two vectors (U-500; C-0200, new capture C-0300). §5 three rows (OB-140), §8 two rows |
 | 7 | 2026-11-06 | RE-19 (Archaeologist) | §4.1.1 vector 3: music off confirmed (U-540): no song on the heap, so the fonts and portraits start at the heap mark; flight 21 of C-0323 (C-0300 with `td.cfg` music off) matches the rule in all 58 ticks (scratch run of `oracle_e1_full`'s block-19 check with the music-off heap uses) |
+| 8 | 2026-11-06 | RE-20 (Archaeologist + Spec author) | §4.2.3: both Y edges and the 16-bit wrap stated (U-570, BUG-18): the bottom-edge ship wraps to about −32,768 and climbs one row per tick to row 1, where it is removed; the top-edge ship wraps to about +32,767 and descends one row per tick to row 199; test vector from C-0340 (new capture). §4.2.5 new: every place the original computes a position in 16 bits (drift, draw test and blit positions, the three hit tests with the abs16 quirk, the explosion and volley offsets, E1 flight 20 and `Msn_PlayerTouches`) and what differs from i32 arithmetic after a wrap. §2 offset row, §4.7 note, §5 two rows (OB-175 proposed), §6 vector 7, §8 two rows |

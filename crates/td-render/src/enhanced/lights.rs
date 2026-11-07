@@ -123,26 +123,10 @@ fn drawn_view(f: &Flight) -> ViewPos {
     }
 }
 
-/// The tile a shot was drawn at: `Flight::drawn` holds the shots after their move of one
-/// tile along the heading (`weapons.md` §4.3 step 8); as `td2192`'s flight screen.
-fn drawn_shot_tile(s: &Shot) -> (u8, u8) {
-    let (dx, dy): (u8, u8) = match s.heading {
-        8 => (0, 255),
-        2 => (0, 1),
-        4 => (255, 0),
-        6 => (1, 0),
-        9 => (1, 255),
-        7 => (255, 255),
-        1 => (255, 1),
-        3 => (1, 1),
-        _ => (0, 0),
-    };
-    (s.tile_x.wrapping_sub(dx), s.tile_y.wrapping_sub(dy))
-}
-
-/// Window pixel of a shot (tile offset from the view × 32 + offset), as `flight::shot_look`.
+/// Window pixel of a shot as drawn (`Flight::drawn.shown_shots`: the tile before its move;
+/// tile offset from the view × 32 + offset), as `flight::shot_look`.
 fn shot_window(view: ViewPos, s: &Shot) -> (i32, i32) {
-    let (tx, ty) = drawn_shot_tile(s);
+    let (tx, ty) = (s.tile_x, s.tile_y);
     (
         (i32::from(tx) - view.tile_x) * 32 + i32::from(s.off_x),
         (i32::from(ty) - view.tile_y) * 32 + i32::from(s.off_y),
@@ -259,8 +243,8 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
     // it fired last tick (first drawn: cannon age 2, missiles age 1; homing missiles keep no
     // age and get none).
     let mut volleys = [((0i32, 0i32), 0i32); 21];
-    for s in f.drawn.shots.0.iter().filter(|s| s.alive()) {
-        let (tile, off) = (drawn_shot_tile(s), (s.off_x, s.off_y));
+    for s in f.drawn.shown_shots.0.iter().filter(|s| s.alive()) {
+        let (tile, off) = ((s.tile_x, s.tile_y), (s.off_x, s.off_y));
         let (centre, first) = match s.kind {
             k @ 0..=2 => {
                 let k = usize::from(k);
@@ -454,8 +438,7 @@ mod tests {
     #[test]
     fn shots_muzzle_flashes_and_engines() {
         let mut f = flight();
-        // A player kind-0 shot heading north, drawn at (107, 106) + (16, 16): it has moved one
-        // tile on, and it is fresh (age 2).
+        // A player kind-0 shot heading north, drawn at (107, 106) + (16, 16), fresh (age 2).
         let shot = |kind, life, owner, tile_y| Shot {
             tile_x: 107,
             tile_y,
@@ -466,9 +449,9 @@ mod tests {
             life,
             owner,
         };
-        f.drawn.shots.0[0] = shot(0, 2, 0, 105);
-        f.drawn.shots.0[1] = shot(0, 5, 3, 104);
-        f.drawn.shots.0[2] = shot(3, 2, 4, 105);
+        f.drawn.shown_shots.0[0] = shot(0, 2, 0, 106);
+        f.drawn.shown_shots.0[1] = shot(0, 5, 3, 105);
+        f.drawn.shown_shots.0[2] = shot(3, 2, 4, 106);
         let s = scene_of(&f, 0, LightMode::Full);
         // The look puts its centre pixel at (176, 64).
         let Some(ShotLook::Pixels(p)) =
@@ -577,7 +560,7 @@ mod tests {
                                     view,
                                     kind,
                                     heading,
-                                    drawn_shot_tile(&s),
+                                    (s.tile_x, s.tile_y),
                                     (s.off_x, s.off_y),
                                     vp,
                                 );

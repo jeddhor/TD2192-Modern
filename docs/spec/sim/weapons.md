@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/weapons` |
-| **Revision** | 7 |
+| **Revision** | 8 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions; the two-digit muzzle bytes of §3.3, §3.3.2, §3.3.3) · T2 for the drawing of shots |
 | **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); CONFIRMED for the two-digit muzzle bytes of §3.3 (every writer read statically; 20 whole flights of VE-2 plus C-0002 and C-0160 reproduced byte for byte) and of §3.3.2/§3.3.3 (every writer read statically; 38 whole E2/E3 flights of VE-4 plus C-0015, C-0036 and C-0180 reproduced byte for byte); CONFIRMED for the homing missile's step 3 and the unreachable kind-6 branch of step 4 (§4.3, code read, U-421); CONFIRMED for the per-slot order of §4.3 (the heading latched at the start of the slot's update, steering that takes effect the next tick, step 1 ending the update), code read in all three episodes and VE-5's trial build matching all 220 ticks of C-0207 (U-502, RE-18); LIKELY for hits, damage and enemy volleys (static) |
@@ -30,7 +30,7 @@ All shots, of the player and of the 20 mission ships, live in one pool of 51 pro
 | Missile cooldown | `g_MissileCooldown` DS:1CBA | u8 | Set to 4 on a launch; −1 per tick **before** the fire keys are handled, so it reads 4, 3, 2, 1, 0 in the ticks after a launch and the next launch can come 4 ticks later (C-0011; rev 1 had the decrement after the launch) |
 | Difficulty | DS:13DE | u8 | Multiplier of damage to the player; 1 at flight start (cheat chords change it, globals §5) |
 
-World pixel of a shot = tile × 32 + offset (per axis). World pixel of a mission ship = slot tile × 32 + slot offset (DS:3ACA/3AF2). The player's hit reference = `((viewX + 5) × 32 + viewSubX, (viewY + 3) × 32 + viewSubY)`.
+World pixel of a shot = tile × 32 + offset (per axis). World pixel of a mission ship = slot tile × 32 + slot offset (DS:3ACA/3AF2). The player's hit reference = `((viewX + 5) × 32 + viewSubX, (viewY + 3) × 32 + viewSubY)`. **All of these are 16-bit two's-complement sums**, and the hit tests of §4.3 compare the 16-bit difference with the original's absolute value, which leaves −32,768 negative (so it passes): the exact rules and the cases where this differs from 32-bit arithmetic are in [mission-ships](mission-ships.md) §4.2.5 (U-570).
 
 ## 3. Data
 
@@ -277,6 +277,8 @@ Space or joystick button 2:
 
 Holding Space fires a volley every second tick (the Space byte is not cleared); a missile clears the Space byte, so each missile needs a new key press (or the keyboard's auto-repeat) and at least 4 ticks.
 
+**A held Alt toggles on every typematic repeat (U-571, C-0341).** The keyboard ISR sets a key byte to 1 on every make code, repeats included, and clears it only on the break code (`0E8B:065B`, identical in `td2:0E96:0657` and `td3:0C5D:064F`). The toggle tests the left and right Alt bytes once per tick and clears both after it toggles; there is no "was it already down" test and no debounce in any episode (`0E8B:B203..B395`; `td2:0E96:E45B..E5EA`; `td3:0C5D:E475..E607`). The 1 → 2 branch clears the bytes, so the 2 → 1 test that follows in the same tick sees 0: **at most one toggle per tick, and one toggle per tick in which at least one make code arrived since the last toggle**. The game never programs the keyboard's typematic rate (no port 60h write, no `INT 16h` AH = 03h in any exe), so a held Alt flips the palette at the rate of the keyboard's repeats: the BIOS default of an AT keyboard (500 ms delay, then 10.9 repeats a second, one per tick at 19.2 ticks a second) gives about 10.9 flips a second, 5.45 dark/red cycles a second. C-0341 (E1 flight 4, DOSBox-X: 500 ms, then a repeat every 33 ms) shows the first toggle in the tick of the press, none for the next 9 ticks, then one toggle in **every** tick while the key is held (left Alt ticks 29..79: 51 consecutive toggles; right Alt the same with 3 ticks without a repeat), each a full 768-write palette rewrite. Port model: `td2192::flight` `TYPEMATIC_*` (500 ms, 91.7 ms) is the AT default and matches the original's logic; DOSBox-X's faster repeat is the emulator's, not the game's.
+
 ### 4.2 Spawning
 
 ```text
@@ -416,6 +418,7 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 - [ ] Q7 (U-480, VE): the menu drain key (§3.3.2 item 2) is specified statically only; every capture has 0. A capture that types two keys during the E2 or E3 menu fade-in and then flies a class-4 flight with a heading-0Ch volley would confirm it.
 - [x] Q8 (U-421): homing missiles in steps 3 and 4: §4.3 (RE-17).
 - [ ] Q9 (U-490, M10-46 IM-20): E3 flights 7 and 21 cannot be started directly; the port's tools give them the direct start of their block (flight 6's and flight 11's). A two-flight capture (U-481) would show the bytes a campaign leaves there.
+- [ ] Q11 (U-580, IM-24, M12-16): with music off `g_FontTitle` is `5C11:0000` in C-0322/C-0323 (6,168 bytes below `5D92:0008`, a normalised pointer); §3.3 item 7 gives only the music-on value. The port assumes the rule (`FrontEnd::title_font_pointer`).
 - [ ] Q10 (U-491, M10-46 IM-20): the drain key's byte for the keypad depends on NumLock (the port assumes off: keypad 8 = 48h); the reference preset's NumLock state at program start is not recorded.
 
 ## 9. Provenance
@@ -448,3 +451,4 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 | 5 | 2026-11-06 | RE-17 (Archaeologist + Spec author) | §3.3.2 (E2) and §3.3.3 (E3) new (U-441): the eight ranges hold the System constants, the menu's discarded key, `g_SbIrq`, the configuration bytes, campaign flags and the menu loader's row buffer (0Ch, 0Eh), the menu palette (20h, 24h), the scene-file name (4Ah), the scene palette and two front-end loop counters (4Eh, 60h, 62h); none changes in flight (C-0036's changes are the fade-out before tick 1); construction table, shooter table, policy *preserve*; test vectors from VE-4's 38 flights, C-0015, C-0036 and C-0180. §4.3 step 3 corrected (U-421): kills at most one ship, writes projectile kind[s] := 1 (E1, E3), no sound in E1/E3; step 4's kind-6 branch is unreachable. §5 two rows, §6 vectors 9 and 10, §8 Q6 and Q8 closed, Q7 (U-480) new |
 | 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §4.3 order corrected (U-502, BUG-11): step 0 latches the heading once per slot; the map test, the drawing and the move use it; the kind-6 steering of step 6 only stores the new heading, computed from the tile before the move, for the next tick (all three episodes); step 1 ends the slot's update (steps 2–6 skipped). §5 row, §6 vector 11 (C-0207), §9 row |
 | 7 | 2026-11-06 | RE-19 (Archaeologist) | §3.3 item 2: with music off `g_MemAvailText` is `209520` (no menu song on the heap; C-0322, C-0323; U-560) |
+| 8 | 2026-11-06 | RE-20 (Archaeologist + Spec author) | §2: every world-pixel sum and hit-test difference is 16-bit, with the abs16 quirk (U-570; rules in mission-ships rev 8 §4.2.5). §4.1: a held Alt toggles the infra-red palette once per tick on every typematic repeat in all three episodes, no debounce (U-571; C-0341, new) |

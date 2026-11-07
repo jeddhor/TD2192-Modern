@@ -37,6 +37,10 @@ use crate::story::{self, Hold, ScenePalette, StoryAssets, StoryError, StoryScree
 use td_sim::flight::front_end::FrontEnd;
 
 const EXE: &str = "file0001.exe";
+
+/// The variant byte block 5's pre-flight story passes to `UI_EnemyDossier` (`0000:1475`): 1,
+/// so line 9 (typed only for variant 2) is never shown (screens rev 5 §3.5, U-520, BUG-12).
+pub const ENEMY_DOSSIER_VARIANT: u8 = 1;
 /// Ink of the port's own notices ("not available yet").
 const TEXT_INK: (u8, Rgb6) = (
     255,
@@ -68,9 +72,12 @@ pub struct Program {
     pub front_end: FrontEnd,
     /// `g_CfgMusic` = 2 (music on): `Snd_PlayMusic` loads its song onto the heap
     /// (episode-program-flow §3.1, §3.2). The port always plays the songs, as the reference
-    /// start `/sb` does (the music volume is the mixer's business), so this is true; false
-    /// models the original's music-off configuration, whose heap layout is specified
-    /// statically only (U-540).
+    /// start `/sb` does (the music volume is the mixer's business), so this is true by default;
+    /// false models the original's music-off configuration: no song on the flight heap
+    /// (mission-ships rev 7 §4.1.1 vector 3, U-540, C-0323) and the menu's `g_MemAvailText`
+    /// `209520` for the flights' muzzle bytes (weapons rev 7 §3.3 item 2, U-560, BUG-22). The
+    /// port has no music-off switch yet; the campaign hands this to the flights through
+    /// [`FrontEnd::music`].
     pub music_on: bool,
 }
 
@@ -235,7 +242,7 @@ impl Program {
             Step::P15 => story::still_15(&self.data)?,
             Step::H(n) => story::hint(&self.data, a, &self.texts("e1.hints"), n)?,
             Step::O => self.orders(),
-            Step::A => self.enemy_dossier(),
+            Step::A => self.enemy_dossier(ENEMY_DOSSIER_VARIANT),
             other => return Err(StoryError::Text(format!("{other:?} is not a story screen"))),
         })
     }
@@ -306,8 +313,11 @@ impl Program {
         s
     }
 
-    /// The enemy dossier (`UI_EnemyDossier` `051A:6653`, screens §3.5): face 6; 10 s.
-    fn enemy_dossier(&self) -> StoryScreen {
+    /// The enemy dossier (`UI_EnemyDossier(variant)` `051A:6653`, screens rev 5 §3.5): face 6;
+    /// lines 0..8, then line 9 (ink 39 over line 4) **only for variant 2**, then line 10; 10 s.
+    /// The shipped game's only call passes [`ENEMY_DOSSIER_VARIANT`] (1), so line 9 is never
+    /// typed (U-520, BUG-12; C-0271).
+    fn enemy_dossier(&self, variant: u8) -> StoryScreen {
         let t = self.texts("e1.dossier.enemy");
         let ys = [75, 91, 97, 103, 109, 115, 121, 137, 143];
         let mut items: Vec<TextItem> = ys
@@ -315,7 +325,9 @@ impl Program {
             .enumerate()
             .map(|(i, &y)| TextItem::typed((40, y), line(&t, i), 40))
             .collect();
-        items.push(TextItem::typed((40, 109), line(&t, 9), 39));
+        if variant == 2 {
+            items.push(TextItem::typed((40, 109), line(&t, 9), 39));
+        }
         items.push(TextItem::typed((40, 160), line(&t, 10), 40));
         let mut s = story::typed_page(
             &self.assets,
@@ -434,17 +446,22 @@ impl Program {
     }
 
     /// The pilot dossier of ending A (`UI_PlayerDossier` `051A:74B2`, screens §3.5): face 1;
-    /// 25 s. E2 (`04EC:712D`), E3 (`04A0:5212`, flushing first): same layout,
+    /// 25 s. Typing cadence after each `Crt.Delay`: screens rev 5 §3.13. E2 (`04EC:712D`), E3 (`04A0:5212`, flushing first): same layout,
     /// `e2.dossier.player` / `e3.dossier.player`.
     pub fn player_dossier(&self, total: i16) -> StoryScreen {
         let t = self.texts(&self.id("e1.dossier.player", "dossier.player"));
         let items = vec![
             TextItem::typed((20, 45), line(&t, 0), 40),
-            TextItem::typed((20, 91), line(&t, 1), 40).after(500),
+            // screens rev 5 §3.13: lines 1 and 5 show two characters in their first frame.
+            TextItem::typed((20, 91), line(&t, 1), 40)
+                .after(500)
+                .first_frame(2),
             TextItem::typed((20, 97), line(&t, 2), 40).after(500),
             TextItem::typed((20, 109), line(&t, 3), 40).after(500),
             TextItem::typed((20, 121), format!("{}{}", line(&t, 4), total), 40).after(500),
-            TextItem::typed((20, 109), line(&t, 5), 39).after(2000),
+            TextItem::typed((20, 109), line(&t, 5), 39)
+                .after(2000)
+                .first_frame(2),
             TextItem::typed((20, 160), line(&t, 6), 40).after(500),
         ];
         let mut s = story::typed_page(

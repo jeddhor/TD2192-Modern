@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `audio/music-cues` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 for which song plays when (it also sets the game tick rate, [timing](../core/timing.md)); T2 for the sound |
 | **Confidence** | Song table, call sites and order: CONFIRMED (static, every call site). Scene labels: LIKELY (from the location strings each scene routine is given). Triggers of the game-over paths: HYPOTHESIS |
@@ -76,10 +76,22 @@ The music has no fade or crossfade, and it is never resumed: every cue starts it
 | Main menu screen drawn (start-up, and every return to the menu) | `menu` | `0000:2E9F` (menu screen routine `0000:2E88`), `0000:3957` (menu loop `0000:3381`) |
 | Flight start (every mission, also after a retry) | mission number mod 3 = 1 → `td01`, = 2 → `td03`, = 0 → `td02` | `0E8B:C8EA..C92B` |
 | Flight end | music stopped (no song until the next cue) | `0E8B:F9A7` |
-| Game over (three paths) | `death`, played once (loop off), then the loop flag is restored | `0000:2DA8`, `2DE5`, `2E28` |
+| Game over (three paths) | `death`, played once (loop off), then the loop flag is restored (§4.2.1) | `0000:2DA8`, `2DE5`, `2E28` |
 | Intro program | `intro1` (driver default loop) from the date card until the flyover; then loop off and `intro` once; then `intro2`, which the program restarts whenever no song is playing ([flow/intro](../flow/intro.md) §4.6, §7) | C-0001 capture; static (RE-13) |
 
 At flight start `Sim_FlyMission` stops the music and frees the song before the mission loads, then starts the flight song. The mapping by mission number gives: missions 1, 4, 7, 10, 13, 16, 19 → `td01`; 2, 5, 8, 11, 14, 17, 20 → `td03`; 3, 6, 9, 12, 15, 18, 21 → `td02`.
+
+#### 4.2.1 `death` never loops (U-140, RE-20)
+
+WORX reads the loop flag only when a song reaches its end ([cmf](cmf.md) §4.8), so what matters is the flag's value 28.8 s after `death` starts (the song's length). Each cue sets the flag to 0 right after the start and back to 1 right after **one** scene, and the next thing after that scene starts another song (or a flight, which stops the music) within a few frames:
+
+| Path | Between loop off and loop on | Next song | `death` started → next song (captures) |
+|---|---|---|---|
+| Ending A (`0000:2DA8..2DD1`; E2 `0000:2DE0..2E09`; E3 `0000:298C..29B5`) | the pilot dossier (`Flow_WaitSecondsOrKey(25)` after the typed lines and the fades) | `menu`, the main menu after the return | 31.1 s: C-0270 (E1), C-0284 (E2), C-0289 (E3) |
+| Endings B and C (`0000:2DE5..2E15`, `2E28..2E58`; E2 the same two) | the `intro2` card (`Flow_SceneIntro2`) | `menu` | 10.7 s: C-0279, C-0324 (E1), C-0285 (E2) |
+| Block 16 before flight 16 (`0000:24D9..250B`) | story still set 1 (`051A:4113`, `td1-16.pic`) | `satair` (`0000:251B`), or with Esc the flight call, whose start stops the music | 24.9 s: C-0281 |
+
+So the song is either cut before its end (10.7 s, 24.9 s, or a key that ends the dossier early: the menu song follows at once) or reaches its end during the dossier while the flag is still 0 (it stops; about 2.3 s of silence before `menu`). In no path is the flag 1 at the song's end: **`death` never loops**, with or without keys. Port: play `death` with looping off and restore the flag where the original does; the music then needs no special case.
 
 ### 4.3 Campaign sequence (`Main_CampaignLoop`, `file0001:0000:0F06`)
 
@@ -160,3 +172,4 @@ Songs in the order they are requested, with the scene that follows each request.
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-4 (Archaeologist + Spec author) | Initial: song table, program-level cues, full E1 campaign sequence |
 | 2 | 2026-11-06 | RE-14 (Spec author) | Flight 21 described (U-081 resolved); mission 20 has no `low`/debrief (U-207); no cue changes |
+| 3 | 2026-11-06 | RE-20 (Archaeologist + Spec author) | §4.2.1 new: `death` never loops (U-140): what runs between each loop-off/loop-on pair and the time to the next song (C-0270, C-0279, C-0281, C-0284, C-0285, C-0289, C-0324) |

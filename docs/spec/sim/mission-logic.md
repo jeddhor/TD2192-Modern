@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-logic` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, success and failure decide the outcome of a flight; the order of the per-tick rules matters where two rules write the same ship) · T2 for the ticker text itself (render/hud.md) |
 | **Confidence** | LIKELY overall (static: every rule was read from the instruction stream, with the listing checked where the decompiler drops operands). Flight 1 CONFIRMED by capture C-0010 for phases 1→5, the spawns and hides, the exit rules, the ticker-idle gate and the respawn distance (§7). Flights 4–21 LIKELY (static only). The behaviour that `AI_SetTarget` triggers is RE-5's ([mission-ships](mission-ships.md)) |
@@ -52,7 +52,7 @@ The ship is drawn at playfield pixel (144..175, 68..99), i.e. over tile (viewX +
 | `Msn_ExitAt` | `2404:05DC` | `(Slot, X, Y: Byte)` | If tile(Slot) = (X, Y): class(Slot) := FFh. No liveness test, no kill credit |
 | `Msn_NearLive` | `2404:06EE` | `(A, B, Range: Byte): Boolean` | Position of *k* = view tile if *k* = 0, else tile(*k*). True when \|xA − xB\| < Range **and** \|yA − yB\| < Range (signed 16-bit differences of the byte values, strict), and neither A nor B (when non-zero) has class FFh |
 | `Msn_Near` | `2404:07DB` | same | As `Msn_NearLive` without the class tests (dead or hidden ships count at their last tile) |
-| `Msn_PlayerTouches` | `2404:0616` | `(Slot): Boolean` | Pixel test of the ship against the player: ΔX = (tileX(Slot) − viewX) × 32 + subX(Slot) − (4 × Round(viewSubX / 4) + 128) and ΔY = (tileY(Slot) − viewY) × 32 + subY(Slot) − (viewSubY + 84); true when \|ΔX\| < 32 and \|ΔY\| < 32 and class(Slot) ≠ FFh. `Round` is the Real48 round of `viewSubX / 4.0` ([real48](../core/real48.md) §4.6), the X difference is a 32-bit signed value |
+| `Msn_PlayerTouches` | `2404:0616` | `(Slot): Boolean` | Pixel test of the ship against the player: ΔX = (tileX(Slot) − viewX) × 32 + subX(Slot) − (4 × Round(viewSubX / 4) + 128) and ΔY = (tileY(Slot) − viewY) × 32 + subY(Slot) − (viewSubY + 84); true when \|ΔX\| < 32 and \|ΔY\| < 32 and class(Slot) ≠ FFh. `Round` is the Real48 round of `viewSubX / 4.0` ([real48](../core/real48.md) §4.6), the X difference is a 32-bit signed value (from the 16-bit sum (tileX − viewX) × 32 + subX, sign-extended); the Y difference is computed and compared entirely in 16 bits, and its absolute value leaves −32,768 negative, which passes (mission-ships rev 8 §4.2.5 row 10, U-570; only flight 7's pinned mines are tested, whose offsets are always 16) |
 | `Msn_PostTicker` | `2404:030A` | `(X, Y: Integer; S: String; Colour: Byte)` | Draws S opaquely into the ticker strip (always X = 0, Y = 735) with the mission glyph routine `2404:0000`; render/hud §4.7 |
 | `AI_SetTarget` | `34E6:3232` | `(Slot, Target: Byte)` | Ship record of Slot: +41Fh := Target (0 = player), +415h := 1, +41Bh := 1. What the ship then does is the AI's business ([mission-ships](mission-ships.md) §3.1, RE-5) |
 
@@ -72,6 +72,8 @@ The ship is drawn at playfield pixel (144..175, 68..99), i.e. over tile (viewX +
 ### 3.3 Per-flight start state that the rules depend on
 
 Set by `Msn_Setup` (`0E8B:60D8`, owned by RE-5; their spec is authoritative for slot classes, positions and armour). Listed here only so that the rules below can be checked.
+
+**Cleared at every flight start (U-144, static, CONFIRMED).** Before `Msn_Setup`, `Sim_FlyMission` (`0E8B:B880..B924`, unconditional stores at the routine's entry, every flight, retries included) clears: comm pending DS:329C, `g_MissionSucceeded` DS:329E, `g_MissionLost` DS:12CC, the cut-scene request DS:32B6, the flight-17/20 counter `g_MsnEventCount` DS:329D, the 20 bytes DS:32A0..32B3 (`g_BaseHit[1..20]`, which include the flight-18 bomb flag `g_IonBomb` DS:32B1 = element 18), the flight-18 ion timer DS:32B4 (u16) and DS:1838 (u16); later in setup (`0E8B:C63C`) the comm indicator phase DS:1705 := 0. So a retry or a later flight starts with all of them at 0: a flight-18 retry after the bomb is not lost at tick 1, a flight-17 retry starts with the base intact and no ship counted, and flight 20's lander counter starts at 0. E2 (`td2:0E96:A76E..A801`) and E3 (`td3:0C5D:A9CC..AA5F`) clear the same set at their own addresses (comm pending, succeeded, lost, the cut-scene request, the event counter, the 20 per-slot bytes, the ion timer). Not cleared: flight 19's copy of slot 19's position DS:16EE..16F4 (written by the flight-19 rules before it is read).
 
 | Flight | Objective (ticker at start) | Colour | Start phase | Markers at start | Hidden at start |
 |---:|---|---:|---:|---|---|
@@ -418,7 +420,7 @@ exit 12 @ (199,121); engage 12 → 1, 5; engage 12 → player, 5
 exit 13 @ (199,124); engage 13 → player, 5; engage 13 → 1, 5
 ```
 
-E only reacts to the player (the view tile) within 30 tiles of a live slot 8 or 9; if both die before that, C cannot fire (phase 3 ≠ 4) and F can never be reached: the flight cannot be completed (U-182).
+E only reacts to the player (the view tile) within 30 tiles of a live slot 8 or 9; if both die before that, C cannot fire (phase 3 ≠ 4) and F can never be reached: the flight cannot be completed (U-182). **This happens in ordinary play (U-182 resolved, C-0342):** slots 8 and 9 appear at the west edge ((1, 122), (5, 124)) when phase 3 starts and fly east and then to their exits (50, 1) and (51, 1). A player who heads east at that moment (C-0342: C-0058's inputs to tick 157, the tick of phase 3, then keypad 6 held: the view reaches column 183) never comes within 30 tiles of either; slot 8 leaves in tick 788, slot 9 in tick 860, and the phase stays 3 for good (td-sim equal in every tick 1..999). Staying near the start area instead lets E fire (td-sim, idle player: phase 4 before tick 400).
 
 ### 5.9 Flight 9 (transmission; the radar trucks and their guards)
 
@@ -757,3 +759,4 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | 2 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: hud references (ticker §4.7, F6 indicator §4.8); loop exit is tick-order step 33 (was 35), flight-20 armour rule after step 32 (was "step 34"); F5 in flight 14 is the tactical map, not a ship switch |
 | 3 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §5.14: the attacks of slots 8, 9, 10, 12, 13 on the player run only while phase < 100 (U-390; VE-2 D2, C-0064). §5.17, §5.19: the cut-scene and the V.C.I. screen are specified in flow/flight-screens §4.10; the F5 lines of flight 19 are `string[30]` (two lose their last character) |
 | 4 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §5.18 and §7 vector 12: the flight-18 bomb goes off in tick *t* + 999, not *t* + 1000 (rule B zeroes the timer and rule D counts the finding tick; `2404:5C56..5C93`); the test (`flight_18_bomb_after_1000_ticks`) was right. A kill in the bomb's tick is too late (E before F) |
+| 5 | 2026-11-06 | RE-20 (Archaeologist + Spec author) | §3.3: the globals `Sim_FlyMission` clears at every flight start (U-144: comm pending, cut-scene request, event counter, the 20 base-hit bytes with the bomb flag, the ion timer, the indicator phase). §2 `Msn_PlayerTouches`: ΔY is 16-bit with the abs16 quirk (U-570). §5.8: the flight-8 soft lock happens with plain input (U-182, C-0342, new) |
