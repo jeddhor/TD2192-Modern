@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-ships` |
-| **Revision** | 6 |
+| **Revision** | 7 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (positions, waypoints, AI state, fire requests and RNG use per tick) · T2 for drawing |
 | **Confidence** | **CONFIRMED** for §4.1–§4.6: a model written from this text reproduces 3,342 of 3,343 slot-ticks of capture C-0009 byte for byte (slot arrays and the whole 1,065-byte ship record), the one exception being a ship destroyed by a projectile (step 6, [weapons](weapons.md)); shot spawns match in 49 of 51 events (§6). LIKELY for the paths the capture does not exercise (mode +422h, flights 7 and 20 specials, map edges) |
@@ -137,6 +137,7 @@ r(m) rounds m up to a multiple of 8 (BP7 allocates in 8-byte units); m = 0 while
 |---|---|---|---|
 | 1 | C-0200: debrief times out, Esc at `C:voffice` | X: `vulture.cmf` bytes 9,328..12,298, the debrief portrait, the `C:voffice` font block and its size field, the debrief portrait again; Y: the debrief portrait (to 21,271), then `m19.td`'s Y block | (0, 112), (0, 137), (0, 164), (69, 164), (145, 64), (0, 59), (0, 108), (247, 88), (133, 88), (130, 75) |
 | 2 | C-0300: no Esc (D88: faces 24 left, 11 right; D89: faces 1 left, 2 right) | X: D89's last portrait (face 2, right) at 2,960..18,959 (`hangar.cmf` is 1,980 bytes, so r(m) = 1,984); Y: D88's last portrait (face 11, right; `vulture.cmf` playing, r(m) = 12,304) at 13,280..29,279, then `m19.td` | (118, 112), (112, 112), (112, 112), (122, 221), (112, 220), (133, 138), (134, 112), (112, 112), (120, 112), (112, 112) |
+| 3 | C-0323 (C-0322): as C-0300 but **music off** (`td.cfg` 01 02 02: no song is ever loaded, m = 0) | X: D89's last portrait (face 2, right) at 976..16,975, i.e. path X of slots 1..16 (slot 16 in part); slots 17..20 keep `m19.td`'s X; Y: `m19.td`'s Y block whole (nothing reaches offset 19,352) | (120, 80), (112, 86), (134, 79), (133, 67), (112, 64), (112, 59), (112, 108), (112, 88), (112, 88), (112, 75) |
 
 So the ships of flight 21 start wherever the bytes of a portrait, a song or a font put them, mostly at tile X 0 or 112..134; slots outside the map are removed by the edge test of §4.2.3 as in any flight. Classes, armour and shields are as for any flight (flight 19's classes at its end, then flight 21's `Msn_Setup` row).
 
@@ -573,3 +574,4 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | 4 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.3.10: what an attacker does when its target dies, hides or leaves the range (U-181): it keeps attacking the last waypoint until its budget runs out; re-applied orders do not reset the budget |
 | 5 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.4.2 and OB-017: the two-digit muzzle bytes are specified in weapons rev 4 §3.3 (U-160 resolved, policy *preserve* proposed) |
 | 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §2 and §4.1: slot turn directions are not reset at setup, 0 only at program start (U-501, slots' part). §4.1.1 new: flight 21's path arrays, the flight heap layout and the front-end writers that fill them, port rule and two vectors (U-500; C-0200, new capture C-0300). §5 three rows (OB-140), §8 two rows |
+| 7 | 2026-11-06 | RE-19 (Archaeologist) | §4.1.1 vector 3: music off confirmed (U-540): no song on the heap, so the fonts and portraits start at the heap mark; flight 21 of C-0323 (C-0300 with `td.cfg` music off) matches the rule in all 58 ticks (scratch run of `oracle_e1_full`'s block-19 check with the music-off heap uses) |

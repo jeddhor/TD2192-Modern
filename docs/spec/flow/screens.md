@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/screens` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for layouts, fonts, colours and resource ids; T1 for the `Random` call of the retry prompt and the skip rule; T2 for wait and fade timing (§2.1, §2.2: measured at P1) |
 | **Confidence** | LIKELY (static analysis of each routine); main-menu pixels CONFIRMED against C-0002 f997 |
 | **Tasks** | M5-03, M5-05, M5-07, M8-09, M9-18, M9-19 (resolves U-120..U-125) |
-| **Unknowns** | U-120, U-121, U-122, U-123, U-124, U-125 (resolved here); U-227..U-229 (new) |
+| **Unknowns** | U-120, U-121, U-122, U-123, U-124, U-125 (resolved here); U-227..U-229 (new); U-520, U-521 (resolved, rev 5) |
 
 Fonts and drawing: [render/text](../render/text.md) (small font `td.lt2`, title font `td-let.cin`, typed text). Portrait loading `Dlg_LoadPortrait` (`051A:1618`): [narrative/dialogue-player](../narrative/dialogue-player.md). Flow and order of screens: [episode-program-flow](episode-program-flow.md). Text is always taken from the resource map by id (`docs/re/exe-resources/file0001.toml`).
 
@@ -110,10 +110,14 @@ After each line (and once more before line 19 of hint 1) the screen tests for a 
 
 | Screen | Face | Lines (index @ x, y, ink) | Wait |
 |---|---:|---|---|
-| Enemy | 6 | `e1.dossier.enemy`: 0 @ 40,75; 1 @ 40,91; 2 @ 40,97; 3 @ 40,103; 4 @ 40,109; 5 @ 40,115; 6 @ 40,121; 7 @ 40,137; 8 @ 40,143, all ink 40; then 9 @ 40,109 ink 39 (over line 4); 10 @ 40,160 ink 40 | `Flow_WaitSecondsOrKey(10)` |
+| Enemy | 6 | `e1.dossier.enemy`: 0 @ 40,75; 1 @ 40,91; 2 @ 40,97; 3 @ 40,103; 4 @ 40,109; 5 @ 40,115; 6 @ 40,121; 7 @ 40,137; 8 @ 40,143, all ink 40; then **only when the routine's variant byte is 2**, 9 @ 40,109 ink 39 (over line 4); 10 @ 40,160 ink 40 | `Flow_WaitSecondsOrKey(10)` |
 | Pilot | 1 | `e1.dossier.player`: 0 @ 20,45; delay 500; 1 @ 20,91; delay; 2 @ 20,97; delay; 3 @ 20,109; delay; then line 4 + the total kills (decimal) @ 20,121; `Crt.Delay(2000)`; 5 @ 20,109 ink 39 (over line 3); delay 500; 6 @ 20,160. Inks 40 except where stated | `Flow_WaitSecondsOrKey(25)` |
 
 Delays are `Crt.Delay(ms)`.
+
+**The enemy dossier never types line 9 in the shipped game (U-520, BUG-12).** `UI_EnemyDossier` takes one byte parameter (a variant). Line 9 (`e1.dossier.enemy[9]`, the red status line over line 4) is typed only when that byte is 2 (`051A:67D7`); every other value goes straight from line 8 to line 10. The only call, block 5's pre-flight story (`0000:1475..1477`), passes **1**, so line 9 is never shown: line 4 stays in ink 40 to the fade-out and line 10 follows line 8 directly (C-0271: line 8's last character in f3208, line 10's first in f3209, its last in f3224, then the 10 s wait; no ink-39 pixel in any dump). Port: type lines 0..8 and 10; keep line 9 only as an unused variant. The pilot dossier has no such parameter: its line-5 overwrite always happens (C-0270, C-0284, C-0289).
+
+**Typing cadence.** Every typed line here and in §3.3, §3.4 and §3.6 follows [text §4.3](../render/text.md#43-typed-text-txt_typestring-051a1269-flight-0e8b4c9f) (rev 5): the first frame of a typed screen's first line is the frame in which the fade-in's last level is first shown complete (34 frames after the fade starts, §2.1), and it already shows **two** characters; the next line of a back-to-back run starts in the frame after the previous line's last character; a line after a `Crt.Delay` starts per §3.13.
 
 ### 3.6 Debriefing (`UI_Debrief(Kills, KillsToDate, Outcome)` `051A:6FF2`)
 
@@ -196,6 +200,25 @@ Every scene, card, dossier, hint and dialogue routine clears `g_SkipStory` when 
 
 So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialogue 1, no `low.cmf`, no hint), while Esc during dialogue 1 still shows hint 1 with `low` (C-0002 f2603 → f2788). Post-flight steps without a test: the last step of each block, and block 3 D13 (outcome branch), block 5 D3 / D156 branch, block 16 D72 / D105, block 18 P15, block 19 D89 (then flight 21; abort → return), block 20 P2 stills onwards (the episode-end card and endings have no tests). **Exception, block 19:** the tests after the post-flight steps that come before flight 21 (C:voffice, D88 and the `M3` C:hangar card, `0000:2A59..2A94`) do not end the block: a set flag jumps to the flight 21 call (`0000:2A9D`), skipping what is left before it. After flight 21 the tests end the block as usual. There is no debrief in block 20 ([episode-program-flow](episode-program-flow.md) §4.4). Block-by-block source: `0000:0F06..2E76`.
 
+### 3.13 Typed lines after a `Crt.Delay` (U-521)
+
+[text §4.3](../render/text.md) item 5. F is the frame that shows the previous line's last character; the line after the delay first shows in the frame given here, with one or two characters (two when the delay ended before the retrace of the frame before, so that the first character was drawn after the beam had passed its row). The values are the same in every capture of each screen (oracle P1, music playing) and in all three episodes.
+
+| Screen | Line (pen y) after the delay | Delay | First frame | Characters in it | Evidence |
+|---|---|---:|---|---:|---|
+| Debrief (§3.6; E2/E3 debriefs) | 75 (outcome line) | 500 | F + 36 | 1 | C-0274 f3173, C-0277, C-0278 |
+| | 105 (kills to date) | 500 | F + 36 | 1 | C-0274 f3248 |
+| | 130 (note label) | 500 | F + 36 | 1 | C-0274 f3301 |
+| | 140 (rating or failure note) | 500 | F + 36 | 1 | C-0274 f3356 (the delay ended in the vertical blank after the retrace) |
+| Pilot dossier (§3.5; E2/E3) | 91 (line 1) | 500 | F + 36 | **2** | C-0270 f2997, C-0284, C-0289 (the delay ended at 0.85 of frame F + 35) |
+| | 97 (line 2) | 500 | F + 36 | 1 | C-0270 f3064 |
+| | 109 (line 3) | 500 | F + 36 | 1 | C-0270 f3125 |
+| | 121 (line 4 + total) | 500 | F + 36 | 1 | C-0270 f3174 |
+| | 109 (line 5, ink 39) | 2000 | F + 142 | **2** | C-0270 f3324, C-0284, C-0289 |
+| | 160 (line 6) | 500 | F + 36 | 1 | C-0270 f3373 |
+
+Then one character per frame as usual.
+
 ## 4. Edge cases and original bugs
 
 | Quirk | Original | Port policy (proposal) |
@@ -204,6 +227,8 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 | 16-bit DOS-time wait (OB-034) | A timed wait can end at once, about once every 11 minutes | Preserve in Classic is impossible without the clock; the port uses frame counts (T2 deviation) |
 | Retry `Random(10)` | Consumes one RNG value per prompt | Preserve (T1) |
 | `td1-15` first column | Byte before the buffer (black) | Preserve as black (OB-149) |
+| Enemy dossier line 9 | Typed only by the variant-2 call, which the shipped game never makes (U-520) | Do not type it (Classic and Enhanced: it is unused content, not a bug) |
+| Missed retrace while typing | About one character in 800 takes two frames (interrupt load) | Not modelled (T2; text §4.3 item 6) |
 | Typed taunt before the fade-in | Appears at once | Preserve |
 
 ## 5. Test vectors
@@ -233,6 +258,8 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 | Script choice, notice | `051A:527F`, `051A:56D5` | static; C-0002 f710 (palette) | LIKELY |
 | Hint lines | `051A:2B26` | static; C-0002 f3332 (hint 1) | LIKELY |
 | Orders, dossiers, debrief, retry | `051A:62FD`, `6653`, `74B2`, `6FF2`, `6A33` | static | LIKELY |
+| Enemy dossier line 9 only for variant 2; the only call passes 1 | `051A:67D7`, `0000:1475` | static + capture (C-0271) | CONFIRMED |
+| Typing cadence of every typed screen (§3.3–§3.6, §3.13) | `051A:1269`, `051A:0000`; C-0270..C-0289 | capture (per-frame 3DAh polls, cursor position in every dump) | CONFIRMED at P1 |
 | Story so far | `051A:8EAA`, `5EE9`, `5FC7` | static | LIKELY |
 | `td1-15` | `051A:4979` | static | LIKELY |
 | Skip tests | `0000:0F06..2E76` | static (complete walk) | LIKELY; block 1 CONFIRMED by C-0002 |
@@ -245,3 +272,4 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 | 2 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §3.12: in block 19 a skip before flight 21 jumps to flight 21, not to the block end (`0000:2A59..2A9D`; U-081) |
 | 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §2.1: frames per fade level follow the non-zero count of the palette being faded (1 for a nearly black buffer, 2 for a picture palette at P1); the title card's fast fade only while `g_Palette` is still black (BUG-6; C-0160, C-0170). §2.2: the wait clock is DOS time, 0.948 n s with the ADR-0007 clock (BUG-7). §3.1: the highlight ramp also runs at loop entry |
 | 4 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §2.1: the level phase is normative (U-510): level 0 is cheap because its products are zero (Real48 zero shortcut) and is shown one frame after the level before it; each level starts at the first retrace after the previous level's last write; port rule; missed retraces under interrupt load not modelled. §4 row `td1-15`: OB-149 |
+| 5 | 2026-11-06 | RE-19 (Archaeologist + Spec author) | §3.5: the enemy dossier types line 9 only for its variant byte 2; the shipped call (block 5) passes 1, so line 9 is never shown (U-520, BUG-12; `051A:67D7`, `0000:1475`; C-0271); typing cadence pointer to text rev 5 §4.3 (two characters in the first frame after a fade-in). §3.13 new: first frame and character count of each line typed after a `Crt.Delay` (U-521; C-0270, C-0274, C-0277, C-0278, C-0284, C-0289). §4, §7 rows |

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `render/hud` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for geometry, element positions and colours; T1 for update order and for the two game rules found here (§4.3, flight 7) |
 | **Confidence** | CONFIRMED for the display geometry, both bars, the missile column, the radar (map, ship markers, player), the compass lamps and the guidance dots: a model written from this spec reproduces C-0002 frame 3543 with 0 differing pixels (§6). LIKELY for the ticker window, the F6 indicator and the weapon icon (static) |
@@ -320,7 +320,7 @@ The transmission indicator pairs with sound effect 200 (`income.voc`, [sfx-polic
 
 - [ ] U-185: does the ticker-strip wrap (§4.7) ever erase visible ink? (Static estimate: message `e1.flight_messages.01[23]` writes background up to strip x = 46, where its first letter starts.) Check a capture of that message.
 - [ ] U-186: what DS:18BA was meant to be (the dead strip clear at the player's death).
-- [ ] Palette mode 1 (infra-red) recolours the DAC at flight start (`0E8B:CAD2..CBAA`, Real48 divides); its formula is not specified here (flights 4 and 8 start in mode 1).
+- [x] Palette mode 1 (infra-red) recolours the DAC at flight start (`0E8B:CAD2..CBAA`, Real48 divides): the formulas of every mode change are in [flow/flight-screens §4.5.1](../flow/flight-screens.md) (C-0014), including E2's partial return from mode 2 to mode 1, which rewrites only DAC 255 and DAC 37 (OB-023, U-530, C-0320; RE-19).
 
 ## 9. Provenance
 
@@ -346,3 +346,4 @@ The transmission indicator pairs with sound effect 200 (`income.voc`, [sfx-polic
 | 2 | 2026-11-02 | RE-6 (Archaeologist + Spec author) | M6-07 RE part: bars, low-armour pulse, missile lamp and column, compass lamps, guidance line maths, radar markers, ticker strip and window rules, F6 indicator rule, weapon icon source corrected (`g_Weapon`, not the class), `k_TileRadarColour`, test vectors from C-0002 |
 | 3 | 2026-11-06 | RE-15 | §5: OB-090, the weapon icon for weapon 0 (flight 19 as the first flight of a run) shows colour B2h (C-0069) |
 | 4 | 2026-11-06 | RE-18 (Spec author) | §5: the low-armour and missile-column quirks mirrored as OB-142 (no behaviour change) |
+| 5 | 2026-11-06 | RE-19 (Spec author) | §8: the infra-red question answered by pointer to flow/flight-screens §4.5.1 rev 7 (E2 return to mode 1 confirmed, U-530; no behaviour change here) |

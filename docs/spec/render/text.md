@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `render/text` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 (pixel-exact glyph shapes, advances and positions); T2 for the timing of §4.3 and §4.5.2 |
 | **Confidence** | CONFIRMED (static analysis of every text routine in `file0001`; three oracle frames matched with 0 pixel differences, §6) |
 | **Tasks** | M2-08, M5-01 |
-| **Unknowns** | U-037 (resolved by this spec), U-061, U-062 |
+| **Unknowns** | U-037 (resolved by this spec), U-061; U-062 and U-521 (resolved, §4.3, rev 5) |
 
 ## 1. Summary
 
@@ -141,6 +141,17 @@ So the first inked column of a string drawn at x is x + 2 (for a normal letter).
 
 Opaque. For each character: draw it (as §4.2), advance, then draw at the new pen position either the **cursor** (glyph 27, a solid 5×5 block in the ink colour) or, after the last character, a space (which erases the cursor), then wait for `Gfx_WaitRetraceBit` (`051A:0000`: returns as soon as the VGA status bit 3 is set, so at most one frame and possibly no wait at all; U-062). The next character overwrites the cursor.
 
+**Cadence (U-521, U-062; measured at P1 in C-0270..C-0291).** The character is drawn *before* the wait, so the call's timing depends on where in the frame it starts:
+
+1. Drawing a character and its cursor takes about 0.03 frame, longer than the vertical-retrace pulse, so every wait lasts until the next retrace: **one character per frame**. A character drawn right after a retrace (in the vertical blank) is first shown in the next frame.
+2. **The first character of a call that starts mid-frame** (after a fade or a `Crt.Delay`) is shown in that same frame only if the beam has not yet reached its top row (pen y + 1; in mode 13h row r is scanned at 2r/449 of the frame, the retrace at about 412/449). Otherwise it first shows in the next frame **together with the second character**, which is drawn just after the retrace that ends the frame of the first. A call that starts after the retrace of a frame (in its vertical blank) counts as starting at the next frame's top.
+3. **Back to back:** a call that follows another typed line directly starts right after the retrace that ended the previous line, so its first character shows in the frame after the previous line's last one; a run of lines is typed at one character per frame with no gap.
+4. **After a fade-in:** the last level's writes end 0.3–0.45 frame into the frame before the one in which the level is first shown complete ([flow/screens §2.1](../flow/screens.md)); every typed screen's first line lies at pen y ≤ 75, which the beam has already passed, so the **frame that first shows the last level complete (34 frames after the fade starts) shows the first two characters** (rule 2). Measured on the assignment orders (C-0273 f2290), both dossiers (C-0270 f2947, C-0271 f2977), the debriefs (C-0274 f3105) and hint 2 (C-0273 f3484).
+5. **After `Crt.Delay(n)`:** the delay starts at the retrace that ends frame F, the frame that shows the previous line's last character, and lasts about n ms plus the interrupt handlers' time (with music: about 0.6 % more, ±0.3 frame from call to call). Measured: n = 500 always puts the next line's first character in frame F + 36, n = 2000 in F + 142; whether that frame shows one or two characters follows rule 2 and is listed per line in [flow/screens §3.13](../flow/screens.md).
+6. **Missed retraces.** Now and then an interrupt handler (the WORX timer at 96 Hz while music plays) runs through the whole retrace pulse, the wait misses it and one character takes two frames: one in about 800 typed frames (C-0273 f2405, the orders' 116th character; C-0282 f3410; C-0289 f2487). Not modelled (T2).
+
+Port rule (Classic, T2): type in frames counted from the screen's fade start; put characters 1 and 2 of the first line in the frame of the last fade level; then one character per frame through every back-to-back line; after `Crt.Delay(n)` start the next line in frame F + 1 + round(n × 0.0705) (35 + 1 for 500 ms, 141 + 1 for 2000 ms) with the number of characters screens §3.13 gives. The port's frames then equal the original's until the first missed retrace, after which the original runs one frame behind.
+
 ### 4.4 Title text (`Txt_DrawTitle`, `051A:042A`)
 
 For each character (after upper-casing): if it is not a space, build an 8×8 mask from the glyph (pixels equal to `F7h`), or the `.`/`,` shape; plot every set pixel at (pen + 1 + col, y + 1 + row) in the ink colour; then advance (§3.4). Transparent: unset pixels are not touched.
@@ -234,12 +245,12 @@ All from C-0002 (preset P1), compared pixel by pixel with a scratch renderer wri
 
 ## 7. Presentation and audio hooks
 
-None. Typed text paces itself on vertical retrace (§4.3): one character per frame in the oracle (C-0002 f2463..2573, 110 characters in 110 frames); it makes no sound.
+None. Typed text paces itself on vertical retrace (§4.3): one character per frame in the oracle (C-0002 f2463..2573, 110 characters in 110 frames), two in the first frame of a line that starts mid-frame, and now and then one frame lost to a missed retrace (§4.3 items 2 and 6); it makes no sound.
 
 ## 8. Open questions
 
 - [ ] U-061: what lies before the font block in practice (only matters for exactness of unsupported characters).
-- [ ] U-062: frames per typed character on hardware (the oracle: one per frame, §7).
+- [x] U-062, U-521: the cadence at P1 is §4.3 items 1–6 (RE-19). On real hardware the same rules hold with that machine's retrace and drawing times; a machine much slower than P1 (a character taking more than a frame) would type more slowly.
 - [ ] Episode 2/3 copies of these routines were not compared byte for byte (the dialogue players use the same calls).
 
 ## 9. Provenance
@@ -248,7 +259,8 @@ None. Typed text paces itself on vertical retrace (§4.3): one character per fra
 |---|---|---|---|
 | Glyph drawing, punctuation shapes, background byte | `file0001:051A:088F`, `0E8B:40B2`, `0E8B:43A6` | static | CONFIRMED |
 | Advance table, x/y shift | `051A:0B9F`, `051A:0F04`, `051A:1269`, `0E8B:45EF`, `0E8B:4947` | static | CONFIRMED |
-| Typed text and cursor | `051A:1269`, `051A:0000` | static | CONFIRMED (timing U-062) |
+| Typed text and cursor | `051A:1269`, `051A:0000` | static | CONFIRMED |
+| Typing cadence (§4.3 items 1–6) | `051A:1269`, `051A:0000`; C-0270..C-0289 `frames.tsv` (3DAh polls per frame) and every dump (cursor position) | static + capture | CONFIRMED at P1 (items 1–4); item 5 measured per line; item 6 observed, not predictable |
 | Title font map, mask F7h, advance, measure | `051A:042A`, `051A:02D7`, `051A:5852` | static + capture | CONFIRMED |
 | 39 title glyphs loaded | `051A:5852`, `051A:527F`; C-0002 int21 (2,496 bytes) | static + dynamic | CONFIRMED |
 | Caption positions and colours | `051A:1E5A`, `051A:4113`, `051A:471B`, `051A:4F5A`, `051A:2B26` | static | LIKELY (only the dialogue and title screens were compared with captures) |
@@ -263,3 +275,4 @@ None. Typed text paces itself on vertical retrace (§4.3): one character per fra
 | 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author) | §4.5.1: the 14 E1 scene cards do not share one caption layout: per-card pens, shadow styles, inks and waits; `marauder` (15 rows down, one joined caption line) and `voffice` (centred, outlined, entry 216). The rev-1 row applied the hangar layout to all of them (U-311) |
 | 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.2: title-card fade speed depends on the palette left in `g_Palette` (1 or 2 frames per level, BUG-6; C-0002, C-0160, C-0170); 5 s DOS-time hold; typed text one character per frame in the oracle (§7) |
 | 4 | 2026-11-06 | RE-18 (Spec author) | §5: items 3 and 4 mirrored as OB-141 (no behaviour change) |
+| 5 | 2026-11-06 | RE-19 (Archaeologist + Spec author) | §4.3: the typing cadence (U-521, U-062): one character per frame; a line that starts mid-frame (after a fade-in or a `Crt.Delay`) shows its first two characters together in its first frame unless the beam has not reached its rows; back-to-back lines without a gap; after a fade-in the first two characters appear in the frame of the last fade level; `Crt.Delay(500)` → F + 36, `(2000)` → F + 142; missed retraces under interrupt load (about 1 in 800 frames, T2, not modelled). Measured in C-0270..C-0289 (`frames.tsv` 3DAh polls and the cursor position in every dump) |

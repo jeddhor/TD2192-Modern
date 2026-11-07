@@ -238,11 +238,11 @@ Notes:
 | `td1-17.pic` | 320×90 | **no** (current flight palette, `td.pal`) | `0E8B:9860` | (0, VGA row 67) = page-0 row 35, shown as screen rows 35..124 (C-0067, 0 differing pixels; flow/flight-screens §4.10.1) | Cockpit/bridge scene |
 | `td1-18.pic` | 170×104 | yes | `051A:471B` | (76, 20) | Clone tube |
 | `td1-19.pic` | 320×72 | **no** (correct with `td.pal`) | none in E1 | — | Ship over clouds |
-| `td1-20.pic` | 320×100 | yes (byte-identical to `td.pal`); **the game skips it** and keeps `td.pal`, so the result is the same | `051A:4113` (2) | (0, 50) | Laser scene |
+| `td1-20.pic` | 320×100 | yes (byte-identical to `td.pal`); **the game skips it** and keeps `td.pal`, so the result is the same | `051A:4113` (2) | (1, 50): plotted one pixel to the right, column 0 black, the last column off screen (OB-150; C-0276) | Laser scene |
 | `secret.pic` | 320×32 | yes | `051A:2B26` | (1, 0) | Hint banner |
 | `pic4.td` | 100×150 | yes | `051A:4F5A` | (11, 16) | Corridor/room |
 
-Full-screen `.scr` scenes are also drawn one pixel to the right (column 0 of the file at x = 1; the last column falls off screen); `javelin.td` and `city.td` are not. See [asset-load-sites.md](asset-load-sites.md) §4.
+Full-screen `.scr` scenes are also drawn one pixel to the right (column 0 of the file at x = 1; the last column falls off screen), and so is `td1-20.pic` (RE-19, U-522); `javelin.td` and `city.td` are not. See [asset-load-sites.md](asset-load-sites.md) §4.
 
 Code: `td-formats::picture::{STILLS, Picture}`.
 
