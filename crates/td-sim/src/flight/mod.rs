@@ -198,6 +198,8 @@ pub struct Session {
     /// and Tab write it, both for classes 2..8; a class-0/1 flight keeps what the previous
     /// flight of the program run left (`weapons.md` rev 4 §3.2, U-391; BUG-2).
     pub weapon: u8,
+    /// E1's in-flight S toggle ([`Flight::effects_muted`]): a setting of the program run.
+    pub effects_muted: bool,
 }
 
 impl Session {
@@ -224,6 +226,7 @@ impl Session {
             mission: MissionState::default(),
             radar_set2: false,
             weapon: 0,
+            effects_muted: false,
         }
     }
 }
@@ -324,6 +327,12 @@ pub struct Flight {
     /// decided by the user 2026-11-06, the one gameplay fix under Enhanced). Off (Classic) by
     /// default; the host sets it. A setting, not state: not part of the state hash.
     pub enhanced_fixes: bool,
+    /// E1's in-flight S key (tick-order step 34, tested before the chords; globals §5, U-531):
+    /// the original toggles `g_CfgSfx` between 1 (effects off) and 3 (PC speaker). The port
+    /// has no PC-speaker effects (M12-05), so S mutes and unmutes the sound effects instead
+    /// (T3; original-bugs "Port deviations"). The host plays no effect while it is set. A
+    /// setting of the program run ([`Session::effects_muted`]), not part of the state hash.
+    pub effects_muted: bool,
     /// Step to continue at after a modal screen.
     resume_at: u8,
 }
@@ -364,6 +373,7 @@ impl Flight {
             mission: mut logic,
             mut radar_set2,
             weapon,
+            effects_muted,
         } = session;
         ships.reset_records(&mut rng);
         // Step 2: the mission file's classes and path arrays. E1 flight 21 loads none: its
@@ -438,6 +448,7 @@ impl Flight {
         f.ai_player = ai_player;
         f.mission = logic;
         f.radar_set2 = radar_set2;
+        f.effects_muted = effects_muted;
         f
     }
 
@@ -454,6 +465,7 @@ impl Flight {
             mission: self.mission,
             radar_set2: self.radar_set2,
             weapon: self.weapon,
+            effects_muted: self.effects_muted,
         }
     }
 
@@ -531,6 +543,7 @@ impl Flight {
             sound_reset_at: None,
             stop_for_scenes: false,
             enhanced_fixes: false,
+            effects_muted: false,
             resume_at: 1,
         }
     }
@@ -891,6 +904,13 @@ impl Flight {
     /// The difficulty byte wraps at 256 (u8).
     fn cheat_chords(&mut self) {
         use ChordKey::{A, D, H, I, J, K, N, O, R, T, W};
+        // E1: S first, the only test that clears its key byte, so one toggle per make code
+        // (globals §5, U-531); the port mutes the effects instead of switching to the PC
+        // speaker ([`Flight::effects_muted`], T3).
+        if self.episode == Episode::E1 && self.keys.get(FlightKey::S) {
+            self.keys.clear(FlightKey::S);
+            self.effects_muted = !self.effects_muted;
+        }
         let keys = self.keys;
         let held = |letters: &[ChordKey]| letters.iter().all(|&c| keys.chord(c));
         let m = keys.get(FlightKey::M);

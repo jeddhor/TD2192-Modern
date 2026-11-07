@@ -1060,6 +1060,11 @@ impl FlightArena {
         source: Option<(u8, u8)>,
         at: f64,
     ) {
+        // E1's S key turned the effects off (the port's stand-in for the PC speaker, T3):
+        // `Snd_PlayEffect` does nothing.
+        if self.flight.effects_muted {
+            return;
+        }
         let v = self.flight.player.view;
         let view = (v.tile_x as u8, v.tile_y as u8);
         // OB-009: a distance the original cannot compute is "too far"; nothing happens.
