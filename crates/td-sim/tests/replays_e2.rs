@@ -110,3 +110,11 @@ fn flight_19_success_replay() {
 fn flight_20_success_replay() {
     check(20);
 }
+
+/// The homing missile, Tab and the afterburner (VE-5, `tdtool plan --weapons`). Planned with the
+/// homing order of BUG-11; re-plan it (and capture it again) when BUG-11 is fixed.
+#[test]
+fn flight_20_weapons_success_replay() {
+    let data = require_data!();
+    success_replay::check_ending(&data, Episode::E2, 20, "-weapons", false);
+}

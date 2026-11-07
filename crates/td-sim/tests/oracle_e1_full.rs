@@ -145,3 +145,89 @@ fn flight_01_modal_screens_match_oracle() {
         "ve4-e1f1-modals",
     );
 }
+
+/// Missiles, Tab and the afterburner (VE-5, `tdtool plan --weapons`): flight 8 (class 2) with
+/// the volley weapon, one Tab to the missile weapon (kind 4), six missiles and three
+/// afterburner bursts (the burst frame is compared every tick).
+#[test]
+fn flight_08_weapons_matches_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        8,
+        "-weapons",
+        "ve5-e1f08-weapons",
+    );
+}
+
+/// Flight 15 (class 3, the helicopter): one Tab to the missile weapon (kind 5) and all twenty
+/// missiles (VE-5).
+#[test]
+fn flight_15_weapons_matches_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        15,
+        "-weapons",
+        "ve5-e1f15-weapons",
+    );
+}
+
+/// Flight 3 reached through the front end (VE-5): `FILE0001.EXE` at mission 3, Enter at the
+/// menu, the pre-flight story played (title and hangar cards, dialogue 11 with Space, C-0160's
+/// keys), then `e1f03.tdr`. The session comes from program start; the muzzle bytes are the
+/// ones the screens left (OB-017), taken from the capture here and built by the port from its
+/// own screens in `td-flow/tests/front_end_state.rs` against the same capture.
+#[test]
+fn flight_03_after_its_story_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        "ve5-e1f03-story",
+        &[Leg {
+            flight: 3,
+            suffix: "",
+            muzzles: Muzzles::Capture,
+            ends: true,
+        }],
+    );
+}
+
+/// Block 19 in one program run (VE-5, oracle build 3): flight 19 (`e1f19.tdr`, direct start),
+/// the debrief, Esc at the voffice card, then flight 21 (`e1f21.tdr`: no input; it ends itself
+/// after 25 ticks through the end sequence) with the session flight 19 left (episode-program-
+/// flow §4.4 row 19).
+#[test]
+#[ignore = "U-500: at flight 21's setup the original places the ships from path buffers flight 21 \
+            never loads (flight 19 matches; flight 21 diverges at setup in the slots' positions)"]
+fn flights_19_and_21_in_one_run_match_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        "ve5-e1f19-f21",
+        &[
+            Leg {
+                flight: 19,
+                suffix: "",
+                muzzles: Muzzles::DirectStart,
+                ends: true,
+            },
+            Leg {
+                flight: 21,
+                suffix: "",
+                muzzles: Muzzles::Capture,
+                ends: true,
+            },
+        ],
+    );
+}

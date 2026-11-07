@@ -372,6 +372,42 @@ fn mission_3_after_its_story_matches_c0160() {
     assert!(ticks >= 80, "{ticks} records");
 }
 
+/// VE-5's whole flight 3 after its story (scenario `# ve5-e1f03-story`, C-0160's keys up to the
+/// flight, then `e1f03.tdr`): the port's front-end bytes against every per-tick record of the
+/// flight, which `td-sim/tests/oracle_e1_full.rs` flies with the capture's bytes.
+#[test]
+fn mission_3_whole_flight_after_its_story_matches_ve5_capture() {
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let Some(cap) = fs::read_dir(&oracle).ok().and_then(|d| {
+        let mut v: Vec<_> = d.filter_map(|e| e.ok().map(|e| e.path())).collect();
+        v.sort();
+        v.into_iter().rev().find(|p| {
+            fs::read_to_string(p.join("scenario.txt"))
+                .is_ok_and(|s| s.starts_with("# ve5-e1f03-story "))
+        })
+    }) else {
+        eprintln!("SKIPPED: no ve5-e1f03-story capture");
+        return;
+    };
+    let dialogue = |f: u32| {
+        if f.is_multiple_of(40) {
+            vec![Key::SPACE]
+        } else {
+            Vec::new()
+        }
+    };
+    let fe = front_end_at_flight(&data, FrontEnd::direct_start(), 3, dialogue, |_| Vec::new());
+    let b = fs::read(cap.join("mem").join("tick_4467-0000_9DF0_ds.bin")).unwrap();
+    let menu = menu_bytes(&data);
+    let mut ticks = 0;
+    for rec in b.chunks(16 + DS_LEN) {
+        assert_matches_dgroup(&fe, &rec[16..], &menu, "ve5-e1f03-story");
+        ticks += 1;
+    }
+    assert!(ticks > 1600, "{ticks} records");
+}
+
 #[test]
 fn a_block_hands_its_screens_state_to_the_flight() {
     // Without data the screens are unavailable; with it, mission 1 with Space everywhere ends

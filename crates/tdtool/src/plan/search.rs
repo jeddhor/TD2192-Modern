@@ -5,7 +5,8 @@
 //! by a fixed rule whenever a hostile ship lies in the line of fire and no friend does. The
 //! clones are scored ([`score`]) and the best [`BEAM`] distinct ones are kept. A flight whose
 //! player is destroyed or whose mission is lost is dropped; the first one that succeeds ends
-//! the search.
+//! the search. Weapons mode ([`Options::weapons`], VE-5) adds Tab and afterburner taps and
+//! fires missiles by taps (see [`weapons_fire`]).
 
 use rayon::prelude::*;
 use td_sim::flight::{Episode, TickResult};
@@ -28,12 +29,50 @@ const MAX_BACKTRACKS: u32 = 60;
 const MARK_TARGET: u8 = 0x32;
 const MARK_FRIEND: u8 = 0x39;
 
-/// One decision: keypad direction keys, or an F6 tap with every key released.
+/// Search options (`tdtool plan`).
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+    /// Give up after this many ticks.
+    pub max_ticks: u32,
+    /// Print the search's progress.
+    pub verbose: bool,
+    /// Flights kept per decision.
+    pub beam: usize,
+    /// With alt muzzle bytes: tolerate a difference between the two worlds.
+    pub dual: bool,
+    /// Also use the missile weapon (Tab, then Space taps; weapons §4.1) and the afterburner
+    /// (keypad +, classes 2 and 5; flight-model §4.7), with a score bonus for the first missiles
+    /// and bursts so that the plan covers them (VE-5).
+    pub weapons: bool,
+}
+
+/// One decision: keypad direction keys, an F6 tap with every key released, a Tab tap with
+/// every key released, or keypad + tapped in the first tick with direction keys held.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
     Keys(&'static [FlightKey]),
     Comm,
+    Tab,
+    Burn(&'static [FlightKey]),
 }
+
+/// The directions offered with an afterburner tap.
+const BURN_DIRS: [&[FlightKey]; 5] = [
+    &[],
+    &[FlightKey::Kp8],
+    &[FlightKey::Kp2],
+    &[FlightKey::Kp4],
+    &[FlightKey::Kp6],
+];
+
+/// Weapons mode: longest Space hold in ticks. A missile launch clears the Space byte and the
+/// keyboard's auto-repeat would set it again after 500 ms, which a replay cannot express
+/// ([`schedule::MAX_CLEARABLE_HOLD`]).
+const MAX_SPACE_HOLD: u32 = schedule::MAX_CLEARABLE_HOLD;
+/// Weapons mode: score bonus per missile fired and per afterburner burst, for the first few.
+const MISSILE_BONUS: i64 = 40_000;
+const BURST_BONUS: i64 = 30_000;
+const BONUS_CAP: u32 = 3;
 
 const DIRS: [&[FlightKey]; 9] = [
     &[],
@@ -62,6 +101,11 @@ struct Node {
     won: bool,
     /// `alt` no longer matches `flight` (dual mode: both must still succeed on the same tick).
     diverged: bool,
+    /// Consecutive ticks Space has been held (weapons mode).
+    space_held: u32,
+    /// Missiles launched and afterburner bursts started so far (weapons mode).
+    missiles_fired: u32,
+    bursts: u32,
 }
 
 /// Per-flight constants for scoring.
@@ -80,6 +124,8 @@ struct Goals {
     /// an exit): fewer live friends is progress, and the player waits (no distance term)
     /// instead of parking on their path before the phase is 100.
     friends_leave: bool,
+    /// Weapons mode ([`Options::weapons`]).
+    weapons: bool,
 }
 
 /// Escort flights whose phase advances when every friend has gone (E3 §5.6).
@@ -237,6 +283,43 @@ fn want_fire(f: &Flight, world: &World) -> bool {
     line_of_fire(f, world).is_some_and(|m| m != MARK_FRIEND)
 }
 
+/// The missile weapon (4, 5 or 6) of the player's class, if it has one (weapons §3.2).
+fn missile_weapon(f: &Flight) -> Option<u8> {
+    td_sim::flight::tables::player_weapons(f.player.class)
+        .map(|(_, m, _)| m)
+        .filter(|&m| m > 3)
+}
+
+/// Weapons mode: whether Space goes down this tick. With the missile weapon selected, a new
+/// press launches one missile (it clears the Space byte; weapons §4.1, §4.2): press when a
+/// missile is ready and its target is hostile (kinds 4 and 5: the line of fire; kind 6, the
+/// homing missile: the live slot nearest to the launch tile, which it steers to), never two
+/// ticks in a row. With the volley weapon: the fire rule, released for a tick after
+/// [`MAX_SPACE_HOLD`] ticks.
+fn weapons_fire(f: &Flight, world: &World, space_held: u32) -> bool {
+    if f.weapon > 3 {
+        if space_held > 0 || f.missiles == 0 || f.missile_cooldown != 0 || f.mission_over {
+            return false;
+        }
+        if f.weapon == 6 {
+            let v = f.player.view;
+            let (px, py) = (i32::from(v.tile_x) + 4, i32::from(v.tile_y) + 3);
+            return f
+                .ships
+                .0
+                .iter()
+                .filter(|s| s.alive())
+                .min_by_key(|s| {
+                    let (dx, dy) = (i32::from(s.tile_x) - px, i32::from(s.tile_y) - py);
+                    dx * dx + dy * dy
+                })
+                .is_some_and(|s| s.marker == MARK_TARGET);
+        }
+        return want_fire(f, world);
+    }
+    space_held < MAX_SPACE_HOLD && want_fire(f, world)
+}
+
 /// Cells from which a volley can reach a ship on cell `t`: along each principal direction,
 /// 2..=9 cells away while the cells stay open.
 fn firing_cells(world: &World, t: (i16, i16), out: &mut Vec<(i16, i16)>) {
@@ -354,9 +437,9 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
             })
             .min()
             .unwrap_or(0);
-        if near < 256 {
-            s -= near * 20;
-        }
+        // Capped, not cut off: a cut-off makes entering the radius cost score, and the beam
+        // then parks just outside it (VE-5: E3 flight 7 at 261 px from `home17`).
+        s -= near.min(256) * 20;
         if let Some(max) = home_sub_y_max(f.episode, f.number)
             && home_views(f.episode, f.number).contains(&(v.tile_x, v.tile_y))
         {
@@ -386,6 +469,12 @@ fn score(f: &Flight, world: &World, g: &Goals) -> i64 {
     let hp = i32::from(f.player.armour) * 4 + i32::from(f.player.shields);
     s -= i64::from(g.start_hp - hp) * 1_500;
     s
+}
+
+/// Weapons mode: the bonus for the first missiles and afterburner bursts.
+fn weapons_bonus(n: &Node) -> i64 {
+    i64::from(n.missiles_fired.min(BONUS_CAP)) * MISSILE_BONUS
+        + i64::from(n.bursts.min(BONUS_CAP)) * BURST_BONUS
 }
 
 /// One replay tick ([`td_sim::replay::step`]) that also tells whether the comm viewer opened.
@@ -420,20 +509,36 @@ fn expand(
     let mut diverged = node.diverged;
     let mut prev = node.keys.clone();
     let mut inputs = Vec::with_capacity(STEP);
+    let (mut space_held, mut missiles_fired, mut bursts) =
+        (node.space_held, node.missiles_fired, node.bursts);
     for t in 0..STEP {
         let mut down: Vec<FlightKey> = match action {
-            Action::Keys(k) => k.to_vec(),
-            Action::Comm => vec![],
+            Action::Keys(k) | Action::Burn(k) => k.to_vec(),
+            Action::Comm | Action::Tab => vec![],
         };
-        if action == Action::Comm && t == 0 {
-            down.push(FlightKey::F6);
+        match action {
+            Action::Comm if t == 0 => down.push(FlightKey::F6),
+            Action::Tab if t == 0 => down.push(FlightKey::Tab),
+            Action::Burn(_) if t == 0 => down.push(FlightKey::KpPlus),
+            _ => {}
         }
-        if action != Action::Comm && want_fire(&f, world) {
+        let fire = match action {
+            Action::Comm => false,
+            _ if g.weapons => weapons_fire(&f, world, space_held),
+            _ => want_fire(&f, world),
+        };
+        if fire {
             down.push(FlightKey::Space);
         }
+        space_held = if fire { space_held + 1 } else { 0 };
         let w = schedule::word(&prev, &down);
         inputs.push(w);
+        // The bonus counts only what happens before the phase is 100: afterwards the way home
+        // must not compete with it.
+        let (missiles, burst, early) = (f.missiles, f.player.burst_frame, f.mission.phase < 100);
         let (r, comm) = step(&mut f, world, w);
+        missiles_fired += u32::from(early && f.missiles < missiles);
+        bursts += u32::from(early && burst == 0 && f.player.burst_frame != 0);
         if let (Some(a), Some(aw)) = (alt.as_mut(), alt_world) {
             let (ra, comm_a) = step(a, aw, w);
             if !diverged && super::core_hash(a) != super::core_hash(&f) {
@@ -467,6 +572,9 @@ fn expand(
                     score: i64::MAX,
                     won: true,
                     diverged,
+                    space_held,
+                    missiles_fired,
+                    bursts,
                 };
                 n.score = i64::MAX - n.inputs.len() as i64;
                 return Some(n);
@@ -478,7 +586,7 @@ fn expand(
     if diverged && let (Some(a), Some(aw)) = (alt.as_ref(), alt_world) {
         score = score.min(self::score(a, aw, g)) - DIVERGED;
     }
-    Some(Node {
+    let mut n = Node {
         flight: f,
         alt,
         keys: prev,
@@ -487,7 +595,42 @@ fn expand(
         score,
         won: false,
         diverged,
-    })
+        space_held,
+        missiles_fired,
+        bursts,
+    };
+    if g.weapons {
+        n.score += weapons_bonus(&n);
+    }
+    Some(n)
+}
+
+/// The decisions offered from `node`: the nine direction sets, F6 when a transmission waits,
+/// and in weapons mode, before the phase is 100: a Tab tap (class with a missile weapon, the
+/// missile weapon selected, or missiles left while fewer than [`BONUS_CAP`] were fired) and
+/// afterburner taps (classes 2 and 5, no burst running, a principal heading, fewer than
+/// [`BONUS_CAP`] bursts; flight-model §4.7).
+fn actions(node: &Node, weapons: bool) -> Vec<Action> {
+    let f = &node.flight;
+    let mut v: Vec<Action> = DIRS.iter().map(|&d| Action::Keys(d)).collect();
+    if f.mission.comm_pending && super::transmission_waits(f) && !f.comm_request {
+        v.push(Action::Comm);
+    }
+    if weapons && !f.mission_over && f.mission.phase < 100 {
+        if missile_weapon(f).is_some()
+            && (f.weapon > 3 || (f.missiles > 0 && node.missiles_fired < BONUS_CAP))
+        {
+            v.push(Action::Tab);
+        }
+        if matches!(f.player.class, 2 | 5)
+            && f.player.burst_frame == 0
+            && f.player.heading.is_principal()
+            && node.bursts < BONUS_CAP
+        {
+            v.extend(BURN_DIRS.iter().map(|&d| Action::Burn(d)));
+        }
+    }
+    v
 }
 
 /// A coarse key for keeping the beam diverse: position to 8 px, speeds, heading, phase, the
@@ -515,14 +658,14 @@ fn diversity_key(f: &Flight) -> (i16, i16, i16, i16, u8, u8, u32, [u8; 4]) {
 }
 
 /// Searches for a winning plan.
-pub fn plan(
-    setup: &FlightSetup,
-    alt: Option<&FlightSetup>,
-    max_ticks: u32,
-    verbose: bool,
-    beam_width: usize,
-    dual: bool,
-) -> Option<Plan> {
+pub fn plan(setup: &FlightSetup, alt: Option<&FlightSetup>, opts: &Options) -> Option<Plan> {
+    let Options {
+        max_ticks,
+        verbose,
+        beam: beam_width,
+        dual,
+        weapons,
+    } = *opts;
     let world = &setup.world;
     let alt_world = alt.map(|a| &a.world);
     let start = setup.start();
@@ -537,6 +680,7 @@ pub fn plan(
         start_hp: i32::from(start.player.armour) * 4 + i32::from(start.player.shields),
         home_any_phase: home_any_phase(setup.episode, setup.number),
         friends_leave: friends_leave(setup.episode, setup.number),
+        weapons,
     };
     let mut arena: Vec<(usize, Vec<u64>)> = vec![(usize::MAX, vec![])];
     let mut beam = vec![Node {
@@ -548,6 +692,9 @@ pub fn plan(
         inputs: vec![],
         won: false,
         diverged: false,
+        space_held: 0,
+        missiles_fired: 0,
+        bursts: 0,
     }];
     let mut ticks = 0u32;
     // Recent beams (with the arena length and tick count after them) to back off to when every
@@ -562,14 +709,7 @@ pub fn plan(
             .par_iter()
             .enumerate()
             .flat_map_iter(|(i, node)| {
-                let comm = node.flight.mission.comm_pending
-                    && super::transmission_waits(&node.flight)
-                    && !node.flight.comm_request;
-                let mut actions: Vec<Action> = DIRS.iter().map(|&d| Action::Keys(d)).collect();
-                if comm {
-                    actions.push(Action::Comm);
-                }
-                actions
+                actions(node, weapons)
                     .into_iter()
                     .filter_map(|a| {
                         expand(node, a, world, alt_world, &g, dual).map(|mut n| {

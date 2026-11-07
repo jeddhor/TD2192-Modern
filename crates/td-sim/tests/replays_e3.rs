@@ -100,3 +100,17 @@ fn flight_18_success_replay() {
 fn flight_19_success_replay() {
     check(19);
 }
+
+/// Flight 7 after flight 6's replay, as block 6 flies them in one program run (VE-5, M10-30).
+#[test]
+fn flight_07_after_flight_06_success_replay() {
+    let data = require_data!();
+    success_replay::check_after(&data, Episode::E3, 6, 7, false);
+}
+
+/// Flight 21 after flight 11's replay, as block 11 flies them in one program run (VE-5, M10-43).
+#[test]
+fn flight_21_after_flight_11_success_replay() {
+    let data = require_data!();
+    success_replay::check_after(&data, Episode::E3, 11, 21, false);
+}

@@ -126,6 +126,35 @@ enum Command {
         /// open the comm viewer in the same ticks and succeed on the same tick.
         #[arg(long)]
         dual: bool,
+        /// Also use the missile weapon (Tab, Space taps) and the afterburner (keypad +), with a
+        /// bonus for the first missiles and bursts, so that the plan covers them.
+        #[arg(long)]
+        weapons: bool,
+        /// Suffix of the replay file name (`e<E>f<NN><suffix>.tdr`); with --idle it replaces
+        /// `-idle`/`-modals`.
+        #[arg(long)]
+        suffix: Option<String>,
+        /// Original game directory (defaults to $TD2192_DATA).
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
+    /// Turn the tick-keyed key lines of an oracle scenario (`tick:T down|up <key>`, ORACLE.md 5a)
+    /// into a TDR replay of `ticks` ticks of flight `flight` (VE-5: an RE capture's input flown
+    /// in td-sim, U-430).
+    ScheduleReplay {
+        /// The scenario file.
+        scenario: PathBuf,
+        /// The replay file to write.
+        out: PathBuf,
+        /// Flight number.
+        #[arg(long)]
+        flight: u8,
+        /// Episode 1, 2 or 3.
+        #[arg(long, default_value_t = 1)]
+        episode: u8,
+        /// Ticks to write.
+        #[arg(long)]
+        ticks: u32,
         /// Original game directory (defaults to $TD2192_DATA).
         #[arg(long)]
         data: Option<PathBuf>,
@@ -181,14 +210,24 @@ fn main() -> Result<()> {
             alt_muzzles,
             beam,
             dual,
+            weapons,
+            suffix,
             data,
         } => {
             let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
                 .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
             let episode = flight_setup::episode_of(episode)?;
             match probe {
-                Some(ticks) => plan::probe(&root, episode, flight, ticks),
-                None if idle => plan::idle(&root, episode, flight, &out, max_ticks, modals),
+                Some(ticks) => plan::probe(&root, episode, flight, ticks, &out),
+                None if idle => plan::idle(
+                    &root,
+                    episode,
+                    flight,
+                    &out,
+                    max_ticks,
+                    modals,
+                    suffix.as_deref(),
+                ),
                 None => plan::run(
                     &root,
                     episode,
@@ -199,8 +238,23 @@ fn main() -> Result<()> {
                     alt_muzzles.as_deref(),
                     beam,
                     dual,
+                    weapons,
+                    suffix.as_deref().unwrap_or(""),
                 ),
             }
+        }
+        Command::ScheduleReplay {
+            scenario,
+            out,
+            flight,
+            episode,
+            ticks,
+            data,
+        } => {
+            let (root, _) = td_assets::discover_data_dir(data.as_deref(), None)
+                .ok_or_else(|| anyhow::anyhow!("pass --data <dir> or set TD2192_DATA"))?;
+            let episode = flight_setup::episode_of(episode)?;
+            plan::from_schedule(&root, episode, flight, &scenario, &out, ticks)
         }
         Command::Replay {
             file,

@@ -44,13 +44,32 @@ pub struct FlightSetup {
     pub number: u8,
     pub world: World,
     pub mission: Option<Mission>,
+    /// The session the flights flown before it in the same program run left (VE-5: a flight
+    /// that only follows another flight of its block); `None` for the first flight of a run.
+    pub prior: Option<Session>,
+}
+
+/// The flight that comes right before `number` in its mission block, for the flights that no
+/// block starts with: E1 flight 21 follows flight 19 (episode-program-flow §4.4 row 19), E3
+/// flight 7 follows flight 6 and E3 flight 21 follows flight 11 (e3-program-flow §4.4.1,
+/// §4.4.2). Such a flight is reached only after its predecessor ended (by success for E3 7 and
+/// E1 21), so a replay of it continues the predecessor's replay (VE-5).
+pub fn predecessor(episode: Episode, number: u8) -> Option<u8> {
+    match (episode, number) {
+        (Episode::E1, 21) => Some(19),
+        (Episode::E3, 7) => Some(6),
+        (Episode::E3, 21) => Some(11),
+        _ => None,
+    }
 }
 
 impl FlightSetup {
-    /// Loads flight `number` of `episode` (E1 and E2 1..=20, E3 1..=21 without 20).
+    /// Loads flight `number` of `episode` (E1 1..=21, E2 1..=20, E3 1..=21 without 20) as the
+    /// first flight of a program run.
     pub fn load(root: &Path, episode: Episode, number: u8) -> Result<Self> {
         let ok = match episode {
-            Episode::E1 | Episode::E2 => (1..=20).contains(&number),
+            Episode::E1 => (1..=21).contains(&number),
+            Episode::E2 => (1..=20).contains(&number),
             Episode::E3 => (1..=21).contains(&number) && number != 20,
         };
         if !ok {
@@ -76,7 +95,49 @@ impl FlightSetup {
             number,
             world,
             mission,
+            prior: None,
         })
+    }
+
+    /// Loads flight `number` as the flight after the replay `prev` in the same program run:
+    /// `prev` is run from its own start (its predecessor first, if it has one, from the same
+    /// directory) and the session it leaves is this flight's (`Flight::session`; the front end
+    /// between the two flights draws no `Random` when the first one succeeds, e3-program-flow
+    /// §4.3, episode-program-flow §4.3).
+    pub fn load_after(root: &Path, episode: Episode, number: u8, prev: &Path) -> Result<Self> {
+        let bytes = std::fs::read(prev).with_context(|| format!("read {}", prev.display()))?;
+        let r = td_sim::replay::Replay::from_bytes(&bytes)
+            .map_err(|e| anyhow::anyhow!("{}: {e}", prev.display()))?;
+        if episode_of(r.episode)? != episode {
+            bail!("{}: another episode", prev.display());
+        }
+        let first = Self::load_chain(root, episode, r.mission, prev.parent())?;
+        let mut f = first.start();
+        for &w in &r.inputs {
+            td_sim::replay::step(&mut f, &first.world, w);
+        }
+        let mut setup = Self::load(root, episode, number)?;
+        setup.prior = Some(f.session());
+        Ok(setup)
+    }
+
+    /// Loads flight `number` the way its replays fly it: as the first flight of a program run,
+    /// or, for a flight with a [`predecessor`], after the predecessor's replay
+    /// `e<E>f<NN>.tdr` in `dir`.
+    pub fn load_chain(
+        root: &Path,
+        episode: Episode,
+        number: u8,
+        dir: Option<&Path>,
+    ) -> Result<Self> {
+        match predecessor(episode, number) {
+            Some(p) => {
+                let name = format!("e{}f{p:02}.tdr", episode_number(episode));
+                let path = dir.unwrap_or(Path::new(".")).join(name);
+                Self::load_after(root, episode, number, &path)
+            }
+            None => Self::load(root, episode, number),
+        }
     }
 
     /// The replay file stem: `e<E>f<NN>`.
@@ -95,12 +156,15 @@ impl FlightSetup {
         alt
     }
 
-    /// The program-start session of the episode.
+    /// The session the flight starts with: the program start's, or the one the flights before
+    /// it left ([`Self::prior`]).
     pub fn session(&self) -> Session {
-        Session::for_episode(self.episode)
+        self.prior
+            .clone()
+            .unwrap_or_else(|| Session::for_episode(self.episode))
     }
 
-    /// The flight after setup, as the first flight of a program run.
+    /// The flight after setup, with [`Self::session`].
     pub fn start(&self) -> Flight {
         Flight::start(
             self.number,
