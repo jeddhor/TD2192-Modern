@@ -9,9 +9,9 @@
 //! tick was still drawing (before step 19) is compared with the steps that had run (see
 //! `matches`).
 //!
-//! The chord is not ported (decision D5/D9). Its effect at step 34 (armour := 64, missiles :=
-//! 30) is copied into the sim on the ticks that see the keys; M also replays an idle ticker at
-//! step 33 (weapons.md §4.1), so the test holds M on those ticks. The scenario gives the key
+//! The test holds T, I and M on the ticks that see the chord: the port's step 34 (globals §5,
+//! D9) sets armour 64 and missiles 30, and M also replays an idle ticker at step 33
+//! (weapons.md §4.1). The scenario gives the key
 //! frames; frames map to ticks by interpolating the dumps' tick counters, which is exact to
 //! about a tick, so each hold is fitted to the dumps (at most ±3 ticks).
 
@@ -25,7 +25,7 @@ use td_sim::flight::ships::SHIP_SLOTS;
 use td_sim::flight::shots::Muzzles;
 use td_sim::flight::tables::episode1_tile_attributes;
 use td_sim::flight::{TickResult, World};
-use td_sim::{Flight, FlightKey, TickControls};
+use td_sim::{ChordKey, Flight, FlightKey, TickControls};
 use td_test_support::{require_data, require_oracle};
 
 /// First and last frame of the chord holds (scenario `msn-e1f1.txt`).
@@ -211,14 +211,17 @@ fn run_to(f: &mut Flight, world: &World, t: u32, holds: &[(u32, u32)]) -> Sample
 fn tick(f: &mut Flight, world: &World, chord: bool) {
     let mut c = TickControls::default();
     if chord {
+        // T+I+M: step 34 sets armour 64 and missiles 30 (globals §5).
         c.set_down(FlightKey::M);
         c.set_made(FlightKey::M);
+        for k in [ChordKey::T, ChordKey::I] {
+            c.set_chord_down(k);
+            c.set_chord_made(k);
+        }
     }
     assert_eq!(f.tick(world, &c, &mut vec![]), TickResult::Done);
     if chord {
-        // Step 34, T+I+M (globals §5): armour 64, missiles 30.
-        f.player.armour = 64;
-        f.missiles = 30;
+        assert_eq!((f.player.armour, f.missiles), (64, 30), "T+I+M");
     }
 }
 

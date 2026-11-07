@@ -2,7 +2,7 @@
 
 use super::player::{Player, Turn};
 use super::*;
-use crate::input::FlightKey;
+use crate::input::{ChordKey, FlightKey};
 
 /// A 201x201 world where every tile is open.
 fn open_world() -> World {
@@ -462,4 +462,102 @@ fn g_weapon_is_carried_from_flight_to_flight() {
     // A retry of flight 19 keeps it; a class-2 flight sets it again.
     assert_eq!(Flight::start(19, None, &world, f19.session()).weapon, 4);
     assert_eq!(Flight::start(18, None, &world, f19.session()).weapon, 1);
+}
+
+/// The keys of a chord (M is the flight key, the rest chord letters), held and just pressed.
+fn chord(m: bool, letters: &[ChordKey]) -> TickControls {
+    let mut c = if m {
+        held(&[FlightKey::M])
+    } else {
+        TickControls::default()
+    };
+    for &k in letters {
+        c.set_chord_down(k);
+        c.set_chord_made(k);
+    }
+    c
+}
+
+/// Tick-order step 34 (globals §5, D9): the five harmless chords, every tick they are held.
+#[test]
+fn cheat_chords_act_at_step_34() {
+    use ChordKey::{A, D, H, I, J, K, N, O, R, T, W};
+    let w = open_world();
+    let mut ev = vec![];
+    // T+I+M: armour 64, missiles 30.
+    let mut f = flight_with_class(4);
+    f.player.armour = 3;
+    f.missiles = 0;
+    f.tick(&w, &chord(true, &[T, I]), &mut ev);
+    assert_eq!((f.player.armour, f.missiles), (64, 30));
+    // Without M nothing happens; letters alone are not flight keys.
+    let mut f = flight_with_class(4);
+    let before = (f.player.armour, f.missiles);
+    f.tick(&w, &chord(false, &[T, I]), &mut ev);
+    assert_eq!((f.player.armour, f.missiles), before);
+    // H+A+R+D raises the damage multiplier on every tick it is held; J+O+H+N zeroes it.
+    let mut f = flight_with_class(4);
+    assert_eq!(f.difficulty, 1);
+    for _ in 0..3 {
+        f.tick(&w, &chord(false, &[H, A, R, D]), &mut ev);
+    }
+    assert_eq!(f.difficulty, 4);
+    f.tick(&w, &chord(false, &[J, O, H, N]), &mut ev);
+    assert_eq!(f.difficulty, 0);
+    // J+D+W: class 6 and its class-table patch, carried in the session (OB-018).
+    let mut f = flight_with_class(4);
+    f.tick(&w, &chord(false, &[J, D, W]), &mut ev);
+    assert_eq!(f.player.class, 6);
+    assert_eq!((f.classes.max_speed(6), f.classes.accel(6)), (0x1C, 4));
+    assert_eq!(f.session().classes.max_speed(6), 0x1C);
+    // M+K+A+R: class 0, every slot's aggression FFh, difficulty 8, armour 1, shields 0.
+    let mut f = flight_with_class(4);
+    f.tick(&w, &chord(true, &[K, A, R]), &mut ev);
+    assert_eq!(f.player.class, 0);
+    assert!(f.ships.0.iter().all(|s| s.record.aggression == 0xFF));
+    assert_eq!((f.difficulty, f.player.armour, f.player.shields), (8, 1, 0));
+    // A key byte the game cleared (a modal screen) needs a new make code: held letters
+    // without one do nothing after a pause.
+    let mut f = flight_with_class(4);
+    f.player.armour = 3;
+    let mut c = chord(true, &[T, I]);
+    c.set_down(FlightKey::P);
+    c.set_made(FlightKey::P);
+    assert_eq!(f.tick(&w, &c, &mut ev), TickResult::Modal(Modal::Pause));
+    let mut still = held(&[FlightKey::M]);
+    still.set_chord_down(T);
+    still.set_chord_down(I);
+    f.resume(&w, &still, &mut ev);
+    assert_eq!(f.player.armour, 3, "the pause cleared the bytes");
+}
+
+/// E2 and E3 keep only T+I+M (episode-deltas rev 3 §4.1 step 32): the other four do nothing.
+#[test]
+fn later_episodes_keep_only_t_i_m() {
+    use ChordKey::{A, D, H, I, J, K, N, O, R, T, W};
+    // Step 34 alone, on the key bytes these inputs leave (no mission logic runs).
+    let step_34 = |f: &mut Flight, c: &TickControls| {
+        f.keys.update(c);
+        f.cheat_chords();
+    };
+    for ep in [Episode::E2, Episode::E3] {
+        let mut f = flight_with_class(4);
+        f.episode = ep;
+        f.player.armour = 3;
+        step_34(&mut f, &chord(true, &[T, I]));
+        assert_eq!((f.player.armour, f.missiles), (64, 30), "{ep}");
+        let before = f.clone();
+        for c in [
+            chord(false, &[H, A, R, D]),
+            chord(false, &[J, O, H, N]),
+            chord(false, &[J, D, W]),
+            chord(true, &[K, A, R]),
+        ] {
+            step_34(&mut f, &c);
+        }
+        assert_eq!(f.difficulty, before.difficulty, "{ep}");
+        assert_eq!(f.player.class, 4, "{ep}");
+        assert_eq!(f.classes, before.classes, "{ep}");
+        assert!(f.ships.0.iter().all(|s| s.record.aggression == 0), "{ep}");
+    }
 }

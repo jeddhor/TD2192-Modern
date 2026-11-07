@@ -979,6 +979,13 @@ impl Flight {
             self.alert(M1(29));
             self.mission.comm_pending = true;
         }
+        // OB-022 (fix-enhanced, decided by the user 2026-11-06): in the original, Vulture IIs 8
+        // and 9 gone before the player came within 30 tiles leave phase 3 for ever (rule E
+        // needs a live one, U-182), a soft lock. With the Enhanced fixes the flight moves on
+        // to phase 5, as rule C does when they die with the transmission pending.
+        if self.enhanced_fixes && self.dead(&[8, 9]) && self.phase() == 3 {
+            self.set_phase(5);
+        }
         if self.dead(&[15, 16, 17, 18, 3, 4, 5, 6, 8, 9]) && self.phase() == 5 {
             self.alert(M1(30));
             self.set_phase(PHASE_DONE);
@@ -1538,7 +1545,8 @@ impl Flight {
         if self.phase() == 1 && v.tile_y == 70 && v.tile_x > 117 && v.tile_x < 124 {
             self.mission.scene = 19;
             self.player.class = 8;
-            // ASSUMPTION (U-146): "armour := 1" is the player's armour.
+            // "armour := 1" is the player's armour (U-146, resolved: C-0069 compares the
+            // player's armour and weapon every tick across the switch, `oracle_e1_full`).
             self.player.armour = 1;
             let truck = [v.tile_x + 5, v.tile_y + 3, v.sub_x, v.sub_y];
             self.mission.truck = truck;

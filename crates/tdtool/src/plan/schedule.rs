@@ -26,7 +26,7 @@ use crate::flight_setup::{FlightSetup, episode_number};
 #[derive(Debug, Clone, Default)]
 pub struct Plan {
     /// `TickControls` words, tick 1 first.
-    pub inputs: Vec<u64>,
+    pub inputs: Vec<u128>,
     /// Ticks in which the comm viewer opened (1-based), found by running the plan.
     pub comm_ticks: Vec<u32>,
 }
@@ -73,7 +73,7 @@ pub const CLEARABLE: [FlightKey; 6] = [
 pub const MAX_CLEARABLE_HOLD: u32 = 5;
 
 /// The number of ticks in which `key` goes down.
-pub fn presses(inputs: &[u64], key: FlightKey) -> usize {
+pub fn presses(inputs: &[u128], key: FlightKey) -> usize {
     let mut prev = TickControls::default();
     let mut n = 0;
     for &w in inputs {
@@ -88,7 +88,7 @@ pub fn presses(inputs: &[u64], key: FlightKey) -> usize {
 /// down, no joystick, clearable keys held briefly. A plan that presses Tab may select the
 /// missile weapon, and a missile launch clears the Space byte (weapons §4.1): Space is then
 /// clearable too. Returns the first problem.
-pub fn check(inputs: &[u64]) -> Result<()> {
+pub fn check(inputs: &[u128]) -> Result<()> {
     let space_clears = presses(inputs, FlightKey::Tab) > 0;
     let mut prev = TickControls::default();
     let mut held = [0u32; FlightKey::ALL.len()];
@@ -118,7 +118,7 @@ pub fn check(inputs: &[u64]) -> Result<()> {
 }
 
 /// The input word of tick `t` for keys `down`, given the previous tick's keys.
-pub fn word(prev: &[FlightKey], down: &[FlightKey]) -> u64 {
+pub fn word(prev: &[FlightKey], down: &[FlightKey]) -> u128 {
     let mut c = TickControls::default();
     for &k in down {
         c.set_down(k);
@@ -151,7 +151,7 @@ pub fn replay(setup: &FlightSetup, plan: &Plan) -> Replay {
 }
 
 /// Ticks whose comm viewer opened, found by running the inputs.
-pub fn comm_ticks(setup: &FlightSetup, inputs: &[u64]) -> Vec<u32> {
+pub fn comm_ticks(setup: &FlightSetup, inputs: &[u128]) -> Vec<u32> {
     modal_ticks(setup, inputs)
         .into_iter()
         .filter(|&(_, m)| m == Modal::CommViewer)
@@ -160,7 +160,7 @@ pub fn comm_ticks(setup: &FlightSetup, inputs: &[u64]) -> Vec<u32> {
 }
 
 /// Every modal screen the inputs open, with its tick (1-based), found by running them.
-pub fn modal_ticks(setup: &FlightSetup, inputs: &[u64]) -> Vec<(u32, Modal)> {
+pub fn modal_ticks(setup: &FlightSetup, inputs: &[u128]) -> Vec<(u32, Modal)> {
     let mut f = setup.start();
     let mut out = vec![];
     for (i, &w) in inputs.iter().enumerate() {
@@ -201,7 +201,7 @@ pub const COMM_PRESSES: u64 = 260;
 
 /// The oracle scenario lines of a plan (key transitions per tick, presses in the modal
 /// screens it opens).
-pub fn oracle_lines(inputs: &[u64], modals: &[(u32, Modal)]) -> Vec<String> {
+pub fn oracle_lines(inputs: &[u128], modals: &[(u32, Modal)]) -> Vec<String> {
     let comm: Vec<u32> = modals
         .iter()
         .filter(|&&(_, m)| m == Modal::CommViewer)

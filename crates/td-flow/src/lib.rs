@@ -34,4 +34,4 @@ pub use program_e2::Episode2;
 pub use program_e3::Episode3;
 pub use screen::{FLIGHT_TICK_HZ, Flow, FlowContext, RETRACE_HZ, Screen, Transition};
 pub use settings::Settings;
-pub use timing::{DEFAULT_TICK_HZ, FixedStep};
+pub use timing::FixedStep;

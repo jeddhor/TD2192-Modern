@@ -151,13 +151,15 @@ Flight key bytes read by the code (scan code set 1; `+E0` = the grey cursor-bloc
 
 Checked every tick after the player specials. A chord is several key bytes down at once. Recorded for completeness: the port implements none of the hostile ones (AGENTS.md rule 10) and the others only by decision.
 
+Port (IM-22, 2026-11-06, D9): the five harmless chords are tick-order step 34 in `td_sim::Flight` (`cheat_chords`), in both profiles; E2 and E3 keep only T + I + M ([episode-deltas](episode-deltas.md) §4.1 step 32). The letters reach the key table as `td_sim::ChordKey` (not remappable; replay format 3). The chords are tested in the order of this table (U-531). Confirmed against the original: M + K + A + R switches class, armour and shields in the same tick as C-0007 (tick 69) and C-0008 (tick 75) (`oracle_flight.rs`), and T + I + M is the chord C-0010 holds (`oracle_mission.rs`).
+
 | Keys held | Effect | Port |
 |---|---|---|
-| T + I + M | `g_PlayerArmour` := 64, `g_Missiles` := 30 | port as original (D9, user 2026-11-06) |
-| H + A + R + D | DS:13DE += 1 (difficulty/cheat level; also set to 8 by M+K+A+R) | port as original (D9, user 2026-11-06) |
-| J + O + H + N | DS:13DE := 0 | port as original (D9, user 2026-11-06) |
-| J + D + W | player class := 6 and **patches the class table** (max speed of class 6 := 1Ch, accel := 4) | port as original (D9, user 2026-11-06) |
-| M + K + A + R | player class := 0, every slot's record byte +3F6h := FFh, DS:13DE := 8, armour 1, shields 0 | port as original (D9, user 2026-11-06) |
+| T + I + M | `g_PlayerArmour` := 64, `g_Missiles` := 30 | ported as original (D9, user 2026-11-06; IM-22), all episodes |
+| H + A + R + D | DS:13DE += 1 (difficulty/cheat level; also set to 8 by M+K+A+R) | ported as original (D9; IM-22), E1 |
+| J + O + H + N | DS:13DE := 0 | ported as original (D9; IM-22), E1 |
+| J + D + W | player class := 6 and **patches the class table** (max speed of class 6 := 1Ch, accel := 4) | ported as original (D9; IM-22), E1 |
+| M + K + A + R | player class := 0, every slot's record byte +3F6h := FFh, DS:13DE := 8, armour 1, shields 0 | ported as original (D9; IM-22), E1 |
 | E + V + L | `Dos_Exec` of the drive-relabel program with the pilot's name (strings `0E8B:B84F`/`B860`) | **never port** |
 | P + L + A + Y | `Dos_Exec` of the relabel program with the title (strings `0E8B:B86A`/`B874`) | **never port** |
 | (flight 20) view tile x > 170 and y > 170 | `g_PlayerArmour` := 64 | preserve (mission rule) |

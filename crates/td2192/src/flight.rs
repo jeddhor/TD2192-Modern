@@ -97,7 +97,7 @@ use td_sim::flight::explosions::{FIRST_SPRITE, IDLE};
 use td_sim::flight::front_end::{FrontEnd, MenuBytes, direct_start_world, muzzle_world};
 use td_sim::flight::heading::Heading;
 use td_sim::flight::player::Event;
-use td_sim::{Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
+use td_sim::{ChordKey, Flight, FlightKey, Joystick, Modal, TickControls, TickResult, World};
 
 use crate::enhanced::{EnhancedView, SharedView};
 
@@ -115,16 +115,35 @@ fn bindings(settings: &td_flow::Settings) -> Vec<(Key, FlightKey)> {
     settings.controls.flight_keys()
 }
 
+/// A key byte of the original's table the host feeds: a flight key, or a letter only the
+/// cheat chords read (`td_sim::ChordKey`, tick-order step 34, D9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum KeyByte {
+    Flight(FlightKey),
+    Chord(ChordKey),
+}
+
+/// The chord letters with the host keys that set them: the keyboard's own letter keys, except
+/// a letter the player bound to a flight key, which then acts only as that key (so a
+/// rebinding never fires a chord by accident; with the default bindings every chord letter
+/// is free).
+fn chord_keys(binds: &[(Key, FlightKey)]) -> Vec<(Key, ChordKey)> {
+    ChordKey::ALL
+        .into_iter()
+        .filter_map(|k| Key::letter(k.letter()).map(|host| (host, k)))
+        .filter(|(host, _)| binds.iter().all(|(b, _)| b != host))
+        .collect()
+}
+
 /// Turns tick-sampled host key state into the original's make codes, with typematic repeats.
 #[derive(Debug, Default)]
 struct Typematic {
     /// Microseconds each held key has been down.
-    held_us: BTreeMap<FlightKey, u64>,
+    held_us: BTreeMap<KeyByte, u64>,
 }
 
 impl Typematic {
     fn controls(&mut self, input: &TickInput, binds: &[(Key, FlightKey)]) -> TickControls {
-        let tick_us = (1e6 / FLIGHT_TICK_HZ) as u64;
         let mut c = TickControls::default();
         if let Some(p) = input.pad {
             c.set_joystick(Joystick {
@@ -135,33 +154,48 @@ impl Typematic {
             });
         }
         for &(host, key) in binds {
-            let down = input.held.contains(&host);
-            let pressed = input.pressed.contains(&host);
+            let (down, made) = self.key(input, host, KeyByte::Flight(key));
             if down {
                 c.set_down(key);
             }
-            if pressed {
-                c.set_made(key);
-                self.held_us.insert(key, 0);
-                continue;
-            }
-            if !down {
-                self.held_us.remove(&key);
-                continue;
-            }
-            let t0 = *self.held_us.get(&key).unwrap_or(&0);
-            let t1 = t0 + tick_us;
-            self.held_us.insert(key, t1);
-            // A repeat fires at DELAY + n·PERIOD; did one fall in (t0, t1]?
-            let count = |t: u64| {
-                t.checked_sub(TYPEMATIC_DELAY_US)
-                    .map_or(0, |d| d / TYPEMATIC_PERIOD_US + 1)
-            };
-            if count(t1) > count(t0) {
+            if made {
                 c.set_made(key);
             }
         }
+        for (host, key) in chord_keys(binds) {
+            let (down, made) = self.key(input, host, KeyByte::Chord(key));
+            if down {
+                c.set_chord_down(key);
+            }
+            if made {
+                c.set_chord_made(key);
+            }
+        }
         c
+    }
+
+    /// One key byte: whether `host` is down, and whether a make code (the press or a
+    /// typematic repeat) arrived since the previous tick.
+    fn key(&mut self, input: &TickInput, host: Key, key: KeyByte) -> (bool, bool) {
+        let tick_us = (1e6 / FLIGHT_TICK_HZ) as u64;
+        let down = input.held.contains(&host);
+        if input.pressed.contains(&host) {
+            self.held_us.insert(key, 0);
+            return (down, true);
+        }
+        if !down {
+            self.held_us.remove(&key);
+            return (false, false);
+        }
+        let t0 = *self.held_us.get(&key).unwrap_or(&0);
+        let t1 = t0 + tick_us;
+        self.held_us.insert(key, t1);
+        // A repeat fires at DELAY + n·PERIOD; did one fall in (t0, t1]?
+        let count = |t: u64| {
+            t.checked_sub(TYPEMATIC_DELAY_US)
+                .map_or(0, |d| d / TYPEMATIC_PERIOD_US + 1)
+        };
+        (true, count(t1) > count(t0))
     }
 }
 
@@ -472,28 +506,31 @@ pub struct RunState {
 }
 
 impl FlightArena {
-    /// A flight of `episode` as the first of a program run (developer arena).
+    /// A flight of `episode` as the first of a program run (developer arena), Classic.
     pub fn new(
         dir: &DataDir,
         resources: &ExeResources,
         episode: Episode,
         number: u8,
     ) -> Result<Self> {
-        Self::open(dir, resources, episode, number, None)
+        Self::open(dir, resources, episode, number, None, false)
     }
 
     /// Flight `number` of the program run `run` (a fresh Episode 1 run when `None`); the
-    /// episode is the run's.
+    /// episode is the run's. `fixes`: the Enhanced profile's original-bug fixes as the flight
+    /// starts (`Settings::enhanced_fixes`), for the radar table (OB-024); the fixes applied
+    /// per tick follow the settings live.
     pub fn start(
         dir: &DataDir,
         resources: &ExeResources,
         number: u8,
         run: Option<Rc<RefCell<RunState>>>,
+        fixes: bool,
     ) -> Result<Self> {
         let ep = run
             .as_ref()
             .map_or(Episode::E1, |r| r.borrow().session.episode);
-        Self::open(dir, resources, ep, number, run)
+        Self::open(dir, resources, ep, number, run, fixes)
     }
 
     fn open(
@@ -502,6 +539,7 @@ impl FlightArena {
         ep: Episode,
         number: u8,
         run: Option<Rc<RefCell<RunState>>>,
+        fixes: bool,
     ) -> Result<Self> {
         let last = match ep {
             Episode::E1 | Episode::E3 => 21,
@@ -553,8 +591,11 @@ impl FlightArena {
         let mut flight = Flight::start(number, mission.as_ref(), &world, session);
         // The host shows the mission events' real-time screens inside the tick.
         flight.stop_for_scenes = true;
-        // E2: the map-set-2 colours replace the table for the rest of the run (OB-024).
-        let radar_id = match (ep, flight.radar_set2) {
+        flight.enhanced_fixes = fixes;
+        // E2: the map-set-2 colours replace the table for the rest of the run (OB-024,
+        // preserved in Classic); the Enhanced fixes restore it for map set 1.
+        let radar_set2 = radar_set2_shown(ep, number, flight.radar_set2, fixes);
+        let radar_id = match (ep, radar_set2) {
             (Episode::E2, false) => "e2.hud.radar_tile_colours",
             (Episode::E2, true) => "e2.hud.radar_tile_colours_set2",
             // E3 never copies the second table (e3-mission-setup §3.1).
@@ -591,7 +632,7 @@ impl FlightArena {
                 ticker_texts.insert(id, texts);
             }
         }
-        let screens = FlightScreenAssets::load_episode(dir, resources, ep, flight.radar_set2)?;
+        let screens = FlightScreenAssets::load_episode(dir, resources, ep, radar_set2)?;
         let board = {
             let mut fresh = TargetBoard::default();
             let mut shared = run.as_ref().map(|r| r.borrow_mut());
@@ -668,8 +709,11 @@ impl Screen for FlightArena {
     }
 
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
-        // The bindings may change in the options screen at any time (M11-03).
+        // The bindings may change in the options screen at any time (M11-03), and so may the
+        // profile: the Enhanced original-bug fixes apply from the next tick.
         self.binds = bindings(ctx.settings);
+        let fixes = ctx.settings.enhanced_fixes();
+        self.flight.enhanced_fixes = fixes;
         // The original reads the joystick only when it is the chosen controller; the port
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
@@ -713,8 +757,6 @@ impl Screen for FlightArena {
                 ModalStep::Close { abort } => {
                     let menu = matches!(screen, FlightModal::Menu(_));
                     let scene = matches!(screen, FlightModal::Interlude(_));
-                    // The ship library and the comm screen leave td.shp record 0 in bank slot
-                    // 0 (flight-screens rev 2 §4.9; OB-057, preserved).
                     let record0 = match screen {
                         FlightModal::Menu(m) => m.library_shown(),
                         FlightModal::Comm(_) => true,
@@ -722,11 +764,8 @@ impl Screen for FlightArena {
                     };
                     self.screen = None;
                     self.modal = None;
-                    if record0 && self.sprites.reload_record0() {
-                        match self.sprites.build() {
-                            Ok((ships, bank)) => (self.ships, self.bank) = (ships, bank),
-                            Err(e) => tracing::warn!("sprite slot 0 reload: {e}"),
-                        }
+                    if record0 {
+                        self.record0_reloaded(fixes);
                     }
                     if abort {
                         // Quit: g_MissionAborted := 1; the tick then leaves the loop.
@@ -779,8 +818,9 @@ impl Screen for FlightArena {
             // 14. Palette effects, in the mode the step saw (Alt acts later, at step 33), from
             // the hit-flash level the step found (hit-flash.md §4.3).
             self.dac.set_hit_flash(self.flight.frame.hit_flash);
+            // OB-032: the Enhanced fixes restore mode 2 after a white flash.
             self.dac
-                .step(&self.palette, mode, self.flight.frame.white_flash);
+                .step(&self.palette, mode, self.flight.frame.white_flash, fixes);
             r
         };
         while let TickResult::Modal(m) = result {
@@ -800,9 +840,16 @@ impl Screen for FlightArena {
             result = self.flight.resume(&self.world, &c, &mut self.events);
             self.issue_sounds(ctx, start, now, now);
         }
-        // 33. Alt toggled infra-red: the start formula of the new mode.
+        // 33. Alt toggled infra-red: the start formula of the new mode. E2 back into mode 1
+        // rewrites only DAC 255 and 37 (OB-023, BUG-9; preserved in Classic, fixed by the
+        // Enhanced fixes).
         if self.flight.palette_mode != mode {
-            self.dac.toggle(&self.palette, self.flight.palette_mode);
+            if self.flight.episode == Episode::E2 && !fixes {
+                self.dac
+                    .toggle_e2_classic(&self.palette, self.flight.palette_mode);
+            } else {
+                self.dac.toggle(&self.palette, self.flight.palette_mode);
+            }
         }
         // E3 flight 16: the event routine (after step 24) started the tint in this tick.
         if !tinted && self.flight.mission.tint && self.screen.is_none() {
@@ -836,6 +883,20 @@ impl Screen for FlightArena {
 }
 
 impl FlightArena {
+    /// After the ship library or the comm screen: both re-read `td.shp` record 0 into bank
+    /// slot 0 (flight-screens rev 2 §4.9), which in E1 flight 20 replaces lander piece 0 for
+    /// the rest of the flight (OB-057, preserved in Classic). With the Enhanced fixes the
+    /// flight keeps its own slot 0.
+    fn record0_reloaded(&mut self, fixes: bool) {
+        if fixes || !self.sprites.reload_record0() {
+            return;
+        }
+        match self.sprites.build() {
+            Ok((ships, bank)) => (self.ships, self.bank) = (ships, bank),
+            Err(e) => tracing::warn!("sprite slot 0 reload: {e}"),
+        }
+    }
+
     /// `Snd_PlayEffect` for the sounds the last `tick`/`resume` call requested,
     /// `self.events[start..]`: those before tick-order step 26 at time `before`, then the
     /// priority reset (step 26: idle again when WORX reports no sound playing), then the rest at
@@ -875,7 +936,7 @@ impl FlightArena {
         };
         let sound = self.effects.get(&kind).cloned();
         let starts = self.voice.request(kind, dist, sound.as_deref(), at);
-        let polyphonic = ctx.settings.audio.sfx_mode == SfxMode::Polyphonic;
+        let polyphonic = ctx.settings.effective_sfx_mode() == SfxMode::Polyphonic;
         if starts || (polyphonic && sound.is_some()) {
             ctx.audio.push(AudioCommand::PlayEffect {
                 id: kind,
@@ -1140,7 +1201,26 @@ fn held_controls(input: &TickInput, binds: &[(Key, FlightKey)]) -> TickControls 
             c.set_made(key);
         }
     }
+    for (host, key) in chord_keys(binds) {
+        if input.held.contains(&host) {
+            c.set_chord_down(key);
+            c.set_chord_made(key);
+        }
+    }
     c
+}
+
+/// Whether the radar shows the map-set-2 colours (`k_TileRadarColour`, e2-mission-setup rev 1
+/// §3.1; episode-deltas §4.3). E2 copies them over the table in a set-2 flight and never
+/// restores it, so the session's flag stays set (OB-024, preserved in Classic). With the
+/// Enhanced fixes the table is restored: the flight's own map set decides. E1 and E3 never
+/// copy it.
+fn radar_set2_shown(ep: Episode, number: u8, session_set2: bool, fixes: bool) -> bool {
+    if fixes {
+        ep == Episode::E2 && episode::map_set(ep, number) == 2
+    } else {
+        session_set2
+    }
 }
 
 /// The instruments and the tick they were last stepped for (`draw` may run more or less often
@@ -1382,7 +1462,14 @@ impl td_flow::FlightLauncher for ArenaLauncher {
     }
 
     fn launch(&mut self, ctx: &mut FlowContext<'_>, flight: u8) -> Box<dyn FlightScreen> {
-        match FlightArena::start(ctx.data, ctx.resources, flight, Some(self.run.clone())) {
+        let fixes = ctx.settings.enhanced_fixes();
+        match FlightArena::start(
+            ctx.data,
+            ctx.resources,
+            flight,
+            Some(self.run.clone()),
+            fixes,
+        ) {
             Ok(arena) => Box::new(arena.with_enhanced(self.enhanced.clone())),
             Err(e) => {
                 tracing::error!("flight {flight} could not start: {e:#}");
@@ -1481,6 +1568,53 @@ mod tests {
         // Flights without a slot-0 load are unaffected.
         let mut heli = SpriteSources::load(&dir, Episode::E1, 12).unwrap();
         assert!(!heli.reload_record0());
+    }
+
+    /// OB-057: after the ship library in E1 flight 20, Classic draws lander piece 0 with the
+    /// stock record-0 sprite (preserved); the Enhanced fixes keep the lander's own sprite.
+    #[test]
+    fn ob057_library_reload_only_in_classic() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let lander = dir.read("lander.td").unwrap();
+        let stock = dir.read("td.shp").unwrap();
+        for fixes in [false, true] {
+            let mut arena = FlightArena::new(&dir, &res, Episode::E1, 20).unwrap();
+            let frame = |a: &FlightArena| a.bank.frame(0).map(<[u8]>::to_vec);
+            let before = frame(&arena);
+            assert_eq!(arena.sprites.shp[..RECORD], lander[..RECORD]);
+            arena.record0_reloaded(fixes);
+            let slot0 = arena.sprites.shp[..RECORD].to_vec();
+            if fixes {
+                assert_eq!(slot0, lander[..RECORD], "Enhanced keeps the lander piece");
+                assert_eq!(frame(&arena), before);
+            } else {
+                assert_eq!(slot0, stock[..RECORD], "Classic reloads td.shp record 0");
+                assert_ne!(frame(&arena), before);
+            }
+        }
+    }
+
+    /// OB-024: E2 keeps the map-set-2 radar colours for the rest of the run in Classic; the
+    /// Enhanced fixes show each flight's own set. E1 and E3 never use set 2.
+    #[test]
+    fn ob024_radar_table_restored_only_with_the_fixes() {
+        let set2 = |n| episode::map_set(Episode::E2, n) == 2;
+        let (one, two) = (
+            (1..=20).find(|&n| !set2(n)).unwrap(),
+            (1..=20).find(|&n| set2(n)).unwrap(),
+        );
+        // A set-1 flight after a set-2 flight (session flag set).
+        assert!(radar_set2_shown(Episode::E2, one, true, false), "Classic");
+        assert!(!radar_set2_shown(Episode::E2, one, true, true), "Enhanced");
+        // The set-2 flight itself and a set-1 flight before any set-2 flight.
+        for fixes in [false, true] {
+            assert!(radar_set2_shown(Episode::E2, two, true, fixes));
+            assert!(!radar_set2_shown(Episode::E2, one, false, fixes));
+            assert!(!radar_set2_shown(Episode::E3, one, false, fixes));
+            assert!(!radar_set2_shown(Episode::E1, one, false, fixes));
+        }
     }
 
     #[test]
@@ -1590,6 +1724,40 @@ mod tests {
         assert_eq!(c, want);
     }
 
+    /// D9: the chord letters reach the sim as the keyboard's letter keys, with make codes and
+    /// typematic repeats like the flight keys; a letter bound to a flight key is that key only.
+    #[test]
+    fn chord_letters_reach_the_key_table() {
+        let mut binds = bindings(&td_flow::Settings::default());
+        let letters: Vec<ChordKey> = chord_keys(&binds).iter().map(|&(_, k)| k).collect();
+        assert_eq!(
+            letters,
+            ChordKey::ALL,
+            "every chord letter is free by default"
+        );
+        let k = Key::letter('k').unwrap();
+        let mut t = Typematic::default();
+        let mut first = TickInput::default();
+        first.held.insert(k);
+        first.pressed.push(k);
+        let c = t.controls(&first, &binds);
+        assert!(c.is_chord_down(ChordKey::K) && c.any_made());
+        let held = TickInput {
+            held: first.held.clone(),
+            ..TickInput::default()
+        };
+        let c = t.controls(&held, &binds);
+        assert!(c.is_chord_down(ChordKey::K) && !c.any_made());
+        // K bound to fire: the letter now only fires.
+        binds.push((k, FlightKey::Space));
+        assert!(!chord_keys(&binds).iter().any(|&(_, c)| c == ChordKey::K));
+        let c = t.controls(&first, &binds);
+        assert!(!c.is_chord_down(ChordKey::K) && c.is_down(FlightKey::Space));
+        // After a real-time screen a held letter is set again (held_controls).
+        let c = held_controls(&held, &bindings(&td_flow::Settings::default()));
+        assert!(c.is_chord_down(ChordKey::K) && c.any_made());
+    }
+
     #[test]
     fn typematic_repeats_after_the_delay() {
         let binds = [(Key::SPACE, FlightKey::Space)];
@@ -1601,7 +1769,7 @@ mod tests {
             held: first.held.clone(),
             ..TickInput::default()
         };
-        let made = |c: TickControls| c.to_word() >> 32 != 0;
+        let made = |c: TickControls| c.any_made();
         assert!(made(t.controls(&first, &binds)));
         // 500 ms ≈ 9.6 ticks at 19.2 Hz: no repeat for 9 ticks, then one about every 1.8.
         let repeats: Vec<bool> = (1..=14).map(|_| made(t.controls(&held, &binds))).collect();
@@ -1745,7 +1913,7 @@ mod tests {
         assert!(!line.is_empty(), "the pause line differs from the frame");
         let mut settings = td_flow::Settings::default();
         settings.profile = td_flow::settings::Profile::Enhanced;
-        settings.enhanced.widescreen = td_flow::settings::Widescreen::W16x9;
+        settings.enhanced.widescreen = Some(td_flow::settings::Widescreen::W16x9);
         let mut e = crate::enhanced::Enhanced::new(
             &settings,
             view.clone(),

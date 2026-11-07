@@ -188,7 +188,9 @@ fn real_main() -> Result<()> {
     }
     if let Some(spec) = cli.dev_enhanced.as_deref() {
         settings.profile = td_flow::settings::Profile::Enhanced;
-        settings.enhanced = enhanced::parse_spec(spec).context("--dev-enhanced")?;
+        settings.enhanced = td_flow::settings::EnhancedChoices::chosen(
+            enhanced::parse_spec(spec).context("--dev-enhanced")?,
+        );
     }
     let view = enhanced::SharedView::default();
     let port = td_flow::front::SettingsPort::new();

@@ -140,6 +140,20 @@ These are the original keys. You can change every one of them ([section 6](#6-op
 | P | Pause; any key goes on |
 | S | The original's sound-device switch. Not used by TD2192-Modern yet. |
 
+### The original's cheat keys
+
+The original's cheat key combinations work as they did, under both profiles. Hold all the letters of one at once in flight; it acts for as long as they are held. The letters are the keyboard's own letter keys; a letter you bound to a flight action does only that action.
+
+| Keys | Effect | Episodes |
+|---|---|---|
+| T + I + M | Armour full (64) and 30 missiles | 1, 2, 3 |
+| H + A + R + D | Hits on you do more damage, more for every moment held | 1 |
+| J + O + H + N | Hits on you do no damage | 1 |
+| J + D + W | A faster special ship | 1 |
+| M + K + A + R | You become a slow truck with almost no armour, hits do eight times the damage, and every enemy fires as often as it can | 1 |
+
+The original's debrief calls you a cheater only when the kill totals are impossible (below 0 or above 29,999), which the cheat keys do not cause. Two other combinations in the original changed your disk's volume label; they are left out.
+
 ### Menus and screens
 
 The original menus use the arrow keys (or keypad 8 and 2), Enter or Space to choose, and Escape to go back. Screens that say "hit any key" take any key or a controller button.
@@ -183,7 +197,7 @@ Alt+Enter does **not** switch to fullscreen, because Alt is the infra-red key in
 
 Open the options with **F2** at any time, or from the start screen. Arrow keys move; left and right change a value; Enter opens a page or changes a value; Escape goes back. Changes take effect at once and are saved automatically.
 
-Options marked * are Enhanced features. They can only be changed when the profile is **enhanced** ([section 7](#7-classic-and-enhanced)). Under the classic profile they are greyed out but keep their values.
+Options marked * are Enhanced features. Choosing the **enhanced** profile sets them to the Enhanced preset ([section 7](#7-classic-and-enhanced)), and each can then be changed. Under the classic profile they are greyed out but keep their values.
 
 ### video
 
@@ -191,10 +205,10 @@ Options marked * are Enhanced features. They can only be changed when the profil
 |---|---|---|
 | fullscreen | on, off | Fullscreen at the desktop resolution (F11 also switches it for the session) |
 | scaling | aspect 4x3, integer, stretch | **aspect 4x3** keeps the original 4:3 shape (the 1994 screen had slightly tall pixels); **integer** uses whole-number scaling with square pixels, the sharpest; **stretch** fills the window |
-| widescreen* | off, 16x10, 16x9, 21x9, auto | Shows more of the city to the left and right in flight. Marked **affects gameplay**, because you can see further than in the original. **auto** picks the widest that fits your window |
-| pixel upscaler* | none, scale2x, scale3x, scale4x, xbr2, xbr3, xbr4 | Smooths the pixel art when it is enlarged |
-| dynamic lighting* | off, subtle, full | Light from explosions, shots and engines; **full** adds a night look with shadows from buildings |
-| bloom* | on, off | Bright things glow |
+| widescreen* | off, 16x10, 16x9, 21x9, auto | Shows more of the city to the left and right in flight. Marked **affects gameplay**, because you can see further than in the original. **auto** picks the widest that fits your window. Preset: 16x9 |
+| pixel upscaler* | none, scale2x, scale3x, scale4x, xbr2, xbr3, xbr4 | Smooths the pixel art when it is enlarged. Preset: xbr3 |
+| dynamic lighting* | off, subtle, full | Light from explosions, shots and engines; **full** adds a night look with shadows from buildings. Preset: subtle |
+| bloom* | on, off | Bright things glow. Preset: off |
 
 ### audio
 
@@ -202,7 +216,7 @@ Options marked * are Enhanced features. They can only be changed when the profil
 |---|---|---|
 | music volume | 0 to 100 | |
 | sound volume | 0 to 100 | Sound effects |
-| sound effects | classic, polyphonic | **classic** plays one effect at a time, as the original sound card setup did (a new sound cuts off the last one); **polyphonic** lets several play together |
+| sound effects* | classic, polyphonic | **classic** plays one effect at a time, as the original sound card setup did (a new sound cuts off the last one); **polyphonic** lets several play together. Preset: polyphonic; the classic profile always plays them the original way |
 
 ### controls
 
@@ -220,7 +234,9 @@ To change a binding, move to the cell and press Enter (or South), then press the
 | Setting | Values | What it does |
 |---|---|---|
 | profile | classic, enhanced | See [section 7](#7-classic-and-enhanced) |
-| intro before episode 1 | always, first launch, never | Enhanced only; the classic profile always plays the intro, as the original did |
+| original bug fixes* | on, off | Fixes the small annoyances of the original game listed in [section 8](#8-bugs-of-the-original-game). Preset: on |
+| intro before episode 1 | always, first launch, never | Enhanced only; the classic profile always plays the intro, as the original did. The default is **always**; **never** skips it |
+| restore the enhanced preset* | | Puts every Enhanced option back to the preset |
 
 ### accessibility
 
@@ -236,10 +252,20 @@ The folder or ZIP file the game reads, its file check and the playable episodes,
 
 TD2192-Modern has two **profiles**:
 
-- **Classic** (the default) is the original presentation: 320 × 200 pixels in the original 4:3 shape, the original timing, controls, music and sound effects, and the original rules.
-- **Enhanced** lets you turn on the Enhanced video features one by one. Each starts off. Switching back to Classic turns them all off again, but remembers your choices.
+- **Classic** (the default) is the original presentation: 320 × 200 pixels in the original 4:3 shape, the original timing, controls, music and sound effects, and the original rules, bugs included.
+- **Enhanced** turns on a preset:
+  - 16x9 widescreen;
+  - the xbr3 upscaler;
+  - subtle lighting;
+  - bloom off;
+  - polyphonic sound effects;
+  - every fix for the original's annoyances ([section 8](#8-bugs-of-the-original-game)).
 
-The profile covers only the video features marked *. The sound-effects setting and the accessibility option are separate and work under either profile. No Enhanced feature changes how the game itself plays, except widescreen, which lets you see more.
+  Each option can then be changed on its own. What you change is remembered and kept, also when the preset changes in a later version; **restore the enhanced preset** on the profile page forgets your changes. Switching back to Classic turns every Enhanced option off again, but remembers your choices.
+
+The options marked * belong to the profile. The accessibility option and the intro setting are separate options, off by default (the colour-blind guidance line works under either profile). No Enhanced option changes how the game itself plays, except widescreen, which lets you see more, and one bug fix: Episode 1 flight 8 can no longer get stuck (section 8).
+
+Settings files written by earlier versions still load. There every Enhanced option was saved even if you never touched it, so options saved as off or none count as untouched and get the preset; options you had turned on keep their value.
 
 ### Widescreen
 
@@ -297,14 +323,17 @@ The 1994 game has bugs and quirks. TD2192-Modern records each one it knows about
   - a damaged dialogue file could hang the game;
   - timed screens could vanish at once when the computer clock wrapped round;
   - in Episode 3 a flight-16 effect leaked into later flights after a retry or a loaded game and froze some ships, which could block the campaign.
-- **Fixed in the Enhanced profile only** when it is just an annoyance. Examples:
-  - music restarting from the top between scenes;
-  - colours staying wrong after leaving the infra-red view (Episode 2);
-  - a transmission screen that only a keyboard could close;
-  - no way to cancel typing a save name;
+- **Fixed in the Enhanced profile only** when it is just an annoyance. The Enhanced preset turns these fixes on, and **original bug fixes** on the profile page turns them off again. Under the classic profile the game keeps them, as the original did:
+  - music restarting from the top when the same song is asked for again;
+  - colours staying red after leaving the second infra-red view (Episode 2);
+  - the second infra-red view keeping the white of a flash after a homing missile's kill;
+  - wrong radar colours in Episode 2 flights 1 to 8 after flying one of flights 9 to 20 in the same session;
+  - no way to cancel typing a save name (now Escape cancels it and puts the slot back);
+  - one piece of the lander in Episode 1 flight 20 drawn wrong after looking at the ship library;
+  - Episode 1 flight 8 getting stuck when both Vulture IIs are gone before you get near them (the flight now goes on; this is the only fix that changes play, chosen by the project owner);
   - a fragment of the hoverskid flashing at the bottom of the intro.
 
-  In this version only the last one is fixed (the intro under the enhanced profile). The others are planned, so for now those annoyances remain under both profiles.
+  A controller button closes the transmission screen under both profiles, because controller buttons stand for keyboard keys everywhere.
 - **Left out** when it is hostile or only made sense on a 1994 PC:
   - a path in the original that could change your disk's volume label;
   - memory checks;
