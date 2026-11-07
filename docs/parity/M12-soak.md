@@ -1,6 +1,6 @@
 # Parity: M12-06 replay soak, fuzzing and profiling (2026-11-06, VE-8)
 
-Verifier: VE-8 (Verifier hat; no disassembly, decompiler output or RE exports read; no oracle run). Machine: Intel i7-10700F (8 cores, 16 threads), Windows 11, Rust 1.95.0 release builds unless stated. Other agents were building on the same machine; the CPU load before each timing run is given. Tree under test: this branch (main `7afcae6` plus the commits named below).
+Verifier: VE-8 (Verifier hat; no disassembly, decompiler output or RE exports read; no oracle run). Machine: Intel i7-10700F (8 cores, 16 threads), Windows 11, Rust 1.95.0 release builds unless stated. Other agents were building on the same machine; the CPU load before each timing run is given. Tree under test: this branch, main `7afcae6` plus VE-8's commits, with main `b158e78` (IM-23, RE-19) merged for the second soak run and the gate (the merge did not touch td-formats, td-assets or the replay parser, so the fuzz runs of §3 hold for it).
 
 MDG §11 targets checked here: "Zero panics in 10 h of replay soak; parsers fuzzed for 1 h without failure", "Simulation: exactly the original tick rate", "Memory: under 100 MB RSS", and the Enhanced budget of [presentation §7](../spec/enhanced/presentation.md) (at most 6 ms per frame for the heaviest setting).
 
@@ -10,7 +10,7 @@ MDG §11 targets checked here: "Zero panics in 10 h of replay soak; parsers fuzz
 |---|---|
 | Committed replays, `tdtool replay --verify`, 20 rounds × 68 replays in 16 parallel processes | **PASS**: 1,360 runs in 12.1 s, every replay prints the same result in every run (§2.1) |
 | Committed replays on many threads in one process | **PASS**: 8,704 runs (68 × 16 threads × 8 rounds), every run's checkpoint timeline equal to the single-threaded one (§2.1) |
-| Random-input flights (every flight of every episode, 128 seeds, up to 100,000 ticks; two runs) | **FAIL, one crasher**: 15,616 flights, 1,048,034,502 ticks (15,161 h of game time) twice each, deterministic across runs and threads; **E3 flight 19 panics in tick 4235 with any input**, and two E1 flights (6, 7) panic at the top edge with particular inputs: the same i16 overflow (BUG-18, major) (§2.2) |
+| Random-input flights (every flight of every episode, 128 seeds, up to 100,000 ticks; two runs) | **FAIL, one crasher (BUG-18)**: 15,616 flights, 1,048,034,502 ticks (15,161 h of game time) twice each, deterministic across runs and threads; **E3 flight 19 panics in tick 4235 with any input**, and two E1 flights (6, 7) panic at the top edge with particular inputs: the same i16 overflow (BUG-18, major) (§2.2) |
 | Arithmetic overflow in debug builds | td-sim checks overflow in every profile, so §2.2 covers it; the fuzz tests found two overflows in caller-supplied parser sizes (BUG-15, fixed); debug runs of the real binary found none (§2.3) |
 | Parsers fuzzed | **PASS** after four small fixes (BUG-14..BUG-17): every `td-formats` parser, the ZIP import, the exe-resource extraction and the replay parser (§3) |
 | Enhanced frame cost, heaviest setting (21:9, xbr4, full lighting, bloom) | **PASS on this machine**: median 4.2–4.5 ms, p95 5.1–5.3 ms on 16 threads; median 5.0 / p95 6.1 ms on 6 threads; **over budget on 4 threads** (6.4 / 7.2 ms) (§4) |
