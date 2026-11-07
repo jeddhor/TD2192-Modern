@@ -497,9 +497,10 @@ mod tests {
             sub_x: 16,
             sub_y: 16,
         };
-        f.drawn.shots.0[0] = Shot {
+        // A fresh player shot as drawn (as `shots_muzzle_flashes_and_engines`).
+        f.drawn.shown_shots.0[0] = Shot {
             tile_x: 107,
-            tile_y: 105,
+            tile_y: 106,
             off_x: 16,
             off_y: 16,
             heading: 8,
