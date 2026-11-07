@@ -339,6 +339,36 @@ fn flight_7_completion_by_the_guidance_rule() {
     assert_eq!(f.mission.phase, PHASE_DONE);
 }
 
+/// Flight 8 (§5.8), OB-022: both Vulture IIs gone in phase 3 before the player came near
+/// them. Classic keeps phase 3 for ever (the soft lock, preserved); the Enhanced fix moves on
+/// to phase 5, and the flight then ends as usual (rule F).
+#[test]
+fn flight_8_ob022_soft_lock_only_in_classic() {
+    for fix in [false, true] {
+        let mut f = scripted(8);
+        f.enhanced_fixes = fix;
+        f.mission.phase = 3;
+        // Slots 8 and 9 are gone (every slot of `scripted` is empty); slot 15 still flies.
+        put(&mut f, 15, 7, (20, 20));
+        for _ in 0..3 {
+            f.msn_update();
+        }
+        let phase = f.mission.phase;
+        assert_eq!(phase, if fix { 5 } else { 3 }, "fix {fix}");
+        f.hide(&[15]);
+        f.msn_update();
+        let done = f.mission.phase == PHASE_DONE;
+        assert_eq!(done, fix, "fix {fix}: the flight can be completed");
+    }
+    // With a live Vulture II the rules are the original's under either profile: no shortcut.
+    let mut f = scripted(8);
+    f.enhanced_fixes = true;
+    f.mission.phase = 3;
+    put(&mut f, 8, 8, (200, 10));
+    f.msn_update();
+    assert_eq!(f.mission.phase, 3);
+}
+
 #[test]
 fn flight_7_mine_touch_destroys_the_player() {
     let mut f = scripted(7);

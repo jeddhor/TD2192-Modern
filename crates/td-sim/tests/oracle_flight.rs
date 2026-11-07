@@ -7,8 +7,9 @@
 //! run tick t + 1's turn step, which the comparison allows for. The key bytes physics reads
 //! are taken from that same frame: physics runs at the very end of tick t, after the tick
 //! wait, so the frame just after it holds the bytes it saw (the frame before can be stale at a
-//! key release). The captures switch class 4 → 0 with a cheat
-//! chord, which the port does not implement; the harness copies that change from the original.
+//! key release). The captures switch class 4 → 0 with the M+K+A+R cheat chord (step 34,
+//! globals §5, D9): the harness feeds the recorded bytes of M and the chord letters too, and
+//! the chord's class, armour and shields must match the original's.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -21,7 +22,7 @@ use td_sim::flight::player::{Player, Turn, View};
 use td_sim::flight::shots::Muzzles;
 use td_sim::flight::tables::episode1_tile_attributes;
 use td_sim::flight::{TickResult, World};
-use td_sim::{Flight, FlightKey, TickControls};
+use td_sim::{ChordKey, Flight, FlightKey, TickControls};
 use td_test_support::{require_data, require_oracle};
 
 const BASE: usize = 0x1700;
@@ -127,8 +128,10 @@ fn run(capture: &str, data: &Path, oracle: &Path) -> usize {
         FlightKey::Left,
         FlightKey::Kp6,
         FlightKey::Right,
+        FlightKey::M,
     ];
     let mut compared = 0;
+    let mut switched = 0;
     let last = *ticks.keys().last().unwrap();
     for t in t0..last {
         let (Some(_), Some((next, _))) = (ticks.get(&t), ticks.get(&(t + 1))) else {
@@ -141,12 +144,27 @@ fn run(capture: &str, data: &Path, oracle: &Path) -> usize {
                 c.set_made(k);
             }
         }
+        for k in ChordKey::ALL {
+            if next.key(k.scan_code()) {
+                c.set_chord_down(k);
+                c.set_chord_made(k);
+            }
+        }
+        let class_before = f.player.class;
         assert_eq!(f.tick(&world, &c, &mut vec![]), TickResult::Done);
-        // Class change by the cheat chord (step 34): copy it from the original.
-        if next.class() != f.player.class {
-            f.player.class = next.class();
-            f.player.armour = next.u8(0x398E) as i8;
-            f.player.shields = next.u8(0x398F) as i8;
+        // The cheat chord (step 34) switches the class in the same tick as the original, with
+        // its armour and shields (C-0007 tick 69, C-0008 tick 75). Later armour changes come
+        // from mission ships, which this harness does not fly.
+        assert_eq!(
+            f.player.class,
+            next.class(),
+            "{capture}: class after tick {t}"
+        );
+        if f.player.class != class_before {
+            let ours = (f.player.armour, f.player.shields);
+            let theirs = (next.u8(0x398E) as i8, next.u8(0x398F) as i8);
+            assert_eq!(ours, theirs, "{capture}: armour, shields after tick {t}");
+            switched += 1;
         }
         let s = &f.player;
         let ours = (
@@ -172,6 +190,7 @@ fn run(capture: &str, data: &Path, oracle: &Path) -> usize {
         );
         compared += 1;
     }
+    assert_eq!(switched, 1, "{capture}: one class switch by the chord");
     compared
 }
 

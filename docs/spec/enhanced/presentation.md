@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `enhanced/presentation` |
-| **Revision** | 4 |
+| **Revision** | 5 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, intentional deviation, Enhanced profile only. The Classic profile is unaffected |
 | **Decision** | [ADR-0006](../../adr/0006-enhanced-presentation-pipeline.md); requested by the user, 2026-11-05 |
@@ -20,19 +20,20 @@ None of them changes the simulation, the tick order, RNG use or any Classic outp
 
 ## 2. Settings
 
-A new section in the settings file (`td_flow::Settings`), governed by the top-level profile key. Every key defaults to off, and the Classic profile forces every key off.
+A section in the settings file (`td_flow::Settings`), governed by the top-level profile key. The Classic profile forces every key off. Since rev 5 (decision D5, user 2026-11-06) the Enhanced profile turns on a preset, 16:9, xbr3, subtle lighting and bloom off, and the section holds only the player's explicit choices over it: an absent key takes the preset (spec frontend/port-front-end rev 3 §3.4, which also covers the preset's sound effects and original-bug fixes, and older files).
 
 ```toml
+version = 2               # settings format (frontend/port-front-end §3.4)
 profile = "classic"       # classic | enhanced; default classic (MDG §6.2)
 
-[enhanced]
-widescreen = "off"        # off | "16:10" | "16:9" | "21:9" | "auto" (from the window's aspect)
-upscaler   = "none"       # none | scale2x | scale3x | scale4x | xbr2 | xbr3 | xbr4
-lighting   = "off"        # off | subtle | full
+[enhanced]                # every key optional: absent = the preset
+widescreen = "16:9"       # off | "16:10" | "16:9" | "21:9" | "auto" (from the window's aspect)
+upscaler   = "xbr3"       # none | scale2x | scale3x | scale4x | xbr2 | xbr3 | xbr4
+lighting   = "subtle"     # off | subtle | full
 bloom      = false
 ```
 
-- `profile = "enhanced"` is needed for any `[enhanced]` key to take effect. The profile governs only `[enhanced]` for now; `audio.sfx_mode` is separate.
+- `profile = "enhanced"` is needed for any `[enhanced]` key, or the preset, to take effect.
 - `auto` picks the widest preset whose display aspect does not exceed the window's (1 % tolerance, so 428 is picked on a 16:9 window).
 - Settings apply live; no restart is needed.
 - The options screen (M11) lists widescreen under "affects gameplay (visibility)".
@@ -220,3 +221,4 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 | 2 | 2026-11-05 | main session | Q4-Q7 from IM-12 resolved: `profile` key, static-playfield invariant, mirrored-repeat panels, xBR coverage weights, auto tolerance |
 | 3 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |
 | 4 | 2026-11-06 | IM-16 | §4.3: the pause line is an overlay drawn over the wide frame, like the infra-red notice. §3: fixed-colour marks (the colour-blind guidance line, which takes this pipeline at *W* = 320 under either profile) and the F12 output screenshot at the pipeline's size |
+| 5 | 2026-11-06 | IM-22 | §2: the D5 preset (16:9, xbr3, subtle, bloom off) under the Enhanced profile; `[enhanced]` holds only explicit choices (frontend/port-front-end rev 3 §3.4) |

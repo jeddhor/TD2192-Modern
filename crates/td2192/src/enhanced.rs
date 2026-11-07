@@ -182,7 +182,7 @@ impl Enhanced {
         });
         Self {
             profile: settings.profile,
-            settings: settings.enhanced,
+            settings: settings.enhanced_values(),
             guidance: settings.accessibility.colorblind_guidance,
             view,
             pipeline: Pipeline::default(),
@@ -272,7 +272,7 @@ impl Enhanced {
     /// read again.
     pub fn apply(&mut self, settings: &Settings) {
         self.profile = settings.profile;
-        self.settings = settings.enhanced;
+        self.settings = settings.enhanced_values();
         self.guidance = settings.accessibility.colorblind_guidance;
         if let Some(r) = &mut self.reload {
             r.modified = modified(&r.path);
@@ -452,7 +452,7 @@ mod tests {
     fn classic_profile_requests_nothing() {
         let view = SharedView::default();
         let mut settings = Settings::default();
-        settings.enhanced.upscaler = Upscaler::Xbr4;
+        settings.enhanced.upscaler = Some(Upscaler::Xbr4);
         let mut e = Enhanced::new(&settings, view.clone(), None, Box::new(enhanced::NoPost));
         assert!(!e.begin_frame((1920, 1080), ScaleMode::Aspect4x3));
         assert_eq!(view.borrow().request, None);
@@ -497,10 +497,10 @@ mod tests {
     fn the_output_is_kept_only_when_asked() {
         let settings = Settings {
             profile: Profile::Enhanced,
-            enhanced: EnhancedSettings {
+            enhanced: td_flow::settings::EnhancedChoices::chosen(EnhancedSettings {
                 upscaler: Upscaler::Scale2x,
                 ..EnhancedSettings::default()
-            },
+            }),
             ..Settings::default()
         };
         let mut e = Enhanced::new(

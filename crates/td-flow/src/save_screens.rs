@@ -13,6 +13,10 @@
 //! The original's busy loop handles one key per pass and redraws the highlight on every pass;
 //! here every key waiting in the buffer is handled in the frame it arrives, and the highlight
 //! is redrawn after each change (the pixels are the same).
+//!
+//! OB-056 (fix-enhanced): the original ignores Esc during the name entry, so a slot chosen by
+//! mistake is lost. With [`SaveScreen::esc_cancels_entry`] (the Enhanced profile's original-bug
+//! fixes), Esc puts the slot back as it was and returns to the slot choice.
 
 use std::path::{Path, PathBuf};
 
@@ -125,6 +129,14 @@ enum Phase {
     Done,
 }
 
+/// The chosen slot and the screen as they were before the name entry (OB-056 fix).
+#[derive(Debug, Clone)]
+struct EntryBackup {
+    slot: Slot,
+    name: String,
+    pixels: Box<[u8]>,
+}
+
 /// The save or restore screen.
 #[derive(Debug, Clone)]
 pub struct SaveScreen {
@@ -143,6 +155,10 @@ pub struct SaveScreen {
     keys: Vec<(Key, bool)>,
     pad: Option<Pad>,
     outcome: Option<SaveOutcome>,
+    /// OB-056 fixed: Esc cancels the name entry (Enhanced).
+    esc_cancels: bool,
+    /// The chosen slot as it was before the entry, and the screen then (for the cancel).
+    before_entry: Option<Box<EntryBackup>>,
 }
 
 /// Pen y of slot `s` (1..=10): 19 s − 3.
@@ -177,6 +193,8 @@ impl SaveScreen {
             keys: Vec::new(),
             pad: None,
             outcome: None,
+            esc_cancels: false,
+            before_entry: None,
         };
         // Empty slots (mission 0 or > 20) become mission 0 and show the empty label.
         for i in 0..SLOTS {
@@ -216,6 +234,15 @@ impl SaveScreen {
             tracing::warn!("td.sss unavailable; the save slots are drawn without bars");
         }
         Self::new(kind, pal, font, labels, sss.as_deref(), set)
+    }
+
+    /// With `on`, Esc during the name entry cancels it (OB-056 fixed; the Enhanced profile's
+    /// original-bug fixes, `Settings::enhanced_fixes`). Off, Esc is ignored there, as in the
+    /// original (Classic).
+    #[must_use]
+    pub fn esc_cancels_entry(mut self, on: bool) -> Self {
+        self.esc_cancels = on;
+        self
     }
 
     /// The video memory and DAC as shown.
@@ -366,6 +393,12 @@ impl SaveScreen {
         let SaveKind::Save { mission, kills } = self.kind else {
             return;
         };
+        let i = self.cursor - 1;
+        self.before_entry = Some(Box::new(EntryBackup {
+            slot: self.set.slots.slots[i],
+            name: self.set.names.names[i].clone(),
+            pixels: self.screen.pixels.clone(),
+        }));
         let y = slot_y(self.cursor);
         for xs in CLEARED {
             for x in xs {
@@ -374,7 +407,6 @@ impl SaveScreen {
                 }
             }
         }
-        let i = self.cursor - 1;
         self.set.names.names[i] = " ".repeat(BLANK_NAME);
         self.set.slots.slots[i] = Slot {
             mission,
@@ -386,8 +418,13 @@ impl SaveScreen {
     }
 
     /// One key of the name entry: Backspace, a–z (lower case), 0–9, space, `-`, `.`; Enter
-    /// saves. Everything else, Esc included, is ignored (OB-056).
+    /// saves. Everything else is ignored, Esc included (OB-056) unless the fix is on, where Esc
+    /// cancels the entry.
     fn name_key(&mut self, k: Key, shift: bool) {
+        if k == Key::ESCAPE && self.esc_cancels {
+            self.cancel_entry();
+            return;
+        }
         if k == Key::BACKSPACE {
             self.typed.pop();
         } else if self.typed.len() < MAX_TYPED
@@ -408,6 +445,20 @@ impl SaveScreen {
         } else {
             self.draw_entry();
         }
+    }
+
+    /// OB-056 fixed: the slot and the screen as they were before the entry, the highlight on
+    /// it, and back to the slot choice.
+    fn cancel_entry(&mut self) {
+        if let Some(b) = self.before_entry.take() {
+            let i = self.cursor - 1;
+            self.set.slots.slots[i] = b.slot;
+            self.set.names.names[i] = b.name;
+            self.screen.pixels = b.pixels;
+        }
+        self.typed.clear();
+        self.draw_slot(self.cursor, HIGHLIGHT_INK);
+        self.phase = Phase::Choose;
     }
 
     /// The entry's opaque redraw: mission, kills and name in ink 31 on the field colour.
@@ -643,6 +694,77 @@ mod tests {
         assert_eq!(set.names.names[0], "-", "empty slots get the label");
         assert_eq!(set.slots.slots[9].mission, 0, "21 is normalised");
         assert_eq!(set.slots.slots[9].kills, 5, "kills word kept");
+    }
+
+    /// OB-056: Classic ignores Esc in the name entry (the slot is lost once chosen); with the
+    /// Enhanced fix Esc puts the slot and the screen back and returns to the slot choice.
+    #[test]
+    fn esc_cancels_the_name_entry_only_with_the_fix() {
+        let open = |fix: bool| {
+            let mut s = SaveScreen::new(
+                SaveKind::Save {
+                    mission: 7,
+                    kills: 99,
+                },
+                &Palette::default(),
+                &font(),
+                &labels(),
+                None,
+                set_with(1, 4, 12),
+            )
+            .esc_cancels_entry(fix);
+            settle(&mut s);
+            s.step(&press(Key::DOWN));
+            s
+        };
+        // Classic: Esc is ignored and Enter writes over slot 2.
+        let mut s = open(false);
+        let before = s.screen().pixels.clone();
+        s.step(&press(Key::ENTER));
+        assert!(s.entering_name());
+        s.step(&press(Key::letter('x').unwrap()));
+        s.step(&press(Key::ESCAPE));
+        assert!(s.entering_name(), "Classic: Esc does not cancel");
+        s.step(&press(Key::ENTER));
+        settle(&mut s);
+        let Some(SaveOutcome::Saved(set)) = s.outcome() else {
+            panic!("{:?}", s.outcome());
+        };
+        assert_eq!(set.slots.slots[1].mission, 7, "the old game is lost");
+        // Enhanced: Esc restores the slot and the picture; the choice goes on.
+        let mut s = open(true);
+        s.step(&press(Key::ENTER));
+        s.step(&press(Key::letter('x').unwrap()));
+        s.step(&press(Key::ESCAPE));
+        assert!(!s.entering_name());
+        assert!(s.choosing());
+        assert_eq!(s.screen().pixels, before, "the slot drawn as before");
+        assert_eq!(
+            s.set.slots.slots[1],
+            Slot {
+                mission: 4,
+                kills: 12
+            }
+        );
+        assert_eq!(s.set.names.names[1], " old");
+        // A second Esc leaves without saving.
+        s.step(&press(Key::ESCAPE));
+        settle(&mut s);
+        assert_eq!(s.outcome(), Some(&SaveOutcome::Left));
+        // The restore screen ignores the setting (nothing to cancel).
+        let mut r = SaveScreen::new(
+            SaveKind::Restore,
+            &Palette::default(),
+            &font(),
+            &labels(),
+            None,
+            SaveSet::default(),
+        )
+        .esc_cancels_entry(true);
+        settle(&mut r);
+        r.step(&press(Key::ESCAPE));
+        settle(&mut r);
+        assert_eq!(r.outcome(), Some(&SaveOutcome::Left));
     }
 
     #[test]

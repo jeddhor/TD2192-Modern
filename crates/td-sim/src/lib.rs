@@ -15,7 +15,7 @@ pub mod rng;
 
 pub use flight::{Flight, Modal, TickResult, World};
 pub use hash::{HashState, StateHasher, state_hash};
-pub use input::{FlightKey, Joystick, KeyTable, TickControls};
+pub use input::{ChordKey, FlightKey, Joystick, KeyTable, TickControls};
 pub use real48::Real48;
 pub use replay::Replay;
 pub use rng::BpRandom;

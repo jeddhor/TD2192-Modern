@@ -12,6 +12,11 @@
 //!
 //! `P` below is the flight palette `g_FlightPalette` (`td.pal` as the flight patched it); the
 //! modes never change it. "Round" is the Real48 `Round` of an exact quotient (halves up).
+//!
+//! Two original bugs are fix-enhanced (`docs/spec/original-bugs.md`; the host passes the
+//! Enhanced profile's original-bug fixes): OB-032, the last white-flash frame restores nothing
+//! in mode 2 ([`FlightDac::step`]); OB-023, E2's Alt from mode 2 back to mode 1 rewrites only
+//! DAC 255 and 37 ([`FlightDac::toggle_e2_classic`]; the fix is [`FlightDac::toggle`]).
 
 use td_formats::palette::{Palette, Rgb6};
 
@@ -157,8 +162,9 @@ impl FlightDac {
 
     /// Tick-order step 14 (§4.5.4) in palette `mode`, with the white-flash counter
     /// `flash_frames` (`g_FlashFrames`) as the step read it (4 = first white frame .. 1 =
-    /// restore, 0 = none).
-    pub fn step(&mut self, p: &Palette, mode: u8, flash_frames: u8) {
+    /// restore, 0 = none). In mode 2 the last frame restores nothing (OB-032), unless
+    /// `fix_ob032` (Enhanced), where it writes the mode-2 palette of the Alt toggle.
+    pub fn step(&mut self, p: &Palette, mode: u8, flash_frames: u8, fix_ob032: bool) {
         if self.hit_flash > 0 && mode <= 2 {
             let decay = if mode == 1 { 3 } else { 2 };
             self.hit_flash = self.hit_flash.wrapping_sub(decay);
@@ -206,16 +212,37 @@ impl FlightDac {
                     *d = rgb(63, c.b.into(), c.b.into());
                 }
             }
-            // Mode 2 restores nothing (OB-032, preserved).
-            1 if mode < 2 => self.dac = ir_palette(p, mode),
+            // Mode 2 restores nothing (OB-032, preserved in Classic; fix-enhanced).
+            1 if mode < 2 || fix_ob032 => self.dac = ir_palette(p, mode),
             _ => {}
         }
     }
 
     /// The Alt toggle into `new_mode` (1 or 2; tick-order step 33): the start formula of that
-    /// mode, and the hit flash ends.
+    /// mode, and the hit flash ends. E1 and E3 always; E2 under the Enhanced fixes (OB-023
+    /// fixed, the full mode-1 palette).
     pub fn toggle(&mut self, p: &Palette, new_mode: u8) {
         self.dac = ir_palette(p, new_mode);
+        self.hit_flash = 0;
+    }
+
+    /// E2's Alt toggle as the original runs it (Classic; OB-023, original-bugs.md;
+    /// episode-deltas §4.1 step 31): into mode 2 as [`FlightDac::toggle`]; back into mode 1
+    /// the per-entry loop has lost its body, so only DAC 255 and DAC 37 are rewritten and
+    /// every other entry keeps its mode-2 colour until the next full write (a hit flash
+    /// ending, a white flash, a fade); the hit flash ends.
+    ///
+    /// ASSUMPTION (U-530): DAC 255 gets the mode-1 start formula of P[255] (the write left
+    /// after the loop, with the loop index at 255) and DAC 37 := P[255], as in the full
+    /// toggle; the spec names the two entries, not their values.
+    pub fn toggle_e2_classic(&mut self, p: &Palette, new_mode: u8) {
+        if new_mode != 1 {
+            self.toggle(p, new_mode);
+            return;
+        }
+        let full = ir_palette(p, 1);
+        self.dac.colors[IR_INK_SOURCE] = full.colors[IR_INK_SOURCE];
+        self.dac.colors[IR_INK] = full.colors[IR_INK];
         self.hit_flash = 0;
     }
 
@@ -326,19 +353,19 @@ mod tests {
         let p = pal(&[(10, (40, 20, 30)), (36, (9, 9, 9)), (50, (8, 8, 8))]);
         let mut d = FlightDac::start(&p, 0);
         d.start_hit_flash(5);
-        d.step(&p, 0, 0);
+        d.step(&p, 0, 0, false);
         assert_eq!(d.hit_flash(), 3);
         assert_eq!(d.current().colors[10], c(43, 23, 30));
         assert_eq!(d.current().colors[36], c(9, 9, 9), "36 skipped");
         assert_eq!(d.current().colors[50], c(8, 8, 8), "above 45 untouched");
-        d.step(&p, 0, 0); // 1
-        d.step(&p, 0, 0); // -1 -> 0: restore
+        d.step(&p, 0, 0, false); // 1
+        d.step(&p, 0, 0, false); // -1 -> 0: restore
         assert_eq!(d.hit_flash(), 0);
         assert_eq!(d.current(), &p);
         // Mode 1: decays by 3, ends with truncating shifts (B >> 3, not B / 4).
         let mut d = FlightDac::start(&p, 1);
         d.start_hit_flash(3);
-        d.step(&p, 1, 0);
+        d.step(&p, 1, 0, false);
         assert_eq!(d.current().colors[10], c(5, 2, 3));
         // Mode 2: (3R) >> 1 when it ends; Round when entered by Alt.
         let p2 = pal(&[(5, (41, 0, 0))]);
@@ -346,35 +373,67 @@ mod tests {
         d.toggle(&p2, 2);
         assert_eq!(d.current().colors[5], c(62, 0, 0));
         d.start_hit_flash(10);
-        d.step(&p2, 2, 0);
+        d.step(&p2, 2, 0, false);
         assert_eq!(d.current().colors[5], c(63, 0, 0));
         d.start_hit_flash(1);
         d.hit_flash = 2;
-        d.step(&p2, 2, 0);
+        d.step(&p2, 2, 0, false);
         assert_eq!(d.current().colors[5], c(61, 0, 0));
     }
 
     #[test]
     fn white_flash_frames() {
         let p = pal(&[(10, (40, 20, 30))]);
-        for mode in 0..=2 {
-            let mut d = FlightDac::start(&p, mode);
-            d.start_hit_flash(10);
-            d.step(&p, mode, 4);
-            assert_eq!(d.hit_flash(), 0);
-            assert_eq!(d.current().colors[10], c(63, 63, 63));
-            d.step(&p, mode, 3);
-            assert_eq!(d.current().colors[10], c(63, 63, 30));
-            d.step(&p, mode, 2);
-            assert_eq!(d.current().colors[10], c(63, 30, 30));
-            d.step(&p, mode, 1);
-            let want = match mode {
-                0 => c(40, 20, 30),
-                1 => c(5, 3, 8),
-                _ => c(63, 30, 30), // OB-032: nothing restored
-            };
-            assert_eq!(d.current().colors[10], want, "mode {mode}");
+        for fix in [false, true] {
+            for mode in 0..=2 {
+                let mut d = FlightDac::start(&p, mode);
+                d.start_hit_flash(10);
+                d.step(&p, mode, 4, fix);
+                assert_eq!(d.hit_flash(), 0);
+                assert_eq!(d.current().colors[10], c(63, 63, 63));
+                d.step(&p, mode, 3, fix);
+                assert_eq!(d.current().colors[10], c(63, 63, 30));
+                d.step(&p, mode, 2, fix);
+                assert_eq!(d.current().colors[10], c(63, 30, 30));
+                d.step(&p, mode, 1, fix);
+                let want = match (mode, fix) {
+                    (0, _) => c(40, 20, 30),
+                    (1, _) => c(5, 3, 8),
+                    (_, false) => c(63, 30, 30), // OB-032: nothing restored (Classic)
+                    (_, true) => c(60, 0, 0),    // OB-032 fixed: the mode-2 palette
+                };
+                assert_eq!(d.current().colors[10], want, "mode {mode}, fix {fix}");
+            }
         }
+    }
+
+    /// OB-023 (BUG-9): E2 Classic leaves every entry but 255 and 37 red after Alt back into
+    /// mode 1; the full toggle (E1, E3, E2 with the Enhanced fix) writes the whole mode-1
+    /// palette. Into mode 2 both write everything.
+    #[test]
+    fn e2_alt_back_to_mode_1_rewrites_only_255_and_37() {
+        let p = pal(&[(10, (40, 20, 30)), (37, (8, 8, 8)), (255, (50, 40, 36))]);
+        let mut full = FlightDac::start(&p, 1);
+        let mut e2 = FlightDac::start(&p, 1);
+        full.toggle(&p, 2);
+        e2.toggle_e2_classic(&p, 2);
+        assert_eq!(full, e2, "into mode 2: the whole palette in every episode");
+        assert_eq!(e2.current().colors[10], c(60, 0, 0));
+        full.start_hit_flash(5);
+        e2.start_hit_flash(5);
+        full.toggle(&p, 1);
+        e2.toggle_e2_classic(&p, 1);
+        assert_eq!(full.current(), &ir_palette(&p, 1));
+        assert_eq!(full.current().colors[10], c(5, 3, 8));
+        // E2 Classic: entry 10 keeps its mode-2 red; 255 and 37 take the mode-1 values.
+        assert_eq!(e2.current().colors[10], c(60, 0, 0));
+        assert_eq!(e2.current().colors[255], c(6, 5, 9));
+        assert_eq!(e2.current().colors[IR_INK], c(50, 40, 36));
+        assert_eq!((full.hit_flash(), e2.hit_flash()), (0, 0));
+        // The red stays until a full write: here a hit flash ending in mode 1.
+        e2.start_hit_flash(3);
+        e2.step(&p, 1, 0, false);
+        assert_eq!(e2.current().colors[10], c(5, 2, 3));
     }
 
     #[test]
@@ -414,7 +473,7 @@ mod tests {
             );
         }
         // The white flash's last frame restores the untinted colours (§4.7.3).
-        d.step(&p, 0, 1);
+        d.step(&p, 0, 1, false);
         assert_eq!(d.current(), &p);
         // After the Esc menu the tint covers entry 0 as well (OB-049).
         d.faded_in_from_0(&p, 0);

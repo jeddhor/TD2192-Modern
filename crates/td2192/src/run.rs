@@ -252,9 +252,10 @@ fn save_screenshots(fb: &Framebuffer, enhanced: Option<RgbaImage>, user_dir: &Pa
     }
 }
 
-/// The SFX policy of `s`.
+/// The SFX policy of `s`: the original's under Classic, the preset's or the choice under
+/// Enhanced (D5).
 fn sfx_policy(s: &Settings) -> SfxPolicy {
-    match s.audio.sfx_mode {
+    match s.effective_sfx_mode() {
         SfxMode::Classic => SfxPolicy::Classic,
         SfxMode::Polyphonic => SfxPolicy::Polyphonic(8),
     }
@@ -288,7 +289,7 @@ fn apply_settings(
             sfx: new.audio.sfx_volume,
         });
     }
-    if new.audio.sfx_mode != old.audio.sfx_mode {
+    if new.effective_sfx_mode() != old.effective_sfx_mode() {
         mixer.set_policy(sfx_policy(new));
     }
     Ok(())

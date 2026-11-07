@@ -10,7 +10,8 @@
 //! the missile cooldown, the end-of-flight test, mission ships (step 10) and their fire
 //! requests and volleys (`mission-ships.md` rev 2), and per-flight setup (`mission-setup.md`
 //! rev 1), and mission logic (steps 8–9, 15, 18 and the game rules of step 19:
-//! `mission-logic.md` rev 1, see [`logic`]). Cheat chords (34) are not ported (decision D5/D9).
+//! `mission-logic.md` rev 1, see [`logic`]), and the five harmless cheat chords of step 34
+//! (`docs/re/globals.md` §5, decision D9; [`Flight::cheat_chords`]).
 //!
 //! Episodes: one engine flies all three episodes. [`Flight::episode`] selects the setup tables,
 //! the mission logic and the tick-order, weapon and AI deltas of `docs/re/episode-deltas.md`
@@ -49,7 +50,7 @@ use td_formats::map::TileMap;
 use td_formats::mission::Mission;
 
 use crate::hash::{HashState, StateHasher};
-use crate::input::{FlightKey, Joystick, KeyTable, TickControls};
+use crate::input::{ChordKey, FlightKey, Joystick, KeyTable, TickControls};
 use crate::rng::BpRandom;
 pub use episode::Episode;
 use explosions::Explosions;
@@ -314,6 +315,11 @@ pub struct Flight {
     /// tick runs on as if no key changed while the screen showed, which gives the same state
     /// (flight-screens rev 4 §4.10). Not part of the state hash.
     pub stop_for_scenes: bool,
+    /// The Enhanced profile's original-bug fixes (`docs/spec/original-bugs.md`). The only one
+    /// in the simulation is OB-022 (E1 flight 8 also advances when both Vulture IIs are gone;
+    /// decided by the user 2026-11-06, the one gameplay fix under Enhanced). Off (Classic) by
+    /// default; the host sets it. A setting, not state: not part of the state hash.
+    pub enhanced_fixes: bool,
     /// Step to continue at after a modal screen.
     resume_at: u8,
 }
@@ -520,6 +526,7 @@ impl Flight {
             player,
             sound_reset_at: None,
             stop_for_scenes: false,
+            enhanced_fixes: false,
             resume_at: 1,
         }
     }
@@ -786,11 +793,13 @@ impl Flight {
                 .ship_volleys(&self.ships, &world.muzzles, self.episode, events);
         }
         self.ships.clear_fire_requests();
-        // 33–34. The missile cooldown counts down *before* the fire keys are handled (C-0011:
+        // 33. The missile cooldown counts down *before* the fire keys are handled (C-0011:
         // 4, 3, 2, 1, 0 in the ticks after a launch, where weapons.md §2 implies 3, 2, 1, 0),
-        // then weapons and infra-red; the cheat chords checked at step 34 are not ported.
+        // then weapons and infra-red.
         self.missile_cooldown = self.missile_cooldown.saturating_sub(1);
         self.player_specials(world, events);
+        // 34. Cheat chords.
+        self.cheat_chords();
         // Flight 20: view beyond (170, 170) → armour 64, at the end of every tick (mission-logic
         // §5.20; e2-mission-logic §5.20, `td2:0E96:EA00..EA17`; not in E3).
         if self.number == 20
@@ -854,6 +863,58 @@ impl Flight {
             });
             self.player.shields = 0;
             self.player.armour = self.player.armour.wrapping_sub(17);
+        }
+    }
+
+    /// Tick-order step 34, the cheat chords (`docs/re/globals.md` §5; decision D9, user
+    /// 2026-11-06: the five harmless chords exactly as the original, in both profiles). A
+    /// chord is its key bytes all set at once; it acts on every tick it is held.
+    ///
+    /// | Keys | Effect |
+    /// |---|---|
+    /// | T + I + M | armour := 64, missiles := 30 |
+    /// | H + A + R + D | difficulty (DS:13DE, the damage multiplier) += 1 |
+    /// | J + O + H + N | difficulty := 0 (hits on the player do nothing) |
+    /// | J + D + W | player class := 6; class 6's maximum speed := 1Ch and acceleration := 4 (the class tables persist, OB-018) |
+    /// | M + K + A + R | player class := 0; every slot's aggression (record +3F6h) := FFh; difficulty := 8; armour := 1; shields := 0 |
+    ///
+    /// E2 and E3 keep only T + I + M (episode-deltas rev 3 §4.1 step 32). The host-modifying
+    /// E + V + L and P + L + A + Y chords are never ported (AGENTS.md rule 10, OB-001).
+    ///
+    /// ASSUMPTION (U-531): the chords are tested in the order of the table, so when two are
+    /// held at once the later one's writes win (H+A+R+D with M+K: 8; H+A+R+D with J+O+N: 0).
+    /// The difficulty byte wraps at 256 (u8).
+    fn cheat_chords(&mut self) {
+        use ChordKey::{A, D, H, I, J, K, N, O, R, T, W};
+        let keys = self.keys;
+        let held = |letters: &[ChordKey]| letters.iter().all(|&c| keys.chord(c));
+        let m = keys.get(FlightKey::M);
+        if m && held(&[T, I]) {
+            self.player.armour = 64;
+            self.missiles = 30;
+        }
+        if self.episode != Episode::E1 {
+            return;
+        }
+        if held(&[H, A, R, D]) {
+            self.difficulty = self.difficulty.wrapping_add(1);
+        }
+        if held(&[J, O, H, N]) {
+            self.difficulty = 0;
+        }
+        if held(&[J, D, W]) {
+            self.player.class = 6;
+            self.classes.max_speed[6] = 0x1C;
+            self.classes.accel[6] = 4;
+        }
+        if m && held(&[K, A, R]) {
+            self.player.class = 0;
+            for s in &mut self.ships.0 {
+                s.record.aggression = 0xFF;
+            }
+            self.difficulty = 8;
+            self.player.armour = 1;
+            self.player.shields = 0;
         }
     }
 

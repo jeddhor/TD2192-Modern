@@ -155,8 +155,8 @@ const E1_IDS: Ids = Ids {
     ],
 };
 
-/// E2. ASSUMPTION(U-313): the ship library draws the E2 strings with E1's line table and
-/// hatching (episode-deltas §6 gives only which E2 entries are hidden).
+/// E2. The ship library draws the E2 strings at E1's pens and inks (flow/e2-flight-screens
+/// rev 1 §3.3, U-313 resolved; C-0044, `tests/e2_flight_screens.rs`).
 const E2_IDS: Ids = Ids {
     ship_library: "e2.ship_library",
     comm_prompts: "e2.comm.prompts",
