@@ -291,4 +291,19 @@ Agents never do these steps. They are listed so that nothing is forgotten:
 
 Filled in by whoever ran §3–§4; replaced at each release.
 
-**Version 0.9.0, 2026-11-07, IM-27.** The results are in the M13-05 row of [STATUS.md](STATUS.md) and in the hand-over report. The table is filled in once the packages are rebuilt from the merged branch.
+**Version 0.9.0, 2026-11-07, IM-27.** The packages were built from commit `daf2f12` on IM-27's branch, with main `948cc5f` merged. The later commits on the branch change only this record and STATUS, so the packaged files are the same.
+
+| Item | Result |
+|---|---|
+| Toolchain | Rust 1.95.0. Windows: MSVC 14.51 (VS 2026) with the static C runtime. Linux: WSL Ubuntu 22.04.5, CMake 3.22.1. SDL 3.4.18 built from source |
+| Gate (§3.2) | fmt and clippy clean. `cargo test --workspace` without the variables: 958 passed, 0 failed, 9 ignored (75 test binaries). With `TD2192_DATA` and `TD2192_ORACLE`: 958 passed, 0 failed, 9 ignored |
+| Whole-flight L5 | `oracle_e1_full` 29/29, `oracle_e2_full` 21/21, `oracle_e3_full` 23/23; `screens_parity` 18/18; `release` 3/3 |
+| Parity bar (§3.3) | 90.2 % of the Classic items (339 of 376): **below the 1.0 bar**, as expected for a candidate |
+| Windows package | `TD2192-Modern-0.9.0-windows-x64.zip`, 4,608,750 bytes, SHA-256 `91EBD0851D6B8563DA8F707DAF00FBED6CE2F9D83D80AC67B9B07D407105761E`. `td2192.exe` imports only Windows system DLLs (no `VCRUNTIME140`/`MSVCP140`, no `api-ms-win-crt-*`). Console subsystem |
+| Linux package | `TD2192-Modern-0.9.0-linux-x64.tar.gz`, 5,256,063 bytes, SHA-256 `0ccb312d57b28a883a424cb4b7dbe6dbb0787f7827f2ed9a93e17670dbcd02a2`. Entries owned by 0/0, modes 755/644. `ldd`: `libm`, `libstdc++`, `libgcc_s`, `libc` and the loader only. Newest glibc symbol `GLIBC_2.34` |
+| Contents (§3.6) | Both packages hold exactly the nine files of the table, and no game file |
+| Notices | 82 entries for Windows and 78 for Linux, each with its licence text, including `sdl3-src` (SDL, hidapi, yuv2rgb, libm; Wayland protocols on Linux), `ymfm-sys` and the Rust standard library. Every licence is permissive: MIT, Apache-2.0, Zlib, BSD-3-Clause, 0BSD, Unlicense and Unicode-3.0 |
+| Smoke tests, Windows (§4) | Unpacked into a new folder under `%TEMP%`. `--version` gives `td2192 0.9.0` and `tdtool 0.9.0`. `--help` gives the list, exit 0. `--check --data P:\msdos\TD2192\TD2192` gives `218 of 218 files match` and all three episodes playable. Headless E1 flight 1 with the dummy drivers: 25 s, `tick rate now 19.2015 Hz at tick 37`, 19.15 ticks/s on average, about 29 ms per frame (SDL's software renderer), peak working set 67 MB, no warning or error |
+| Smoke tests, Linux (§4) | Unpacked into a new `/tmp` folder, with `XDG_DATA_HOME` pointing at a new, empty folder. The same results; `--check` created `TD2192-Modern/TD2192-Modern/settings.toml` under it. Headless flight: 25 s, 19.19 ticks/s, about 9 ms per frame, no warning or error |
+| Found and fixed | The Windows executable needed the Visual C++ Redistributable (`VCRUNTIME140.dll`, `MSVCP140.dll`), which a new Windows does not have. It now links the static runtime (§3.4) |
+| Not run | §5, the clean-machine tests: Windows Sandbox or a VM, a new WSL distribution or a container, a Linux desktop and a Steam Deck. They are for the project owner |
