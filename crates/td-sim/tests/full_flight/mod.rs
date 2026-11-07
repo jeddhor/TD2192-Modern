@@ -830,12 +830,42 @@ pub fn check_run_with(
         Arc::make_mut(&mut session.paths)
             .apply(leg.front_end, |f| dir.read(f))
             .unwrap();
-        let f = check_leg(l, data, &cap, (i + 1, outcome_dump), leg, r, session);
+        let f = check_leg(l, data, &cap, (i + 1, outcome_dump), leg, r, session, None);
         session = f.session();
     }
 }
 
+/// [`check_run`] for one flight that the player quits from the flight menu (VE-9): the menu
+/// the replay opens in tick `abort` (its Esc) is answered with Quit (flight-screens §4.1:
+/// `g_MissionAborted` := 1), so that tick is the flight's last (tick-order step 35) and the
+/// outcome after teardown is compared.
+pub fn check_abort(l: &Layout, (data, oracle): (&Path, &Path), tag: &str, leg: &Leg, abort: u32) {
+    let Some(r) = replay(l, leg.flight, leg.suffix) else {
+        eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
+        return;
+    };
+    let Some(cap) = find_capture(oracle, tag) else {
+        eprintln!("SKIPPED: no {tag} capture under the oracle root");
+        return;
+    };
+    let session = Session::for_episode(l.episode);
+    let f = check_leg(l, data, &cap, (1, true), leg, &r, session, Some(abort));
+    assert!(f.aborted, "flight {}: not aborted", leg.flight);
+    // E2 `g_MissionAborted` DS:11F2 (e2-program-flow §3), after `g_PlayerDied`.
+    if l.episode == Episode::E2 {
+        let end = fs::read(end_dump(l, &cap, 1)).unwrap();
+        assert_eq!(
+            end[l.lost + 2],
+            1,
+            "flight {}: g_MissionAborted",
+            leg.flight
+        );
+    }
+}
+
 /// Compares one flight (generation `generation` of the capture) and returns its final state.
+/// `abort`: the tick whose flight menu the player quits ([`check_abort`]).
+#[allow(clippy::too_many_arguments)]
 fn check_leg(
     l: &Layout,
     data: &Path,
@@ -844,6 +874,7 @@ fn check_leg(
     leg: &Leg,
     r: &Replay,
     session: Session,
+    abort: Option<u32>,
 ) -> Flight {
     let flight = leg.flight;
     let name = format!(
@@ -934,6 +965,8 @@ fn check_leg(
             // out and back, which zeroes it (hit-flash §4.2; the host's part).
             if m == td_sim::Modal::FlightMenu {
                 f.hit_flash = 0;
+                // Quit (the host's part of the menu): the tick then leaves the loop.
+                f.aborted = abort == Some(t);
             }
             result = f.resume(&world, &td_sim::TickControls::default(), &mut ev);
         }
@@ -961,7 +994,13 @@ fn check_leg(
             );
         };
         let d = dump(i);
-        let errs = differences(&f, &d, has_proj);
+        let mut errs = differences(&f, &d, has_proj);
+        // A quit tick is compared with the stall record taken while the flight menu was
+        // opening (150 ms after the tick began): the Esc that opened it may still be down
+        // there, and the menu clears the key bytes later (flight-screens §4.1).
+        if abort == Some(t) {
+            errs.retain(|e| !e.starts_with("key "));
+        }
         if !errs.is_empty() {
             panic!(
                 "{name} flight {flight}: first divergence after tick {t} (record frame {}), \

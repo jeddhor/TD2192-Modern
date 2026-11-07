@@ -160,6 +160,39 @@ fn dots_diff(hud: &Hud, px: &[u8]) -> usize {
         .count()
 }
 
+/// The E2 and E3 guidance home points the HUD aims at when no marked ship is live (VE-9):
+/// e2-mission-setup rev 1 §6 vector 8 (`home_point_e2`, a later rule wins, flights 8 and 20 by
+/// the view) and e3-mission-setup rev 1 §6 vector 12 (the table the HUD reads,
+/// `td_sim::flight::episode::e3_home_point`). Static vectors; no data needed.
+#[test]
+fn e2_and_e3_home_points_follow_the_spec_vectors() {
+    let view = |x: i32, y: i32| ViewPos {
+        tile_x: x,
+        tile_y: y,
+        sub_x: 32,
+        sub_y: 16,
+    };
+    let e2 = td_render::hud::home_point_e2;
+    assert_eq!(e2(5, view(0, 0)), (189, 37));
+    assert_eq!(e2(6, view(0, 0)), (125, 68));
+    assert_eq!(e2(8, view(102, 100)), (1, 102));
+    assert_eq!(e2(12, view(0, 0)), (92, 28));
+    assert_eq!(e2(20, view(87, 0)), (92, 0));
+    assert_eq!(e2(3, view(0, 0)), (107, 104));
+    let e3 = td_sim::flight::episode::e3_home_point;
+    for (flight, home) in [
+        (3, (172, 68)),
+        (6, (1, 110)),
+        (11, (166, 78)),
+        (13, (41, 46)),
+        (14, (22, 166)),
+        (18, (28, 33)),
+        (21, (22, 166)),
+    ] {
+        assert_eq!(e3(flight), home, "E3 flight {flight}");
+    }
+}
+
 #[test]
 fn c0002_f3543_instruments_match() {
     let data = require_data!();

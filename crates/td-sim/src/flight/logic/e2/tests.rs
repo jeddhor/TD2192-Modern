@@ -155,6 +155,59 @@ fn vector_10_flight_3_arrival() {
     assert!(f.outcome());
 }
 
+/// Vector 11 (VE-9): flight 3's truck destroyed by a projectile at (60, 140) in step 6 of tick
+/// t. Step 8 of t still sees it live (its class goes only in step 10): no change; step 8 of
+/// t + 1 sees it gone: B posts `M1[4]`, phase 100; the teardown outcome is 0 (not on (84, 135)).
+#[test]
+fn vector_11_flight_3_truck_shot_down() {
+    let mut f = scripted(3);
+    put(&mut f, 1, 0, (60, 140));
+    f.ships.0[0].armour = 0;
+    f.e2_update();
+    assert_eq!(f.mission.phase, 1, "step 8 of t: still live");
+    assert_eq!(f.mission.ticker.message, Some(Message::E2Objective(2)));
+    f.ships.0[0].class = NO_SHIP;
+    f.e2_update();
+    assert_eq!(f.mission.phase, PHASE_DONE);
+    assert_eq!(f.mission.ticker.message, Some(Message::E2Flight1(4)));
+    assert!(!f.succeeded);
+    assert!(!f.outcome());
+}
+
+/// Flights 10–20 vector 7 (VE-9; OB-038 preserved, U-245): flight 16's transmission rule C
+/// tests `ticker = 1`. Phase 1, view (130, 140) (player tile (135, 143)), slot 10 live at
+/// (148, 150), the ticker idle: M pressed in tick t restarts the ticker (step 31), so step 9 of
+/// t + 1 posts `M2[10]`, sets comm pending and phase 2. Without M nothing happens.
+#[test]
+fn flights_10_20_vector_7_flight_16_transmission_after_m() {
+    let w = open_world();
+    for press_m in [false, true] {
+        let mut f = scripted(16);
+        // Kane (slot 2) still on his way; otherwise rule B ends the script.
+        put(&mut f, 2, 1, (93, 37));
+        put(&mut f, 10, 8, (148, 150));
+        view(&mut f, 130, 140, 16);
+        f.mission.ticker.pos = 0;
+        f.mission.ticker.message = None;
+        let mut c = crate::input::TickControls::default();
+        if press_m {
+            c.set_down(crate::input::FlightKey::M);
+            c.set_made(crate::input::FlightKey::M);
+        }
+        f.tick(&w, &c, &mut vec![]);
+        assert_eq!(f.mission.phase, 1, "M {press_m}: tick t");
+        f.tick(&w, &crate::input::TickControls::default(), &mut vec![]);
+        if press_m {
+            assert_eq!(f.mission.phase, 2, "t + 1");
+            assert!(f.mission.comm_pending);
+            assert_eq!(f.mission.ticker.message, Some(Message::E2Flight2(10)));
+        } else {
+            assert_eq!(f.mission.phase, 1, "no M: nothing");
+            assert!(!f.mission.comm_pending);
+        }
+    }
+}
+
 /// Vector 13: flight 8's second wave.
 #[test]
 fn vector_13_flight_8_wave_2() {

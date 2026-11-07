@@ -318,6 +318,49 @@ fn flight_17_lost_matches_oracle() {
     );
 }
 
+/// The flight-8 soft lock (U-182, OB-022; RE-20's C-0342, `e1f08-softlock.tdr`): `e1f08.tdr`'s
+/// keys for ticks 1..157 (slots 12 and 13 destroyed, phase 3, the Vulture IIs 8 and 9 spawned
+/// in tick 157), then keypad 6 held: the player flies east to the map limit while slots 8 and
+/// 9 leave by their exits (ticks 788 and 860) with the phase still 3, so the flight can no
+/// longer be won. td-sim keeps the original by default (`Flight::enhanced_fixes` false, the
+/// Classic profile): every tick 1..999 against the capture, the map edge included.
+#[test]
+fn flight_08_soft_lock_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        "re20-e1f08-softlock",
+        &[Leg {
+            flight: 8,
+            suffix: "-softlock",
+            muzzles: Muzzles::DirectStart,
+            ends: false,
+            front_end: &[],
+        }],
+    );
+}
+
+/// Vertical bounces and a map limit in a capture (VE-9; flight-model §4.3, §4.4, collision
+/// rules 1 and 2): `e1f08.tdr`'s keys for ticks 1..157, then keypad 8 held to tick 1,099 (the
+/// ship bounces off the walls north of it some 900 times), keypad 4 held from 1,100: the view
+/// reaches the west limit (tile X 6), is pushed back a tile at a time with the edge alert, and
+/// the enemies destroy the ship; the flight ends in tick 1,453. Every tick and the outcome.
+#[test]
+fn flight_08_bounces_and_west_limit_match_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E1,
+        &data,
+        &oracle,
+        8,
+        "-move",
+        "ve9-e1f08-move",
+    );
+}
+
 /// A flight with no input from setup to its end (VE-9, M12 checklist §0 item 6; `tdtool plan
 /// --idle`, replay `e1f<NN>-idle.tdr`), against the capture `ve9-e1f<NN>-idle` (C-0360..):
 /// every tick, the outcome after teardown.

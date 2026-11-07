@@ -252,6 +252,72 @@ fn flight_10_idle_matches_oracle() {
     idle(10);
 }
 
+/// The player's death in E3 (VE-9): flight 8 on C-0041's keypad route into the hazard cells
+/// (40, 131..133), tick-keyed (`e3f08-death.tdr`: keypad 2 from tick 22, 6 from 38, 8 from 109,
+/// 6 from 252 to 280). The hazard damage (e3-mission-ships §7 vectors 7–9, OB-054) destroys the
+/// ship; the end sequence and its hit flash 17, 15, …, 0 (sim/hit-flash §6 vector 1) are
+/// compared every tick to the end of the flight (297 ticks) and the outcome after teardown.
+#[test]
+fn flight_08_hazard_death_matches_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        8,
+        "-death",
+        "ve9-e3f08-death",
+    );
+}
+
+/// The flight model's LIKELY parts in a capture (VE-9; flight-model §4.3–§4.6, collision rule
+/// 1): flight 9 from the hangar, keypad 4 for ticks 1..149 (against the hangar wall), keypad 2
+/// for 150..349 (vertical bounces off the hangar's south wall, ticks 180..198), keypad 8 and 6
+/// together for 350..499 (the diagonal steering out of the hangar), keypad 8 for 500..649, then
+/// nothing to tick 700. Every tick (the flight does not end).
+#[test]
+fn flight_09_movement_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        "ve9-e3f09-move",
+        &[Leg {
+            flight: 9,
+            suffix: "-move",
+            muzzles: Muzzles::Capture,
+            ends: false,
+            front_end: &[],
+        }],
+    );
+}
+
+/// BUG-18 (U-570; mission-ships rev 8 §4.2.3): flight 19 without input for 4,499 ticks
+/// (RE-20's C-0340, `e3f19-idle.tdr`). Slot 3 (class 0) parks at (102, 199) with its goal on
+/// row 200; its offset Y passes 32,767 in tick 4,235 and wraps to −32,766, then the ship climbs
+/// one row a tick and the row-1 rule removes it in tick 4,433. Every tick against the capture
+/// (the flight does not end).
+#[test]
+fn flight_19_idle_past_the_bottom_edge_wrap_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        "re20-e3f19-idle",
+        &[Leg {
+            flight: 19,
+            suffix: "-idle",
+            muzzles: Muzzles::Capture,
+            ends: false,
+            front_end: &[],
+        }],
+    );
+}
+
 /// e3-mission-logic §7 vector 11: flight 12 without input; truck 4 on (93, 76) at teardown,
 /// outcome 0 (645 ticks).
 #[test]

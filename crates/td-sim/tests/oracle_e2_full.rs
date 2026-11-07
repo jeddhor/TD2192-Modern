@@ -152,6 +152,30 @@ fn flight_18_idle_lost_matches_oracle() {
     idle(18);
 }
 
+/// An aborted E2 flight (VE-9; flight-screens §4.1, e2-program-flow §4.3): flight 7 without
+/// input, Esc in tick 300, Up (cursor 0 → 3, Quit) and Enter in the menu: `g_MissionAborted`
+/// := 1 and the loop ends in tick 300. Every tick (the last against the stall record during
+/// the menu) and the flags after teardown.
+#[test]
+fn flight_07_abort_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let leg = Leg {
+        flight: 7,
+        suffix: "-abort",
+        muzzles: Muzzles::Capture,
+        ends: true,
+        front_end: &[],
+    };
+    full_flight::check_abort(
+        &full_flight::E2,
+        (&data, &oracle),
+        "ve9-e2f07-abort",
+        &leg,
+        300,
+    );
+}
+
 #[test]
 fn flight_20_weapons_matches_oracle() {
     let (data, oracle) = (require_data!(), require_oracle!());
