@@ -575,23 +575,27 @@ pub fn text_card(assets: &StoryAssets, text: &str, left: &Palette) -> StoryScree
 
 /// A story-still set (`051A:4113`, sets 1..4) with three captions; 25 s.
 /// Spec: asset-load-sites §4 (images, `td.pal` first; `td1-20.pic`'s palette is skipped);
-/// text.md §4.5 (caption layouts).
+/// text.md §4.5 (caption layouts). Set 2 (`td1-20.pic`) is plotted one pixel to the right:
+/// byte c of each row at x = 1 + c (c = 0..318), x = 0 black, byte 319 never shown (OB-150,
+/// preserved in every profile; asset-load-sites §4, FORMATS §11, U-522, BUG-13).
 pub fn still_set(
     data: &DataDir,
     assets: &StoryAssets,
     set: u8,
     lines: [&str; 3],
 ) -> Result<StoryScreen, StoryError> {
-    let (name, at) = match set {
-        1 => ("td1-16.pic", (86, 0)),
-        2 => ("td1-20.pic", (0, 50)),
-        3 => ("td1-14.pic", (1, 0)),
-        _ => ("td1-13.pic", (44, 39)),
-    };
-    let mut s = still_screen(data, name, at, Hold::Seconds(25))?;
-    if set == 2 {
+    let mut s = if set == 2 {
+        let mut s = shifted_still(data, "td1-20.pic", (0, 50), Hold::Seconds(25))?;
         s.pal = assets.td_pal.clone();
-    }
+        s
+    } else {
+        let (name, at) = match set {
+            1 => ("td1-16.pic", (86, 0)),
+            3 => ("td1-14.pic", (1, 0)),
+            _ => ("td1-13.pic", (44, 39)),
+        };
+        still_screen(data, name, at, Hold::Seconds(25))?
+    };
     let centred = |base: i32, line: &str| base - round_half(5 * line.chars().count() as i32);
     for (i, line) in lines.iter().enumerate() {
         let i = i as i32;
@@ -630,18 +634,30 @@ pub fn still_18(
 /// c (c = 0..253) at (33 + c, 30 + r); column 32 shows the byte before the row buffer (0,
 /// U-227); byte 254 of each row is never shown. 10 s.
 pub fn still_15(data: &DataDir) -> Result<StoryScreen, StoryError> {
-    const NAME: &str = "td1-15.pic";
-    let layout = Picture::layout(NAME).ok_or_else(|| AssetError::NotFound(NAME.to_owned()))?;
-    let pic = Picture::parse(&data.read(NAME)?, layout)?;
-    let mut s = StoryScreen::blank(Hold::Seconds(10));
+    shifted_still(data, "td1-15.pic", (32, 30), Hold::Seconds(10))
+}
+
+/// A still whose plot loop counts x from 0 but reads its row buffer from index 1 (`td1-15`,
+/// OB-149; `td1-20`, OB-150): with the picture's origin at `(x, y)`, row r's byte c (all but
+/// the last) is at (x + 1 + c, y + r), column x shows the byte before the buffer (0 in
+/// practice, U-227) and the row's last byte is never shown. The picture's own palette, if any.
+fn shifted_still(
+    data: &DataDir,
+    name: &str,
+    (x, y): (i32, i32),
+    hold: Hold,
+) -> Result<StoryScreen, StoryError> {
+    let layout = Picture::layout(name).ok_or_else(|| AssetError::NotFound(name.to_owned()))?;
+    let pic = Picture::parse(&data.read(name)?, layout)?;
+    let mut s = StoryScreen::blank(hold);
     if let Some(p) = &pic.palette {
         s.pal = p.clone();
     }
     for (r, row) in pic.pixels.chunks_exact(pic.width).enumerate() {
-        let y = 30 + r as i32;
-        s.screen.put(32, y, 0);
-        for (c, &p) in row.iter().take(254).enumerate() {
-            s.screen.put(33 + c as i32, y, p);
+        let y = y + r as i32;
+        s.screen.put(x, y, 0);
+        for (c, &p) in row.iter().take(pic.width - 1).enumerate() {
+            s.screen.put(x + 1 + c as i32, y, p);
         }
     }
     Ok(s)

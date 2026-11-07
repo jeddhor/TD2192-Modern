@@ -387,6 +387,8 @@ fn e1_stills_match_c0274_c0275_c0276_c0281_c0282() {
     let prog = program(&dir, &res, Episode::E1);
     let cases = [
         (Step::P(1, [0xBF5, 0xC16, 0x5A4]), "C-0281", "td1-16", 5719),
+        // P2 `td1-20` at x = 1 + c, column 0 black (OB-150, U-522; BUG-13 fixed).
+        (Step::P(2, [0x5A4, 0x5A4, 0x5A4]), "C-0276", "td1-20", 10058),
         (Step::P(3, [0x96F, 0x989, 0x9A5]), "C-0274", "td1-14", 14285),
         (Step::P(4, [0xB6C, 0xB88, 0xBBE]), "C-0282", "td1-13", 11771),
         (Step::P15, "C-0275", "td1-15", 8176),
@@ -401,23 +403,6 @@ fn e1_stills_match_c0274_c0275_c0276_c0281_c0282() {
         let s = prog.story(step).unwrap();
         assert_sequence(s, &oracle, capture, tag, until, 0);
     }
-    // P2 `td1-20` (BUG-13, U-522): the original shows the picture one pixel to the right of
-    // asset-load-sites §4's (0, 50): screen (1 + c, 50 + r) = byte c of row r for c = 0..318,
-    // column 0 black (as `td1-15` and the `.scr` scenes, OB-003). C-0276's hold equals the
-    // port's frame with rows 50..149 so shifted; the captions (rows 170..199) do not move.
-    let s = run(prog.story(Step::P(2, [0x5A4, 0x5A4, 0x5A4])).unwrap(), 400);
-    let mut shifted = s.screen().clone();
-    for y in 50..150 {
-        let row = &mut shifted.pixels[y * 320..(y + 1) * 320];
-        row.copy_within(0..319, 1);
-        row[0] = 0;
-    }
-    assert_ne!(
-        diff(s.screen(), &oracle, "C-0276", 8698, Dac::All),
-        Vec::<String>::new(),
-        "BUG-13 fixed: compare td1-20 with assert_sequence"
-    );
-    assert_frame(&shifted, &oracle, "C-0276", 8698, Dac::All);
 }
 
 #[test]
