@@ -1060,3 +1060,7 @@ Without a new capture:
 ### 10.3 Evidence added to unknowns
 
 U-246 (C-0379: td-sim equal; ghost volleys of kinds 14, 26, 38; the player never hit in this run), U-274 (C-0152, already compared every tick: seven moving ships stop within about 12 ticks of the patch and keep their headings; the player keeps its speed), U-276 (C-0378: the trucks are removed at (168, 199), against OB-046), U-284 vector 7 (C-0376: flight 17's tick-1 record and the restored tables). Details in `docs/re/UNKNOWNS.md`; resolving them is an Archaeologist's call.
+
+### 10.4 Gate (2026-11-07, branch merged with main `45548a7`)
+
+`cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass. `cargo test --workspace --no-fail-fast`: **989 passed, 0 failed, 10 ignored** with `TD2192_DATA` and `TD2192_ORACLE` set (12 min 19 s, debug) and the same counts with both unset. The ten ignored tests are the timing benchmarks, developer tools and long fuzz/soak runs of §5.1 plus `flight_16_idle_trucks_leave_at_168_199_bug_34`. A `--nocapture` run of `oracle_e1_full`, `oracle_e2_full` and `oracle_e3_full` printed a PASS line for every capture of §10.1 and no `SKIPPED` line.
