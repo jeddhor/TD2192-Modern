@@ -1,6 +1,7 @@
 //! The 20 mission-ship slots: setup, AI, movement, fire requests and removal.
 //!
-//! Spec: `docs/spec/sim/mission-ships.md` rev 2 (CONFIRMED against C-0009) and
+//! Spec: `docs/spec/sim/mission-ships.md` rev 2 (CONFIRMED against C-0009; setup steps 2–4 and
+//! the turn directions kept across flights per rev 6 §2, §4.1, U-501, U-500) and
 //! `docs/spec/sim/mission-setup.md` rev 1. Fidelity: T1. Slot `i` here is the original's slot
 //! `i + 1`; target selectors and `owner` fields keep the original's 1-based numbers.
 //!
@@ -11,6 +12,7 @@
 use td_formats::mission::{EMPTY_SLOT, Mission, PATH_LEN};
 
 use super::World;
+use super::heap::PathMemory;
 use super::tables::ClassTables;
 use crate::hash::{HashState, StateHasher};
 use crate::real48::{ONE, Real48};
@@ -378,17 +380,24 @@ impl Ships {
         }
     }
 
-    /// Setup steps 2–4 (§4.1): classes and paths from the mission file, shields and armour
-    /// from the class tables, start tile = path step 1.
-    pub fn load_mission(&mut self, m: &Mission, classes: &ClassTables) {
+    /// Setup step 2 (§4.1): the classes of the mission file (its path arrays go to the
+    /// session's [`PathMemory`]).
+    pub fn load_classes(&mut self, m: &Mission) {
+        for (s, &class) in self.0.iter_mut().zip(&m.slot_class) {
+            s.class = class;
+        }
+    }
+
+    /// Setup steps 3 and 4 (mission-ships rev 6 §4.1), for every slot and every flight: shields
+    /// and armour from the class tables, path steps 1..=500 copied from the path arrays'
+    /// memory, waypoint and return point = step 1, start tile = step 1. In E1 flight 21 the
+    /// memory holds what §4.1.1 says (U-500).
+    pub fn load_paths(&mut self, paths: &PathMemory, classes: &ClassTables) {
         for (i, s) in self.0.iter_mut().enumerate() {
-            s.class = m.slot_class[i];
             s.shields = i16::from(classes.shields(s.class));
             s.armour = 2 * i16::from(classes.armour(s.class));
-            if let Some(path) = m.path(i) {
-                for (k, step) in path.enumerate().take(PATH_LEN) {
-                    s.record.path[k] = step;
-                }
+            for (k, step) in s.record.path.iter_mut().enumerate().take(PATH_LEN) {
+                *step = paths.step(i, k + 1);
             }
             s.record.waypoint = s.record.path[0];
             s.record.return_pt = s.record.waypoint;

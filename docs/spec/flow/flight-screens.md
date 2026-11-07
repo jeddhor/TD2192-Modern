@@ -616,6 +616,8 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 - U-224: are ink 40/43/45 and the font background (178) in the comm screen meant to follow the IR palette (they do in the code)?
 - U-225: the code's extra exclusions 85h, 86h, C1h, 90h in the hit-flash loop are dead; was the intended range wider (the HUD lamp entries)?
 - U-226: which flight-21 entries the F5 map shows (nothing is loaded for flight 21).
+- IM-23 (M10-47, SP): §4.8's last sentence ("Kind 6 is drawn after its heading update") contradicts [weapons](../sim/weapons.md) rev 6 §4.3 step 6, which draws the homing sprite with the heading latched at the start of the slot's update and steers afterwards (U-502). The port follows weapons rev 6 (td2192 and the Enhanced lights draw with the latched heading, `Flight::drawn.shots`); please correct §4.8.
+- IM-23 (VE): step 6 draws a shot before step 7 frees it at life > 25, so the original shows a cannon shot on its last tick of life; the port's drawn snapshot is taken after steps 7 and 8 and leaves that frame out (T2, before and after BUG-11). Confirm with a capture before an IM change.
 
 ## 9. Provenance
 

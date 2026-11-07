@@ -63,8 +63,15 @@ pub struct Program {
     pub launcher: Box<dyn FlightLauncher>,
     /// What the front-end screens of this program run left in DGROUP for the flights: the
     /// scene palette, the lit flag and the dialogue reader's last line (weapons rev 4 §3.3,
-    /// OB-017). The port's program is always started through the launcher flow.
+    /// OB-017), and block 19's uses of the flight heap before flight 21 (mission-ships rev 6
+    /// §4.1.1). The port's program is always started through the launcher flow.
     pub front_end: FrontEnd,
+    /// `g_CfgMusic` = 2 (music on): `Snd_PlayMusic` loads its song onto the heap
+    /// (episode-program-flow §3.1, §3.2). The port always plays the songs, as the reference
+    /// start `/sb` does (the music volume is the mixer's business), so this is true; false
+    /// models the original's music-off configuration, whose heap layout is specified
+    /// statically only (U-540).
+    pub music_on: bool,
 }
 
 impl fmt::Debug for Program {
@@ -120,6 +127,7 @@ impl Program {
             songs: BTreeMap::new(),
             launcher,
             front_end: FrontEnd::launcher(),
+            music_on: true,
         })
     }
 

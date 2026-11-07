@@ -45,6 +45,7 @@ use td_render::dialogue::{self, Side};
 use td_render::small_text::Typewriter;
 use td_render::{Framebuffer, fade};
 use td_sim::flight::front_end::{DialogueReader, FrontEnd};
+use td_sim::flight::heap::{HeapUse, PortraitLoad};
 use thiserror::Error;
 
 use crate::screen::{FlowContext, RETRACE_HZ, Screen, Transition};
@@ -372,6 +373,9 @@ pub struct DialogueScene {
     pages: usize,
     /// The page break at which Esc ended the scene (1-based).
     stopped_at: Option<usize>,
+    /// The portraits loaded so far, in order (each a block on the flight heap,
+    /// mission-ships rev 6 §4.1.1).
+    portraits: Vec<PortraitLoad>,
 }
 
 impl fmt::Debug for DialogueScene {
@@ -434,6 +438,7 @@ impl DialogueScene {
             written: [false; 256],
             pages: 0,
             stopped_at: None,
+            portraits: Vec::new(),
         }
     }
 
@@ -488,6 +493,13 @@ impl DialogueScene {
     /// True if Esc ended the scene early.
     pub fn skipped(&self) -> bool {
         self.skip
+    }
+
+    /// What the scene did on the flight heap (mission-ships rev 6 §4.1.1): the small font's
+    /// block, and the portraits it loaded so far, in order (§4.4 step 5; up to the page break
+    /// where Esc ended it).
+    pub fn heap_use(&self) -> HeapUse {
+        HeapUse::Screen(self.portraits.clone())
     }
 
     /// Keys already in the BIOS buffer when the scene starts (typed during the previous
@@ -632,6 +644,10 @@ impl DialogueScene {
             tracing::warn!("dialogue scene {}: no portrait {face}", self.id);
             return;
         };
+        self.portraits.push(PortraitLoad {
+            face,
+            right: side == Side::Right,
+        });
         dialogue::load_face_palette(&mut self.pal, side, &portrait.palette);
         let base = side.first_entry();
         self.written[base..base + dialogue::FACE_COLORS].fill(true);

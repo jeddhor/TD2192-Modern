@@ -15,12 +15,15 @@ use td_flow::program::Program;
 use td_flow::settings::Settings;
 use td_flow::{FlightLauncher, FlightScreen, FlowContext, PlaceholderLauncher};
 use td_input::{Key, TickInput};
+use td_sim::flight::front_end::FrontEnd;
+use td_sim::flight::heap::{self, HeapUse, PortraitLoad};
 use td_test_support::require_data;
 
-/// Records the flights a block launches.
+/// Records the flights a block launches, and the heap uses handed over before each launch.
 #[derive(Debug)]
 struct Recorder {
     flights: Rc<RefCell<Vec<u8>>>,
+    heaps: Rc<RefCell<Vec<Vec<HeapUse>>>>,
     inner: PlaceholderLauncher,
 }
 
@@ -32,6 +35,10 @@ impl FlightLauncher for Recorder {
 
     fn random(&mut self, n: u16) -> u16 {
         self.inner.random(n)
+    }
+
+    fn set_front_end(&mut self, state: &FrontEnd) {
+        self.heaps.borrow_mut().push(state.heap.clone());
     }
 }
 
@@ -52,12 +59,23 @@ fn play(
     mission: u8,
     key: impl Fn(&Frame, Option<u8>) -> Option<Key>,
 ) -> (BlockResult, Vec<Frame>, Vec<u8>) {
+    let (r, frames, flights, _) = play_heaps(mission, key);
+    (r, frames, flights)
+}
+
+/// As [`play`], with the heap uses the launcher received before each flight.
+fn play_heaps(
+    mission: u8,
+    key: impl Fn(&Frame, Option<u8>) -> Option<Key>,
+) -> (BlockResult, Vec<Frame>, Vec<u8>, Vec<Vec<HeapUse>>) {
     let data = td_test_support::data_dir().unwrap();
     let dir = DataDir::open(&data).unwrap();
     let res = ExeResources::load(&dir).unwrap();
     let flights = Rc::new(RefCell::new(Vec::new()));
+    let heaps = Rc::new(RefCell::new(Vec::new()));
     let launcher = Recorder {
         flights: Rc::clone(&flights),
+        heaps: Rc::clone(&heaps),
         inner: PlaceholderLauncher::default(),
     };
     let mut prog = Program::new(&dir, &res, Box::new(launcher)).unwrap();
@@ -92,7 +110,8 @@ fn play(
         };
         if let Some(r) = c.step(&mut prog, &mut ctx, &input) {
             let launched = flights.borrow().clone();
-            return (r, frames, launched);
+            let handed = heaps.borrow().clone();
+            return (r, frames, launched, handed);
         }
         audio.clear();
     }
@@ -252,4 +271,38 @@ fn flight_21_death_is_ignored() {
         "{cues:?}"
     );
     assert_eq!(cues.iter().flatten().next(), Some(&13), "{cues:?}");
+}
+
+#[test]
+fn block_19_hands_flight_21_the_heap_uses_of_the_whole_story() {
+    // mission-ships rev 6 §4.1.1 vector 2 (C-0300, U-500): with no Esc, flight 21's path arrays
+    // are layered by `low`, the debrief (face 1 right), `vulture`, the voffice card, dialogue 88
+    // (faces 24 left, 11 right), `hangar`, the hangar card and dialogue 89 (faces 1 left, 2
+    // right). Flight 19 gets nothing (it loads its mission file).
+    let _data = require_data!();
+    let (_, _, flights, heaps) = play_heaps(19, space);
+    assert_eq!(flights, [19, 21]);
+    let p = |face, right| PortraitLoad { face, right };
+    let mut want = heap::block_19_to_voffice(true);
+    want.extend([
+        HeapUse::Screen(vec![p(24, false), p(11, true)]),
+        HeapUse::Song("hangar.cmf".to_owned()),
+        HeapUse::card(),
+        HeapUse::Screen(vec![p(1, false), p(2, true)]),
+    ]);
+    assert_eq!(heaps, [vec![], want]);
+}
+
+#[test]
+fn block_19_esc_at_the_voffice_card_hands_flight_21_its_uses_so_far() {
+    // §4.1.1 vector 1 (C-0200): Esc at the voffice card jumps to flight 21; only `low`, the
+    // debrief, `vulture` and the card have used the heap.
+    let _data = require_data!();
+    let key = |f: &Frame, last: Option<u8>| {
+        let esc = last == Some(19) && !f.in_flight;
+        Some(if esc { Key::ESCAPE } else { Key::SPACE })
+    };
+    let (_, _, flights, heaps) = play_heaps(19, key);
+    assert_eq!(flights, [19, 21]);
+    assert_eq!(heaps, [vec![], heap::block_19_to_voffice(true)]);
 }

@@ -20,6 +20,7 @@
 //! card (or E3's restore screen and title card) in E2 and E3.
 
 use crate::flight::episode::Episode;
+use crate::flight::heap::HeapUse;
 
 /// DS offset of the E1 muzzle table (`file0001`): index 0 of the E1 muzzle world.
 pub const MUZZLE_BASE: u16 = 0x035C;
@@ -233,6 +234,12 @@ pub struct FrontEnd {
     /// E2/E3 `g_MenuDrainKey` (DS:0660): the last byte the main menu read and discarded from
     /// the BIOS keyboard buffer in this program run, 0 if none (weapons §3.3.2 item 2).
     pub drain_key: u8,
+    /// What the front end put on the flight heap since the last flight ended, in order
+    /// (mission-ships rev 6 §4.1.1, U-500): the host replays it over the session's path arrays
+    /// before the next flight starts ([`super::heap::PathMemory::apply`]). Only E1 flight 21
+    /// reads those arrays without loading a mission file, so the campaign records only block
+    /// 19's uses between flights 19 and 21; empty otherwise.
+    pub heap: Vec<HeapUse>,
 }
 
 impl Default for FrontEnd {
@@ -255,6 +262,7 @@ impl FrontEnd {
             launch: Launch::Direct,
             scene_file: [0; SCENE_FILE_NAME_LEN],
             drain_key: 0,
+            heap: Vec::new(),
         }
     }
 

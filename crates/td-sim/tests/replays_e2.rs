@@ -111,8 +111,9 @@ fn flight_20_success_replay() {
     check(20);
 }
 
-/// The homing missile, Tab and the afterburner (VE-5, `tdtool plan --weapons`). Planned with the
-/// homing order of BUG-11; re-plan it (and capture it again) when BUG-11 is fixed.
+/// The homing missile, Tab and the afterburner (VE-5, `tdtool plan --weapons`): VE-5's 220
+/// planned ticks and the 13 ticks without input C-0207 flew after them, to the success in tick
+/// 233 (weapons rev 6 §4.3 order, BUG-11 fixed; checkpoints recomputed by IM-23).
 #[test]
 fn flight_20_weapons_success_replay() {
     let data = require_data!();

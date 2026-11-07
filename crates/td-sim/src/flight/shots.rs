@@ -1,9 +1,11 @@
 //! Projectiles: one pool of 51 slots shared by the player and the mission ships.
 //!
-//! Spec: `docs/spec/sim/weapons.md` rev 1 (§4.2 spawning, §4.3 per-tick update; static,
-//! LIKELY). Fidelity: T1. Shots move one whole tile per tick along a principal heading; hit
-//! tests use the positions before the move. "Freeing" a slot writes FFh to its tile X, as the
-//! original does; later tests in the same pass then fail on distance by themselves.
+//! Spec: `docs/spec/sim/weapons.md` rev 6 (§4.2 spawning, §4.3 per-tick update, the per-slot
+//! order of U-502). Fidelity: T1. Shots move one whole tile per tick along a principal heading;
+//! hit tests use the positions before the move. Each slot's update latches its heading first
+//! and moves along it, so a homing missile's steering takes effect the next tick (BUG-11).
+//! "Freeing" a slot writes FFh to its tile X, as the original does; later tests in the same
+//! pass then fail on distance by themselves.
 
 use super::explosions::Explosions;
 use super::hit_flash;
@@ -287,30 +289,76 @@ impl Shots {
         true
     }
 
-    /// The per-tick update of every shot (§4.3, tick-order step 6).
-    pub fn update(&mut self, c: &mut Combat<'_>) {
-        for i in 0..SHOT_SLOTS {
+    /// The per-tick update of every shot (§4.3, tick-order step 6). Returns the heading each
+    /// slot's update latched (step 0): the one step 6 drew the shot with and step 8 moved it
+    /// along. It differs from the heading array afterwards only for a homing missile that
+    /// steered (the array then holds the next tick's heading). Slots that were free keep the
+    /// array's value.
+    pub fn update(&mut self, c: &mut Combat<'_>) -> [u8; SHOT_SLOTS] {
+        let mut latched = [0; SHOT_SLOTS];
+        for (i, h) in latched.iter_mut().enumerate() {
+            *h = self.0[i].heading;
             if self.0[i].alive() {
                 self.update_one(i, c);
             }
         }
+        latched
     }
 
     fn free(&mut self, i: usize) {
         self.0[i].tile_x = FREE;
     }
 
+    /// One slot's update (weapons rev 6 §4.3, U-502, BUG-11).
     fn update_one(&mut self, i: usize, c: &mut Combat<'_>) {
-        // 1. Map bounds.
+        // 0. The heading, latched once for the whole update: the map test, the drawing and the
+        // move use it, never the array (a homing missile's steering rewrites the array in step
+        // 6 for the next tick).
+        let h = self.0[i].heading;
+        // 1. Map bounds: a shot off the map is freed and skips steps 2–6 (no ageing, no hit
+        // tests, no steering, no drawing).
         let s = self.0[i];
         if !(2..=199).contains(&s.tile_x) || !(2..=199).contains(&s.tile_y) {
             self.free(i);
+        } else {
+            self.hit_and_steer(i, h, c);
         }
+        // 7. Age limit.
+        if self.0[i].life > MAX_LIFE {
+            self.free(i);
+        }
+        // 8. Move one tile along the latched heading.
+        if self.0[i].alive() {
+            let shot = &mut self.0[i];
+            let (dx, dy): (i16, i16) = match h {
+                8 => (0, -1),
+                2 => (0, 1),
+                4 => (-1, 0),
+                6 => (1, 0),
+                9 => (1, -1),
+                7 => (-1, -1),
+                1 => (-1, 1),
+                3 => (1, 1),
+                h if h > 9 => {
+                    shot.tile_x = FREE;
+                    return;
+                }
+                // Headings 0 and 5 neither move nor delete the shot (weapons §2, §4.3 step 8):
+                // E1 flight 20's third bomb takes heading Random(9).
+                _ => (0, 0),
+            };
+            shot.tile_x = (i16::from(shot.tile_x) + dx) as u8;
+            shot.tile_y = (i16::from(shot.tile_y) + dy) as u8;
+        }
+    }
+
+    /// Steps 2–6 of a shot on the map, with the latched heading `h`.
+    fn hit_and_steer(&mut self, i: usize, h: u8, c: &mut Combat<'_>) {
         // 2. Age and map collision.
         if self.0[i].kind != HOMING {
             self.0[i].life = self.0[i].life.wrapping_add(1);
             if !(c.late_draw && self.0[i].owner == 0) {
-                self.map_test(i, c.world);
+                self.map_test(i, h, c.world);
             }
         }
         // 3. Homing missile: destroys the first ship within 40 px.
@@ -362,50 +410,25 @@ impl Shots {
         if shot.owner != 0 && !c.late_draw && near(player_ref(c.player), shot.world(), 20) {
             self.hit_player(i, c);
         }
-        // 6. Homing missiles steer toward their target.
+        // 6. The drawing (the host's, with `h`: `Flight::drawn`), then a homing missile steers:
+        // the new heading, from the tile before this tick's move, goes into the array only
+        // and is the next tick's `h` (also when step 3 freed the slot).
         if self.0[i].kind == HOMING {
             self.steer(i, c.ships);
         }
-        // 7. Age limit.
-        if self.0[i].life > MAX_LIFE {
-            self.free(i);
-        }
-        // 8. Move one tile.
-        if self.0[i].alive() {
-            let shot = &mut self.0[i];
-            let (dx, dy): (i16, i16) = match shot.heading {
-                8 => (0, -1),
-                2 => (0, 1),
-                4 => (-1, 0),
-                6 => (1, 0),
-                9 => (1, -1),
-                7 => (-1, -1),
-                1 => (-1, 1),
-                3 => (1, 1),
-                h if h > 9 => {
-                    shot.tile_x = FREE;
-                    return;
-                }
-                // Headings 0 and 5 neither move nor delete the shot (weapons §2, §4.3 step 8):
-                // E1 flight 20's third bomb takes heading Random(9).
-                _ => (0, 0),
-            };
-            shot.tile_x = (i16::from(shot.tile_x) + dx) as u8;
-            shot.tile_y = (i16::from(shot.tile_y) + dy) as u8;
-        }
     }
 
-    fn map_test(&mut self, i: usize, world: &World) {
+    fn map_test(&mut self, i: usize, h: u8, world: &World) {
         let s = self.0[i];
         let (tx, ty) = (i16::from(s.tile_x), i16::from(s.tile_y));
-        if matches!(s.heading, 8 | 2 | 9 | 1 | 3 | 7)
+        if matches!(h, 8 | 2 | 9 | 1 | 3 | 7)
             && ((world.solid(tx, ty) && s.off_x < 17) || (world.solid(tx + 1, ty) && s.off_x > 16))
         {
             self.free(i);
         }
         let s = self.0[i];
         let tx = i16::from(s.tile_x);
-        if matches!(s.heading, 4 | 6 | 9 | 1 | 3 | 7)
+        if matches!(h, 4 | 6 | 9 | 1 | 3 | 7)
             && ((world.solid(tx + 1, ty - 1) && s.off_y < 17)
                 || (world.solid(tx + 1, ty) && s.off_y > 16))
         {
@@ -510,6 +533,8 @@ impl Shots {
         }
     }
 
+    /// Step 6's steering: the principal direction from the shot's tile toward its target's,
+    /// stored in the heading array only (the move of this tick uses the latched heading).
     fn steer(&mut self, i: usize, ships: &Ships) {
         let shot = &mut self.0[i];
         let Some(target) = usize::from(shot.life)
