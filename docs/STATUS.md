@@ -438,3 +438,53 @@ Template: ADG §17.5.
 - Actual (port): `story::still_set` set 2 puts the 320 × 100 image at (0, 50), as asset-load-sites §4 and FORMATS §11 say
 - Spec reference: docs/re/asset-load-sites.md §4 (`td1-20.pic`: x 0..319), FORMATS §11 ((0, 50)); U-522. The other three still sets and `td1-15` already sit where the captures show them
 - Severity: minor (one-pixel shift of one picture). Fix: RE/SP confirm the position (U-522, the same one-pixel offset as OB-003), then IM: x = 1 + c, column 0 black
+
+### BUG-14: `picture::parse_cells` panics on a layout with an empty cell
+- Found by / date / milestone: VE-8, 2026-11-06, M12 (M12-06 fuzzing, `td-formats/tests/fuzz.rs`)
+- Profile: both
+- Steps: `parse_cells(&[], &CellLayout { name: "x", cell_width: 0, cell_height: 0, count: 0 })`
+- Expected: an error (a parser never panics, MDG §9.2)
+- Actual: `chunks_exact(0)` panics ("chunk size must be non-zero") in every build
+- Spec reference: FORMATS §12 (cell sheets); reachable only with a caller-made layout (the shipped `CELL_SHEETS` are non-empty)
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06, `fix:` commit on the M12-06 branch): an empty or overflowing cell is `FormatError::Invalid`; test `picture::tests::absurd_layouts_are_errors`
+
+### BUG-15: caller-supplied picture and sprite sizes overflow
+- Found by / date / milestone: VE-8, 2026-11-06, M12-06 fuzzing
+- Profile: both
+- Steps: `SpriteSheet::parse(&[], 1 << 32)`; a `StillLayout` of width `usize::MAX / 4 + 1` and height 5; a `CellLayout` whose `cell_width * cell_height * count` overflows
+- Expected: an error
+- Actual: "attempt to multiply with overflow" in debug builds (`picture.rs` `width * height + 768`, `cell * count`; `sprites.rs` `size * size`); a wrapped size in release
+- Spec reference: FORMATS §10–§12; reachable only with caller-made layouts or sizes
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06): checked multiplications, an overflowing size is an error; tests `picture::tests::absurd_layouts_are_errors`, `sprites::tests::overflowing_frame_size_is_an_error`
+
+### BUG-16: `mz::pstring_seq` reserves the caller's count before reading
+- Found by / date / milestone: VE-8, 2026-11-06, M12-06 fuzzing
+- Profile: both
+- Steps: `pstring_seq(&[], 0, usize::MAX)` (or a count of `1 << 59`)
+- Expected: an error (the data ends)
+- Actual: `Vec::with_capacity(count)` panics with "capacity overflow"; a count in the terabytes would abort on allocation failure
+- Spec reference: none (the counts come from the compiled-in resource maps, `exe_res.rs`, so no file can trigger it)
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06): the reservation is capped by the remaining bytes; test `mz::tests::huge_pstring_counts_fail_without_reserving`
+
+### BUG-17: `Replay::from_bytes` reserves memory from the header's counts
+- Found by / date / milestone: VE-8, 2026-11-06, M12-06 fuzzing (`td-sim/tests/fuzz_replay.rs`)
+- Profile: both
+- Steps: a 24-byte TDR header that declares `u32::MAX` ticks
+- Expected: `Truncated`, quickly and without a large allocation
+- Actual: `Truncated` in about 20 µs, but after reserving 256 MiB for inputs (and 8 MiB for checkpoints)
+- Spec reference: `td_sim::replay` module doc (our own format)
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06): reservations follow the input length; test `replay::tests::huge_declared_counts_are_truncation_errors`
+
+### BUG-18: E3 flight 19 crashes the game in tick 4235 (i16 overflow in ship drift at row 199)
+- Found by / date / milestone: VE-8, 2026-11-06, M12 (M12-06 random-input soak, `td-sim/tests/soak.rs`)
+- Profile: both (td-sim keeps overflow checks in release builds, MDG §8.6, so the game panics)
+- Steps: E3 flight 19 with any input or none: `tdtool plan 19 --episode 3 --probe 5000`, or `cargo test -p td-sim --test soak e3_flight_19_idle_outlives_tick_4235 -- --ignored` with `TD2192_DATA`
+- Expected (original): no crash; the original's 16-bit ADD wraps (what the ship does afterwards is U-570)
+- Actual (port): slot 2 (class 0) parks at tile (102, 199) with down speed 23..24 and goal (102, 200); its offset Y grows about 8.5 a tick (1,023 at tick 500, 32,762 at tick 4234) and `sub_y += d - 16` overflows in tick 4235 (`td_sim::flight::ships` drift, mission-ships §4.2.3 "Y never wraps at row 199 (offsetY grows)"): a panic, 3 min 40 s into the flight. A player who has not finished flight 19 by then loses the game. The success replay ends at tick 441 (the oracle capture with it), so no L4/L5 test reached it; no other flight did in 7,808 random flights of up to 100,000 ticks
+- Spec reference: sim/mission-ships §4.2.3 (offsets i16; the wrap is not stated); U-570
+- Severity: **major** (a crasher on a reachable path: any slow E3 flight 19)
+- Fix: RE/SP answer U-570 and state the wrap in §4.2.3; IM makes the offset arithmetic of the drift step wrap as the original's (at least `wrapping_add` on offset Y, so the port matches the original after the wrap), then un-ignores the test and checks the soak (`long_soak`)
