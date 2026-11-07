@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-logic` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, success and failure decide the outcome of a flight; the order of the per-tick rules matters where two rules write the same ship) · T2 for the ticker text itself (render/hud.md) |
 | **Confidence** | LIKELY overall (static: every rule was read from the instruction stream, with the listing checked where the decompiler drops operands). Flight 1 CONFIRMED by capture C-0010 for phases 1→5, the spawns and hides, the exit rules, the ticker-idle gate and the respawn distance (§7). Flights 4–21 LIKELY (static only). The behaviour that `AI_SetTarget` triggers is RE-5's ([mission-ships](mission-ships.md)) |
@@ -648,7 +648,7 @@ exit 14 @ (51,199); engage 14 → 1, 15; 14 → player, 15
 exit 7 @ (50,1); exit 10 @ (50,199); exit 11 @ (199,123); exit 15 @ (50,199)
 ```
 
-`Msn_UpdateEvents`: when the bomb flag is 1: hit flash := 0, DAC and flight palette all white, lost := 1. So the player has 1,000 ticks (about 55 s) from finding the truck to destroy it.
+`Msn_UpdateEvents`: when the bomb flag is 1: hit flash := 0, DAC and flight palette all white, lost := 1. The timer counts the finding tick itself (B, then D, in the same tick), so the bomb goes off 999 ticks after the finding tick (about 52 s); E runs before F, so a kill in that last tick no longer helps (§7 vector 12).
 
 ### 5.19 Flight 19 (the V.C.I. detonator; switch to the Vulture II)
 
@@ -696,15 +696,15 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | Quirk | Original behaviour | Port policy |
 |---|---|---|
 | Three player positions (§2) | Engagement ranges are measured from the view's top-left tile, about (−5, −3) tiles from the ship | Preserve (T1) |
-| Escaped targets count as done | Exit rules and "all dead" tests treat leaving like destruction; flights 1–3 can be completed without a kill | Preserve |
-| Respawn distance uses AND | A dead ship respawns only when the player is more than 15 tiles away on **both** axes, at the tile where it died | Preserve |
+| Escaped targets count as done | Exit rules and "all dead" tests treat leaving like destruction; flights 1–3 can be completed without a kill | Preserve (OB-149) |
+| Respawn distance uses AND | A dead ship respawns only when the player is more than 15 tiles away on **both** axes, at the tile where it died | Preserve (OB-149) |
 | Ticker interrupts | A rule that posts without testing "ticker idle" cuts the current message off | Preserve |
 | Repeated announcements | A transmission announcement is re-posted every time the ticker goes idle until F6 is pressed in the right phase | Preserve |
 | Flight 4 phase 3 | Lasts exactly one tick (§5.4) | Preserve |
 | Flight 7: mines re-armed | Rule "layer on mine tile ⇒ class 3" runs every tick for mines 2..8, also for a dead layer and for destroyed mines | Preserve (OB-021) |
-| Flight 7: completion without message | The instruments routine can set phase 100 before `M1[26]` is posted (§5.7) | Preserve (U-180) |
+| Flight 7: completion without message | The instruments routine can set phase 100 before `M1[26]` is posted (§5.7) | Preserve (U-180) (OB-149) |
 | Flight 8 soft lock | If slots 8 and 9 are gone before the player comes within 30 tiles of one of them, the phase stays 3 and the flight cannot be completed | Preserve in Classic; **fix-enhanced** candidate (OB-022, U-182) |
-| Flight 17 base hits ignore class | A destroyed ship lying on tile (107, 106) counts as an attacker that reached the base | Preserve |
+| Flight 17 base hits ignore class | A destroyed ship lying on tile (107, 106) counts as an attacker that reached the base | Preserve (OB-149) |
 | Flight 20 bombs with no free slot | All three bombs overwrite projectile slot 40 | Preserve (equivalent to weapons §5 policy for enemy shots) |
 | Flight 13 time limit | Exactly at tick 15,000 the flight ends as a death | Preserve |
 | Shared loop counters | Rule loops use globals DS:32BE/32C0/32C2 | Harmless (nothing else reads them); a port may use locals |
@@ -724,7 +724,7 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | 9 | Same run | Slot 11 (class 7) engages the parked player and never leaves: phase stays 5 to the end of the run (tick 7119); `g_MissionSucceeded` stays 0 although the view is at the base tile | C-0010 |
 | 10 | Same run | Slots 19 and 20 are destroyed near the player (ticks 1747, 2266) and do not respawn: the player is never more than 15 tiles away on both axes | C-0010 |
 | 11 | Flight 3 outcome | tile(4) = (107, 106) at teardown → outcome 1; Montgomery destroyed elsewhere → 0 | static |
-| 12 | Flight 18 bomb | Phase 2 entered at tick *t*: lost at the tick where the timer reaches 1000 (tick *t* + 1000 if the ion truck is still alive) | static |
+| 12 | Flight 18 bomb | Phase 2 entered at tick *t*: rule B zeroes the timer and rule D counts it to 1 in that same tick, so the timer reaches 1000 and the bomb goes off (lost, `Msn_UpdateEvents` of the same tick) in tick *t* + 999. The truck must die by tick *t* + 998: a kill in tick *t* + 999 is too late, because rule E sets the bomb before rule F sees the kill | static (`2404:5C56..5C93`, order B, D, E, F); test `flight_18_bomb_after_1000_ticks` |
 
 ## 8. Open questions
 
@@ -756,3 +756,4 @@ No mission rules. Objective `e1.objectives[18]` (colour 42); player class 3, dra
 | 1 | 2026-11-02 | RE-6 (Archaeologist + Spec author) | Initial: architecture, primitives, flights 1–3 |
 | 2 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: hud references (ticker §4.7, F6 indicator §4.8); loop exit is tick-order step 33 (was 35), flight-20 armour rule after step 32 (was "step 34"); F5 in flight 14 is the tactical map, not a ship switch |
 | 3 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §5.14: the attacks of slots 8, 9, 10, 12, 13 on the player run only while phase < 100 (U-390; VE-2 D2, C-0064). §5.17, §5.19: the cut-scene and the V.C.I. screen are specified in flow/flight-screens §4.10; the F5 lines of flight 19 are `string[30]` (two lose their last character) |
+| 4 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §5.18 and §7 vector 12: the flight-18 bomb goes off in tick *t* + 999, not *t* + 1000 (rule B zeroes the timer and rule D counts the finding tick; `2404:5C56..5C93`); the test (`flight_18_bomb_after_1000_ticks`) was right. A kill in the bomb's tick is too late (E before F) |

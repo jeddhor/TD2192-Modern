@@ -201,7 +201,7 @@ Details: [episode-deltas §9.3](../../re/episode-deltas.md). C-0016 shows the E2
 | Missing `td.sav` or `td.stt`, or `td.sav` shorter than 30 bytes (OB-055) | Runtime I/O error: the program stops | fix-all: treat missing slots as empty, and create the files on the first save |
 | No cancel after choosing a slot on the save screen; Esc ignored in name entry (OB-056) | The slot is always overwritten | preserve (Classic); Enhanced may let Esc cancel |
 | Save rewrites all slots; empty slots get mission byte 0 and the label as name | `td.stt` shrinks; kills words of empty slots survive | preserve (file compatibility) |
-| Kills word ≥ 32768 | Shown unsigned, loaded as a negative i16; the debrief then gives the cheater rating ([episode-program-flow §4.5](episode-program-flow.md)) | preserve |
+| Kills word ≥ 32768 | Shown unsigned, loaded as a negative i16; the debrief then gives the cheater rating ([episode-program-flow §4.5](episode-program-flow.md)) | preserve (OB-149) |
 | Restore of an empty slot | Ignored; only Esc leaves an all-empty screen | preserve |
 | Esc on the restore screen during a game | Game kept, menu cursor still moves to 3 | preserve |
 | Highlight redrawn on every loop pass | Invisible | the port may draw once per change |

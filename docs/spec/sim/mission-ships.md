@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/mission-ships` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (positions, waypoints, AI state, fire requests and RNG use per tick) · T2 for drawing |
 | **Confidence** | **CONFIRMED** for §4.1–§4.6: a model written from this text reproduces 3,342 of 3,343 slot-ticks of capture C-0009 byte for byte (slot arrays and the whole 1,065-byte ship record), the one exception being a ship destroyed by a projectile (step 6, [weapons](weapons.md)); shot spawns match in 49 of 51 events (§6). LIKELY for the paths the capture does not exercise (mode +422h, flights 7 and 20 specials, map edges) |
 | **Tasks** | M8-01, M8-03 (feeds M8-04, M7-02) |
-| **Unknowns** | U-038, U-039, U-040, U-042, U-045, U-047 (resolved here); U-160, U-161, U-162 (new) |
+| **Unknowns** | U-038, U-039, U-040, U-042, U-045, U-047 (resolved here); U-160, U-161, U-162 (new); U-500 and the slots' part of U-501 (resolved here, RE-18) |
 
 ## 1. Summary
 
@@ -27,7 +27,7 @@ Every tick `AI_UpdateShips` (`3292:0011`, tick-order step 10) regenerates shield
 | Speed up / down / left / right | DS:3B6A + 4(s − 1) + 0 / 1 / 2 / 3 | u8 | Biased by 16 (16 = still), capped at 42; 0 at setup |
 | Heading | `g_SlotHeading` DS:3AA2 − 1 + s | u8 | Keypad code ([structures §7](../../re/structures.md)); 6 at setup |
 | Target heading | DS:3AB6 − 1 + s | u8 | Heading the ship turns toward; 6 at setup |
-| Turn direction | DS:3B1A − 1 + s | u8 | 1 = counter-clockwise (previous ring entry), 2 = clockwise (next); 0 at setup |
+| Turn direction | DS:3B1A − 1 + s | u8 | 1 = counter-clockwise (previous ring entry), 2 = clockwise (next); 0 at program start, **never reset by setup**: a flight starts with the values the previous flight of the program run left (U-501; only §4.2.2 writes it) |
 | Goal X / Y | DS:3BBA − 1 + s / DS:3BCE − 1 + s | u8 | Copy of the waypoint used by the thrust step |
 | Marker | `g_SlotMarker` DS:3958 − 1 + s | u8 | 32h or 39h: draw a bracket around the ship (§4.7); set per flight ([mission-setup](mission-setup.md)) |
 | Fire request | DS:3BEC + 9s + e, e = 1..9 | u8 | 1 = fire; the AI sets e = 2, 4, 6 or 8 |
@@ -104,13 +104,41 @@ Only the fields below are used. Everything else stays 0 (BSS) for the whole sess
 In this order ([tick-order §4](tick-order.md)):
 
 1. `AI_ResetShipRecords` (`3292:0000` → `34E6:0000`, at `0E8B:B8BA`, first thing in setup). For s = 1..20: clear path steps 1..255 of the record, and the fields +000h..+00Ch, +3F5h, +3F6h, +3F8h, +3FCh, +412h..+417h, +41Ch, +41Dh, +41Fh..+428h to 0; then **draw `Random(2)`** and set handBit := 1 if it returned 1, else 0. Fields +411h, +418h, +41Ah, +41Bh, +41Eh are *not* cleared (they keep values from the previous flight). The same routine also runs once at program start (unit initialisation, before `RandSeed` is ever changed), which consumes the first 20 `Random(2)` draws of the session. (RNG: [bp7-runtime-semantics](../core/bp7-runtime-semantics.md).)
-2. Load `m<n>.td` (not in flight 21): classes and path arrays ([structures §2](../../re/structures.md)); slot 2's FFh path bytes become 0.
+2. Load `m<n>.td` (not in flight 21): classes and path arrays ([structures §2](../../re/structures.md)); slot 2's FFh path bytes become 0. Flight 21 loads nothing, so steps 3 and 4 read whatever the path arrays' memory holds: §4.1.1.
 3. For s = 1..20 (every slot, including class FFh): shields := `k_ClassShields[class]`, armour := 2 × `k_ClassArmour[class]` (class FFh reads table bytes past the end: DS:03D1 and DS:03C7). Copy path steps k = 1..500 into the record. waypoint := path[1]; returnX/Y := waypoint.
 4. For s = 1..20: tile := path[1]; heading := 6; target heading := 6; offset X := offset Y := 16; all four speeds := 0. (Also DS:3A3E − 1 + s := 1, never read.)
 5. Per-flight setup `Msn_Setup` (`0E8B:60D8`): player class, slot classes, markers, aggression, armour, class-table patches ([mission-setup](mission-setup.md)).
 6. Start view, palette, sounds (not ship-related), then **for s = 1..20 (all slots): `AI_ChooseWaypoint(s)`** (`0E8B:CC63..CC79`). In path mode this sets pathCursor := 1 and prevX/Y := returnX/Y := path[1] without moving the waypoint (§4.3.5).
 
 Classes changed by setup take effect for shield regeneration (cap = new class) but not for the armour and shields already set in step 3: in flight 1, slots 14–17 become class 7 with 0 shields (their file class was 1) and regenerate to 25 in the first 25 ticks (C-0009).
+
+Setup writes no turn direction (U-501): DS:3B1A − 1 + s keeps the previous flight's values (0 only in the first flight of a program run); the only writer is §4.2.2. From the setup heading 6 every target change of §4.2.2 writes it, so the carried value changes a ship's course only where mission logic sets a target heading without it (E2 flight 13's `Random(9)` target heading of slot 2, [e2-mission-logic §5.13](e2-mission-logic.md)); otherwise it is state that a byte comparison sees (C-0202: E3 flight 21 after flight 11, every slot 1..15 holds 1 or 2 at setup). Port: keep the 20 values in the session.
+
+#### 4.1.1 Flight 21's path arrays (E1, U-500)
+
+Flight 21 has no mission file, yet setup steps 3 and 4 copy the two path arrays into the records and place every slot (class FFh or not) on its path[1]. Those arrays are heap blocks, and their contents at flight 21 are left over from flight 19 and the screens between the two flights. The rule below reproduces both captured cases byte for byte (C-0200, C-0300: all 20,040 bytes except slot 20's Y steps 482..500, which no live slot uses).
+
+**Heap layout.** `Sim_FlyMission` marks the heap top at entry (`BP_Mark` into DS:16EA, after freeing the music buffer) and allocates its buffers from there in a fixed order, so every flight of a program run puts them at the same offsets from that mark M: the title font (975 bytes), the eight projectile arrays, `g_FacFrames`, `g_WeaponIcons`, then **path X at M + 9,328 and path Y at M + 19,352** (10,020 bytes each, `array[1..20, 0..500]`), then the rotation sets and the sprite bank. At the flight's end `BP_Release` gives everything back to M. The front end then uses the same memory from M, in last-in first-out order:
+
+| Writer | Where (offset from M) | What it writes |
+|---|---|---|
+| `Snd_PlayMusic(n)` (only with music on; `0E8B:07ED` frees the old song, `WORX_LoadMusic` `2C37:0273` allocates and reads) | 0 .. size − 1 | the whole CMF file; m := its size |
+| every screen that loads the small font: scene cards, dialogue scenes, the debrief (`GetMem(975)` into `g_Font5`) | r(m) .. r(m) + 949 | `td.lt2` (950 bytes; the last 25 bytes of the block are not written) |
+| the same screen at its end (`BP_FreeMem` of the font block) | r(m) + 4 .. r(m) + 7 | 00 00 3D 00 (the freed block's rounded size, 976 bytes, as BP7's free-list size field) |
+| every portrait load (`Dlg_LoadPortrait` `051A:1618`: dialogue speaker lines with face ≠ 200, [dialogue-player §4.4](../narrative/dialogue-player.md); the debrief's face 1 on the right side, `051A:70E6`) | r(m) + 976 .. r(m) + 16,975 | record face − 1 of `newfaces.td`: each pixel p becomes 0 if p ≥ 112, then + 112 on the right side (slot 2) |
+| the end of that portrait load (`BP_FreeMem`) | r(m) + 980 .. r(m) + 983 | 00 00 E8 03 (the block's size, 16,000 bytes, as the free-list size field) |
+| a flight's mission-file load | 9,329 .. 19,328 and 19,353 .. 29,352 | the X and Y blocks of `m<n>.td` (element (1, 1) on), then slot 2's FFh → 0 |
+
+r(m) rounds m up to a multiple of 8 (BP7 allocates in 8-byte units); m = 0 while no song is loaded (music off). Freeing a block writes only its size field (bytes 4..7) when the block is the top of the heap, which is always the case here (`BP_HeapFree` `3A9A:041E`).
+
+**Port rule.** Keep a 29,372-byte image H of the heap from M (only offsets 9,328 and up matter) and apply the writers above in program order from flight 19's mission-file load to flight 21's setup. In block 19 ([episode-program-flow §4.4](../flow/episode-program-flow.md)) the screens between the two flights are always M8, the debrief, M5, `C:voffice`, then, unless the skip flag jumps to flight 21 earlier, D88, M3, `C:hangar` and D89. Flight 21's path step k of slot s is then H[9,328 + 501 (s − 1) + k] (X) and H[19,352 + 501 (s − 1) + k] (Y); everything else in setup is as for any flight. Bytes that none of these writers touched (slot 20's Y steps 482..500 with music on; more with music off) keep what the heap held before flight 19: never used by a live slot in the captured cases, port: 0.
+
+| # | Path between the flights | Path X / Y sources (offsets from M) | Step-1 tiles of slots 1..10 (flight 21) |
+|---|---|---|---|
+| 1 | C-0200: debrief times out, Esc at `C:voffice` | X: `vulture.cmf` bytes 9,328..12,298, the debrief portrait, the `C:voffice` font block and its size field, the debrief portrait again; Y: the debrief portrait (to 21,271), then `m19.td`'s Y block | (0, 112), (0, 137), (0, 164), (69, 164), (145, 64), (0, 59), (0, 108), (247, 88), (133, 88), (130, 75) |
+| 2 | C-0300: no Esc (D88: faces 24 left, 11 right; D89: faces 1 left, 2 right) | X: D89's last portrait (face 2, right) at 2,960..18,959 (`hangar.cmf` is 1,980 bytes, so r(m) = 1,984); Y: D88's last portrait (face 11, right; `vulture.cmf` playing, r(m) = 12,304) at 13,280..29,279, then `m19.td` | (118, 112), (112, 112), (112, 112), (122, 221), (112, 220), (133, 138), (134, 112), (112, 112), (120, 112), (112, 112) |
+
+So the ships of flight 21 start wherever the bytes of a portrait, a song or a font put them, mostly at tile X 0 or 112..134; slots outside the map are removed by the edge test of §4.2.3 as in any flight. Classes, armour and shields are as for any flight (flight 19's classes at its end, then flight 21's `Msn_Setup` row).
 
 ### 4.2 Per tick (`AI_UpdateShips(flight)`, `3292:0011`)
 
@@ -485,12 +513,14 @@ Ships are drawn after the player ship (unless `g_PlayerDrawLate`) and before the
 | OB-015: right-hand follower facing south | Tests the cell ahead where it should test the right-hand cell: with the right side open and the way ahead blocked it turns left | preserve |
 | OB-016: line-of-fire scan direction | Scans only toward increasing x / y; a wall between the ship and a target above or to the left is not seen, and a wall behind the ship can block | preserve |
 | OB-017: two-digit headings read past the muzzle table | Muzzle offsets for 0Ch, 0Eh, 20h, 24h, 4Ah, 4Eh, 60h, 62h come from other globals (DS:04F6.. System constants, `g_SbIrq`, `g_MemAvailText`; 053A.. and 079E.. always 0; 0826.. menu palette; 0D32.., 0DBA.., 101E.. scene palette, title-font pointer, dialogue reader; 1062.. dialogue text buffer) | **preserve** (proposed, [weapons §3.3](weapons.md)): U-160 resolved; the 272 bytes are built at flight start from front-end state and three reference-machine constants |
-| Path step 501 | A 500-step path with no 0 terminator reads path[501] = (moveDir, aggression) and flies toward it (m3 slot 2; m9 slot 18 ends at the map edge instead) | preserve |
-| Slot 20, path steps 482..500 | Heap contents (OB-008) | OB-008 |
-| Class FFh at setup | Armour and shields read table bytes past `k_ClassArmour`/`k_ClassShields` (DS:03C7, DS:03D1) | preserve (only visible if mission logic revives the slot) |
+| Path step 501 | A 500-step path with no 0 terminator reads path[501] = (moveDir, aggression) and flies toward it (m3 slot 2; m9 slot 18 ends at the map edge instead) | preserve (OB-144) |
+| Slot 20, path steps 482..500 | Heap contents (OB-008): the path buffers' bytes at M + 19,329.. and M + 29,353.. (§4.1.1), which only a front-end portrait or song can have written; 0 in a direct start under DOSBox | OB-008 |
+| Flight 21's paths come from the front end's leftovers | §4.1.1 (U-500): songs, fonts and portraits shown between flights 19 and 21, over `m19.td`'s arrays | Preserve (T1, OB-140): the port builds them by the rule of §4.1.1 |
+| Turn directions carried across flights | Setup does not reset them (U-501) | Preserve (session state) |
+| Class FFh at setup | Armour and shields read table bytes past `k_ClassArmour`/`k_ClassShields` (DS:03C7, DS:03D1) | preserve (only visible if mission logic revives the slot; OB-144) |
 | Unit-init `Random(2)` draws | 20 draws at program start and 20 at every flight start | preserve (RNG stream) |
-| Record fields not cleared between flights | +411h, +41Ah, +41Bh, +418h keep the previous flight's values | preserve |
-| Ships removed at the map edge are drawn once more | Removal happens inside the movement; drawing follows | preserve |
+| Record fields not cleared between flights | +411h, +41Ah, +41Bh, +418h keep the previous flight's values | preserve (OB-144) |
+| Ships removed at the map edge are drawn once more | Removal happens inside the movement; drawing follows | preserve (OB-144) |
 | Speed components below 16 after a brake | 13..15 behave as 16 (no drift, no drag) and resume from there | preserve |
 
 ## 6. Test vectors (capture C-0009, E1 flight 1, no input)
@@ -530,6 +560,8 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | No body collision | writers of DS:398E/398F and record +3F8h/+3FAh in all segments | static | CONFIRMED |
 | Sprite = class code, per-heading blits, markers | `3292:0011` draw section | static | LIKELY (not pixel-checked) |
 | Flight 7 pins, flight 20 sinking, flight 19 copy | `3292:0011`, `0E8B:D646..D675` | static | LIKELY |
+| Turn directions: only writer `AI_UpdateShips`'s steering; none at setup | `3292:0A27..0D68` (16 writes), reads `3292:039A`, `03B5` | static (operand scan of every listing); C-0200, C-0202 | CONFIRMED |
+| Flight heap layout and the flight-21 path rule (§4.1.1) | `0E8B:B8A4..BA68` (free music, `BP_Mark`, 17 `GetMem`s), `0E8B:F9C1..F9DE` (release); `051A:701A`, `051A:92CC`, `051A:59CA`, `051A:1EB5` (975-byte font blocks), `051A:163E`, `051A:17E0..182C` (portrait block and pixel rule), `051A:70E6..70F1` (debrief face 1, right), `0E8B:07ED`, `2C37:0273` (music), `3A9A:041E..04DB` (free writes the size field) | static; C-0200 and C-0300 path buffers (5800:0000 window), model = capture in all 20,001 bytes it defines | CONFIRMED |
 
 ## 9. Revision history
 
@@ -540,3 +572,4 @@ Scratch models used for these checks are outside the repo (RE work area); the nu
 | 3 | 2026-11-05 | RE-10 (Spec author, U-252) | U-252 corrections: `34E6:3232` is named `AI_SetTarget` (as in mission-logic; was `AI_OrderAttack`); volley spawning is tick-order step 30 and clearing step 31 (were 31/32) |
 | 4 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.3.10: what an attacker does when its target dies, hides or leaves the range (U-181): it keeps attacking the last waypoint until its budget runs out; re-applied orders do not reset the budget |
 | 5 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.4.2 and OB-017: the two-digit muzzle bytes are specified in weapons rev 4 §3.3 (U-160 resolved, policy *preserve* proposed) |
+| 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §2 and §4.1: slot turn directions are not reset at setup, 0 only at program start (U-501, slots' part). §4.1.1 new: flight 21's path arrays, the flight heap layout and the front-end writers that fill them, port rule and two vectors (U-500; C-0200, new capture C-0300). §5 three rows (OB-140), §8 two rows |

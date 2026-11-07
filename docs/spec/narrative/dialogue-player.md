@@ -153,7 +153,7 @@ Skip to the next line, then wait until a key is pressed or a joystick button is 
 ## 5. Edge cases and original bugs
 
 1. **Unmatched line colours (E1).** `dialogue.dat` and `safedial.dat` have 4 `02` lines whose colour matches neither current speaker. E1 draws them in slot 2's colour with slot 2 highlighted. Preserve (T0).
-2. **Face 200 mid-scene** leaves the old portrait and name on screen (§4.4). Preserve.
+2. **Face 200 mid-scene** leaves the old portrait and name on screen (§4.4). Preserve (OB-149).
 3. **Portrait-only speaker lines** (`01 slot face` with no colour or name; two in `dialogu3.dat`, one in `safedia3.dat`): the colour field reads the line's CR (13), so `td.pal[13]` is allocated and that slot's speaker colour becomes 13. Depending on how BP7's `Read` treats the CR, the name read may also swallow the next (padding) line (U-063). Port policy until U-063 is answered: keep the speaker colour change, do not swallow a line, draw no name.
 4. **Text area overflow:** the area is 89 rows; lines older than 12 scroll off the top. Nothing else is cleared.
 5. **Scene IDs not found:** the search runs to end of file; BP7 then returns end-of-file characters forever and the search never ends (the original hangs). Port policy: treat as an empty scene (fix-all).

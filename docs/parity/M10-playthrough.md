@@ -188,6 +188,8 @@ Method: [M9-playthrough](M9-playthrough.md) VE-5 section (oracle build 3, `full_
 | V2 | E3 7, 21 (second flights) | setup | `g_PlayerTurnDir` | 0 | the previous flight's | — | flight-model §2 | Copied by the harness (U-501, M9-playthrough D7) |
 | V3 | E2 20 (C-0207) | 8 | projectile slot 40 (the first homing missile): tile | (92, 34) | (90, 32), heading 3 in both | launched in tick 7 at (91, 33) on heading 7 toward slot 10 at (93, 34) | weapons rev 5 §4.3: step 6 steers, step 8 moves along the heading | **BUG-11 / U-502.** The original moves along the heading the missile had before the tick's steering and computes the new heading from the tile before the move. A trial td-sim with that order matched all 220 ticks (the flight then goes on past the planned last tick, in both), not committed. Steering after the move instead fails at tick 11 |
 
+**Answer (RE-18, 2026-11-06), V3:** the original's order is the trial build's, in all three episodes: the per-slot update latches the heading at its start, and the map test, the drawing and the move use it; the homing steering, computed from the tile before the move, only stores the new heading for the next tick ([weapons](../spec/sim/weapons.md) rev 6 §4.3, vector 11; U-502). V1 and V2: U-501 resolved ([flight-model](../spec/sim/flight-model.md) rev 3, [mission-ships](../spec/sim/mission-ships.md) rev 6).
+
 ## Planner notes
 
 - The E2/E3 base tests with a `viewSubY` limit and the narrow E3 hangar needed a goal term in pixels near the goal (offsets (32, 16)); the view tile alone left the ship stuck one tile short.

@@ -1066,10 +1066,10 @@ Notes:
 
 | Quirk | Original behaviour | Port policy |
 |---|---|---|
-| Kill seen one tick late | As E2 §6 (P3 removed in E3 too) | Preserve (T1) |
+| Kill seen one tick late | As E2 §6 (P3 removed in E3 too) | Preserve (T1) (OB-149) |
 | Exit/completion order | Same-tick completion in flights 2, 3, 6, 7, 8; one tick later in 1, 4, 9 (§4.1) | Preserve |
-| Escaped targets count as gone | Every "all gone" test; only the outcome tests of 2, 3, 4, 8, 9 tell escape from destruction | Preserve |
-| Target destroyed on its exit row or column | Counts as escaped in the outcome (tile-only tests) | Preserve |
+| Escaped targets count as gone | Every "all gone" test; only the outcome tests of 2, 3, 4, 8, 9 tell escape from destruction | Preserve (OB-149) |
+| Target destroyed on its exit row or column | Counts as escaped in the outcome (tile-only tests) | Preserve (OB-149) |
 | Flights that start inside the base cell | 1–5, 8, 9 end one tick after phase 100 with no input | Preserve |
 | Flight 1 waves and completion set | A and B advance on the first loss of a pair; C tests 8, 2, 11, 12 only (OB-045) | Preserve |
 | Flight 1 spawn class vs record | Slots 2..4 spawn as class 7 with the armour and shields of file class 0 | Preserve (setup spec) |
