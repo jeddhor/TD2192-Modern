@@ -58,6 +58,14 @@ struct Cli {
     /// Developer: save a screenshot and exit after this many simulation ticks.
     #[arg(long, value_name = "TICKS")]
     dev_exit_after: Option<u64>,
+    /// Developer: log the tick rate, the ticks and frames run and the frame time once a second
+    /// (log target `td2192::stats`).
+    #[arg(long)]
+    dev_stats: bool,
+    /// Developer: press keys at given ticks, for headless runs: `TICK=KEY` or
+    /// `FIRST-LAST/STEP=KEY`, comma-separated (key names as in `[controls]`, e.g. `escape`).
+    #[arg(long, value_name = "SPEC")]
+    dev_keys: Option<String>,
     /// Developer: Enhanced presentation for this run, as `key=value` pairs of the `[enhanced]`
     /// settings (e.g. `widescreen=16:9,upscaler=xbr3`); implies `profile = "enhanced"`.
     #[arg(long, value_name = "SPEC")]
@@ -242,6 +250,8 @@ fn real_main() -> Result<()> {
     };
     let options = run::RunOptions {
         exit_after_ticks: cli.dev_exit_after,
+        stats: cli.dev_stats,
+        keys: run::parse_dev_keys(cli.dev_keys.as_deref().unwrap_or("")).context("--dev-keys")?,
     };
     let ui = td_flow::front::UiAssets::load(&dir);
     let host = data::DataHost::new(
