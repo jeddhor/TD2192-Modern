@@ -11,12 +11,18 @@
 //! in 12-bit fixed point, sampled bilinearly at output resolution. Pixels are modulated in
 //! linear light through 8-bit ↔ 14-bit sRGB tables whose round trip is exact, so a gain of 1
 //! leaves a pixel unchanged.
+//!
+//! Cost (M12-18, spec rev 6 §7): the modulation runs by bands of four output rows; where both
+//! samples of a pixel's tap hold the ambient (no light reaches them) the pixel goes through a
+//! table built once per frame, and with bloom on the bloom's bright pass of these rows is done
+//! as each pixel is finished ([`LightMap::apply_with_bloom`]). The output is bit-identical to
+//! the plain per-pixel formula followed by a separate bloom pass.
 
 use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
-use super::bloom::Bloom;
+use super::bloom::{Bloom, BrightTest, DOWNSAMPLE, box_means};
 use super::scene::{Emissive, Light, LightMode, LightScene, Occluders};
 use super::{Config, FrameInput, PostStage};
 
@@ -266,6 +272,8 @@ pub struct LightMap {
     gain: Vec<[u16; 3]>,
     /// Half-resolution rows whose every gain is 1.
     unlit: Vec<bool>,
+    /// The gain of a sample no light reaches: the ambient in fixed point.
+    ambient: [u16; 3],
     /// Per light: casts shadows that can fall in view.
     casts: Vec<bool>,
     /// Output column and row taps for (w, k).
@@ -297,6 +305,7 @@ impl LightMap {
         self.unlit.resize(HALF_ROWS, true);
         let (occ, casts, hw) = (&scene.occluders, &self.casts, self.hw);
         let amb = ambient(scene.mode);
+        self.ambient = amb.map(|a| (a.min(MAX_GAIN) * GAIN_ONE as f32 + 0.5) as u16);
         self.acc
             .par_chunks_mut(hw)
             .zip(self.gain.par_chunks_mut(hw))
@@ -361,6 +370,42 @@ impl LightMap {
         indexed: &[u8],
         emissive: &Emissive,
     ) {
+        self.modulate(rgba, w, k, indexed, emissive, None);
+    }
+
+    /// [`Self::apply`] followed by `bloom` ([`Bloom::apply`]), with the bloom's bright pass of
+    /// the playfield rows done while each pixel is modulated (M12-18): the same output, without
+    /// reading those rows a second time.
+    ///
+    /// # Panics
+    /// As [`Self::apply`].
+    pub fn apply_with_bloom(
+        &mut self,
+        rgba: &mut [u8],
+        w: usize,
+        k: usize,
+        indexed: &[u8],
+        emissive: &Emissive,
+        bloom: &mut Bloom,
+    ) {
+        let (sum, down) = bloom.begin(w, k);
+        self.modulate(rgba, w, k, indexed, emissive, Some((sum, down)));
+        // The playfield's quarter rows are done; the HUD rows below follow in the bloom.
+        bloom.finish(rgba, w, k, indexed, emissive, LIT_ROWS * k / DOWNSAMPLE);
+    }
+
+    /// The modulation, by bands of [`DOWNSAMPLE`] output rows; with `bright`, the bloom's
+    /// quarter-resolution sums and means of the playfield rows are filled too (rows the map
+    /// leaves unchanged are only read).
+    fn modulate(
+        &mut self,
+        rgba: &mut [u8],
+        w: usize,
+        k: usize,
+        indexed: &[u8],
+        emissive: &Emissive,
+        bright: Option<QuarterRows<'_>>,
+    ) {
         assert_eq!(w, self.w, "the map was built for another width");
         assert!(k >= 1, "scale");
         let ow = w * k;
@@ -368,47 +413,163 @@ impl LightMap {
         assert_eq!(indexed.len(), w * FRAME_ROWS, "indexed size");
         self.ensure_taps(k);
         let t = srgb();
-        let (hw, gain, unlit) = (self.hw, &self.gain, &self.unlit);
-        let (cols, rows) = (&self.cols, &self.rows);
+        // Where both samples of a tap hold the ambient, the gain is the ambient whatever the
+        // weights ((g·(256 − f) + g·f) >> 8 = g), so the pixel goes through a table: one for
+        // plain pixels, one for emissive ones (max(L, 1)). The same values, found faster
+        // (M12-18).
+        let amb = self.ambient.map(u32::from);
+        let lut = |glow: bool| -> [[u8; 256]; 3] {
+            std::array::from_fn(|c| {
+                let g = if glow { amb[c].max(GAIN_ONE) } else { amb[c] };
+                std::array::from_fn(|p| {
+                    let l = u32::from(t.lin[p]);
+                    t.enc[((l * g) >> GAIN_BITS).min(LIN_MAX) as usize]
+                })
+            })
+        };
+        let band = Band {
+            t,
+            ambient: (amb, [lut(false), lut(true)]),
+            test: BrightTest::new(),
+            w,
+            k,
+            hw: self.hw,
+            gain: &self.gain,
+            unlit: &self.unlit,
+            cols: &self.cols,
+            rows: &self.rows,
+            indexed,
+            emissive,
+        };
         let lit = &mut rgba[..LIT_ROWS * k * ow * 4];
-        lit.par_chunks_exact_mut(ow * 4)
-            .enumerate()
-            .for_each(|(y, row)| {
-                let rt = rows[y];
-                let (j0, j1) = (usize::from(rt.i0), usize::from(rt.i1));
-                if unlit[j0] && unlit[j1] {
-                    return;
-                }
-                let (g0, g1) = (&gain[j0 * hw..][..hw], &gain[j1 * hw..][..hw]);
-                let (a, b) = (256 - u32::from(rt.f), u32::from(rt.f));
-                // The gain between half-resolution rows j0 and j1 at column i.
-                let column = |i: u16| -> [u32; 3] {
-                    let (p, q) = (g0[usize::from(i)], g1[usize::from(i)]);
-                    std::array::from_fn(|c| (u32::from(p[c]) * a + u32::from(q[c]) * b) >> 8)
-                };
-                let src = &indexed[(y / k) * w..][..w];
-                let mut at = None;
-                let (mut v0, mut v1) = ([0; 3], [0; 3]);
-                let blocks = row.chunks_exact_mut(4 * k).zip(cols.chunks_exact(k));
-                for ((block, cts), &c) in blocks.zip(src) {
-                    let glow = emissive.0[usize::from(c)];
-                    for (px, ct) in block.chunks_exact_mut(4).zip(cts) {
-                        if at != Some((ct.i0, ct.i1)) {
-                            at = Some((ct.i0, ct.i1));
-                            (v0, v1) = (column(ct.i0), column(ct.i1));
-                        }
-                        let (a, b) = (256 - u32::from(ct.f), u32::from(ct.f));
-                        for c in 0..3 {
-                            let mut g = (v0[c] * a + v1[c] * b) >> 8;
-                            if glow {
-                                g = g.max(GAIN_ONE);
-                            }
-                            let l = u32::from(t.lin[usize::from(px[c])]);
-                            px[c] = t.enc[((l * g) >> GAIN_BITS).min(LIN_MAX) as usize];
-                        }
+        let rows_per_band = ow * 4 * DOWNSAMPLE;
+        match bright {
+            Some((sum, down)) => {
+                let qw = ow.div_ceil(DOWNSAMPLE);
+                lit.par_chunks_mut(rows_per_band)
+                    .zip(sum.par_chunks_mut(qw))
+                    .zip(down.par_chunks_mut(qw))
+                    .enumerate()
+                    .for_each(|(i, ((rows, mut sum), down))| {
+                        sum.fill([0; 3]);
+                        band.run(rows, i * DOWNSAMPLE, &mut sum);
+                        box_means(sum, down, ow, rows.len() / (ow * 4));
+                    });
+            }
+            None => lit
+                .par_chunks_mut(rows_per_band)
+                .enumerate()
+                .for_each(|(i, rows)| band.run(rows, i * DOWNSAMPLE, &mut ())),
+        }
+    }
+}
+
+/// The bloom's quarter-resolution sums and box means ([`Bloom`]'s bright pass).
+type QuarterRows<'a> = (&'a mut [[u32; 3]], &'a mut [[f32; 3]]);
+
+/// What the modulation of one band of rows reads.
+struct Band<'a> {
+    t: &'static Srgb,
+    /// The ambient gain, and the plain and emissive tables of a pixel at that gain.
+    ambient: ([u32; 3], [[[u8; 256]; 3]; 2]),
+    test: BrightTest,
+    w: usize,
+    k: usize,
+    hw: usize,
+    gain: &'a [[u16; 3]],
+    unlit: &'a [bool],
+    cols: &'a [Tap],
+    rows: &'a [Tap],
+    indexed: &'a [u8],
+    emissive: &'a Emissive,
+}
+
+/// Where the modulation puts the bloom's bright pass: nowhere, or a quarter row of sums.
+trait BrightSink {
+    /// A row the map leaves unchanged.
+    fn row(&mut self, band: &Band<'_>, row: &[u8], y: usize);
+    /// A modulated pixel at output column `x`.
+    fn pixel(&mut self, test: &BrightTest, px: &[u8], glow: bool, x: usize);
+}
+
+impl BrightSink for () {
+    #[inline]
+    fn row(&mut self, _: &Band<'_>, _: &[u8], _: usize) {}
+    #[inline]
+    fn pixel(&mut self, _: &BrightTest, _: &[u8], _: bool, _: usize) {}
+}
+
+impl BrightSink for &mut [[u32; 3]] {
+    fn row(&mut self, band: &Band<'_>, row: &[u8], y: usize) {
+        let size = (band.w, band.k);
+        band.test
+            .add_row(row, y, size, band.indexed, band.emissive, self);
+    }
+    #[inline]
+    fn pixel(&mut self, test: &BrightTest, px: &[u8], glow: bool, x: usize) {
+        test.add(px, glow, &mut self[x / DOWNSAMPLE]);
+    }
+}
+
+impl Band<'_> {
+    /// Modulates output rows `y0..` (`rows`, whole rows of RGBA) and hands each finished pixel
+    /// (or each row left as it is) to `sink`.
+    fn run<S: BrightSink>(&self, rows: &mut [u8], y0: usize, sink: &mut S) {
+        let (w, k, hw, t) = (self.w, self.k, self.hw, self.t);
+        let (gain, cols, emissive, test) = (self.gain, self.cols, self.emissive, &self.test);
+        let ow = w * k;
+        for (dy, row) in rows.chunks_exact_mut(ow * 4).enumerate() {
+            let y = y0 + dy;
+            let rt = self.rows[y];
+            let (j0, j1) = (usize::from(rt.i0), usize::from(rt.i1));
+            if self.unlit[j0] && self.unlit[j1] {
+                sink.row(self, row, y);
+                continue;
+            }
+            let (g0, g1) = (&gain[j0 * hw..][..hw], &gain[j1 * hw..][..hw]);
+            let (a, b) = (256 - u32::from(rt.f), u32::from(rt.f));
+            // The gain between half-resolution rows j0 and j1 at column i.
+            let column = |i: u16| -> [u32; 3] {
+                let (p, q) = (g0[usize::from(i)], g1[usize::from(i)]);
+                std::array::from_fn(|c| (u32::from(p[c]) * a + u32::from(q[c]) * b) >> 8)
+            };
+            let src = &self.indexed[(y / k) * w..][..w];
+            let (amb, luts) = &self.ambient;
+            let mut at = None;
+            let (mut v0, mut v1, mut flat) = ([0; 3], [0; 3], false);
+            let mut x = 0;
+            let blocks = row.chunks_exact_mut(4 * k).zip(cols.chunks_exact(k));
+            for ((block, cts), &c) in blocks.zip(src) {
+                let glow = emissive.0[usize::from(c)];
+                for (px, ct) in block.chunks_exact_mut(4).zip(cts) {
+                    if at != Some((ct.i0, ct.i1)) {
+                        at = Some((ct.i0, ct.i1));
+                        (v0, v1) = (column(ct.i0), column(ct.i1));
+                        flat = v0 == *amb && v1 == *amb;
                     }
+                    if flat {
+                        let lut = &luts[usize::from(glow)];
+                        for c in 0..3 {
+                            px[c] = lut[c][usize::from(px[c])];
+                        }
+                        sink.pixel(test, px, glow, x);
+                        x += 1;
+                        continue;
+                    }
+                    let (a, b) = (256 - u32::from(ct.f), u32::from(ct.f));
+                    for c in 0..3 {
+                        let mut g = (v0[c] * a + v1[c] * b) >> 8;
+                        if glow {
+                            g = g.max(GAIN_ONE);
+                        }
+                        let l = u32::from(t.lin[usize::from(px[c])]);
+                        px[c] = t.enc[((l * g) >> GAIN_BITS).min(LIN_MAX) as usize];
+                    }
+                    sink.pixel(test, px, glow, x);
+                    x += 1;
                 }
-            });
+            }
+        }
     }
 }
 
@@ -432,12 +593,19 @@ impl PostStage for LightStage {
         if w != frame.width {
             return;
         }
-        if let (Some(_), Some(scene)) = (cfg.lighting, flight.scene) {
-            self.map.build(scene, w);
-            self.map.apply(out, w, k, &fb.pixels, flight.emissive);
-        }
-        if cfg.bloom {
-            self.bloom.apply(out, w, k, &fb.pixels, flight.emissive);
+        let scene = cfg.lighting.and(flight.scene);
+        match (scene, cfg.bloom) {
+            (Some(scene), true) => {
+                self.map.build(scene, w);
+                let (map, bloom) = (&mut self.map, &mut self.bloom);
+                map.apply_with_bloom(out, w, k, &fb.pixels, flight.emissive, bloom);
+            }
+            (Some(scene), false) => {
+                self.map.build(scene, w);
+                self.map.apply(out, w, k, &fb.pixels, flight.emissive);
+            }
+            (None, true) => self.bloom.apply(out, w, k, &fb.pixels, flight.emissive),
+            (None, false) => {}
         }
     }
 }
@@ -841,6 +1009,44 @@ mod tests {
         assert_eq!(
             got,
             ["daa1eae47927180f", "cf3c8e279fb5ce6c", "775f2be2836050df"]
+        );
+    }
+
+    /// M12-18: the bloom's bright pass done with the modulation
+    /// ([`LightMap::apply_with_bloom`]) gives exactly the output of the light map followed by
+    /// bloom; the digests were recorded with the two stages as they were before that change
+    /// (one full pass each, the blur and the upsample over every column).
+    #[test]
+    fn bloom_with_the_light_map_is_bit_identical() {
+        let emissive = flight_emissive([[0x40u8, 0x41].as_slice()]);
+        let mut got = vec![];
+        for (w, mode, k) in [
+            (W, LightMode::Full, 1),
+            (428, LightMode::Subtle, 2),
+            (W, LightMode::Full, 3),
+            (560, LightMode::Full, 4),
+        ] {
+            let (indexed, _, pal) = image(w);
+            let mut map = LightMap::default();
+            map.build(&synthetic(w, mode), w);
+            let mut lit = expand(&indexed, &pal, k, w);
+            map.apply(&mut lit, w, k, &indexed, &emissive);
+            let mut separate = lit.clone();
+            Bloom::default().apply(&mut separate, w, k, &indexed, &emissive);
+            assert_ne!(separate, lit, "bloom added glow");
+            let mut fused = expand(&indexed, &pal, k, w);
+            map.apply_with_bloom(&mut fused, w, k, &indexed, &emissive, &mut Bloom::default());
+            assert!(fused == separate, "{w} {mode:?} {k}");
+            got.push(digest(&separate));
+        }
+        assert_eq!(
+            got,
+            [
+                "e082d08b1ad786b4",
+                "16a2cd6c1cc08730",
+                "a70ab05fb6e22052",
+                "d08759f46634d9f5"
+            ]
         );
     }
 }

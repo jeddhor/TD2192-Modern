@@ -133,7 +133,9 @@ mod tests {
     /// Classic path is the 320-wide frame and its palette to RGBA (`Framebuffer::to_rgba`, the
     /// CPU side of `present`). Also the tick (td-sim and the host's flight screen). Needs
     /// `TD2192_DATA`; run in release:
-    /// `cargo test --release -p td2192 frame_cost -- --ignored --nocapture`.
+    /// `cargo test --release -p td2192 frame_cost -- --ignored --nocapture`. With
+    /// `TD2192_BENCH_DIGEST` set it also prints a digest of every setting's outputs (FNV-1a over
+    /// all frames), to check that a speed-up changes no pixel (M12-18).
     #[test]
     #[ignore = "timing: run in release with --ignored --nocapture"]
     fn frame_cost() {
@@ -180,6 +182,13 @@ mod tests {
             setups.iter().map(|_| Default::default()).collect();
         let (mut pipeline, mut stage) = (Pipeline::default(), LightStage::default());
         let mut lights = 0usize;
+        let digest = std::env::var("TD2192_BENCH_DIGEST").is_ok();
+        let mut digests = vec![0xcbf2_9ce4_8422_2325_u64; setups.len()];
+        let fnv = |h: &mut u64, bytes: &[u8]| {
+            for &b in bytes {
+                *h = (*h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        };
         for spec in flights.split(',') {
             let (episode, n) = match spec.split_once(':') {
                 Some(("e2", n)) => (Episode::E2, n),
@@ -227,7 +236,10 @@ mod tests {
                     arena.draw_frame(&mut fb);
                     let t1 = Instant::now();
                     let Some((upscaler, lighting, bloom)) = cfg else {
-                        std::hint::black_box(fb.to_rgba());
+                        let rgba = std::hint::black_box(fb.to_rgba());
+                        if digest {
+                            fnv(&mut digests[i], &rgba);
+                        }
                         let t2 = Instant::now();
                         times[i][0].push(t1 - t0);
                         times[i][2].push(t2 - t1);
@@ -251,8 +263,12 @@ mod tests {
                         lighting,
                         bloom,
                     };
-                    std::hint::black_box(pipeline.render(&frame, &c, &mut stage).rgba.len());
+                    let out = pipeline.render(&frame, &c, &mut stage);
+                    std::hint::black_box(out.rgba.len());
                     let t3 = Instant::now();
+                    if digest {
+                        fnv(&mut digests[i], out.rgba);
+                    }
                     times[i][0].push(t1 - t0);
                     times[i][1].push(t2 - t1);
                     times[i][2].push(t3 - t2);
@@ -278,6 +294,11 @@ mod tests {
                 "  {name:<32} compose {dm:.3} + scene {sm:.3} + pipeline {pm:.3} ms (medians); \
                  frame median {am:.3}, p95 {ap:.3}, max {ax:.3} ms"
             );
+        }
+        if digest {
+            for ((name, _, _), d) in setups.iter().zip(&digests) {
+                println!("  digest {name:<32} {d:016x}");
+            }
         }
     }
 

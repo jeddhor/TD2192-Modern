@@ -6,8 +6,10 @@
 //! Run with `cargo test --release -p td-render --test enhanced_lighting_timing -- --ignored
 //! --nocapture`. The budget for the whole pipeline is 6 ms per frame. xBR 4× at 560 × 200 takes
 //! about 1.3 ms on 16 threads and 1.7 ms on 6 (IM-12), so this test asserts at most 4 ms for
-//! lighting and bloom together (median, release builds only). Measured 2026-11-05 on an
-//! i7-10700F that other builds kept fully loaded: 3.7 ms on 16 threads, 5.1 ms on 6, 23 ms on 1.
+//! lighting and bloom together (median, release builds only), with the bloom's bright pass done
+//! inside the modulation as the pipeline does it (`LightMap::apply_with_bloom`, M12-18).
+//! Measured 2026-11-05 on an i7-10700F that other builds kept fully loaded: 3.7 ms on 16
+//! threads, 5.1 ms on 6, 23 ms on 1 (the two stages one after the other).
 
 use std::time::{Duration, Instant};
 
@@ -141,7 +143,7 @@ fn lighting_and_bloom_fit_the_budget() {
     let scene = heavy_scene();
     let (mut map, mut bloom) = (LightMap::default(), Bloom::default());
     let mut out = base.clone();
-    let mut times = [vec![], vec![], vec![]];
+    let mut times = [vec![], vec![], vec![], vec![]];
     for i in 0..FRAMES + 5 {
         out.copy_from_slice(&base);
         let t0 = Instant::now();
@@ -151,21 +153,27 @@ fn lighting_and_bloom_fit_the_budget() {
         let t2 = Instant::now();
         bloom.apply(&mut out, W, K, &indexed, &emissive);
         let t3 = Instant::now();
+        // What the pipeline's stage runs: the bright pass inside the modulation (M12-18).
+        out.copy_from_slice(&base);
+        let t4 = Instant::now();
+        map.apply_with_bloom(&mut out, W, K, &indexed, &emissive, &mut bloom);
+        let t5 = Instant::now();
         if i >= 5 {
-            for (v, d) in times.iter_mut().zip([t1 - t0, t2 - t1, t3 - t2]) {
+            for (v, d) in times.iter_mut().zip([t1 - t0, t2 - t1, t3 - t2, t5 - t4]) {
                 v.push(d);
             }
         }
     }
     // Medians: other processes share the machine.
-    let [build, apply, glow] = times.map(|mut v: Vec<Duration>| {
+    let [build, apply, glow, fused] = times.map(|mut v: Vec<Duration>| {
         v.sort();
         v[v.len() / 2].as_secs_f64() * 1000.0
     });
-    let total = build + apply + glow;
+    let total = build + fused;
     println!(
         "{W}x200 -> {}x{}, {} lights, {} threads: build {build:.3} ms, apply {apply:.3} ms, \
-         bloom {glow:.3} ms, total {total:.3} ms (medians of {FRAMES})",
+         bloom {glow:.3} ms; apply with bloom {fused:.3} ms, total {total:.3} ms (medians of \
+         {FRAMES})",
         W * K,
         FRAME_ROWS * K,
         scene.lights.len(),
