@@ -317,3 +317,33 @@ fn flight_17_lost_matches_oracle() {
         false,
     );
 }
+
+/// A flight with no input from setup to its end (VE-9, M12 checklist §0 item 6; `tdtool plan
+/// --idle`, replay `e1f<NN>-idle.tdr`), against the capture `ve9-e1f<NN>-idle` (C-0360..):
+/// every tick, the outcome after teardown.
+fn idle(flight: u8) {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let tag = format!("ve9-e1f{flight:02}-idle");
+    full_flight::check_replay(&full_flight::E1, &data, &oracle, flight, "-idle", &tag);
+}
+
+/// Teardown outcome 0 (mission-logic §4.8): flight 12 succeeds without input while a convoy
+/// ship stands on row 199 (697 ticks; VE-7's C-0274 showed the failure debrief).
+#[test]
+fn flight_12_idle_outcome_0_matches_oracle() {
+    idle(12);
+}
+
+/// Flight 16 without input: the flight ends in tick 1,537 with the mission succeeded and the
+/// player destroyed in the same run of the end sequence (both flags, as td-sim predicted).
+#[test]
+fn flight_16_idle_matches_oracle() {
+    idle(16);
+}
+
+/// A lost flight: flight 20 without input, the base falls in tick 2,673 (VE-7's C-0279 showed
+/// ending C after it).
+#[test]
+fn flight_20_idle_lost_matches_oracle() {
+    idle(20);
+}

@@ -205,3 +205,56 @@ fn flight_10_hangar_return_b_matches_oracle() {
 fn flight_10_hangar_return_c_matches_oracle() {
     hangar("-hangar-c", "re17-e3f10-hangar-c");
 }
+
+/// A flight with no input from setup to its end (VE-9, M12 checklist; `tdtool plan --idle`,
+/// replay `e3f<NN>-idle.tdr`), against the capture `ve9-e3f<NN>-idle` (C-0360..): every tick,
+/// the outcome after teardown.
+fn idle(flight: u8) {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let tag = format!("ve9-e3f{flight:02}-idle");
+    full_flight::check_replay(&full_flight::E3, &data, &oracle, flight, "-idle", &tag);
+}
+
+/// e3-mission-logic §7 vector 17: the six trucks of flight 2 drive to row 199 and leave by the
+/// exit rules; A completes the flight in the tick of the last exit and the outcome is 0
+/// (752 ticks).
+#[test]
+fn flight_02_idle_trucks_escape_matches_oracle() {
+    idle(2);
+}
+
+/// e3-mission-logic §7 vector 19 (second part): the trucks of flight 4 reach (199, 111), so the
+/// flight completes with outcome 0 (761 ticks).
+#[test]
+fn flight_04_idle_trucks_escape_matches_oracle() {
+    idle(4);
+}
+
+/// e3-mission-logic §7 vector 15 (second part): flight 8 without input ends with outcome 0
+/// (1,312 ticks).
+#[test]
+fn flight_08_idle_matches_oracle() {
+    idle(8);
+}
+
+/// e3-mission-logic §7 vector 16: the last truck reaches (168, 199) with the player unmoved;
+/// the exit hides it, A sets phase 100, the base test succeeds two ticks later; outcome 0
+/// (1,054 ticks).
+#[test]
+fn flight_09_idle_truck_exit_matches_oracle() {
+    idle(9);
+}
+
+/// e3-mission-logic §7 vectors 6–8 without input: flight 10's counter phases and the truck's
+/// end; outcome 0 (1,049 ticks).
+#[test]
+fn flight_10_idle_matches_oracle() {
+    idle(10);
+}
+
+/// e3-mission-logic §7 vector 11: flight 12 without input; truck 4 on (93, 76) at teardown,
+/// outcome 0 (645 ticks).
+#[test]
+fn flight_12_idle_matches_oracle() {
+    idle(12);
+}
