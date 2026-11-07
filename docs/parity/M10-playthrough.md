@@ -190,6 +190,24 @@ Method: [M9-playthrough](M9-playthrough.md) VE-5 section (oracle build 3, `full_
 
 **Answer (RE-18, 2026-11-06), V3:** the original's order is the trial build's, in all three episodes: the per-slot update latches the heading at its start, and the map test, the drawing and the move use it; the homing steering, computed from the tile before the move, only stores the new heading for the next tick ([weapons](../spec/sim/weapons.md) rev 6 §4.3, vector 11; U-502). V1 and V2: U-501 resolved ([flight-model](../spec/sim/flight-model.md) rev 3, [mission-ships](../spec/sim/mission-ships.md) rev 6).
 
+## VE-9 (2026-11-07): deaths, aborts, outcome-0 and lost flights, two-flight runs, U-246, U-276
+
+Details, captures and results: [M12-checklist](M12-checklist.md) §10. E2/E3 flights added to `oracle_e2_full.rs` and `oracle_e3_full.rs` (every tick, the outcome after teardown where the flight ends):
+
+| Episode, flight | Capture | Path | Result |
+|---|---|---|---|
+| E2 7 | C-0363 | idle: the player's death and the end sequence | PASS, 617 ticks |
+| E2 7 | C-0375 | Esc in tick 300, Quit in the flight menu (`check_abort`) | PASS, 300 ticks; `g_MissionAborted` = 1 |
+| E2 9 | C-0364 | idle: success with outcome 0 | PASS, 1,466 ticks |
+| E2 13 | C-0379 | the Areo-1 destroyed in tick 77, ghost volleys (U-246, OB-039) | PASS, 227 ticks |
+| E2 18 | C-0365 | idle: lost | PASS, 968 ticks |
+| E3 2, 4, 8, 9, 10, 12 | C-0366..C-0371 | idle: success with outcome 0 (trucks escaped, the flight-9 truck exit, flight 12's truck on (93, 76)) | PASS, 752 / 761 / 1,312 / 1,054 / 1,049 / 645 ticks |
+| E3 8 | C-0372 | C-0041's route into the hazard cells: death, end sequence, hit flash | PASS, 297 ticks |
+| E3 9 | C-0374 | hangar bounces, diagonal steering | PASS, 700 ticks |
+| E3 16 → 17 | C-0376 | one program run; class tables patched, then restored (U-284 vector 7) | PASS, 908 + 300 ticks |
+| E3 16 | C-0378 | idle: the convoy reaches (168, 199) | PASS to tick 872; **BUG-34**: the original removes each truck there (OB-046 says the exit is inert) |
+| E3 19 | C-0340 (RE-20) | idle to tick 4,499 through the BUG-18 wrap | PASS |
+
 ## Planner notes
 
 - The E2/E3 base tests with a `viewSubY` limit and the narrow E3 hangar needed a goal term in pixels near the goal (offsets (32, 16)); the view tile alone left the ship stuck one tile short.
