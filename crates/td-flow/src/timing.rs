@@ -34,10 +34,24 @@ pub fn dos_seconds_frames(n: u32) -> u32 {
 
 /// Retrace frames of a `Crt.Delay(ms)` pause: real milliseconds (Crt calibrates its loop
 /// against the standard 18.2 Hz tick before WORX speeds the timer up). Spec: timing rev 4
-/// §4.4 item 2. Fidelity: T2.
+/// §4.4 item 2. Fidelity: T2. The typed front-end screens use [`typing_delay_frames`].
 #[must_use]
 pub fn delay_ms_frames(ms: u32) -> u32 {
     (f64::from(ms) * RETRACE_HZ / 1000.0).round() as u32
+}
+
+/// Retrace frames per millisecond of a `Crt.Delay` between two typed lines of a front-end
+/// screen while music plays: n ms plus the interrupt handlers' time, about 0.6 % more than
+/// real time (70.086 Hz × 1.006 ≈ 70.5 Hz). Spec: `docs/spec/render/text.md` rev 5 §4.3 item
+/// 5 and its port rule (U-521, BUG-20; C-0270, C-0274, C-0284, C-0289).
+pub const TYPING_DELAY_FRAMES_PER_MS: f64 = 0.0705;
+
+/// Frames of a `Crt.Delay(ms)` between two typed lines (text rev 5 §4.3 port rule):
+/// round(ms × 0.0705), so the next line starts in frame F + 1 + that (F the frame of the
+/// previous line's last character): 500 ms → 35 (F + 36), 2000 ms → 141 (F + 142). T2.
+#[must_use]
+pub fn typing_delay_frames(ms: u32) -> u32 {
+    (f64::from(ms) * TYPING_DELAY_FRAMES_PER_MS).round() as u32
 }
 
 /// Longest real-time step accepted in one call; longer pauses (debugger, window drag) are
@@ -114,6 +128,10 @@ mod tests {
         assert_eq!(delay_ms_frames(500), 35);
         assert_eq!(delay_ms_frames(100), 7);
         assert_eq!(delay_ms_frames(2000), 140);
+        // Between typed lines (text rev 5 §4.3, BUG-20): F + 36 and F + 142.
+        assert_eq!(typing_delay_frames(500), 35);
+        assert_eq!(typing_delay_frames(2000), 141);
+        assert_eq!(typing_delay_frames(100), 7);
     }
 
     #[test]

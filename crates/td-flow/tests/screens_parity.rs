@@ -4,7 +4,7 @@
 //! episode end cards of all three episodes. Data- and oracle-gated (TD2192_DATA, TD2192_ORACLE).
 //! No captured pixels are stored: every test reads the frame dumps of the capture.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -113,9 +113,13 @@ fn lit(p: &Palette) -> bool {
         .any(|c| c.r != 0 || c.g != 0 || c.b != 0)
 }
 
-/// The frames of `capture` dumped with `tag`, in order.
+/// The frames of `capture` dumped with `tag` (or without a tag when `tag` is empty), in order.
 fn tagged(oracle: &Path, capture: &str, tag: &str) -> Vec<u32> {
-    let suffix = format!("_320x200_{tag}.vga");
+    let suffix = if tag.is_empty() {
+        "_320x200.vga".to_owned()
+    } else {
+        format!("_320x200_{tag}.vga")
+    };
     let mut v: Vec<u32> = fs::read_dir(oracle.join(capture).join("fb"))
         .unwrap()
         .filter_map(Result::ok)
@@ -130,52 +134,132 @@ fn tagged(oracle: &Path, capture: &str, tag: &str) -> Vec<u32> {
 /// A capture frame and its differences from the port.
 type Mismatch = (u32, Vec<String>);
 
-/// Plays `s` against the dumps of `tag` from the first frame with a lit DAC to `until`: the
-/// port's first lit frame is aligned with the capture's, then every dump is compared with the
-/// port's frame at the same distance. Pixels always; the DAC (every entry) only where the
-/// capture's DAC is complete, i.e. equal to the next frame's when that frame is dumped too (a
-/// fade level is written over 1.5 frames, so a frame can start in the middle of a level; the
-/// level-phase rule is screens §2.1).
-///
-/// Typing may run up to `ahead` frames early (M12-screens D1): a frame then passes when, for
-/// some k in 0..=`ahead`, every pixel equals the port's frame k steps earlier or k + 1 steps
-/// earlier (a dump can show a character half drawn, the beam passing while it is written),
-/// with the DAC equal. Returns, per frame that passed only that way, its k, and the frames that
-/// differ.
-fn sequence(
+/// The capture frame in which the screen's fade-in starts, the port's step 0: the first frame
+/// of the run of frames with DAC writes (`frames.tsv`, `dac_3c9`) that leads into the first lit
+/// dump `first_lit`. Level 0's writes start there and level 1's first entries are written in
+/// the frame after, so the first lit dump is two frames after the fade starts, while the port's
+/// first lit frame is the fourth (level 1 shown complete; screens rev 5 §2.1). Aligning those
+/// two put the port two frames early (BUG-20, RE-19).
+fn fade_start(capture: &str, writes: &BTreeMap<u32, u32>, first_lit: u32, dense: bool) -> u32 {
+    let mut f = first_lit;
+    while writes.get(&(f - 1)).is_some_and(|&w| w > 0) {
+        f -= 1;
+    }
+    // With a dump every frame the first lit one is fade frame 2; with sparser dumps, later.
+    if dense {
+        assert_eq!(
+            f + 2,
+            first_lit,
+            "{capture}: fade start f{f}, first lit dump f{first_lit}"
+        );
+    } else {
+        assert!(f + 2 <= first_lit, "{capture}: fade start f{f}");
+    }
+    f
+}
+
+/// Column `name` of `capture`'s `frames.tsv`, per frame.
+fn frames_column(oracle: &Path, capture: &str, name: &str) -> BTreeMap<u32, u32> {
+    let tsv = fs::read_to_string(oracle.join(capture).join("frames.tsv")).unwrap();
+    let mut lines = tsv.lines();
+    let head: Vec<&str> = lines.next().unwrap().split('\t').collect();
+    let col = head.iter().position(|&c| c == name).unwrap();
+    lines
+        .map(|l| {
+            let v: Vec<&str> = l.split('\t').collect();
+            (v[0].parse().unwrap(), v[col].parse().unwrap())
+        })
+        .collect()
+}
+
+/// DAC component writes per frame of `capture` (`frames.tsv`, `dac_3c9`).
+fn dac_writes(oracle: &Path, capture: &str) -> BTreeMap<u32, u32> {
+    frames_column(oracle, capture, "dac_3c9")
+}
+
+/// A capture frame the port does not reproduce, for a reason the specs give and the port does
+/// not model (T2).
+#[derive(Clone, Copy)]
+enum Quirk {
+    /// The original missed the retrace after typing the character of this frame, so that
+    /// character stays alone for two frames and the original runs one frame behind from the
+    /// next frame on (text rev 5 §4.3 item 6: interrupt load, about once in 800 typed frames).
+    Missed(u32),
+    /// The dump shows a character drawn while the beam passed its rows: part of it is already
+    /// on screen in this frame (a dump is the frame as scanned out; text rev 5 §4.3 item 2).
+    /// Every pixel equals the port's frame or the next one.
+    Torn(u32),
+    /// A hint line whose first character is drawn after the beam has passed its rows, because
+    /// the key test after the previous line (screens §3.3) ends a third of a frame into the
+    /// frame: the frame still shows the previous one, the next shows two characters (text rev
+    /// 5 §4.3 item 2). Not in screens §3.13 (U-581); the port types hint lines back to back.
+    Late(u32),
+    /// From this frame on the original is one frame ahead: a line after a `Crt.Delay` shows
+    /// two characters in its first frame where screens §3.13 gives one, because this delay
+    /// ended later in the frame before, after the beam had passed the line's rows (text rev 5
+    /// §4.3 items 2 and 5: the delay varies by ±0.3 frame from call to call; U-583).
+    Early(u32),
+}
+
+/// Plays `s` against `dumps` (the screen's dumps of a capture) from the fade start on: port
+/// step s is capture frame start + s ([`fade_start`]), one less after each [`Quirk::Missed`]
+/// frame. The dump at the fade start itself is skipped (it can still show the screen being
+/// drawn, all black). Every other dump is compared with the port's frame at that step: all
+/// pixels, and the DAC (every entry) where it held one value for the whole frame, i.e. where
+/// the dump of the frame before was taken and has the same DAC (a dump's DAC is the one at the
+/// end of its frame, and a fade level is written over 1.5 frames; screens §2.1), or, where the
+/// frame before was not dumped, where the frame has no DAC write (`frames.tsv`). `quirks`
+/// lists the known exceptions. Returns the frames that differ.
+fn sequence_of(
     mut s: StoryScreen,
     oracle: &Path,
     capture: &str,
-    tag: &str,
-    until: u32,
-    ahead: u32,
-) -> (Vec<(u32, u32)>, Vec<Mismatch>) {
-    let frames: Vec<u32> = tagged(oracle, capture, tag)
-        .into_iter()
-        .filter(|&f| f <= until)
-        .collect();
-    let first = *frames
+    dumps: &[u32],
+    quirks: &[Quirk],
+) -> Vec<Mismatch> {
+    let writes = dac_writes(oracle, capture);
+    // A missed retrace: the typing loop polled the status port in that frame and never saw the
+    // retrace bit (`frames.tsv`: 3DAh polls, none in the retrace).
+    let (polls, in_retrace) = (
+        frames_column(oracle, capture, "p3da"),
+        frames_column(oracle, capture, "p3da_vr"),
+    );
+    for q in quirks {
+        if let Quirk::Missed(m) = *q {
+            assert!(
+                polls[&m] > 0 && in_retrace[&m] == 0,
+                "{capture} f{m}: no missed retrace in frames.tsv"
+            );
+        }
+    }
+    let first_lit = *dumps
         .iter()
         .find(|&&f| lit(&frame(oracle, capture, f).0))
         .expect("a lit frame");
-    let mut step = 0;
-    while !lit(&s.screen().palette) {
-        s.step(&TickInput::default());
-        step += 1;
-        assert!(step < 200, "{capture} {tag}: the port never lights the DAC");
-    }
-    let lit_step = step;
-    let last = lit_step + (frames.last().unwrap() - first);
-    // The port's frames at the steps compared and the `ahead + 1` steps before each.
-    let mut kept = std::collections::BTreeMap::new();
+    let dense = dumps.contains(&(first_lit - 1));
+    let start = fade_start(capture, &writes, first_lit, dense);
+    let frames: Vec<u32> = dumps.iter().copied().filter(|&f| f > start).collect();
+    let behind = |f: u32| {
+        quirks
+            .iter()
+            .filter(|q| matches!(q, Quirk::Missed(m) if *m < f))
+            .count() as u32
+    };
+    let ahead = |f: u32| {
+        quirks
+            .iter()
+            .filter(|q| matches!(q, Quirk::Early(e) if *e <= f))
+            .count() as u32
+    };
+    let at = |f: u32| f - start - behind(f) + ahead(f);
+    // The port's frames at the steps compared, and the neighbours the quirks need.
     let wanted: BTreeSet<u32> = frames
         .iter()
-        .filter(|&&f| f >= first)
-        .flat_map(|f| {
-            let at = lit_step + (f - first);
-            at.saturating_sub(ahead + 1)..=at
-        })
+        .flat_map(|&f| [at(f).saturating_sub(1), at(f), at(f) + 1])
         .collect();
+    let last = *wanted.last().unwrap();
+    let mut kept = BTreeMap::new();
+    let mut step = 0;
     loop {
         if wanted.contains(&step) {
             kept.insert(step, s.screen().clone());
@@ -186,47 +270,61 @@ fn sequence(
         s.step(&TickInput::default());
         step += 1;
     }
-    let (mut early, mut bad) = (Vec::new(), Vec::new());
-    for (i, &f) in frames.iter().enumerate().filter(|&(_, &f)| f >= first) {
-        let at = lit_step + (f - first);
-        let complete = match frames.get(i + 1) {
-            Some(&g) if g == f + 1 => frame(oracle, capture, f).0 == frame(oracle, capture, g).0,
-            _ => true,
+    let mut bad = Vec::new();
+    for &f in &frames {
+        let complete = if dumps.contains(&(f - 1)) {
+            frame(oracle, capture, f - 1).0 == frame(oracle, capture, f).0
+        } else {
+            writes.get(&f).is_some_and(|&w| w == 0)
         };
-        let mut d = diff(&kept[&at], oracle, capture, f, Dac::All);
+        let ours = |k: u32| &kept[&k];
+        let mut d = diff(ours(at(f)), oracle, capture, f, Dac::All);
         if !complete {
             d.retain(|x| !x.starts_with("DAC"));
         }
-        if d.is_empty() {
-            continue;
-        }
         let dac_ok = !d.iter().any(|x| x.starts_with("DAC"));
         let px = frame(oracle, capture, f).1;
-        let torn = (0..=ahead).find(|&k| {
-            let (Some(a), Some(b)) = (kept.get(&(at - k)), kept.get(&(at - k - 1))) else {
-                return false;
-            };
-            (0..64_000).all(|j| px[j] == a.pixels[j] || px[j] == b.pixels[j])
+        let explained = quirks.iter().any(|q| match *q {
+            Quirk::Torn(t) if t == f => {
+                let (a, b) = (ours(at(f)), ours(at(f) + 1));
+                dac_ok && (0..64_000).all(|j| px[j] == a.pixels[j] || px[j] == b.pixels[j])
+            }
+            Quirk::Late(l) if l == f => dac_ok && ours(at(f) - 1).pixels[..] == px[..],
+            _ => false,
         });
-        match torn {
-            Some(k) if dac_ok => early.push((f, k)),
-            _ => bad.push((f, d)),
+        if !d.is_empty() && !explained {
+            bad.push((f, d));
         }
     }
-    (early, bad)
+    bad
 }
 
-/// [`sequence`] with no difference allowed but typing up to `ahead` frames early (M12-screens
-/// D1). Returns the largest k seen.
+/// [`sequence_of`] the dumps of `tag` up to `until`, with no difference allowed but the
+/// `quirks`.
 fn assert_sequence(
     s: StoryScreen,
     oracle: &Path,
     capture: &str,
     tag: &str,
     until: u32,
-    ahead: u32,
-) -> u32 {
-    let (early, bad) = sequence(s, oracle, capture, tag, until, ahead);
+    quirks: &[Quirk],
+) {
+    let dumps: Vec<u32> = tagged(oracle, capture, tag)
+        .into_iter()
+        .filter(|&f| f <= until)
+        .collect();
+    assert_dumps(s, oracle, capture, (tag, &dumps), quirks);
+}
+
+/// [`sequence_of`] `dumps` (`what` names them), with no difference allowed but the `quirks`.
+fn assert_dumps(
+    s: StoryScreen,
+    oracle: &Path,
+    capture: &str,
+    (tag, dumps): (&str, &[u32]),
+    quirks: &[Quirk],
+) {
+    let bad = sequence_of(s, oracle, capture, dumps, quirks);
     for (f, d) in &bad {
         eprintln!("{capture} {tag} f{f}: {}", d[..d.len().min(4)].join("; "));
     }
@@ -236,12 +334,6 @@ fn assert_sequence(
         "{capture} {tag}: {} frames differ, first {first:?}",
         bad.len()
     );
-    let k = early.iter().map(|&(_, k)| k).max().unwrap_or(0);
-    eprintln!(
-        "{capture} {tag}: {} frames typed early (up to {k})",
-        early.len()
-    );
-    k
 }
 
 /// The debrief of `mission` after `steps` frames for each kill count 0..=60 that makes it equal
@@ -276,13 +368,14 @@ fn e1_success_debrief_matches_c0200() {
 
 /// A debrief against its dumps in `capture` (tag `debrief`, from `low.cmf`'s open to after
 /// the hold): the kill count is the unique one whose hold frame `hold` matches; then every dump
-/// from the fade-in to `until` (the hold's last dump but one: the port's hold ends up to 6
-/// frames before the original's, M12-screens D2), typing up to two frames early (D1).
+/// from the fade-in to `until` (the hold's last dump but one: the port's hold can end a few
+/// frames before the original's, M12-screens D2), with the known `quirks`.
 fn check_debrief(
     episode: Episode,
     (mission, kills_to_date, outcome): (u8, i16, bool),
     capture: &str,
     (hold, until): (u32, u32),
+    quirks: &[Quirk],
 ) {
     let oracle = td_test_support::oracle_dir().unwrap();
     let (dir, res) = load().unwrap();
@@ -302,7 +395,7 @@ fn check_debrief(
     );
     assert_eq!(k.len(), 1, "{capture}: kill counts matching f{hold}: {k:?}");
     let s = prog.debrief(mission, k[0], kills_to_date, outcome);
-    assert_sequence(s, &oracle, capture, "debrief", until, 2);
+    assert_sequence(s, &oracle, capture, "debrief", until, quirks);
 }
 
 #[test]
@@ -312,7 +405,7 @@ fn e1_failure_debrief_matches_c0274() {
     // debrief shows labels[4] and the failure note instead of a rating.
     let _data = require_data!();
     let _oracle = require_oracle!();
-    check_debrief(Episode::E1, (12, 45, false), "C-0274", (3700, 4073));
+    check_debrief(Episode::E1, (12, 45, false), "C-0274", (3700, 4073), &[]);
 }
 
 #[test]
@@ -322,8 +415,10 @@ fn e1_success_debriefs_match_c0275_and_c0282() {
     // e1f15.tdr and 0 kills to date.
     let _data = require_data!();
     let _oracle = require_oracle!();
-    check_debrief(Episode::E1, (18, 150, true), "C-0275", (4500, 4816));
-    check_debrief(Episode::E1, (15, 0, true), "C-0282", (3700, 4094));
+    check_debrief(Episode::E1, (18, 150, true), "C-0275", (4500, 4816), &[]);
+    // text rev 5 §4.3 item 6: a missed retrace in the rating line (f3410).
+    let missed = [Quirk::Missed(3410)];
+    check_debrief(Episode::E1, (15, 0, true), "C-0282", (3700, 4094), &missed);
 }
 
 #[test]
@@ -334,9 +429,9 @@ fn e2_debriefs_match_c0277_c0283_c0286() {
     // with e2f20.tdr, 0 kills to date.
     let _data = require_data!();
     let _oracle = require_oracle!();
-    check_debrief(Episode::E2, (13, 300, true), "C-0277", (2700, 3041));
-    check_debrief(Episode::E2, (9, 20, false), "C-0283", (7500, 7824));
-    check_debrief(Episode::E2, (20, 0, true), "C-0286", (3000, 3278));
+    check_debrief(Episode::E2, (13, 300, true), "C-0277", (2700, 3041), &[]);
+    check_debrief(Episode::E2, (9, 20, false), "C-0283", (7500, 7824), &[]);
+    check_debrief(Episode::E2, (20, 0, true), "C-0286", (3000, 3278), &[]);
 }
 
 #[test]
@@ -346,8 +441,8 @@ fn e3_debriefs_match_c0278_and_c0287() {
     // (success, outcome 0: E3's own failure note) with 12.
     let _data = require_data!();
     let _oracle = require_oracle!();
-    check_debrief(Episode::E3, (5, 75, true), "C-0278", (5000, 5560));
-    check_debrief(Episode::E3, (2, 12, false), "C-0287", (4600, 5176));
+    check_debrief(Episode::E3, (5, 75, true), "C-0278", (5000, 5560), &[]);
+    check_debrief(Episode::E3, (2, 12, false), "C-0287", (4600, 5176), &[]);
 }
 
 #[test]
@@ -359,9 +454,25 @@ fn e2_and_e3_pilot_dossiers_match_c0284_and_c0289() {
     let oracle = require_oracle!();
     let (dir, res) = load().unwrap();
     let e2 = program(&dir, &res, Episode::E2);
-    assert_sequence(e2.player_dossier(33), &oracle, "C-0284", "dossier", 5982, 2);
+    assert_sequence(
+        e2.player_dossier(33),
+        &oracle,
+        "C-0284",
+        "dossier",
+        5982,
+        &[],
+    );
+    // text rev 5 §4.3 item 6: a missed retrace in line 1 (f2487).
     let e3 = program(&dir, &res, Episode::E3);
-    assert_sequence(e3.player_dossier(21), &oracle, "C-0289", "dossier", 4440, 2);
+    let missed = [Quirk::Missed(2487)];
+    assert_sequence(
+        e3.player_dossier(21),
+        &oracle,
+        "C-0289",
+        "dossier",
+        4440,
+        &missed,
+    );
 }
 
 #[test]
@@ -372,7 +483,15 @@ fn e1_hint_6_matches_c0280() {
     let (dir, res) = load().unwrap();
     let prog = program(&dir, &res, Episode::E1);
     let s = prog.story(Step::H(6)).unwrap();
-    assert_sequence(s, &oracle, "C-0280", "hint6", u32::MAX, 2);
+    // U-581: line 3's first character a frame late, after the key test (f1883).
+    assert_sequence(
+        s,
+        &oracle,
+        "C-0280",
+        "hint6",
+        u32::MAX,
+        &[Quirk::Late(1883)],
+    );
 }
 
 #[test]
@@ -387,6 +506,8 @@ fn e1_stills_match_c0274_c0275_c0276_c0281_c0282() {
     let prog = program(&dir, &res, Episode::E1);
     let cases = [
         (Step::P(1, [0xBF5, 0xC16, 0x5A4]), "C-0281", "td1-16", 5719),
+        // P2 `td1-20` at x = 1 + c, column 0 black (OB-150, U-522; BUG-13 fixed).
+        (Step::P(2, [0x5A4, 0x5A4, 0x5A4]), "C-0276", "td1-20", 10058),
         (Step::P(3, [0x96F, 0x989, 0x9A5]), "C-0274", "td1-14", 14285),
         (Step::P(4, [0xB6C, 0xB88, 0xBBE]), "C-0282", "td1-13", 11771),
         (Step::P15, "C-0275", "td1-15", 8176),
@@ -399,25 +520,8 @@ fn e1_stills_match_c0274_c0275_c0276_c0281_c0282() {
     ];
     for (step, capture, tag, until) in cases {
         let s = prog.story(step).unwrap();
-        assert_sequence(s, &oracle, capture, tag, until, 0);
+        assert_sequence(s, &oracle, capture, tag, until, &[]);
     }
-    // P2 `td1-20` (BUG-13, U-522): the original shows the picture one pixel to the right of
-    // asset-load-sites §4's (0, 50): screen (1 + c, 50 + r) = byte c of row r for c = 0..318,
-    // column 0 black (as `td1-15` and the `.scr` scenes, OB-003). C-0276's hold equals the
-    // port's frame with rows 50..149 so shifted; the captions (rows 170..199) do not move.
-    let s = run(prog.story(Step::P(2, [0x5A4, 0x5A4, 0x5A4])).unwrap(), 400);
-    let mut shifted = s.screen().clone();
-    for y in 50..150 {
-        let row = &mut shifted.pixels[y * 320..(y + 1) * 320];
-        row.copy_within(0..319, 1);
-        row[0] = 0;
-    }
-    assert_ne!(
-        diff(s.screen(), &oracle, "C-0276", 8698, Dac::All),
-        Vec::<String>::new(),
-        "BUG-13 fixed: compare td1-20 with assert_sequence"
-    );
-    assert_frame(&shifted, &oracle, "C-0276", 8698, Dac::All);
 }
 
 #[test]
@@ -432,14 +536,14 @@ fn about_and_order_screens_match_c0290_and_c0291() {
     let s =
         td_flow::scenes_e2::scene_card(&dir, &e2.assets, td_flow::scenes_e2::Bg::Aboutus, [""; 3])
             .unwrap();
-    assert_sequence(s, &oracle, "C-0290", "about", 2562, 0);
+    assert_sequence(s, &oracle, "C-0290", "about", 2562, &[]);
     let e3 = program(&dir, &res, Episode::E3);
     for (bg, tag, until) in [
         (td_flow::scenes_e3::Bg::Aboutus, "about", 2560),
         (td_flow::scenes_e3::Bg::Order, "order", 5883),
     ] {
         let s = td_flow::scenes_e3::scene_card(&dir, &e3.assets, bg, [""; 3]).unwrap();
-        assert_sequence(s, &oracle, "C-0291", tag, until, 0);
+        assert_sequence(s, &oracle, "C-0291", tag, until, &[]);
     }
 }
 
@@ -458,7 +562,7 @@ fn ending_c_cards_match_c0279_and_c0285() {
             [0xED4, 0xE9B, 0xEC3],
         ))
         .unwrap();
-    assert_sequence(s, &oracle, "C-0279", "endingC", 11094, 0);
+    assert_sequence(s, &oracle, "C-0279", "endingC", 11094, &[]);
     let e2 = program(&dir, &res, Episode::E2);
     use td_flow::campaign_e2::{self, BLANK, Cap};
     let s = campaign_e2::story(
@@ -466,7 +570,7 @@ fn ending_c_cards_match_c0279_and_c0285() {
         campaign_e2::Step::S(td_flow::scenes_e2::Bg::In2, [Cap::C(20, 8), BLANK, BLANK]),
     )
     .unwrap();
-    assert_sequence(s, &oracle, "C-0285", "endingC", 5916, 0);
+    assert_sequence(s, &oracle, "C-0285", "endingC", 5916, &[]);
 }
 
 #[test]
@@ -524,40 +628,28 @@ fn e1_pilot_dossier_matches_c0270() {
         "C-0270",
         "dossier",
         5047,
-        2,
+        &[],
     );
 }
 
 #[test]
 fn e1_enemy_dossier_matches_c0271() {
-    // screens §3.5: C-0271, block 5's pre-flight story without keys; the dossier from its
-    // fade-in through line 8 (f2945..f3206).
+    // screens rev 5 §3.5: C-0271, block 5's pre-flight story without keys; the dossier from
+    // its fade-in through the typing and the 10 s hold (f2945..f3886). The shipped call
+    // passes variant 1, so line 9 (ink 39 over line 4) is never typed: line 10 follows line 8
+    // (U-520, BUG-12 fixed).
     let _data = require_data!();
     let oracle = require_oracle!();
     let (dir, res) = load().unwrap();
     let prog = program(&dir, &res, Episode::E1);
     let s = prog.story(Step::A).unwrap();
-    assert_sequence(s, &oracle, "C-0271", "enemy", 3206, 2);
-    // BUG-12 / U-520: the original types line 10 straight after line 8 (f3211) and never types
-    // line 9 (ink 39 over line 4 at pen y 109); the port follows screens §3.5 and types it.
-    // In the hold (f3501) the screens differ exactly in line 9's pixels: rows 110..114, the
-    // port's ink 39 or its opaque background where the original keeps line 4 in ink 40.
+    // f2976 (the last fade level's frame minus one): line 0's first character drawn as the
+    // beam passed it, its bottom row on screen.
+    assert_sequence(s, &oracle, "C-0271", "enemy", 3886, &[Quirk::Torn(2976)]);
+    // No ink-39 pixel in the hold (f3501).
     let s = run(prog.story(Step::A).unwrap(), 900);
-    let (pal, px) = frame(&oracle, "C-0271", 3501);
-    assert_eq!(s.screen().palette, pal, "DAC in the hold");
-    let differ: Vec<usize> = (0..64_000)
-        .filter(|&i| s.screen().pixels[i] != px[i])
-        .collect();
-    assert!(!differ.is_empty(), "BUG-12 fixed: update this test");
-    for i in differ {
-        let (x, y, ours, theirs) = (i % 320, i / 320, s.screen().pixels[i], px[i]);
-        assert!(
-            (110..=114).contains(&y) && (40..160).contains(&x),
-            "({x}, {y}): {ours} vs {theirs}"
-        );
-        assert!(ours == 39 || ours == 0, "({x}, {y}): {ours}");
-        assert!(theirs == 40 || theirs == 0, "({x}, {y}): {theirs}");
-    }
+    assert!(!s.screen().pixels.contains(&39), "line 9 not typed");
+    assert_frame(s.screen(), &oracle, "C-0271", 3501, Dac::All);
 }
 
 #[test]
@@ -570,7 +662,7 @@ fn e1_story_so_far_matches_c0272() {
     let prog = program(&dir, &res, Episode::E1);
     let lines = res.texts("e1.background_story").unwrap().to_vec();
     let page = || story::story_so_far(&dir, &prog.assets, &lines).unwrap();
-    assert_sequence(page(), &oracle, "C-0272", "page1", 2420, 0);
+    assert_sequence(page(), &oracle, "C-0272", "page1", 2420, &[]);
     // Page 2: shown after page 1's wait and fade-out; its steady frame.
     let first = run(page(), 200).screen().pixels.clone();
     let mut s = page();
@@ -593,7 +685,8 @@ fn e1_assignment_orders_match_c0273() {
     let (dir, res) = load().unwrap();
     let prog = program(&dir, &res, Episode::E1);
     let s = prog.story(Step::O).unwrap();
-    assert_sequence(s, &oracle, "C-0273", "orders", 2749, 2);
+    // text rev 5 §4.3 item 6: a missed retrace at the 116th character (f2405).
+    assert_sequence(s, &oracle, "C-0273", "orders", 2749, &[Quirk::Missed(2405)]);
 }
 
 #[test]
@@ -605,5 +698,100 @@ fn e1_hint_2_matches_c0273() {
     let (dir, res) = load().unwrap();
     let prog = program(&dir, &res, Episode::E1);
     let s = prog.story(Step::H(2)).unwrap();
-    assert_sequence(s, &oracle, "C-0273", "hint2", 3747, 2);
+    // U-581: line 2's first character a frame late, after the key test (f3615).
+    assert_sequence(s, &oracle, "C-0273", "hint2", 3747, &[Quirk::Late(3615)]);
+}
+
+/// A launcher whose `Random(n)` always gives `r` (the retry prompt's taunt); it flies nothing.
+#[derive(Debug)]
+struct FixedRandom(u16);
+
+impl td_flow::FlightLauncher for FixedRandom {
+    fn launch(
+        &mut self,
+        _: &mut td_flow::FlowContext<'_>,
+        _: u8,
+    ) -> Box<dyn td_flow::FlightScreen> {
+        panic!("no flight in this test")
+    }
+
+    fn random(&mut self, n: u16) -> u16 {
+        self.0 % n
+    }
+}
+
+#[test]
+fn e1_ending_b_screens_match_c0324() {
+    // episode-program-flow rev 7 §6 vector 5 (C-0324, RE-19; dumps every 10 frames): flight 17
+    // lost at tick 1075 (`td-sim/tests/oracle_e1_full.rs` flight_17_lost_matches_oracle), Esc
+    // at the retry prompt, then block 17's failed post-flight story: the debrief (outcome 0:
+    // the failure note; kills 1, none to date), `vulture` and C:voffice[056D/058A/0898], D75
+    // (not compared here), `death` and the ending-B card C:intro2[0E6B/0E9B/0EC3]. Each screen
+    // from its fade-in to its last dump before the fade-out (the port's timed holds can end a
+    // few frames early, M12-screens D2).
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let (dir, res) = load().unwrap();
+    let all = tagged(&oracle, "C-0324", "");
+    let dumps = |a: u32, b: u32| -> Vec<u32> {
+        all.iter()
+            .copied()
+            .filter(|f| (a..=b).contains(f))
+            .collect()
+    };
+    // Retry prompt (`td.pal` opened at f5804, fade-in f5841..5874; the Esc of f5864 is read
+    // after it): the taunt is the program's `Random(10)`; exactly one matches the pixels of
+    // the last fade-in dump, then the whole fade-in is compared.
+    let retry = |r: u16| {
+        Program::for_episode(&dir, &res, Box::new(FixedRandom(r)), Episode::E1)
+            .unwrap()
+            .retry_prompt()
+    };
+    let taunts: Vec<u16> = (0..10)
+        .filter(|&r| {
+            let s = run(retry(r), 5870 - 5841);
+            let d = diff(s.screen(), &oracle, "C-0324", 5870, Dac::Used);
+            d.iter().all(|x| x.starts_with("DAC"))
+        })
+        .collect();
+    assert_eq!(taunts.len(), 1, "taunts matching C-0324 f5870: {taunts:?}");
+    let retry_dumps = dumps(5804, 5870);
+    assert_dumps(
+        retry(taunts[0]),
+        &oracle,
+        "C-0324",
+        ("retry", &retry_dumps),
+        &[],
+    );
+    let prog = program(&dir, &res, Episode::E1);
+    // Debrief (fade-in f5913..5946, fade-out from f6918).
+    let s = prog.debrief(17, 1, 0, false);
+    // Its first `Crt.Delay(500)` ends 0.8 into frame F + 35 (f6014, 2,396 retrace polls; in
+    // C-0274 the same delay ends at the start of F + 36): the outcome line shows two characters
+    // in f6015, and the original stays one frame ahead (U-583) until it misses the retrace of
+    // f6242 in the rating line (text §4.3 item 6).
+    let quirks = [Quirk::Early(6015), Quirk::Missed(6242)];
+    assert_dumps(
+        s,
+        &oracle,
+        "C-0324",
+        ("debrief", &dumps(5905, 6900)),
+        &quirks,
+    );
+    // C:voffice (fade-in f6975..7008, fade-out from f7670).
+    let s = prog
+        .story(Step::C(
+            td_flow::campaign::Bg::Voffice,
+            [0x56D, 0x58A, 0x898],
+        ))
+        .unwrap();
+    assert_dumps(s, &oracle, "C-0324", ("voffice", &dumps(6955, 7650)), &[]);
+    // The ending-B card (fade-in f8353..8386, fade-out from f9046).
+    let s = prog
+        .story(Step::C(
+            td_flow::campaign::Bg::Intro2,
+            [0xE6B, 0xE9B, 0xEC3],
+        ))
+        .unwrap();
+    assert_dumps(s, &oracle, "C-0324", ("endingB", &dumps(8333, 9030)), &[]);
 }

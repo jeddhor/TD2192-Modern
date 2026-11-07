@@ -123,6 +123,18 @@ pub struct Combat<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shots(pub [Shot; SHOT_SLOTS]);
 
+/// What one [`Shots::update`] (tick-order step 6) leaves for the drawing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Drawn {
+    /// Each slot's heading as its update latched it (weapons rev 6 §4.3 step 0).
+    pub latched: [u8; SHOT_SLOTS],
+    /// Each slot as its step 6 drew it: the shots still in use after the map test and the hit
+    /// tests, at their tile before the move of step 8, with the latched heading; free where
+    /// nothing was drawn. A shot step 7 then frees for age is in it: the original draws a
+    /// shot in its last tick of life (flight-screens rev 7 §4.8, C-0321 tick 118; BUG-21).
+    pub shown: Shots,
+}
+
 impl Default for Shots {
     fn default() -> Self {
         Self([Shot::UNUSED; SHOT_SLOTS])
@@ -294,23 +306,27 @@ impl Shots {
     /// along. It differs from the heading array afterwards only for a homing missile that
     /// steered (the array then holds the next tick's heading). Slots that were free keep the
     /// array's value.
-    pub fn update(&mut self, c: &mut Combat<'_>) -> [u8; SHOT_SLOTS] {
-        let mut latched = [0; SHOT_SLOTS];
-        for (i, h) in latched.iter_mut().enumerate() {
-            *h = self.0[i].heading;
+    pub fn update(&mut self, c: &mut Combat<'_>) -> Drawn {
+        let mut drawn = Drawn {
+            latched: [0; SHOT_SLOTS],
+            shown: Shots::default(),
+        };
+        for i in 0..SHOT_SLOTS {
+            drawn.latched[i] = self.0[i].heading;
             if self.0[i].alive() {
-                self.update_one(i, c);
+                self.update_one(i, c, &mut drawn.shown.0[i]);
             }
         }
-        latched
+        drawn
     }
 
     fn free(&mut self, i: usize) {
         self.0[i].tile_x = FREE;
     }
 
-    /// One slot's update (weapons rev 6 §4.3, U-502, BUG-11).
-    fn update_one(&mut self, i: usize, c: &mut Combat<'_>) {
+    /// One slot's update (weapons rev 6 §4.3, U-502, BUG-11); `shown` receives the slot as
+    /// step 6 draws it ([`Drawn::shown`]).
+    fn update_one(&mut self, i: usize, c: &mut Combat<'_>, shown: &mut Shot) {
         // 0. The heading, latched once for the whole update: the map test, the drawing and the
         // move use it, never the array (a homing missile's steering rewrites the array in step
         // 6 for the next tick).
@@ -322,8 +338,16 @@ impl Shots {
             self.free(i);
         } else {
             self.hit_and_steer(i, h, c);
+            // 6. Drawn if still in use, with the latched heading (a homing missile's steering
+            // changed only the array's heading, for the next tick).
+            if self.0[i].alive() {
+                *shown = Shot {
+                    heading: h,
+                    ..self.0[i]
+                };
+            }
         }
-        // 7. Age limit.
+        // 7. Age limit (after the drawing: a shot is drawn in the tick that frees it).
         if self.0[i].life > MAX_LIFE {
             self.free(i);
         }

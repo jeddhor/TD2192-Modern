@@ -622,6 +622,7 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 - U-224: are ink 40/43/45 and the font background (178) in the comm screen meant to follow the IR palette (they do in the code)?
 - U-225: the code's extra exclusions 85h, 86h, C1h, 90h in the hit-flash loop are dead; was the intended range wider (the HUD lamp entries)?
 - U-226: which flight-21 entries the F5 map shows (nothing is loaded for flight 21).
+- U-582 (IM-24, M12-16): before the first key press of a flight, which key does the keyboard repeat (§4.4's last-key rule needs a last key)? The port lets a key held since before the flight repeat.
 - [x] IM-23 (M10-47, SP): §4.8's last sentence contradicted weapons rev 6 §4.3 step 6. Resolved (RE-19, rev 7): §4.8 now says every kind is drawn with the latched heading, kind 6 before its steering.
 - [x] IM-23 (VE): does the original show a shot on the tick step 7 frees it? Yes (RE-19, rev 7, C-0321 tick 118): §4.8's new paragraph; port: the drawn list is taken after step 6.
 

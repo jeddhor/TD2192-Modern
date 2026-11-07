@@ -478,6 +478,40 @@ fn chord(m: bool, letters: &[ChordKey]) -> TickControls {
     c
 }
 
+/// E1's S key at step 34 (globals §5, U-531): one toggle per make code, its byte cleared; the
+/// port mutes the effects (T3). E2 and E3 have no S test and leave the byte set.
+#[test]
+fn s_toggles_the_effects_once_per_press_in_e1() {
+    let w = open_world();
+    let mut ev = vec![];
+    let press = |made: bool| {
+        let mut c = TickControls::default();
+        c.set_down(FlightKey::S);
+        if made {
+            c.set_made(FlightKey::S);
+        }
+        c
+    };
+    let mut f = flight_with_class(4);
+    assert!(!f.effects_muted);
+    f.tick(&w, &press(true), &mut ev);
+    assert!(f.effects_muted && !f.keys.get(FlightKey::S));
+    // Held without a new make code: the byte stays clear, no second toggle.
+    f.tick(&w, &press(false), &mut ev);
+    assert!(f.effects_muted);
+    f.tick(&w, &press(true), &mut ev);
+    assert!(!f.effects_muted);
+    // The setting goes with the session to the next flight.
+    f.tick(&w, &press(true), &mut ev);
+    assert!(f.session().effects_muted);
+    for ep in [Episode::E2, Episode::E3] {
+        let mut f = flight_with_class(4);
+        f.episode = ep;
+        f.tick(&w, &press(true), &mut ev);
+        assert!(!f.effects_muted && f.keys.get(FlightKey::S), "{ep}");
+    }
+}
+
 /// Tick-order step 34 (globals §5, D9): the five harmless chords, every tick they are held.
 #[test]
 fn cheat_chords_act_at_step_34() {

@@ -59,7 +59,7 @@ use td_assets::{DataDir, ExeResources, ResourceValue};
 use td_formats::map::TileMap;
 use td_formats::mission::Mission;
 use td_sim::flight::front_end::{
-    MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, direct_start_world, muzzle_base,
+    MUZZLE_TABLE_LEN, TWO_DIGIT_HEADINGS, direct_start_world_music, muzzle_base,
 };
 use td_sim::flight::heap::HeapUse;
 use td_sim::flight::player::Turn;
@@ -73,13 +73,13 @@ use td_sim::{Flight, FlightKey};
 const MUZZLE_LEN: usize = 34 * 99 + 36;
 const STALL: u32 = 0x8000_0000;
 
-/// The direct-start muzzle world of flight `flight` of `ep` (weapons rev 5 §3.3, §3.3.2,
-/// §3.3.3), checked against `captured` (the capture's DGROUP from the muzzle table on, at
-/// tick 1): the table and the eight two-digit ranges.
+/// The direct-start muzzle world of flight `flight` of `ep` (weapons rev 7 §3.3, §3.3.2,
+/// §3.3.3) for a run with `music` on or off (E1 `g_MemAvailText`, U-560), checked against
+/// `captured` (the capture's DGROUP from the muzzle table on, at tick 1): the table and the
+/// eight two-digit ranges.
 fn direct_start_muzzles(
     dir: &DataDir,
-    ep: Episode,
-    flight: u8,
+    (ep, flight, music): (Episode, u8, bool),
     captured: &[u8],
     name: &str,
 ) -> Vec<u8> {
@@ -87,7 +87,7 @@ fn direct_start_muzzles(
     let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
         panic!("muzzle table");
     };
-    let world = direct_start_world(ep, flight, &table, |f| dir.read(f)).unwrap();
+    let world = direct_start_world_music(ep, flight, &table, music, |f| dir.read(f)).unwrap();
     assert_eq!(
         world[..MUZZLE_TABLE_LEN],
         captured[..MUZZLE_TABLE_LEN],
@@ -128,8 +128,7 @@ pub fn check_world(l: &Layout, data: &Path, oracle: &Path, flight: u8) -> bool {
     let dir = DataDir::open(data).unwrap();
     let world = direct_start_muzzles(
         &dir,
-        l.episode,
-        flight,
+        (l.episode, flight, true),
         &first.bytes[l.muzzles..l.muzzles + MUZZLE_LEN],
         &name,
     );
@@ -420,6 +419,12 @@ fn replay_path(l: &Layout, flight: u8, suffix: &str) -> PathBuf {
         .join(format!("e{}f{flight:02}{suffix}.tdr", l.number()))
 }
 
+/// The replay `e<E>f<NN><suffix>.tdr` of `l`'s episode, if it exists.
+pub fn replay(l: &Layout, flight: u8, suffix: &str) -> Option<Replay> {
+    let bytes = fs::read(replay_path(l, flight, suffix)).ok()?;
+    Some(Replay::from_bytes(&bytes).unwrap())
+}
+
 type Fields = Vec<(String, i64, i64)>;
 
 fn field(name: &str, ours: impl Into<i64>, orig: impl Into<i64>) -> (String, i64, i64) {
@@ -694,6 +699,9 @@ pub enum Muzzles {
     /// E1 direct start: built by td-sim (`FrontEnd::direct_start`) and checked against the
     /// capture's tick-1 record.
     DirectStart,
+    /// The same with music off (`td.cfg` 01 02 02): `g_MemAvailText` `209520` (weapons rev 7
+    /// §3.3 item 2, U-560, BUG-22).
+    DirectStartMusicOff,
     /// The capture's tick-1 record (E2/E3, whose ranges td-sim does not build yet; a flight
     /// after a played story or after another flight, whose front-end state only td-flow keeps:
     /// `td-flow/tests/front_end_state.rs` checks those bytes against the same records).
@@ -789,25 +797,40 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
 /// before it left (`Flight::session`; the front end between them draws no `Random`), after the
 /// leg's heap uses ([`Leg::front_end`]).
 pub fn check_run(l: &Layout, data: &Path, oracle: &Path, tag: &str, legs: &[Leg]) {
+    let mut replays = vec![];
+    for leg in legs {
+        let Some(r) = replay(l, leg.flight, leg.suffix) else {
+            eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
+            return;
+        };
+        replays.push(r);
+    }
+    check_run_with(l, (data, oracle), tag, legs, &replays, true);
+}
+
+/// [`check_run`] with the replays given (`replays[i]` for `legs[i]`). Without `outcome_dump`
+/// a leg that ends has no outcome dump in the capture: its last tick is compared with the
+/// stall record the original left after it (the state after that tick, before the teardown),
+/// and the original must have flown no further tick.
+pub fn check_run_with(
+    l: &Layout,
+    (data, oracle): (&Path, &Path),
+    tag: &str,
+    legs: &[Leg],
+    replays: &[Replay],
+    outcome_dump: bool,
+) {
     let Some(cap) = find_capture(oracle, tag) else {
         eprintln!("SKIPPED: no {tag} capture under the oracle root");
         return;
     };
-    let mut replays = vec![];
-    for leg in legs {
-        let Ok(bytes) = fs::read(replay_path(l, leg.flight, leg.suffix)) else {
-            eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
-            return;
-        };
-        replays.push(Replay::from_bytes(&bytes).unwrap());
-    }
     let dir = DataDir::open(data).unwrap();
     let mut session = Session::for_episode(l.episode);
-    for (i, (leg, r)) in legs.iter().zip(&replays).enumerate() {
+    for (i, (leg, r)) in legs.iter().zip(replays).enumerate() {
         Arc::make_mut(&mut session.paths)
             .apply(leg.front_end, |f| dir.read(f))
             .unwrap();
-        let f = check_leg(l, data, &cap, i + 1, leg, r, session);
+        let f = check_leg(l, data, &cap, (i + 1, outcome_dump), leg, r, session);
         session = f.session();
     }
 }
@@ -817,7 +840,7 @@ fn check_leg(
     l: &Layout,
     data: &Path,
     cap: &Path,
-    generation: usize,
+    (generation, outcome_dump): (usize, bool),
     leg: &Leg,
     r: &Replay,
     session: Session,
@@ -873,7 +896,10 @@ fn check_leg(
     let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, flight)).unwrap()).unwrap();
     let captured = &first.ds[l.muzzles..l.muzzles + MUZZLE_LEN];
     let muzzles = match leg.muzzles {
-        Muzzles::DirectStart => direct_start_muzzles(&dir, ep, flight, captured, &name),
+        Muzzles::DirectStart => direct_start_muzzles(&dir, (ep, flight, true), captured, &name),
+        Muzzles::DirectStartMusicOff => {
+            direct_start_muzzles(&dir, (ep, flight, false), captured, &name)
+        }
         Muzzles::Capture => captured.to_vec(),
     };
     let world = episode::world(ep, flight, map, muzzles);
@@ -979,6 +1005,26 @@ fn check_leg(
     // The original flew no further tick, and its outcome is ours.
     let last = by_tick.keys().last().copied().unwrap();
     assert_eq!(last, n, "{name} flight {flight}: original's last tick");
+    if !outcome_dump {
+        assert!(
+            stalls.contains_key(&n),
+            "{name} flight {flight}: a stall record after the last tick"
+        );
+        eprintln!(
+            "{name} flight {flight}: PASS {} ticks (the last against the stall record; no \
+             outcome dump), {} slot-ticks, kills {}, succeeded {}, lost {}, died {}, comm {:?}, \
+             events {:?}",
+            cov.ticks,
+            cov.slot_ticks,
+            f.kills,
+            f.succeeded,
+            f.lost,
+            f.died(),
+            cov.comm_viewers,
+            cov.events
+        );
+        return f;
+    }
     let end = fs::read(end_dump(l, cap, generation)).unwrap();
     // g_PlayerDied follows g_MissionLost in every episode.
     assert_eq!(

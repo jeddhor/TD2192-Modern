@@ -52,6 +52,50 @@ fn direct_start_bytes_follow_the_construction_table() {
 }
 
 #[test]
+fn music_off_changes_the_mem_avail_digits_and_the_title_font_pointer() {
+    // weapons rev 7 §3.3 item 2 (U-560, BUG-22; C-0322, C-0323): with music off the menu song
+    // is not on the heap, so g_MemAvailText is `209520` (DS:0504..050A).
+    let m = menu();
+    let on = FrontEnd::direct_start();
+    assert!(on.music, "music on is the default");
+    let off = FrontEnd::direct_start().with_music(false);
+    let h0c = off.heading_bytes(E1, 0x0C, &m);
+    assert_eq!(h0c[14..21], [6, b'2', b'0', b'9', b'5', b'2', b'0']);
+    assert_eq!(h0c[..14], on.heading_bytes(E1, 0x0C, &m)[..14]);
+    assert_eq!(h0c[21..], [0; 13]);
+    // ASSUMPTION(U-580): the title-font block sits menu.cmf's 6,168 heap bytes lower, so
+    // g_FontTitle (heading 60h, muzzles 11 and 12) is 5C11:0000 (C-0322, C-0323) instead of
+    // 5D92:0008; through the launcher 6795:0000 instead of 6916:0008.
+    assert_eq!(on.title_font_pointer(), [0x08, 0x00, 0x92, 0x5D]);
+    assert_eq!(off.title_font_pointer(), [0x00, 0x00, 0x11, 0x5C]);
+    let launcher = FrontEnd::launcher();
+    assert_eq!(launcher.title_font_pointer(), [0x08, 0x00, 0x16, 0x69]);
+    assert_eq!(
+        launcher.with_music(false).title_font_pointer(),
+        [0x00, 0x00, 0x95, 0x67]
+    );
+    let mut h60 = [0u8; 34];
+    h60[20..24].copy_from_slice(&[0x00, 0x00, 0x11, 0x5C]);
+    assert_eq!(off.heading_bytes(E1, 0x60, &m), h60);
+    assert_eq!(
+        muzzle_world(E1, &[], &m, &on)
+            .iter()
+            .zip(muzzle_world(E1, &[], &m, &off))
+            .filter(|(a, b)| *a != b)
+            .count(),
+        4 + 3,
+        "the four digits that differ (203352 / 209520) and three pointer bytes"
+    );
+    // E2 and E3 have no such text in their ranges.
+    for ep in [E2, E3] {
+        assert_eq!(
+            muzzle_world(ep, &[], &m, &on),
+            muzzle_world(ep, &[], &m, &off)
+        );
+    }
+}
+
+#[test]
 fn heading_ranges_are_the_spec_addresses() {
     // weapons §3.3 table: 0Ch DS:04F6.., 0Eh 053A, 20h 079E, 24h 0826, 4Ah 0D32, 4Eh 0DBA,
     // 60h 101E, 62h 1062; §3.3.2 (E2 and E3, E1's + 15Eh): 0654, 0698, 08FC, 0984, 0E90,
