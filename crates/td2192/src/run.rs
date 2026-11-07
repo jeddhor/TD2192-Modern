@@ -12,6 +12,13 @@
 //! frame, also the pipeline's RGBA output at its own size, (W·k) × (200·k), before the window
 //! scaling (`*.enhanced.png`).
 //!
+//! M12-18 (port-front-end rev 5 §3.7, §5): the controller's options button opens the options
+//! like F2; while the window is in the background the run pauses (no ticks, no sound) when
+//! `Settings::pauses_in_background` says so (Enhanced's default; Classic keeps running, as the
+//! original did); and the platform's text input is on while the current screen reads typed
+//! characters (`Flow::wants_text`, the save-name entry), whose text reaches the ticks in
+//! `TickInput::text`.
+//!
 //! Developer options for headless checks (M12-06): `--dev-stats` logs, once a second, the tick
 //! rate the loop runs at and the ticks and frames it ran ([`Stats`]); `--dev-keys` presses keys
 //! at given ticks ([`parse_dev_keys`]).
@@ -88,8 +95,12 @@ pub fn parse_dev_keys(spec: &str) -> Result<Vec<(u64, Key)>> {
     Ok(out)
 }
 
+/// `--dev-stats`: a tick or a frame (draw and present) longer than this is logged on its own.
+const SLOW: Duration = Duration::from_millis(50);
+
 /// `--dev-stats`: ticks and frames counted over each second of wall time, and the average rate
-/// since the tick rate last changed (the run loop's own clock, `FixedStep`).
+/// since the tick rate last changed (the run loop's own clock, `FixedStep`); ticks and frames
+/// longer than [`SLOW`].
 #[derive(Debug)]
 struct Stats {
     second: Instant,
@@ -109,6 +120,17 @@ impl Stats {
             frame_time: Duration::ZERO,
             rate_since: now,
             rate_ticks: 0,
+        }
+    }
+
+    /// Logs a tick or frame that took longer than [`SLOW`] (a visible hitch).
+    fn slow(&self, what: &str, tick: u64, took: Duration) {
+        if took > SLOW {
+            tracing::info!(
+                target: "td2192::stats",
+                "slow {what} at tick {tick}: {:.1} ms",
+                took.as_secs_f64() * 1e3
+            );
         }
     }
 
@@ -154,6 +176,9 @@ pub struct RunData<'a> {
     /// Changes from the options screens (M11-03).
     pub port: SettingsPort,
 }
+
+/// How long the loop sleeps between polls while it is paused in the background (M12-18).
+const BACKGROUND_SLEEP_MS: u64 = 30;
 
 /// The host key that opens the options screen during play (M11-03). The original reads no
 /// F1..F4; F7/F8 are the debug Enhanced hotkeys, F9 the debug mission complete, F10..F12 the
@@ -215,12 +240,14 @@ pub fn run(
         session.video.scale = scale_of(platform.scale_mode());
         enhanced.hotkeys(&mut snap);
         enhanced.poll_settings();
-        // Bound controller buttons stand for their flight keys' keyboard keys (M11-04).
+        // Bound controller buttons stand for their flight keys' keyboard keys (M11-04); the
+        // options button opens the options like F2 (M12-18).
         let pad_keys = session.controls.pad_keys(snap.pad, pad_buttons);
+        let options_button = session.controls.options_pressed(snap.pad, pad_buttons);
         pad_buttons = snap.pad.map_or(0, |p| p.buttons);
         snap.held.extend(pad_keys.held);
         snap.pressed.extend(pad_keys.pressed);
-        if snap.was_pressed(OPTIONS_KEY) && !rd.port.is_open() {
+        if (snap.was_pressed(OPTIONS_KEY) || options_button) && !rd.port.is_open() {
             flow.push(Box::new(OptionsScreen::new(
                 UiAssets::load(host.data()),
                 session.clone(),
@@ -228,9 +255,20 @@ pub fn run(
             )));
         }
         snap.pressed.retain(|&k| k != OPTIONS_KEY);
+        if snap.background && session.pauses_in_background() {
+            // Paused in the background (M12-18): no ticks and no sound; the clock starts again
+            // when the window comes back, so the time away is not caught up.
+            pending = TickInput::default();
+            last = Instant::now();
+            step = FixedStep::new(hz);
+            stats.rate_changed(last);
+            std::thread::sleep(Duration::from_millis(BACKGROUND_SLEEP_MS));
+            continue;
+        }
         pending.held = snap.held.clone();
         pending.pad = snap.pad;
         pending.pressed.extend(snap.pressed);
+        pending.text.push_str(&snap.text);
 
         let now = Instant::now();
         let ticks = step.advance(now - last);
@@ -242,6 +280,7 @@ pub fn run(
                     held: snap.held.clone(),
                     pressed: Vec::new(),
                     pad: snap.pad,
+                    text: String::new(),
                 },
             );
             // --dev-keys: a press (and hold) during this tick.
@@ -260,9 +299,17 @@ pub fn run(
                 settings: &session,
                 audio: &mut commands,
             };
+            let tick_start = Instant::now();
             flow.tick(&mut ctx, &input);
+            if options.stats {
+                stats.slow("tick", total_ticks + 1, tick_start.elapsed());
+            }
+            let audio_start = Instant::now();
             for c in commands.drain(..) {
                 mixer.command(c);
+            }
+            if options.stats {
+                stats.slow("audio command", total_ticks + 1, audio_start.elapsed());
             }
             let path = rd.user_dir.join("settings.toml");
             if let Some(new) = rd.port.take() {
@@ -313,11 +360,17 @@ pub fn run(
                 break;
             }
         }
+        // Typed characters only while a screen reads them (the save-name entry).
+        platform.set_text_input(flow.wants_text());
+        let audio_start = Instant::now();
         let frames = platform.audio_frames_wanted(AUDIO_TARGET_FRAMES);
         if frames > 0 {
             audio_buf.resize(frames as usize * 2, 0.0);
             mixer.render(&mut audio_buf);
             platform.queue_audio(&audio_buf)?;
+        }
+        if options.stats {
+            stats.slow("audio render", total_ticks, audio_start.elapsed());
         }
         let frame_start = Instant::now();
         let enhanced_frame = enhanced.begin_frame(platform.output_size(), platform.scale_mode());
@@ -330,6 +383,7 @@ pub fn run(
         }
         if options.stats {
             let now = Instant::now();
+            stats.slow("frame", total_ticks, now - frame_start);
             stats.frames += 1;
             stats.frame_time += now - frame_start;
             stats.maybe_log(now, hz, total_ticks);

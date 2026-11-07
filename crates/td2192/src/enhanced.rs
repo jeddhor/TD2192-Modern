@@ -12,8 +12,10 @@
 //!   lighting mode, or nothing when every feature is off);
 //! - while drawing, the flight arena (when no modal screen is open) composes the W-wide frame
 //!   and its light inputs into the view;
-//! - after `Flow::draw` the run loop presents that frame if it was composed, and otherwise
-//!   centres the Classic 320 × 200 frame.
+//! - after `Flow::draw` the run loop presents that frame if it was composed; the flight's own
+//!   modal screens (marked by [`EnhancedView::mark_flight`]) are centred in the W-wide frame,
+//!   and every other screen is presented 320 wide, so its text keeps the Classic size in a
+//!   widescreen window (M12-18, VE-8's F10; spec enhanced/presentation rev 6 §4.3).
 //!
 //! **Live settings.** Changes apply without a restart:
 //! - `settings.toml` is checked for changes twice a second, and a new `profile` or
@@ -66,6 +68,8 @@ pub struct EnhancedView {
     marks: Vec<Mark>,
     /// True once the flight screen composed this frame.
     filled: bool,
+    /// True when a flight drew this frame, its modal screens included.
+    flight: bool,
 }
 
 impl Default for EnhancedView {
@@ -77,6 +81,7 @@ impl Default for EnhancedView {
             emissive: Emissive::default(),
             marks: Vec::new(),
             filled: false,
+            flight: false,
         }
     }
 }
@@ -92,6 +97,13 @@ impl EnhancedView {
     fn begin(&mut self, request: Option<Request>) {
         self.request = request;
         self.filled = false;
+        self.flight = false;
+    }
+
+    /// A flight draws this frame (a modal screen included): a frame it does not compose is
+    /// still centred in the W-wide frame, so the picture keeps its size inside a flight.
+    pub fn mark_flight(&mut self) {
+        self.flight = true;
     }
 
     /// Composes the flight frame: `draw` draws the picture into the W-wide framebuffer, then
@@ -137,6 +149,8 @@ pub struct Enhanced {
     settings: EnhancedSettings,
     /// The accessibility setting `colorblind_guidance` (not governed by the profile).
     guidance: bool,
+    /// The accessibility setting `reduce_flashing`: bloom is off while it is on (M12-18).
+    reduce_flashing: bool,
     view: SharedView,
     pipeline: Pipeline,
     post: Box<dyn PostStage>,
@@ -184,6 +198,7 @@ impl Enhanced {
             profile: settings.profile,
             settings: settings.enhanced_values(),
             guidance: settings.accessibility.colorblind_guidance,
+            reduce_flashing: settings.accessibility.reduce_flashing,
             view,
             pipeline: Pipeline::default(),
             post,
@@ -267,13 +282,14 @@ impl Enhanced {
         }
     }
 
-    /// Takes the profile, `[enhanced]` and the colour-blind guidance setting from `settings` at
-    /// once (the options screen, M11-03). The settings file the host has just saved is not
+    /// Takes the profile, `[enhanced]` and the colour-blind guidance and reduce-flashing settings
+    /// from `settings` at once (the options screen, M11-03). The settings file the host has just saved is not
     /// read again.
     pub fn apply(&mut self, settings: &Settings) {
         self.profile = settings.profile;
         self.settings = settings.enhanced_values();
         self.guidance = settings.accessibility.colorblind_guidance;
+        self.reduce_flashing = settings.accessibility.reduce_flashing;
         if let Some(r) = &mut self.reload {
             r.modified = modified(&r.path);
         }
@@ -322,12 +338,17 @@ impl Enhanced {
         let cfg = Config {
             upscaler: upscaler(s.upscaler),
             lighting: self.view.borrow().request.and_then(|r| r.lighting),
-            bloom: s.bloom,
+            // Reduce flashing turns bloom off (M12-18, port-front-end rev 5 §3.5).
+            bloom: s.bloom && !self.reduce_flashing,
         };
         let view = self.view.borrow();
-        let Some(req) = view.request else {
+        let Some(mut req) = view.request else {
             bail!("no Enhanced frame was begun");
         };
+        if !view.filled && !view.flight {
+            // A screen outside the flights: 320 wide, the Classic size in any window (§4.3).
+            req.width = td_render::WIDTH;
+        }
         self.pipeline.set_marks(if view.filled {
             view.marks.as_slice()
         } else {
@@ -528,6 +549,37 @@ mod tests {
         assert_eq!((kept.width, kept.height, kept.rgba), (640, 400, rgba));
         e.render(&classic).unwrap();
         assert_eq!(e.take_output(), None, "one frame only");
+    }
+
+    /// M12-18 (F10, presentation rev 6 §4.3): with widescreen on, a screen outside the flights
+    /// is presented 320 wide (its text keeps the Classic size); a flight's modal screen, which
+    /// the flight marks, stays centred in the W-wide frame.
+    #[test]
+    fn screens_outside_the_flights_are_presented_320_wide() {
+        let settings = Settings {
+            profile: Profile::Enhanced,
+            enhanced: td_flow::settings::EnhancedChoices::chosen(EnhancedSettings {
+                widescreen: Widescreen::W16x9,
+                upscaler: Upscaler::Scale2x,
+                ..EnhancedSettings::default()
+            }),
+            ..Settings::default()
+        };
+        let view = SharedView::default();
+        let mut e = Enhanced::new(&settings, view.clone(), None, Box::new(enhanced::NoPost));
+        let mut classic = Framebuffer::new();
+        classic.put(5, 5, 7);
+        assert!(e.begin_frame((1920, 1080), ScaleMode::Aspect4x3));
+        let out = e.render(&classic).unwrap();
+        assert_eq!((out.size, out.base), ((640, 400), (320, 200)), "a menu");
+        assert!(e.begin_frame((1920, 1080), ScaleMode::Aspect4x3));
+        view.borrow_mut().mark_flight();
+        let out = e.render(&classic).unwrap();
+        assert_eq!(
+            (out.size, out.base),
+            ((856, 400), (428, 200)),
+            "a flight's modal"
+        );
     }
 
     #[test]

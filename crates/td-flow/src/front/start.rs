@@ -624,7 +624,7 @@ mod tests {
         assert_ne!(all, missing);
         assert_eq!(
             (all, missing),
-            (0x95f9_1d46_48c2_9a27, 0x59b6_a512_a432_98d7),
+            (0xcbd8_f5dc_0113_34ed, 0xbfb3_f8c1_a909_b63d),
             "start screen snapshot hashes ({all:#018x}, {missing:#018x})"
         );
     }
@@ -654,6 +654,6 @@ mod tests {
             std::fs::write(std::path::Path::new(&out).join("Start.ppm"), ppm).unwrap();
         }
         let h = snapshot(&fb);
-        assert_eq!(h, 0x3c95_25aa_1737_820a, "game-font snapshot {h:#018x}");
+        assert_eq!(h, 0x3f77_d25a_d0ee_e61c, "game-font snapshot {h:#018x}");
     }
 }

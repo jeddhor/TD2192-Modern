@@ -17,6 +17,11 @@
 //! 34 after a fade-in does). The port runs the screen as a queue of steps, one vertical retrace
 //! per waiting step, like the computer menu ([`super::menu`]).
 //!
+//! Reduce flashing (accessibility, M12-18; port-front-end rev 5 §3.5): with
+//! [`Interlude::reducing_flashes`], the cut-scene's flash steps write each entry only within
+//! `td_render::flash::CAP` of its steady colour (`td_render::flash::cap_excursion`); the
+//! steps, their timing and the fades are unchanged.
+//!
 //! The screen shows page 0 from its origin: first with the split line off (no HUD; rows 0..191
 //! of the screen are page rows 0..191), and for the closing fade-in with the split line back
 //! at row 160, so the HUD band as the flight last drew it shows below a black playfield
@@ -25,6 +30,7 @@
 use std::collections::VecDeque;
 
 use td_formats::palette::{Palette, Rgb6};
+use td_render::flash::cap_excursion;
 use td_render::flight_palette::{FADE_STEPS, fade_target, write_fade_step};
 use td_render::{Framebuffer, WIDTH, fade, small_text};
 
@@ -141,6 +147,8 @@ pub struct Interlude {
     ops: VecDeque<Op>,
     /// Retraces run so far.
     frames: u32,
+    /// Reduce flashing: the flash steps stay near the steady colours.
+    reduce_flashing: bool,
 }
 
 /// The mission-logic request of `scene` ([`td_sim::flight::logic::MissionState::scene`]).
@@ -240,7 +248,16 @@ impl Interlude {
             picture,
             ops,
             frames: 0,
+            reduce_flashing: false,
         })
+    }
+
+    /// With `on`, the flash steps write each entry only within `td_render::flash::CAP` of its
+    /// steady colour, the flight palette (reduce flashing, M12-18).
+    #[must_use]
+    pub fn reducing_flashes(mut self, on: bool) -> Self {
+        self.reduce_flashing = on;
+        self
     }
 
     /// The picture and DAC on screen.
@@ -311,8 +328,13 @@ impl Interlude {
                 }
                 Op::Dac { last, skip, rgb } => {
                     for e in (0..=last).filter(|e| !skip.contains(e)) {
-                        self.canvas.palette.colors[e] =
-                            rgb.unwrap_or(self.flight_palette.colors[e]);
+                        let steady = self.flight_palette.colors[e];
+                        let c = rgb.unwrap_or(steady);
+                        self.canvas.palette.colors[e] = if self.reduce_flashing {
+                            cap_excursion(steady, c)
+                        } else {
+                            c
+                        };
                     }
                 }
             }

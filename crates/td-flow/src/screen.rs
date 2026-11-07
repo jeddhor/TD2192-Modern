@@ -64,6 +64,12 @@ pub trait Screen: std::fmt::Debug {
     fn catches_quit(&self) -> bool {
         false
     }
+
+    /// True while the screen reads typed characters (`TickInput::text`): the host then turns
+    /// the platform's text input on (M12-18; the save-name entry).
+    fn wants_text(&self) -> bool {
+        false
+    }
 }
 
 /// The stack of active screens; the top one ticks and draws.
@@ -86,6 +92,11 @@ impl Flow {
     /// Tick rate of the current screen.
     pub fn tick_hz(&self) -> f64 {
         self.stack.last().map_or(RETRACE_HZ, |s| s.tick_hz())
+    }
+
+    /// True while the current screen reads typed characters ([`Screen::wants_text`]).
+    pub fn wants_text(&self) -> bool {
+        self.stack.last().is_some_and(|s| s.wants_text())
     }
 
     /// Shows `screen` on top (the host's options screen); the screen below resumes when it

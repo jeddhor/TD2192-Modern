@@ -78,6 +78,7 @@ fn shifted(s: &mut SaveScreen, k: Key) {
         pressed: vec![k],
         held: [Key::LSHIFT].into_iter().collect(),
         pad: None,
+        ..TickInput::default()
     });
 }
 

@@ -55,6 +55,16 @@
 //! Under the polyphonic option every effect in earshot is sent; the model still decides the
 //! wait.
 //!
+//! Reduce flashing (accessibility, M12-18; port-front-end rev 5 §3.5): with the option on, the
+//! palette presented for the flight picture follows the DAC at a limited rate
+//! (`td_render::flash::FlashLimiter`, stepped once per host tick), so the hit and white flashes,
+//! the infra-red toggle (a held Alt flips it 10.9 times a second) and E3 flight 16's magenta
+//! wash become gradual. The fades (the opening, the teardown, the computer menu's and the
+//! real-time screens' closing fade-ins) are shown as they are. The DAC itself ([`FlightDac`]) and
+//! td-sim never see the option. The cut-scene's flash steps are capped instead
+//! (`Interlude::reducing_flashes`), and the light scene drops the muzzle flashes and dims the
+//! explosions (`lights`).
+//!
 //! Enhanced presentation (`docs/spec/enhanced/presentation.md` rev 1): `draw_frame` draws into a
 //! framebuffer of any width W ≥ 320, a widescreen frame when W > 320 (`td_render::flight`
 //! viewport rules). When the run loop asks for it through the shared [`EnhancedView`], the
@@ -86,6 +96,7 @@ use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::Tileset;
 use td_input::{Key, TickInput};
 use td_render::enhanced::widescreen;
+use td_render::flash::FlashLimiter;
 use td_render::flight::{self, ShotLook, ViewPos, Viewport};
 use td_render::flight_palette::{FADE_STEPS, FlightDac, fade_target, write_fade_step};
 use td_render::headings::SpriteBuffers;
@@ -325,6 +336,13 @@ pub struct FlightArena {
     settle: Option<Settle>,
     /// After the last tick: the fade-out and the wait for the playing status.
     teardown: Option<Teardown>,
+    /// Reduce flashing (accessibility, M12-18): the setting as of the last tick.
+    reduce_flashing: bool,
+    /// The palette presented for the flight picture while the option is on.
+    shown: Option<FlashLimiter>,
+    /// A screen that ends with a fade-in closed in this tick: the presented palette jumps to
+    /// the DAC (no flash: the screen faded in to it).
+    snap_shown: bool,
 }
 
 /// The flight's teardown after its last tick (mission-logic §4.8, tick-order §4): `FadeOut`
@@ -788,6 +806,9 @@ impl FlightArena {
             opening: Some(opening),
             settle: None,
             teardown: None,
+            reduce_flashing: false,
+            shown: None,
+            snap_shown: false,
         })
     }
 
@@ -816,6 +837,24 @@ impl Screen for FlightArena {
     }
 
     fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+        // This host tick lasts one period of the rate it runs at.
+        let dt = 1.0 / self.tick_hz();
+        let opening = self.opening.is_some();
+        self.reduce_flashing = ctx.settings.accessibility.reduce_flashing;
+        let t = self.step(ctx, input);
+        self.limit_flashes(dt, opening);
+        t
+    }
+
+    fn draw(&self, fb: &mut Framebuffer) {
+        self.draw_frame(fb);
+        self.compose_enhanced();
+    }
+}
+
+impl FlightArena {
+    /// One host tick (the [`Screen::tick`] of the module docs).
+    fn step(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
         // The bindings may change in the options screen at any time (M11-03), and so may the
         // profile: the Enhanced original-bug fixes apply from the next tick.
         self.binds = bindings(ctx.settings);
@@ -825,7 +864,6 @@ impl Screen for FlightArena {
         // uses it whenever one is connected.
         self.flight.joystick_enabled = input.pad.is_some();
         self.events.clear();
-        // This host tick lasts one period of the rate it runs at.
         let before = self.clock;
         self.clock += 1.0 / self.tick_hz();
         let now = self.clock;
@@ -890,6 +928,8 @@ impl Screen for FlightArena {
                     if record0 {
                         self.record0_reloaded(fixes);
                     }
+                    // Both end with a fade-in to the DAC (reduce flashing shows it as it is).
+                    self.snap_shown = menu || scene;
                     if abort {
                         // Quit: g_MissionAborted := 1; the tick then leaves the loop.
                         self.flight.aborted = true;
@@ -997,8 +1037,10 @@ impl Screen for FlightArena {
                 // Teardown (mission-logic §4.8): fade out, wait for the sound, then pop. The
                 // fade reads g_FlightPalette (the lamp entries as the instruments stored them).
                 let target = fade_target(&self.flight_palette(), self.flight.palette_mode);
+                // The fade starts from what is on screen (reduce flashing: the presented
+                // palette, so a flash in progress is not shown at full strength).
                 self.teardown = Some(Teardown::new(
-                    self.dac.current(),
+                    &self.presented_palette(),
                     target,
                     usize::from(self.flight.episode == Episode::E2),
                     self.flight.aborted,
@@ -1008,13 +1050,46 @@ impl Screen for FlightArena {
         }
     }
 
-    fn draw(&self, fb: &mut Framebuffer) {
-        self.draw_frame(fb);
-        self.compose_enhanced();
+    /// The palette the flight picture asks for now: the opening's or the teardown's fade, else
+    /// the DAC.
+    fn wanted_palette(&self) -> &Palette {
+        match (&self.opening, &self.teardown) {
+            (Some(o), _) => &o.dac,
+            (None, Some(t)) => &t.dac,
+            (None, None) => self.dac.current(),
+        }
     }
-}
 
-impl FlightArena {
+    /// Reduce flashing (module docs): after a tick of `dt` seconds, the presented palette
+    /// moves toward the wanted one, or jumps to it during the fades (`opening`: the tick began
+    /// in the opening fade-in) and after a screen that faded in to it. Nothing changes while a
+    /// modal screen shows its own picture.
+    fn limit_flashes(&mut self, dt: f64, opening: bool) {
+        if !self.reduce_flashing {
+            self.shown = None;
+            return;
+        }
+        let snap = std::mem::take(&mut self.snap_shown)
+            || opening
+            || self.opening.is_some()
+            || self.teardown.is_some();
+        let wanted = self.wanted_palette().clone();
+        match &mut self.shown {
+            None => self.shown = Some(FlashLimiter::new(&wanted)),
+            Some(l) if snap => l.snap(&wanted),
+            Some(_) if self.screen.is_some() => {}
+            Some(l) => l.step(&wanted, dt),
+        }
+    }
+
+    /// The palette presented for the flight picture: the DAC, or under reduce flashing the
+    /// limited palette.
+    fn presented_palette(&self) -> Palette {
+        match &self.shown {
+            Some(l) => l.palette(),
+            None => self.dac.current().clone(),
+        }
+    }
     /// After the ship library or the comm screen: both re-read `td.shp` record 0 into bank
     /// slot 0 (flight-screens rev 2 §4.9), which in E1 flight 20 replaces lander piece 0 for
     /// the rest of the flight (OB-057, preserved in Classic). With the Enhanced fixes the
@@ -1092,6 +1167,9 @@ impl FlightArena {
         let Some(view) = &self.enhanced else {
             return;
         };
+        if let Ok(mut v) = view.try_borrow_mut() {
+            v.mark_flight();
+        }
         // The opening fade-in keeps its Classic picture (a black playfield), and so do the
         // Classic frames of tick 1's unscrolled page (OB-151).
         if self.opening.is_some() || self.settle.is_some() {
@@ -1148,7 +1226,7 @@ impl FlightArena {
         }
         fb.palette = match &self.teardown {
             Some(t) => t.dac.clone(),
-            None => self.dac.current().clone(),
+            None => self.presented_palette(),
         };
         let f = &self.flight.frame;
         let view = ViewPos {
@@ -1485,13 +1563,16 @@ impl FlightArena {
                 FlightModal::Comm(Box::new(CommScreen::new(shown, &self.screens, n)?))
             }
             // The mission events asked for a real-time screen at step 18 (§4.10).
-            Modal::Scene => FlightModal::Interlude(Box::new(Interlude::new(
-                f.mission.scene,
-                shown,
-                &self.flight_palette(),
-                f.palette_mode,
-                &self.screens,
-            )?)),
+            Modal::Scene => FlightModal::Interlude(Box::new(
+                Interlude::new(
+                    f.mission.scene,
+                    shown,
+                    &self.flight_palette(),
+                    f.palette_mode,
+                    &self.screens,
+                )?
+                .reducing_flashes(self.reduce_flashing),
+            )),
             Modal::TacticalMap => {
                 let dots: Vec<ShipDot> = f
                     .ships
@@ -2572,5 +2653,185 @@ mod tests {
         // At 1.90 s it does, and the hit plays.
         assert_eq!(run(&mut arena, vec![sound(9)], 0, 1.90), [9]);
         assert_eq!(arena.voice.priority(), 0);
+    }
+
+    /// Relative luminance (Rec. 709, linear sRGB) and WCAG's red quantity max(0, R − G − B) of
+    /// a 6-bit colour.
+    fn light_and_red(c: td_formats::palette::Rgb6) -> (f64, f64) {
+        let lin = |v: u8| {
+            let s = f64::from(td_formats::palette::expand6(v)) / 255.0;
+            if s <= 0.04045 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let (r, g, b) = (lin(c.r), lin(c.g), lin(c.b));
+        (0.2126 * r + 0.7152 * g + 0.0722 * b, (r - g - b).max(0.0))
+    }
+
+    /// WCAG 2.3.1's count for one series sampled every `dt` seconds: the most flashes (pairs of
+    /// opposing transitions between turning points, each at least `threshold`) within any
+    /// one-second window.
+    fn flashes_per_second(series: &[f64], threshold: f64, dt: f64) -> usize {
+        let mut turns: Vec<(usize, f64)> = vec![(0, series[0])];
+        for (i, &v) in series.iter().enumerate().skip(1) {
+            let n = turns.len();
+            let last = turns[n - 1].1;
+            if v == last {
+                continue;
+            }
+            let same_way = n >= 2 && (v > last) == (last > turns[n - 2].1);
+            if same_way {
+                turns[n - 1] = (i, v);
+            } else {
+                turns.push((i, v));
+            }
+        }
+        let big: Vec<(usize, usize)> = turns
+            .windows(2)
+            .filter(|w| (w[1].1 - w[0].1).abs() >= threshold)
+            .map(|w| (w[0].0, w[1].0))
+            .collect();
+        let window = (1.0 / dt).round() as usize;
+        big.iter()
+            .map(|&(t0, _)| {
+                let inside = big.iter().filter(|&&(a, b)| a >= t0 && b < t0 + window);
+                inside.count() / 2
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The most flashes per second of any palette entry but `lamps` over `palettes` (one per
+    /// flight tick), general (0.1 luminance) and red (0.0625).
+    fn worst_flashing(palettes: &[Palette], lamps: &[usize]) -> (usize, usize) {
+        let dt = 1.0 / FLIGHT_TICK_HZ;
+        let entries = (0..256).filter(|e| !lamps.contains(e));
+        entries.fold((0, 0), |(g, r), e| {
+            let (lum, red): (Vec<f64>, Vec<f64>) =
+                palettes.iter().map(|p| light_and_red(p.colors[e])).unzip();
+            (
+                g.max(flashes_per_second(&lum, 0.1, dt)),
+                r.max(flashes_per_second(&red, 0.0625, dt)),
+            )
+        })
+    }
+
+    /// M12-18 (VE-8's F1, U-571): E1 flight 4 starts in infra-red mode 1; holding Alt flips
+    /// the view between modes 1 and 2 on every typematic repeat (10.9 times a second). Two
+    /// arenas fly the same input, one with reduce flashing on: the simulation and the DAC stay
+    /// the same, the pixels too; only the presented palette differs, and it does not flash.
+    #[test]
+    fn reduce_flashing_is_presentation_only_and_stops_the_infra_red_flicker() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let off = td_flow::Settings::default();
+        let mut on = off.clone();
+        on.accessibility.reduce_flashing = true;
+        let mut arenas = [
+            FlightArena::new(&dir, &res, Episode::E1, 4).unwrap(),
+            FlightArena::new(&dir, &res, Episode::E1, 4).unwrap(),
+        ];
+        let mut audio = Vec::new();
+        let mut shown: [Vec<Palette>; 2] = Default::default();
+        let mut modes = Vec::new();
+        for t in 0..34 + 160 {
+            let mut input = TickInput::default();
+            // From the first flight tick on, Alt is held (pressed once).
+            if t >= 34 {
+                input.held.insert(Key::LALT);
+            }
+            if t == 34 {
+                input.pressed.push(Key::LALT);
+            }
+            for (i, arena) in arenas.iter_mut().enumerate() {
+                let settings = if i == 0 { &off } else { &on };
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &res,
+                    settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &input);
+                audio.clear();
+            }
+            let [a, b] = &arenas;
+            assert_eq!(
+                td_sim::state_hash(&a.flight),
+                td_sim::state_hash(&b.flight),
+                "tick {t}: the simulation never sees the option"
+            );
+            assert_eq!(a.dac, b.dac, "tick {t}: the DAC state is the game's");
+            let mut fa = Framebuffer::new();
+            let mut fb = Framebuffer::new();
+            a.draw_frame(&mut fa);
+            b.draw_frame(&mut fb);
+            assert_eq!(fa.pixels, fb.pixels, "tick {t}");
+            if a.opening.is_none() {
+                assert!(a.shown.is_none(), "off: the DAC as it is");
+                shown[0].push(fa.palette);
+                shown[1].push(fb.palette);
+                modes.push(a.flight.palette_mode);
+            }
+        }
+        let flips = modes.windows(2).filter(|w| w[0] != w[1]).count();
+        assert!(flips > 40, "Alt held flips the view: {flips} flips");
+        // The HUD's lamp entries are written over the presented palette: small lamps, outside
+        // WCAG's area threshold and outside the option (hud §4.3-§4.8).
+        let lamps: Vec<usize> = arenas[0]
+            .hud
+            .borrow()
+            .hud
+            .entries()
+            .iter()
+            .map(|&(e, _)| usize::from(e))
+            .collect();
+        let (general, red) = worst_flashing(&shown[0], &lamps);
+        assert!(
+            general >= 4 || red >= 4,
+            "the raw flicker: {general} / {red}"
+        );
+        assert_eq!(
+            worst_flashing(&shown[1], &lamps),
+            (0, 0),
+            "reduced: no flashes"
+        );
+    }
+
+    /// M12-18: the option switched on or off in the middle of a flight changes nothing at
+    /// once (no jump), and a steady picture is presented exactly.
+    #[test]
+    fn reduce_flashing_switches_live_without_a_jump() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let res = ExeResources::load(&dir).unwrap();
+        let (mut arena, _) = flown_arena(&dir, &res, 30, false);
+        let mut settings = td_flow::Settings::default();
+        settings.accessibility.reduce_flashing = true;
+        let mut audio = Vec::new();
+        for _ in 0..20 {
+            let mut ctx = FlowContext {
+                data: &dir,
+                resources: &res,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            arena.tick(&mut ctx, &TickInput::default());
+            audio.clear();
+            // Flight 1 has no flash in these ticks: the presented palette is the DAC.
+            assert_eq!(arena.presented_palette(), *arena.dac.current());
+        }
+        assert!(arena.shown.is_some());
+        settings.accessibility.reduce_flashing = false;
+        let mut ctx = FlowContext {
+            data: &dir,
+            resources: &res,
+            settings: &settings,
+            audio: &mut audio,
+        };
+        arena.tick(&mut ctx, &TickInput::default());
+        assert!(arena.shown.is_none(), "off again: the Classic path");
     }
 }

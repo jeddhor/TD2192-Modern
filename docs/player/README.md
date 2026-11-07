@@ -20,7 +20,7 @@ This guide covers:
 
 > TD2192-Modern is still being developed, and this guide describes the current version. Some parts of the game are not finished yet; see [the project page](../../README.md) for the current state.
 
-> **Photosensitivity warning.** Like the 1994 original, the game flashes the whole screen: white when a homing missile destroys a ship, red and yellow in some explosions and mission events, and dark/red when the infra-red view is switched (holding the infra-red key repeats it several times a second). There is no setting to reduce the flashing yet. If you or anyone watching is sensitive to flashing lights, take care, and avoid holding the infra-red key.
+> **Photosensitivity warning.** Like the 1994 original, the game flashes the whole screen: white when a homing missile destroys a ship, red and yellow in some explosions and mission events, and dark/red when the infra-red view is switched (holding the infra-red key repeats it several times a second). If you or anyone watching is sensitive to flashing lights, turn on **reduce flashing** before you play (F2, then **accessibility**; see [section 6](#accessibility)). It makes every colour change of the flight picture gradual, so that they stay below the flash limits of the WCAG 2.3.1 guideline, softens the cut-scene's flashes and the lighting effects, and turns off bloom. Under the enhanced profile, explosions still light up their surroundings a little; set **dynamic lighting** to off as well to remove that. Even so, take care, and avoid holding the infra-red key.
 
 ## 1. What you need
 
@@ -139,7 +139,7 @@ These are the original keys. You can change every one of them ([section 6](#6-op
 | F5 | Tactical map |
 | F6 | Read an incoming transmission (when the indicator lights) |
 | M | Repeat the last message |
-| P | Pause; any key goes on |
+| P | Pause; any key (or any controller button) goes on |
 | S | The original's sound-device switch. Not used by TD2192-Modern yet. |
 
 ### The original's cheat keys
@@ -158,7 +158,9 @@ The original's debrief calls you a cheater only when the kill totals are impossi
 
 ### Menus and screens
 
-The original menus use the arrow keys (or keypad 8 and 2), Enter or Space to choose, and Escape to go back. Screens that say "hit any key" take any key or a controller button.
+The original menus use the arrow keys (or keypad 8 and 2), Enter or Space to choose, and Escape to go back. Screens that say "hit any key" (story pages, dialogue, the pause) take any key or any controller button.
+
+Some story pages, such as the orders, dossiers and debriefings, close by themselves after a few seconds, as in the original. If you need more time to read, turn on **text waits for a key** (F2, then **accessibility**): those pages then stay until you press a key, and a key you press while the text is still appearing no longer skips the next page.
 
 ### Game controller
 
@@ -179,12 +181,16 @@ The other buttons are bound to keys, and each acts exactly like its key everywhe
 | West (X) | Alt | Infra-red |
 | Left shoulder | F6 | Read a transmission |
 | Right shoulder | M | Repeat the last message |
+| Right stick (press) | P | Pause |
+| Left stick (press) | F2 | The options (see below) |
 
 On TD2192-Modern's own screens (the start screen and the options), the stick or D-pad moves, South confirms and East goes back. The original's own menus read the stick and buttons as the original did.
 
 On Episode 1's script choice, South answers 1 and East answers 2. The main menu's yes/no questions take South for yes and East for no. When you save a game, South chooses the slot and, after you have typed a name (or none), South again saves it; the name itself can only be typed on a keyboard.
 
-During play a controller cannot open the options (F2) or use F10 to F12, and P (pause) has no button by default; you can bind one on the controls page.
+Pressing the left stick opens the options at any time, as F2 does; you can choose another button for it on the controls page. Pressing the right stick pauses a flight. F10 to F12 have no controller buttons; the options have scaling and fullscreen rows.
+
+Save names are typed with your keyboard's own layout: on a French or German keyboard you get the letters printed on the keys.
 
 ### Keys that work everywhere
 
@@ -209,6 +215,7 @@ Options marked * are Enhanced features. Choosing the **enhanced** profile sets t
 |---|---|---|
 | fullscreen | on, off | Fullscreen at the desktop resolution (F11 also switches it for the session) |
 | scaling | aspect 4x3, integer, stretch | **aspect 4x3** keeps the original 4:3 shape (the 1994 screen had slightly tall pixels); **integer** uses whole-number scaling with square pixels, the sharpest; **stretch** fills the window |
+| in the background | pause, keep running | What the game does while another window is in front: **pause** stops it (and its sound) until you come back; **keep running** goes on, as the original did. Until you choose, the enhanced profile pauses and the classic profile keeps running |
 | widescreen* | off, 16x10, 16x9, 21x9, auto | Shows more of the city to the left and right in flight. Marked **affects gameplay**, because you can see further than in the original. **auto** picks the widest that fits your window. Preset: 16x9 |
 | pixel upscaler* | none, scale2x, scale3x, scale4x, xbr2, xbr3, xbr4 | Smooths the pixel art when it is enlarged. Preset: xbr3 |
 | dynamic lighting* | off, subtle, full | Light from explosions, shots and engines; **full** adds a night look with shadows from buildings. Preset: subtle |
@@ -233,6 +240,10 @@ One row for each key the game reads in flight:
 
 To change a binding, move to the cell and press Enter (or South), then press the new key or button within 5 seconds. Escape cancels. Delete clears the binding. F10, F11 and F12 cannot be bound: they always scale the picture, switch fullscreen and save a screenshot. A key or button can do only one thing, so binding it to a new action takes it from the old one; the screen says which. **reset to defaults** restores the original keys and the controller defaults above.
 
+The **options** row, below the flight keys, is the controller button that opens the options (the left stick's press at first). On the keyboard that is always F2.
+
+The keys of the menus and story screens (Enter, Space, Escape, the arrows) cannot be changed: the original screens read them directly. A controller can use every screen without them.
+
 ### profile
 
 | Setting | Values | What it does |
@@ -247,6 +258,8 @@ To change a binding, move to the cell and press Enter (or South), then press the
 | Setting | What it does |
 |---|---|
 | colour-blind guidance line | The guidance line (the short dotted line next to your ship that points at your target) normally comes in red for a target, green for a friendly ship and cyan for home. Those are hard to tell apart with red-green colour blindness, and the dark dots vanish on dark ground. With this on, the line is drawn in bright colours chosen to stay distinct for the common kinds of colour blindness: **orange** for a target, **sky blue** for a friend and **white** for home, each with a black outline. It works under both profiles. |
+| reduce flashing | For players sensitive to flashing light. In flight, the colours of the picture change gradually: the white and red flashes of explosions become a soft glow, and switching the infra-red view fades over a second or two instead of flipping at once (holding the infra-red key no longer flickers). The cut-scene of Episode 1 flight 17 keeps its colours close to normal, and with the enhanced lighting there are no muzzle flashes, explosions glow less and bloom is off. It changes only what you see, never how the game plays. Off by default; it works under both profiles. |
+| text waits for a key | Story pages that close by themselves after a few seconds (orders, dossiers, debriefings, pictures with captions) wait for a key instead, and keys pressed while a page is still appearing do not skip the next page. Off by default, so the classic timing stays as it was. |
 
 ### game data
 
@@ -267,7 +280,7 @@ TD2192-Modern has two **profiles**:
 
   Each option can then be changed on its own. What you change is remembered and kept, also when the preset changes in a later version; **restore the enhanced preset** on the profile page forgets your changes. Switching back to Classic turns every Enhanced option off again, but remembers your choices.
 
-The options marked * belong to the profile. The accessibility option and the intro setting are separate options, off by default (the colour-blind guidance line works under either profile). No Enhanced option changes how the game itself plays, except widescreen, which lets you see more, and one bug fix: Episode 1 flight 8 can no longer get stuck (section 8).
+The options marked * belong to the profile. The accessibility options and the intro setting are separate options, off by default (they work under either profile). **in the background** follows the profile until you choose. No Enhanced option changes how the game itself plays, except widescreen, which lets you see more, and one bug fix: Episode 1 flight 8 can no longer get stuck (section 8).
 
 Settings files written by earlier versions still load. There every Enhanced option was saved even if you never touched it, so options saved as off or none count as untouched and get the preset; options you had turned on keep their value.
 
@@ -282,7 +295,7 @@ In flight the city extends to the sides:
 | 21x9 | 560 pixels | 120 pixels |
 | auto | the widest that fits the window | |
 
-The middle of the picture is exactly the original view, and ships, shots and explosions are drawn across the whole width. The instrument panel stays in the middle, with its ends mirrored outward. Menus, story scenes and the flight's full-screen pages stay at their original size in the middle. The pause message is drawn over the wide flight picture.
+The middle of the picture is exactly the original view, and ships, shots and explosions are drawn across the whole width. The instrument panel stays in the middle, with its ends mirrored outward. Menus and story scenes are shown at the classic width, so their text is as large as in the classic profile. The flight's own full-screen pages (the computer menu, the map, transmissions) stay in the middle of the wide picture. The pause message is drawn over the wide flight picture.
 
 ### Pixel upscalers
 

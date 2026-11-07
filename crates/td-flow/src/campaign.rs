@@ -967,12 +967,15 @@ impl Campaign {
                     _ => {}
                 }
                 let inp = input.take()?;
+                let waits = ctx.settings.accessibility.text_waits_for_key;
                 let done = match child {
                     Child::Story(s) => {
+                        s.set_text_waits(waits);
                         s.step(inp);
                         s.finished()
                     }
                     Child::Dialogue(d) => {
+                        d.set_text_waits(waits);
                         d.step(inp);
                         d.finished()
                     }

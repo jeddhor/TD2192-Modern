@@ -234,3 +234,61 @@ fn flight_19_vci_screen_matches_c0069() {
     assert!(end.pixels[..160 * W].iter().all(|&c| c == 0));
     assert_eq!(end.palette.colors[1..], p.colors[1..]);
 }
+
+/// Relative luminance (Rec. 709, linear sRGB) of a 6-bit colour.
+fn luminance(c: td_formats::palette::Rgb6) -> f64 {
+    let lin = |v: u8| {
+        let s = f64::from(td_formats::palette::expand6(v)) / 255.0;
+        if s <= 0.04045 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+}
+
+/// M12-18, reduce flashing (port-front-end rev 5 §3.5): the cut-scene runs the same steps in
+/// the same retraces and draws the same pixels; only its flash steps differ, and each entry
+/// then stays within a small distance of its steady colour (no WCAG flash: less than 0.1 in
+/// luminance). Needs the game data only (the flight palette is `td.pal`).
+#[test]
+fn reduce_flashing_caps_the_cut_scene_flash() {
+    let data = require_data!();
+    let dir = DataDir::open(&data).unwrap();
+    let res = ExeResources::load(&dir).unwrap();
+    let assets = FlightScreenAssets::load(&dir, &res).unwrap();
+    let p = Palette::parse(&dir.read("td.pal").unwrap()).unwrap();
+    let open = vec![7u8; 192 * W];
+    let plain = run(
+        Interlude::new(SCENE_CUT_SCENE, shown(&open), &p, 0, &assets).unwrap(),
+        &assets,
+    );
+    let reduced = run(
+        Interlude::new(SCENE_CUT_SCENE, shown(&open), &p, 0, &assets)
+            .unwrap()
+            .reducing_flashes(true),
+        &assets,
+    );
+    assert_eq!(plain.len(), reduced.len(), "the same retraces");
+    let mut flash_states = 0;
+    for (a, b) in plain.iter().zip(&reduced) {
+        assert_eq!(a.pixels, b.pixels);
+        if a.palette == b.palette {
+            continue;
+        }
+        flash_states += 1;
+        let mut strongest = 0.0f64;
+        for e in 0..256 {
+            let (steady, shown) = (luminance(p.colors[e]), luminance(b.palette.colors[e]));
+            assert!((shown - steady).abs() < 0.1, "entry {e}");
+            strongest = strongest.max((luminance(a.palette.colors[e]) - steady).abs());
+        }
+        assert!(strongest >= 0.1, "the original's step is a flash");
+    }
+    // Black, yellow-white, black: 100 ms each.
+    assert!(
+        (15..30).contains(&flash_states),
+        "{flash_states} retraces of flash"
+    );
+}

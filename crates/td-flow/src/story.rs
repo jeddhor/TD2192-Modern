@@ -31,6 +31,13 @@
 //! Every screen says what it does to `g_Palette` ([`ScenePalette`]); the program run keeps it
 //! for the fades and for its flights (weapons rev 4 §3.3 item 5, OB-017).
 //!
+//! Port additions (M12-18, port-front-end rev 5 §3.6 and §5): a press of any controller button
+//! ends a wait, as a key does ([`crate::controls::AnyButton`]); and with the accessibility
+//! option "text waits for a key" ([`StoryScreen::set_text_waits`]) a timed wait waits for a key,
+//! and the keys typed before a wait begins (during the fade-in or the typing, or left by the
+//! previous screen) do not end it. The option is off by default, so Classic timing is
+//! unchanged.
+//!
 //! Provisional parts (no spec yet): the line layout of the hint screens and of the text-only
 //! screens (orders, dossiers, debrief, retry prompt, script choice), U-121; what `td1-15.pic`'s
 //! "split-screen" effect does, U-122; which keys end a timed wait and whether keys typed during
@@ -188,6 +195,10 @@ pub struct StoryScreen {
     skip: bool,
     /// The key that ended the last wait.
     last_key: Option<Key>,
+    /// Text waits for a key (accessibility, M12-18).
+    text_waits: bool,
+    /// Controller presses for the waits.
+    any_button: crate::controls::AnyButton,
 }
 
 impl std::fmt::Debug for StoryScreen {
@@ -239,7 +250,16 @@ impl StoryScreen {
             keys: Vec::new(),
             skip: false,
             last_key: None,
+            text_waits: false,
+            any_button: crate::controls::AnyButton::default(),
         }
+    }
+
+    /// The accessibility option "text waits for a key" (`accessibility.text_waits_for_key`,
+    /// M12-18): a timed wait waits for a key, and keys typed before a wait begins do not end
+    /// it. The screen's owner passes the setting before each step.
+    pub fn set_text_waits(&mut self, on: bool) {
+        self.text_waits = on;
     }
 
     /// The video memory and DAC as shown.
@@ -337,6 +357,9 @@ impl StoryScreen {
                 self.keys.push(k);
             }
         }
+        // A controller button pressed in this frame ends a wait that is running (port
+        // addition; the bound buttons' keys arrived above already).
+        let mut button = self.any_button.pressed(input.pad);
         if !self.primed {
             self.primed = true;
             self.wait = fade::first_level_frames(&self.pal, 1, 0);
@@ -396,7 +419,9 @@ impl StoryScreen {
                         if k == Key::ESCAPE {
                             self.skip = true;
                         }
-                    } else if *left == u32::MAX {
+                    } else if std::mem::take(&mut button) {
+                        self.last_key = None;
+                    } else if *left == u32::MAX || self.text_waits {
                         return;
                     } else if *left > 0 {
                         *left -= 1;
@@ -453,6 +478,10 @@ impl StoryScreen {
     }
 
     fn hold_phase(&mut self) -> Phase {
+        if self.text_waits {
+            // Only a key pressed from now on ends this wait (M12-18).
+            self.keys.clear();
+        }
         Phase::Hold(match self.hold {
             Hold::Seconds(s) => {
                 if self.flush_waits {
@@ -466,7 +495,8 @@ impl StoryScreen {
 }
 
 impl Screen for StoryScreen {
-    fn tick(&mut self, _ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+    fn tick(&mut self, ctx: &mut FlowContext<'_>, input: &TickInput) -> Transition {
+        self.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
         self.step(input);
         if self.finished() {
             Transition::Pop
@@ -1002,6 +1032,66 @@ mod tests {
         s.pal.colors[usize::from(TITLE_ENTRY)] = TITLE_RGB;
         assert_eq!(s.fade_frames_per_level(), 2);
         assert_eq!(run(&mut s, &TickInput::default()), 34 + 332 + 34);
+    }
+
+    fn button(b: td_input::PadButton) -> TickInput {
+        TickInput {
+            pad: Some(td_input::Pad {
+                buttons: b.bit(),
+                ..td_input::Pad::default()
+            }),
+            ..TickInput::default()
+        }
+    }
+
+    fn released() -> TickInput {
+        TickInput {
+            pad: Some(td_input::Pad::default()),
+            ..TickInput::default()
+        }
+    }
+
+    /// M12-18: a press of any controller button ends a wait, bound or not (the original reads
+    /// joystick buttons 1 and 2); a button held from before the screen, or pressed before the
+    /// wait, does not.
+    #[test]
+    fn any_controller_button_ends_the_wait() {
+        use td_input::PadButton;
+        let mut s = picture(StoryScreen::blank(Hold::Key));
+        // Held when the screen starts, pressed during the fade-in: neither counts.
+        s.step(&button(PadButton::North));
+        s.step(&released());
+        s.step(&button(PadButton::West));
+        for _ in 0..40 {
+            s.step(&released());
+        }
+        assert!(matches!(s.phase, Phase::Hold(_)), "still waiting");
+        s.step(&button(PadButton::East));
+        assert!(matches!(s.phase, Phase::FadeOut(_)));
+        assert!(!s.skipped(), "a button is no Esc");
+    }
+
+    /// M12-18, "text waits for a key": a timed hold waits for a key, and the keys typed during
+    /// the fade-in and the typing do not end it.
+    #[test]
+    fn text_waits_for_a_key_holds_timed_screens() {
+        let mut s = picture(StoryScreen::blank(Hold::Seconds(5)));
+        s.set_text_waits(true);
+        s.step(&press(Key::SPACE));
+        s.step(&press(Key::ENTER));
+        for _ in 0..34 + 332 + 100 {
+            s.step(&TickInput::default());
+        }
+        assert!(matches!(s.phase, Phase::Hold(_)), "the 5 s are long over");
+        s.step(&press(Key::SPACE));
+        assert!(matches!(s.phase, Phase::FadeOut(_)));
+        // Off (the default), the same keys end the hold at once, as in the original.
+        let mut s = picture(StoryScreen::blank(Hold::Seconds(5)));
+        s.step(&press(Key::SPACE));
+        for _ in 0..40 {
+            s.step(&TickInput::default());
+        }
+        assert!(!matches!(s.phase, Phase::Hold(_)), "typed ahead");
     }
 
     #[test]

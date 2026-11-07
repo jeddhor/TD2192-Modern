@@ -179,20 +179,20 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
 
 | Rank | Finding | Recommendation | Owner | State |
 |---:|---|---|---|---|
-| 1 | F1, F3 | An accessibility option "reduce flashing" (§4): no typematic repeat for the infra-red keys, capped DAC flashes at the presentation stage, softer Enhanced lighting; and decide whether the held-Alt flicker is fixed in every profile on safety grounds (U-571) | user (policy), IM | open |
+| 1 | F1, F3 | An accessibility option "reduce flashing" (§4): no typematic repeat for the infra-red keys, capped DAC flashes at the presentation stage, softer Enhanced lighting; and decide whether the held-Alt flicker is fixed in every profile on safety grounds (U-571) | user (policy), IM | **option done** (IM-25, M12-18: presentation-only rate limit of the flight palette, 0.375/s L1 linear, instead of dropping the typematic repeats, so td-sim and replays never see it; capped cut-scene flash; softer lighting, no bloom; port-front-end rev 5 §3.5). Policy open: OB-176 (RE-20) |
 | 2 | F2 | South ends the save-name entry | VE-8 | **done** |
-| 3 | F4 | Rebindable menu actions (confirm, back, up, down, next page, skip) and host actions (options, scaling, fullscreen, screenshot) | IM | open |
-| 4 | F5 | A controller default for pause (S3) and a bindable host "options" action | user (defaults), IM | open |
-| 5 | F6 | "Hit any key" waits read joystick buttons 1 and 2 (also a fidelity fix); buttons inject the original key for screens | IM | open |
-| 6 | F7 | "Text waits for a key" option; page breaks ignore keys pressed during typing | IM | open |
+| 3 | F4 | Rebindable menu actions (confirm, back, up, down, next page, skip) and host actions (options, scaling, fullscreen, screenshot) | IM | **partly** (IM-25, M12-18): the controller's options button is a binding; menu keys and keyboard host keys stay fixed, reasons in port-front-end rev 5 §3.1 |
+| 4 | F5 | A controller default for pause (S3) and a bindable host "options" action | user (defaults), IM | **done** (IM-25, M12-18): P on the right stick, the options on the left stick's press (bindable) |
+| 5 | F6 | "Hit any key" waits read joystick buttons 1 and 2 (also a fidelity fix); buttons inject the original key for screens | IM | **first part done** (IM-25, M12-18: any button ends the story, dialogue and pause waits); buttons still stand for the keyboard bindings |
+| 6 | F7 | "Text waits for a key" option; page breaks ignore keys pressed during typing | IM | **done** (IM-25, M12-18) |
 | 7 | F8 | A cursor mark on the port's screens; an "infra-red tint" option | IM | open |
-| 8 | F9 | Port inks 229 and 226 to at least 4.5:1 and 4.3:1 (S4) | user (look), IM | open |
-| 9 | F10 | Present non-flight frames 320 wide (or make `auto` the preset width) | user (presentation §4.3), IM | open |
+| 8 | F9 | Port inks 229 and 226 to at least 4.5:1 and 4.3:1 (S4) | user (look), IM | **done** (IM-25, M12-18: S4's values) |
+| 9 | F10 | Present non-flight frames 320 wide (or make `auto` the preset width) | user (presentation §4.3), IM | **done** (IM-25, M12-18: presentation rev 6 §4.3; the flight's modals stay in the wide frame) |
 | 10 | F11 | F10–F12 cannot be bound | VE-8 | **done** |
-| 11 | F12 | Stop the clock or pause when the window loses focus | IM | open |
-| 12 | F13 | SDL text input for names; the typed character for the yes key | IM | open |
+| 11 | F12 | Stop the clock or pause when the window loses focus | IM | **done** (IM-25, M12-18: an option, pause under Enhanced, keep running under Classic by default; held keys released on focus loss) |
+| 12 | F13 | SDL text input for names; the typed character for the yes key | IM | **names done** (IM-25, M12-18); the yes key is still the `y` position |
 | 13 | F14, F15 | Controller binding limits; a steady hit indicator | IM | open |
-| 14 | F16 | Player guide and MDG wording; keep `[dev] tick_hz` out of release builds | docs, IM | guide part done |
+| 14 | F16 | Player guide and MDG wording; keep `[dev] tick_hz` out of release builds | docs, IM | guide part done; the dialogue player's note on joystick buttons and the guide's controller lines updated (IM-25, M12-18) |
 
 ### 2.1 Small fix candidates
 

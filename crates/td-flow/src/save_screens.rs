@@ -14,6 +14,12 @@
 //! here every key waiting in the buffer is handled in the frame it arrives, and the highlight
 //! is redrawn after each change (the pixels are the same).
 //!
+//! Typed names (M12-18, port-front-end rev 5 §5): the name takes the characters the keyboard
+//! layout types (`TickInput::text`, the platform's text input, which the host turns on while
+//! [`SaveScreen::entering_name`]), so an AZERTY or QWERTZ player gets the letters on the keys.
+//! Only when a frame brings no text (synthetic input) do the keys' positions count, as before.
+//! The same filter applies: a–z (upper case is lowered), 0–9, space, `-` and `.`.
+//!
 //! OB-056 (fix-enhanced): the original ignores Esc during the name entry, so a slot chosen by
 //! mistake is lost. With [`SaveScreen::esc_cancels_entry`] (the Enhanced profile's original-bug
 //! fixes), Esc puts the slot back as it was and returns to the slot choice.
@@ -289,8 +295,21 @@ impl SaveScreen {
         if south_pressed && self.phase == Phase::Name {
             self.keys.push((Key::ENTER, false));
         } else {
+            // With text in this frame the name takes the typed characters; the keys that typed
+            // them are not taken again by position (M12-18).
+            let typing = self.phase == Phase::Name && !input.text.is_empty();
+            if typing {
+                for c in input.text.chars() {
+                    if let Some(k) = typed_key(c)
+                        && self.keys.len() < KEY_BUFFER
+                    {
+                        self.keys.push((k, false));
+                    }
+                }
+            }
             for &k in &input.pressed {
-                if is_keystroke(k) && self.keys.len() < KEY_BUFFER {
+                let printable = name_char(k, false).is_some() || name_char(k, true).is_some();
+                if is_keystroke(k) && self.keys.len() < KEY_BUFFER && !(typing && printable) {
                     self.keys.push((k, shift));
                 }
             }
@@ -441,7 +460,7 @@ impl SaveScreen {
         if k == Key::BACKSPACE {
             self.typed.pop();
         } else if self.typed.len() < MAX_TYPED
-            && let Some(c) = name_char(k, shift)
+            && let Some(c) = typed_char(k).or_else(|| name_char(k, shift))
         {
             self.typed.push(c);
         }
@@ -518,6 +537,25 @@ impl SaveScreen {
         fb.pixels.copy_from_slice(&self.screen.pixels);
         fb.palette.clone_from(&self.screen.palette);
     }
+}
+
+/// Typed characters ride in the key buffer as these values, above every USB HID usage
+/// (`TickInput::text`, M12-18).
+const TYPED: u16 = 0x8000;
+
+/// The buffer entry of a typed character that the name filter keeps (§4.4: a–z, upper case
+/// lowered, 0–9, space, `-`, `.`).
+fn typed_key(c: char) -> Option<Key> {
+    let c = c.to_ascii_lowercase();
+    (c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, ' ' | '-' | '.'))
+        .then(|| Key(TYPED + c as u16))
+}
+
+/// The character of a [`typed_key`] entry.
+fn typed_char(k: Key) -> Option<char> {
+    k.0.checked_sub(TYPED)
+        .and_then(|c| u8::try_from(c).ok())
+        .map(char::from)
 }
 
 /// The character a key adds to a name, if any (`ReadKey`, then the §4.4 filter; Shift turns
@@ -688,6 +726,7 @@ mod tests {
                 pressed: vec![k],
                 held,
                 pad: None,
+                ..TickInput::default()
             });
         }
         assert!(s.entering_name(), "Esc does not cancel");
@@ -711,6 +750,48 @@ mod tests {
 
     /// M12-07 (port-front-end §5): a controller alone can save. South chooses the slot (as its
     /// Space binding), and its next press ends the name entry like Enter without typing a space.
+    /// M12-18: the name takes the typed characters (an AZERTY player pressing the key in the
+    /// Q position types `a`); upper case is lowered; characters outside the filter are dropped;
+    /// without text the key positions count, as before.
+    #[test]
+    fn names_take_the_typed_characters() {
+        let mut s = SaveScreen::new(
+            SaveKind::Save {
+                mission: 4,
+                kills: 12,
+            },
+            &Palette::default(),
+            &font(),
+            &labels(),
+            None,
+            set_with(1, 4, 12),
+        );
+        settle(&mut s);
+        s.step(&press(Key::ENTER));
+        assert!(s.entering_name());
+        let typed = |k: Key, text: &str| TickInput {
+            pressed: vec![k],
+            text: text.into(),
+            ..TickInput::default()
+        };
+        // AZERTY: the Q position types `a`; QWERTZ: the Z position types `y`.
+        s.step(&typed(Key::letter('q').unwrap(), "a"));
+        s.step(&typed(Key::letter('z').unwrap(), "Y"));
+        // Not in the filter: é; a symbol from a shifted digit.
+        s.step(&typed(Key::digit(2).unwrap(), "é"));
+        s.step(&typed(Key::digit(1).unwrap(), "!"));
+        s.step(&typed(Key::digit(1).unwrap(), "1"));
+        // No text (synthetic input): the position.
+        s.step(&press(Key::letter('b').unwrap()));
+        assert_eq!(s.typed, "ay1b");
+        s.step(&press(Key::ENTER));
+        settle(&mut s);
+        let Some(SaveOutcome::Saved(set)) = s.outcome() else {
+            panic!("{:?}", s.outcome());
+        };
+        assert_eq!(set.names.names[0].trim(), "ay1b");
+    }
+
     #[test]
     fn south_ends_the_name_entry() {
         let mut s = SaveScreen::new(
@@ -732,6 +813,7 @@ mod tests {
                 button2: down,
                 ..Pad::default()
             }),
+            ..TickInput::default()
         };
         // The press that chooses the slot comes with its binding's Space.
         s.step(&south(true, vec![Key::SPACE]));

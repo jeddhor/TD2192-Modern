@@ -218,6 +218,8 @@ pub struct Platform {
     input: td_input::InputState,
     audio: Option<AudioStreamOwner>,
     fullscreen: bool,
+    /// SDL's text input is on (the save-name entry, M12-18).
+    text_input: bool,
 }
 
 impl std::fmt::Debug for Platform {
@@ -255,7 +257,27 @@ impl Platform {
             input: td_input::InputState::default(),
             audio: None,
             fullscreen: cfg.fullscreen,
+            text_input: false,
         })
+    }
+
+    /// Turns the system's text input on or off: while it is on, the snapshot's `text` holds the
+    /// characters the keyboard layout types (M12-18). Off by default: an input method can take
+    /// key presses while it is on, so only screens that read typed text turn it on.
+    pub fn set_text_input(&mut self, on: bool) {
+        if on == self.text_input {
+            return;
+        }
+        self.text_input = on;
+        let Ok(video) = self._sdl.video() else {
+            return;
+        };
+        let util = video.text_input();
+        if on {
+            util.start(self.canvas.window());
+        } else {
+            util.stop(self.canvas.window());
+        }
     }
 
     /// Opens audio output at `rate` Hz, stereo `f32`. Audio is pushed from the main thread with
@@ -307,6 +329,11 @@ impl Platform {
                     scancode: Some(sc), ..
                 } => self.input.key_up(Key(sc as u16)),
                 Event::TextInput { text, .. } => self.input.text.push_str(&text),
+                Event::Window { win_event, .. } => match win_event {
+                    sdl3::event::WindowEvent::FocusLost => self.input.focus(false),
+                    sdl3::event::WindowEvent::FocusGained => self.input.focus(true),
+                    _ => {}
+                },
                 Event::GamepadAdded { which, .. } => {
                     if let Some(pad) = self.gamepads.as_ref().and_then(|g| g.open(which).ok()) {
                         tracing::info!("game controller connected: {:?}", pad.name());

@@ -12,6 +12,10 @@
 //! esc = "start"
 //! ```
 //!
+//! `options_button` (a key of `[controls]`, M12-18) is the controller button that opens the
+//! options during play, as F2 does on the keyboard; `"none"` turns it off. A button stands for
+//! one thing: binding it to a flight key takes it from the options and the other way round.
+//!
 //! Missing entries keep their defaults, so a partial or older file still works. The keyboard
 //! defaults are the original's keys (MDG §9.5). The controller's stick and D-pad stay the
 //! original's joystick (thrust; East = button 1, afterburner; South = button 2, fire), which the
@@ -208,7 +212,9 @@ impl Default for PadBindings {
     /// Port defaults (the original had a two-button joystick): South fires (and advances "hit
     /// any key" screens), Start opens the computer menu (and acts as Esc everywhere), Back
     /// the tactical map, North switches weapon, West toggles infra-red, the shoulders read and
-    /// repeat transmissions.
+    /// repeat transmissions, and a press of the right stick pauses (M12-18). The left stick's
+    /// press opens the options ([`ControlsSettings::options_button`]); the triggers and Guide
+    /// are free (the system often takes Guide).
     fn default() -> Self {
         let mut b = Self::none();
         for (k, button) in [
@@ -219,6 +225,7 @@ impl Default for PadBindings {
             (FlightKey::Alt, PadButton::West),
             (FlightKey::F6, PadButton::LeftShoulder),
             (FlightKey::M, PadButton::RightShoulder),
+            (FlightKey::P, PadButton::RightStick),
         ] {
             b.slots[slot(k)] = Some(button);
         }
@@ -263,12 +270,69 @@ where
     }
 }
 
+/// The controller button that opens the options by default: a press of the left stick.
+pub const OPTIONS_BUTTON: PadButton = PadButton::LeftStick;
+
 /// The `[controls]` section.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ControlsSettings {
+    /// The controller button that opens the options during play (the host's F2, M12-18), or
+    /// none.
+    #[serde(with = "button_or_none")]
+    pub options_button: Option<PadButton>,
     pub keyboard: KeyBindings,
     pub gamepad: PadBindings,
+}
+
+impl Default for ControlsSettings {
+    fn default() -> Self {
+        Self {
+            options_button: Some(OPTIONS_BUTTON),
+            keyboard: KeyBindings::default(),
+            gamepad: PadBindings::default(),
+        }
+    }
+}
+
+/// A controller button or `"none"` in the settings file.
+mod button_or_none {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use td_input::PadButton;
+
+    pub fn serialize<S: Serializer>(b: &Option<PadButton>, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(b.map_or("none", PadButton::name))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<PadButton>, D::Error> {
+        let name = String::deserialize(d)?;
+        if name == "none" {
+            return Ok(None);
+        }
+        Ok(Some(PadButton::from_name(&name).unwrap_or_else(|| {
+            tracing::warn!("settings: unknown button {name:?} for the options in [controls]");
+            super::OPTIONS_BUTTON
+        })))
+    }
+}
+
+/// A press of any controller button, for the waits that end on "any key" (M12-18,
+/// port-front-end rev 5 §5): the story screens' holds, the dialogue's page breaks and the
+/// flight's pause. The original reads joystick buttons 1 and 2 there; the port takes every
+/// button, bound or not. A press counts in the tick it happens (it is not kept for a later
+/// wait), and a button already held when the screen starts does not count.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AnyButton {
+    prev: Option<u32>,
+}
+
+impl AnyButton {
+    /// True if a button went down since the previous call.
+    pub fn pressed(&mut self, pad: Option<Pad>) -> bool {
+        let now = pad.map_or(0, |p| p.buttons);
+        let prev = self.prev.replace(now).unwrap_or(now);
+        now & !prev != 0
+    }
 }
 
 /// The keys a controller's bound buttons stand for at one poll.
@@ -284,6 +348,35 @@ impl ControlsSettings {
     /// (host key, flight key) pairs for the flight.
     pub fn flight_keys(&self) -> Vec<(Key, FlightKey)> {
         self.keyboard.iter().map(|(k, host)| (host, k)).collect()
+    }
+
+    /// True if the options button went down: it is held in `pad` and was not in `prev`
+    /// ([`Pad::buttons`] at the previous poll).
+    pub fn options_pressed(&self, pad: Option<Pad>, prev: u32) -> bool {
+        match (self.options_button, pad) {
+            (Some(b), Some(p)) => p.held(b) && prev & b.bit() == 0,
+            _ => false,
+        }
+    }
+
+    /// Binds the options to `b` (or none); a flight key that had `b` loses it and is returned.
+    pub fn bind_options(&mut self, b: Option<PadButton>) -> Option<FlightKey> {
+        let lost = b.and_then(|b| self.gamepad.flight_key(b));
+        if let Some(k) = lost {
+            self.gamepad.bind(k, None);
+        }
+        self.options_button = b;
+        lost
+    }
+
+    /// Binds flight key `k` to button `b` (or none), taking `b` from another flight key or the
+    /// options; returns the flight key that lost it and whether the options did.
+    pub fn bind_pad(&mut self, k: FlightKey, b: Option<PadButton>) -> (Option<FlightKey>, bool) {
+        let options = b.is_some() && self.options_button == b;
+        if options {
+            self.options_button = None;
+        }
+        (self.gamepad.bind(k, b), options)
     }
 
     /// The keyboard keys `pad`'s bound buttons stand for; `prev` = [`Pad::buttons`] at the
@@ -340,6 +433,56 @@ mod tests {
         hosts.dedup();
         assert_eq!(hosts.len(), FlightKey::ALL.len());
         assert_eq!(c.gamepad.get(FlightKey::Esc), Some(PadButton::Start));
+        // M12-18: pause on the right stick, the options on the left; no button twice.
+        assert_eq!(c.gamepad.get(FlightKey::P), Some(PadButton::RightStick));
+        assert_eq!(c.options_button, Some(PadButton::LeftStick));
+        let mut buttons: Vec<PadButton> = c.gamepad.iter().map(|(_, b)| b).collect();
+        buttons.extend(c.options_button);
+        let n = buttons.len();
+        buttons.sort();
+        buttons.dedup();
+        assert_eq!(buttons.len(), n);
+        // Fire and afterburner stay the joystick's buttons 2 and 1 (South, East).
+        assert!(!buttons.contains(&PadButton::East));
+    }
+
+    /// M12-18: the options button, its press, the file and the conflicts with flight keys.
+    #[test]
+    fn the_options_button() {
+        let mut c = ControlsSettings::default();
+        let pad = |b: PadButton| {
+            Some(Pad {
+                buttons: b.bit(),
+                ..Pad::default()
+            })
+        };
+        let l3 = PadButton::LeftStick;
+        assert!(c.options_pressed(pad(l3), 0));
+        assert!(!c.options_pressed(pad(l3), l3.bit()), "held, not pressed");
+        assert!(!c.options_pressed(pad(PadButton::South), 0));
+        assert!(!c.options_pressed(None, 0));
+        // Binding a flight key to it takes it from the options, and back.
+        assert_eq!(c.bind_pad(FlightKey::Tab, Some(l3)), (None, true));
+        assert_eq!(c.options_button, None);
+        assert_eq!(c.gamepad.get(FlightKey::Tab), Some(l3));
+        assert_eq!(c.bind_options(Some(l3)), Some(FlightKey::Tab));
+        assert_eq!(c.gamepad.get(FlightKey::Tab), None);
+        // The file: a choice, "none", and an unknown name (the default).
+        let mut d = ControlsSettings::default();
+        d.bind_options(Some(PadButton::Guide));
+        let text = toml::to_string_pretty(&d).unwrap();
+        assert!(text.contains("options_button = \"guide\""), "{text}");
+        assert_eq!(toml::from_str::<ControlsSettings>(&text).unwrap(), d);
+        let none: ControlsSettings = toml::from_str("options_button = \"none\"\n").unwrap();
+        assert_eq!(none.options_button, None);
+        let odd: ControlsSettings = toml::from_str("options_button = \"nope\"\n").unwrap();
+        assert_eq!(odd.options_button, Some(OPTIONS_BUTTON));
+        let old: ControlsSettings = toml::from_str("[keyboard]\n").unwrap();
+        assert_eq!(
+            old.options_button,
+            Some(OPTIONS_BUTTON),
+            "older files get the default"
+        );
     }
 
     #[test]
