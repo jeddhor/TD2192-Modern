@@ -487,15 +487,15 @@ Template: ADG §17.5.
 - Severity: minor
 - **Status: FIXED** (VE-8, 2026-11-06): reservations follow the input length; test `replay::tests::huge_declared_counts_are_truncation_errors`
 
-### BUG-18: E3 flight 19 crashes the game in tick 4235 (i16 overflow in ship drift at row 199)
+### BUG-18: ship offsets overflow i16 at the map's top and bottom rows: E3 flight 19 crashes the game in tick 4235, E1 flights 6 and 7 can
 - Found by / date / milestone: VE-8, 2026-11-06, M12 (M12-06 random-input soak, `td-sim/tests/soak.rs`)
 - Profile: both (td-sim keeps overflow checks in release builds, MDG §8.6, so the game panics)
-- Steps: E3 flight 19 with any input or none: `tdtool plan 19 --episode 3 --probe 5000`, or `cargo test -p td-sim --test soak e3_flight_19_idle_outlives_tick_4235 -- --ignored` with `TD2192_DATA`
+- Steps: E3 flight 19 with any input or none: `tdtool plan 19 --episode 3 --probe 5000`, or `cargo test -p td-sim --test soak e3_flight_19_idle_outlives_tick_4235 -- --ignored` with `TD2192_DATA`. The top edge: `cargo test -p td-sim --test soak e1_flights_6_and_7_outlive_the_top_edge_overflow -- --ignored` (two seeds of the soak's input generator)
 - Expected (original): no crash; the original's 16-bit ADD wraps (what the ship does afterwards is U-570)
-- Actual (port): slot 2 (class 0) parks at tile (102, 199) with down speed 23..24 and goal (102, 200); its offset Y grows about 8.5 a tick (1,023 at tick 500, 32,762 at tick 4234) and `sub_y += d - 16` overflows in tick 4235 (`td_sim::flight::ships` drift, mission-ships §4.2.3 "Y never wraps at row 199 (offsetY grows)"): a panic, 3 min 40 s into the flight. A player who has not finished flight 19 by then loses the game. The success replay ends at tick 441 (the oracle capture with it), so no L4/L5 test reached it; no other flight did in 7,808 random flights of up to 100,000 ticks
+- Actual (port): slot 2 (class 0) parks at tile (102, 199) with down speed 23..24 and goal (102, 200); its offset Y grows about 8.5 a tick (1,023 at tick 500, 32,762 at tick 4234) and `sub_y += d - 16` overflows in tick 4235 (`td_sim::flight::ships` drift, mission-ships §4.2.3 "Y never wraps at row 199 (offsetY grows)"): a panic, 3 min 40 s into the flight. A player who has not finished flight 19 by then loses the game. The success replay ends at tick 441 (the oracle capture with it), so no L4/L5 test reached it. **The top edge, the same rule mirrored:** a class-7 ship flying up at tile row 1 toward a goal on row 0 is removed by the edge rule, the mission logic gives the slot its class back, and its offset Y falls by about 6 a tick until `sub_y += 16 - up` overflows: E1 flight 6 slot 19 in tick 5528 and E1 flight 7 slot 13 in tick 8831, in 2 of the 15,616 random flights of two soak runs (input-dependent)
 - Spec reference: sim/mission-ships §4.2.3 (offsets i16; the wrap is not stated); U-570
 - Severity: **major** (a crasher on a reachable path: any slow E3 flight 19)
-- Fix: RE/SP answer U-570 and state the wrap in §4.2.3; IM makes the offset arithmetic of the drift step wrap as the original's (at least `wrapping_add` on offset Y, so the port matches the original after the wrap), then un-ignores the test and checks the soak (`long_soak`)
+- Fix: RE/SP answer U-570 and state the wrap in §4.2.3 (both edges); IM makes the offset arithmetic of the drift step wrap as the original's (`wrapping_add` on offset Y, so the port matches the original after the wrap), then un-ignores the two tests and runs `long_soak`
 
 ### BUG-20 (filed by RE-19 as BUG-14; renumbered at merge): typed lines show one character fewer than the original in their first frame after a fade-in (and after some `Crt.Delay`s); 2000 ms delays are one frame short
 - Found by / date / milestone: RE-19 (from VE-7's M12-screens D1), 2026-11-06, M12 (M12-16)

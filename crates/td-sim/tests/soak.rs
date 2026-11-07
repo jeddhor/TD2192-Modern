@@ -654,3 +654,25 @@ fn e3_flight_19_idle_outlives_tick_4235() {
         }
     }
 }
+
+/// BUG-18, the top edge: with these random inputs, a class-7 ship of E1 flight 6 (slot 19) and
+/// of E1 flight 7 (slot 13) keeps flying up at tile row 1 toward a goal on row 0; the edge rule
+/// removes it, the mission logic brings the class back, and its offset Y falls by about 6 a
+/// tick until `sub_y += 16 - up` overflows i16 (ticks 5528 and 8831). Ignored with the bottom
+/// edge case above (U-570).
+#[test]
+#[ignore = "BUG-18: i16 overflow in ship drift at row 1 (E1 flights 6 and 7, random inputs)"]
+fn e1_flights_6_and_7_outlive_the_top_edge_overflow() {
+    let Some(data) = data_dir() else {
+        eprintln!("SKIPPED: TD2192_DATA not set (data-gated test soak)");
+        return;
+    };
+    for (n, seed, tick) in [
+        (6, 0xc4c2_e355_fd51_c5c0, 5528),
+        (7, 0x0e8c_bfa7_1515_28ff, 8831),
+    ] {
+        let setup = load(&data, Episode::E1, n);
+        let e = fly(&setup, seed, tick + 100);
+        assert_eq!(e.panic, None, "E1 flight {n}");
+    }
+}

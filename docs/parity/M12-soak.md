@@ -10,7 +10,7 @@ MDG §11 targets checked here: "Zero panics in 10 h of replay soak; parsers fuzz
 |---|---|
 | Committed replays, `tdtool replay --verify`, 20 rounds × 68 replays in 16 parallel processes | **PASS**: 1,360 runs in 12.1 s, every replay prints the same result in every run (§2.1) |
 | Committed replays on many threads in one process | **PASS**: 8,704 runs (68 × 16 threads × 8 rounds), every run's checkpoint timeline equal to the single-threaded one (§2.1) |
-| Random-input flights (every flight of every episode, 128 seeds, up to 100,000 ticks) | **FAIL, one crasher**: 7,808 flights, 526,469,363 ticks (7,616 h of game time) twice each, deterministic across runs and threads; **E3 flight 19 panics in tick 4235 with any input** (BUG-18, major) (§2.2) |
+| Random-input flights (every flight of every episode, 128 seeds, up to 100,000 ticks; two runs) | **FAIL, one crasher**: 15,616 flights, 1,048,034,502 ticks (15,161 h of game time) twice each, deterministic across runs and threads; **E3 flight 19 panics in tick 4235 with any input**, and two E1 flights (6, 7) panic at the top edge with particular inputs: the same i16 overflow (BUG-18, major) (§2.2) |
 | Arithmetic overflow in debug builds | td-sim checks overflow in every profile, so §2.2 covers it; the fuzz tests found two overflows in caller-supplied parser sizes (BUG-15, fixed); debug runs of the real binary found none (§2.3) |
 | Parsers fuzzed | **PASS** after four small fixes (BUG-14..BUG-17): every `td-formats` parser, the ZIP import, the exe-resource extraction and the replay parser (§3) |
 | Enhanced frame cost, heaviest setting (21:9, xbr4, full lighting, bloom) | **PASS on this machine**: median 4.2–4.5 ms, p95 5.1–5.3 ms on 16 threads; median 5.0 / p95 6.1 ms on 6 threads; **over budget on 4 threads** (6.4 / 7.2 ms) (§4) |
@@ -32,17 +32,20 @@ MDG §11 targets checked here: "Zero panics in 10 h of replay soak; parsers fuzz
 
 `td-sim/tests/soak.rs`: a seeded generator holds and releases keys like a player (steering and fire often; afterburner, infra-red, Tab, M, S, Esc, P, F5, F6 now and then; joystick bits and the cheat-chord letters rarely; typematic make codes while held). Each flight starts as its replays start it (the first flight of a program run; E1 21, E3 7 and E3 21 after their predecessors' success replays). Each tick is checked for a panic and the tick count; a clone stepped every 500 ticks must give the same state hash; every job runs twice on different threads, in a different order, and both runs must end identically.
 
-`long_soak`, release, 16 threads, `TD2192_SOAK_SEEDS=128 TD2192_SOAK_TICKS=100000 TD2192_SOAK_SEED=20261106`, 2026-11-06:
+`long_soak`, release, 16 threads, `TD2192_SOAK_SEEDS=128 TD2192_SOAK_TICKS=100000`, 2026-11-06, two runs: base seed 20261106 on main `7afcae6` plus this branch, and base seed 20261107 after merging main `b158e78` (IM-23's shot and session changes):
 
-| | |
-|---|---|
-| Flights | 61 (E1 1–21, E2 1–20, E3 1–19 and 21) × 128 seeds = 7,808 |
-| Ticks | 526,469,363 per run (7,616 h of game time at 19.2015 Hz), each flight run twice: 236 s of wall time |
-| Endings | 2,851 finished (496 succeeded, 392 lost, 1,963 died), 4,829 still flying at 100,000 ticks, 128 panicked |
-| Determinism | both runs identical for every flight (ticks, outcome, kills, state hash); every clone check passed |
-| Panics | **all 128 seeds of E3 flight 19, in tick 4235, "attempt to add with overflow" at `td-sim/src/flight/ships.rs` drift** |
+| | Seed 20261106 | Seed 20261107 (merged) |
+|---|---|---|
+| Flights | 61 (E1 1–21, E2 1–20, E3 1–19 and 21) × 128 = 7,808 | 7,808 |
+| Ticks per run | 526,469,363 (7,616 h of game time) | 521,565,139 (7,545 h) |
+| Wall time (each flight twice) | 236 s | 281 s |
+| Endings | 2,851 finished (496 succeeded, 392 lost, 1,963 died), 4,829 at the limit | 2,915 finished (488 succeeded, 409 lost, 2,018 died), 4,763 at the limit |
+| Determinism | both runs of every flight identical; every clone check passed | the same |
+| Panics | 128: every seed of E3 flight 19, tick 4235, `ships.rs` drift (`sub_y += d - 16`) | 130: the same 128, plus E1 flight 6 (tick 5528) and E1 flight 7 (tick 8831), `ships.rs` drift (`sub_y += 16 - u`) |
 
-**BUG-18 (major).** The panic does not depend on the input: with no input at all, slot 2 (class 0) parks at tile (102, 199) with down speed 23..24 and goal (102, 200), and its offset Y grows by about 8.5 a tick (1,023 at tick 500, 32,762 at tick 4234) until the i16 add overflows. Mission-ships §4.2.3 says "Y never wraps at row 199 (offsetY grows)" but not what happens at 32,767; the original's 16-bit ADD wraps (U-570). td-sim keeps overflow checks in release builds (MDG §8.6), so the game crashes 3 min 40 s into E3 flight 19. The success replay ends at tick 441, so no existing test reached it. Pinned by the ignored test `soak.rs::e3_flight_19_idle_outlives_tick_4235`. No other flight hit an overflow or a panic.
+**BUG-18 (major).** The panic does not depend on the input: with no input at all, slot 2 (class 0) parks at tile (102, 199) with down speed 23..24 and goal (102, 200), and its offset Y grows by about 8.5 a tick (1,023 at tick 500, 32,762 at tick 4234) until the i16 add overflows. Mission-ships §4.2.3 says "Y never wraps at row 199 (offsetY grows)" but not what happens at 32,767; the original's 16-bit ADD wraps (U-570). td-sim keeps overflow checks in release builds (MDG §8.6), so the game crashes 3 min 40 s into E3 flight 19. The success replay ends at tick 441, so no existing test reached it. Pinned by the ignored test `soak.rs::e3_flight_19_idle_outlives_tick_4235`.
+
+**BUG-18, the top edge.** In the second run a class-7 ship of E1 flight 6 (slot 19, at (52, 1)) and of E1 flight 7 (slot 13, at (51, 1)) kept flying up toward a goal on row 0: the row-1 rule removes the ship (class FFh), the mission logic gives the slot its class back, the offset is never carried, and offset Y falls by about 6 a tick until it passes −32,768. It depends on the input (2 of 15,616 flights). Pinned by `soak.rs::e1_flights_6_and_7_outlive_the_top_edge_overflow` (ignored). No other overflow or panic in either run.
 
 The default (non-ignored) soak tests are cheap: a synthetic world without data (3 sessions × 2 seeds × 1,500 ticks) and, with data, 9 flights (E1 1, 8, 21; E2 3, 10, 17; E3 5, 7, 16) × 2 seeds × 6,000 ticks; 0.3–1 s in a debug build.
 

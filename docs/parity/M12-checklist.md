@@ -2,50 +2,54 @@
 
 Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7af9` (IM-19 merged) plus this branch's docs. Main's later `c2ab363` (the user's D3–D6 decisions) changes only docs and is merged here. Inputs: every spec in `docs/spec/`, `docs/re/FORMATS.md`, the parity reports [M3-audio](M3-audio.md), [M6-flight](M6-flight.md), [M8-missions](M8-missions.md), [M9-playthrough](M9-playthrough.md), [M10-playthrough](M10-playthrough.md), [M12-timing](M12-timing.md), the tests, and the oracle captures (`re-work\captures\oracle`, `MANIFEST.md`). No new oracle run was made.
 
+**Updated 2026-11-06 by VE-8 (M12-06)** for what IM-21, IM-22, IM-23, VE-5's two-flight runs, RE-18, RE-19 and VE-8 did after this review (tree: main `b158e78` plus VE-8's branch): the notes marked "VE-8 update" in §0, seven rows of §4 (each says "VE-8 update"), the §2 rows and totals they change, §5 (regenerated), and §7 (IM-22's Enhanced fixes, every OB now decided, OB-140..151 added), §7.1 and §7.2. The other rows are as VE-6 left them.
+
 ## 0. What remains for Classic 1.0 (ordered by impact on play)
+
+**VE-8 update, before item 1: a crasher.** BUG-18 (major): E3 flight 19 panics in tick 4235 with any input or none, an i16 overflow in ship drift at row 199 (mission-ships §4.2.3, U-570). Found by the random-input soak ([M12-soak](M12-soak.md) §2.2); no other flight panicked in 7,808 random flights of up to 100,000 ticks.
 
 1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10). **Done after this review (VE-7, M12-15, [M12-screens](M12-screens.md)):** captures C-0270..C-0291 and `td-flow/tests/screens_parity.rs` compare 35 such screens in all three episodes, every dump from the fade-in to the hold: exact except typing 1–2 frames early (U-521), the E1 enemy dossier's line 9 (BUG-12, U-520) and `td1-20` one pixel left (BUG-13, U-522). E1 ending B is still not captured (a planned flight-17 "lost" run is needed); E2 ending B is unreachable (OB-025).
 2. ~~E2/E3 two-digit muzzle bytes~~ **Done after this review (IM-20, merged 90bd09f):** the E2/E3 worlds are built from front-end state, equal all 58 whole-flight captures and the C-0015/C-0036/C-0180/C-0121/C-0128 campaign states, every L5 flight uses the built bytes, and the dual replays were rewritten.
-3. **Session state across flights is unverified.** Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481).
-4. **The flight-start fade-in is not ported** (M12-timing §7). Every flight starts with a cut where the original runs a 34-frame `FadeIn` before tick 1. BUG-10 is filed for it.
-5. **Flights never compared:** E1 flight 21 (U-044), and E3 flights 7 and 21 (U-481). Only static tests cover them.
+3. **Session state across flights is unverified.** *VE-8 update:* VE-5's two-flight runs now compare the second flight of a run every tick with the session the first left: E1 19 → 21 (C-0200, C-0300), E3 6 → 7 (C-0201) and E3 11 → 21 (C-0202). No captured flight follows one that patches the class tables (OB-018) or changes E2's radar colours, so those stay unverified. Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481).
+4. ~~The flight-start fade-in is not ported~~ **Done after this review (IM-21, BUG-10; `td2192::flight::tests::opening_frames_match_the_original`, C-0017, C-0015, C-0036).** VE-6 wrote: the flight-start fade-in is not ported (M12-timing §7). Every flight starts with a cut where the original runs a 34-frame `FadeIn` before tick 1. BUG-10 is filed for it.
+5. ~~Flights never compared~~ **Done after this review (VE-5, IM-23):** E1 flight 21 (`oracle_e1_full::flights_19_and_21_*`, C-0200, C-0300; IM-23's heap-built path arrays, U-500) and E3 flights 7 and 21 (`oracle_e3_full::flights_06_and_07_*`, `::flights_11_and_21_*`, C-0201, C-0202) match the original every tick.
 6. **Inputs and outcomes no capture exercised inside whole flights:**
-   - missiles and Tab (C-0011 is 30 s long);
+   - missiles and Tab (C-0011 is 30 s long); *VE-8 update: done by VE-5 and IM-23: `oracle_e1_full::flight_08_weapons_*` (C-0205), `::flight_15_weapons_*` (C-0206), `oracle_e2_full::flight_20_weapons_matches_oracle` (C-0207, all 233 ticks after BUG-11), with afterburner bursts in C-0205;*
    - the afterburner burst;
    - vertical bounces and the map-edge push-back (flight-model, LIKELY parts);
    - the joystick (U-024);
    - E2/E3 deaths and end sequences, aborts and "lost" outcomes;
    - E1 failures (lost in flights 13, 17, 18 and 20; the flight-18 bomb).
-7. **Original cheat chords are not ported** (T+I+M, M+K+A+R, tick-order step 34; `td-sim/src/flight/mod.rs:13`, "decision D5/D9"). Players who remember them will miss them, and the debrief's cheater text (D9) depends on them. This needs the user's decision.
-8. **A Classic deviation found here (BUG-9, OB-023).** In E2, Alt from infra-red mode 2 back to mode 1 should leave the screen red-tinted: only DAC 255 and 37 are rewritten. The port restores the whole mode-1 palette in every episode and profile (`td_render::flight_palette::FlightDac::toggle`). The player guide therefore says the wrong thing about it.
-9. **Missing Enhanced bug fixes.** The user's D5 decision (2026-11-06) puts every fix-enhanced fix in the Enhanced preset, so these are now 1.0 scope. OB-012, OB-024, OB-032, OB-056 and OB-057 are fix-enhanced and not implemented. OB-031 and OB-023 behave as fixed in both profiles, against their policy. The candidates OB-022, OB-036, OB-038, OB-041, OB-043, OB-046 and OB-102 have no decision (§7.2).
-10. **55 OBs are still "proposed"** and OB-008 is still "open" (U-060 is now resolved). They need one batch decision (§7.1). OB-005 and OB-034 are labelled fix-all but are not crash, hang, save or progression bugs (§7.1).
+7. ~~Original cheat chords are not ported~~ **Done after this review (IM-22, D9).** VE-6 wrote: original cheat chords are not ported (T+I+M, M+K+A+R, tick-order step 34; `td-sim/src/flight/mod.rs:13`, "decision D5/D9"). Players who remember them will miss them, and the debrief's cheater text (D9) depends on them. This needs the user's decision.
+8. ~~A Classic deviation found here~~ **Fixed after this review (IM-22, BUG-9; U-530 confirmed by RE-19).** VE-6 wrote: a Classic deviation found here (BUG-9, OB-023). In E2, Alt from infra-red mode 2 back to mode 1 should leave the screen red-tinted: only DAC 255 and 37 are rewritten. The port restores the whole mode-1 palette in every episode and profile (`td_render::flight_palette::FlightDac::toggle`). The player guide therefore says the wrong thing about it.
+9. ~~Missing Enhanced bug fixes~~ **Done after this review (IM-22):** OB-012, 022, 023, 024, 032, 056, 057 and 058 follow the Enhanced fixes setting (§7.2). VE-6 wrote: missing Enhanced bug fixes. The user's D5 decision (2026-11-06) puts every fix-enhanced fix in the Enhanced preset, so these are now 1.0 scope. OB-012, OB-024, OB-032, OB-056 and OB-057 are fix-enhanced and not implemented. OB-031 and OB-023 behave as fixed in both profiles, against their policy. The candidates OB-022, OB-036, OB-038, OB-041, OB-043, OB-046 and OB-102 have no decision (§7.2).
+10. ~~55 OBs are still "proposed"~~ **Done after this review (main session, 2026-11-06):** every OB is decided (§7.1). VE-6 wrote: 55 OBs are still "proposed" and OB-008 is still "open" (U-060 is now resolved). They need one batch decision (§7.1). OB-005 and OB-034 are labelled fix-all but are not crash, hang, save or progression bugs (§7.1).
 11. **Timing residues:**
     - ADR-0007 (19.2015 Hz) was accepted by the user on 2026-11-06 (after this review), so U-001 can be closed;
     - U-451: `Crt.Delay` ends the flight-17 cut-scene about 12 retraces early;
     - U-461: the fade crossover at 380 is an estimate;
     - after a menu fade-out the original spends 1–2 frames more than the port (M12-timing §7);
-    - nobody has counted ticks at runtime in the real binary (BUG-5 re-check);
+    - nobody has counted ticks at runtime in the real binary (BUG-5 re-check); *VE-8 update: done, campaign flights of E1–E3 run at 19.18–19.20 ticks/s and the front end at 70.08 ([M12-soak](M12-soak.md) §5);*
     - the comm-screen typing pace was not measured (M12-timing row 13).
 12. **Spec, test and documentation drift:**
-    - mission-logic §7 vector 12 says the flight-18 bomb goes off at t + 1000, but the test pins t + 999 (§4);
-    - four stale or closable ASSUMPTIONs: U-313, U-001, U-146 and the `fade.rs` header (§5);
+    - mission-logic §7 vector 12 says the flight-18 bomb goes off at t + 1000, but the test pins t + 999 (§4); *VE-8 update: resolved by RE-18 (mission-logic rev 4: t + 999);*
+    - four stale or closable ASSUMPTIONs: U-313, U-001, U-146 and the `fade.rs` header (§5); *VE-8 update: removed by IM-22; §5 lists the current ones;*
     - text.md §5 item 3 and hud.md's "low-armour colour after recovery" are "preserve" quirks with no OB entry.
 13. **Lower impact:**
     - the PC-speaker mode is not ported (M12-05, OB-011; sfx-policy vectors 8–9);
     - positioned effects (panning, the 15-tile cut-off) were never captured (M3 row 20);
-    - parsers have no fuzz targets or property tests except `saves.rs` (M12-06; MDG §11 asks for 1 h of fuzzing).
+    - parsers have no fuzz targets or property tests except `saves.rs` (M12-06; MDG §11 asks for 1 h of fuzzing). *VE-8 update: done ([M12-soak](M12-soak.md) §3; BUG-14..BUG-17 fixed).*
 
-**Coverage.** The checklist has 394 items (spec vectors and numbered behaviours; VE-7, M12-15, updated the front-end screen rows and added one E3 row):
+**Coverage.** The checklist has 394 items (spec vectors and numbered behaviours; VE-7, M12-15, updated the front-end screen rows and added one E3 row; VE-8 updated seven rows for later work):
 
 | Status | Items | Share of the 376 Classic items |
 |---|---:|---:|
-| PASS | 332 | 88.3 % |
-| PARTIAL | 32 | 8.5 % |
-| NOT COVERED | 12 | 3.2 % |
+| PASS | 339 | 90.2 % |
+| PARTIAL | 29 | 7.7 % |
+| NOT COVERED | 8 | 2.1 % |
 | N/A (Enhanced, T3, not used by the game) | 18 | not counted |
 
-**M12 exit criterion not met.** It asks for at least 95 % PASS with the rest documented. Every non-PASS item is documented below. Items 1–6 above account for most of the gap.
+**M12 exit criterion not met** (90.2 % after the VE-8 update; VE-6 counted 87.2 %, VE-7 88.3 %). It asks for at least 95 % PASS with the rest documented. Every non-PASS item is documented below. Items 1–6 above account for most of the gap.
 
 **L5 re-run.** All 789 tests pass with and without `TD2192_DATA` and `TD2192_ORACLE`: 0 failed, 4 ignored, the same in both runs. The ignored tests are timing benchmarks and developer tools. Counts per binary are in §3.
 
@@ -80,27 +84,27 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 | sim/hit-flash | 4 | T0, T1 | 12 | 9 | 3 | 0 | 0 | C-0041 flash and DAC frames |
 | sim/mission-setup | 2 | T1 | 3 | 2 | 0 | 1 | 0 | OB-018 persistence |
 | sim/mission-ships | 5 | T1, T2 | 6 | 6 | 0 | 0 | 0 | — |
-| sim/weapons | 5 | T1, T2 | 11 | 10 | 1 | 0 | 0 | missiles in whole flights (E2/E3 bytes done by IM-20 after this review) |
-| sim/mission-logic (E1) | 3 | T1, T2 | 16 | 13 | 2 | 1 | 0 | vector 12; flight 21; failure paths |
+| sim/weapons | 5 | T1, T2 | 11 | 11 | 0 | 0 | 0 | — (missiles in whole flights: C-0205..C-0207, VE-8 update) |
+| sim/mission-logic (E1) | 3 | T1, T2 | 16 | 15 | 1 | 0 | 0 | failure paths (vector 12 and flight 21 done, VE-8 update) |
 | sim/e2-mission-setup | 1 | T1, T2 | 10 | 9 | 1 | 0 | 0 | home points |
 | sim/e2-mission-ships | 1 | T1 | 5 | 5 | 0 | 0 | 0 | — |
 | sim/e2-mission-logic | 1 | T1, T2 | 36 | 33 | 1 | 2 | 0 | vector 11; flight-16 transmission (OB-038) |
-| sim/e3-mission-setup | 1 | T1, T2 | 14 | 13 | 1 | 0 | 0 | flight 7 |
+| sim/e3-mission-setup | 1 | T1, T2 | 14 | 14 | 0 | 0 | 0 | — (flight 7: C-0201, VE-8 update) |
 | sim/e3-mission-ships | 1 | T1 | 9 | 9 | 0 | 0 | 0 | — |
-| sim/e3-mission-logic | 1 | T1, T2 | 55 | 44 | 8 | 2 | 1 | flights 7, 21; U-430; branch vectors |
+| sim/e3-mission-logic | 1 | T1, T2 | 55 | 46 | 8 | 0 | 1 | branch vectors (flights 7, 21 and U-430 done, VE-8 update) |
 | flow/screens | 3 | T0, T1, T2 | 10 | 8 | 2 | 0 | 0 | enemy dossier line 9 (BUG-12), `td1-20` (BUG-13) |
 | flow/episode-program-flow | 6 | T2, T1, T3 | 6 | 5 | 1 | 0 | 0 | endings: no capture |
 | flow/launcher | 1 | T3, T1 | 4 | 3 | 0 | 0 | 1 | — |
 | flow/intro | 3 | T0, T1, T2 | 10 | 10 | 0 | 0 | 0 | — |
 | flow/save-screens | 1 | T0, T1, T2 | 7 | 7 | 0 | 0 | 0 | — |
-| flow/flight-screens | 5 | T0, T1, T2 | 24 | 21 | 1 | 2 | 0 | flight-start fade-in; comm pace; C-0027 |
+| flow/flight-screens | 5 | T0, T1, T2 | 24 | 22 | 1 | 1 | 0 | comm pace; C-0027 (fade-in done, VE-8 update) |
 | flow/e2-flight-screens | 1 | T0, T1, T2 | 5 | 4 | 0 | 0 | 1 | — |
 | flow/e2-program-flow | 3 | T2, T1, T0 | 15 | 15 | 0 | 0 | 0 | — |
 | flow/e3-program-flow | 3 | T2, T1, T0 | 19 | 19 | 0 | 0 | 0 | — |
 | frontend/credits | 1 | T3 | 2 | 0 | 0 | 0 | 2 | — |
 | frontend/port-front-end | 2 | T3 | 2 | 0 | 0 | 0 | 2 | — |
 | enhanced/presentation | 4 | T3 | 2 | 0 | 0 | 0 | 2 | Classic invariance passes |
-| **Total** | | | **394** | **332** | **32** | **12** | **18** | |
+| **Total** | | | **394** | **339** | **29** | **8** | **18** | |
 
 `original-bugs.md` is reviewed in §7.
 
@@ -400,7 +404,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 8 | `g_Weapon` 0 in flight 19 (BUG-2) | `td-sim/src/flight/tests.rs::g_weapon_is_carried_from_flight_to_flight`, full flight 19 | C-0069 | PASS |
 | 9 | E2/E3 two-digit muzzle bytes (§3.3.2, §3.3.3) | `td-sim/tests/oracle_front_end.rs` (all 58 whole-flight captures), `td-flow/tests/front_end_state.rs` (C-0015, C-0036, C-0180, C-0121, C-0128), the E2/E3 full-flight L5 tests with built bytes (IM-20, after this review) | C-0120..C-0159, C-0015, C-0036, C-0180 | PASS |
 | 10 | Homing missile step 3 (U-421) | `td-sim/src/flight/shots/tests.rs::homing_kill_is_step_3_only` | static | PASS |
-| — | Missiles and Tab inside whole flights | none (the plans never select missiles; C-0011 is short) | C-0011 only | PARTIAL |
+| — | Missiles and Tab inside whole flights | `oracle_e1_full.rs::flight_08_weapons_matches_oracle`, `::flight_15_weapons_matches_oracle`, `oracle_e2_full.rs::flight_20_weapons_matches_oracle` (VE-5; the last re-enabled by IM-23's BUG-11 fix) | C-0205, C-0206, C-0207 | PASS (VE-8 update) |
 
 ### sim/mission-logic.md (rev 3; T1) — Episode 1
 
@@ -410,10 +414,10 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 2–4 | `Msn_NearLive` | `td-sim/src/flight/logic/tests.rs::vectors_2_to_4_near_live_uses_the_view_tile` | static | PASS |
 | 5–10 | Flight 1 phases 1 → 5, ticker gate, respawn distance | `td-sim/tests/oracle_mission.rs::flight_1_mission_logic_matches_c0010`, `logic/tests.rs::flight_1_phases` | C-0010 | PASS |
 | 11 | Flight 3 outcome | `td-sim/src/flight/logic/tests.rs::flight_3_montgomery`, full flight 3 | C-0053 | PASS |
-| 12 | Flight 18 bomb at t + 1000 | `td-sim/src/flight/logic/tests.rs::flight_18_bomb_after_1000_ticks` pins **t + 999** and says the vector is off by one | static | PARTIAL (spec vector and test disagree; no capture of the bomb) |
+| 12 | Flight 18 bomb at t + 999 (mission-logic rev 4, RE-18) | `td-sim/src/flight/logic/tests.rs::flight_18_bomb_after_1000_ticks` | static | PASS (VE-8 update: spec and test agree; no capture of the bomb) |
 | — | Flights 1–20 scripts to success, setup to teardown | `td-sim/tests/oracle_e1_full.rs` (20 flights), `oracle_e1_flights.rs` (first ~387 ticks, 4 comm runs), `replays_e1.rs` | C-0017..C-0040, C-0051..C-0069, C-0090 | PASS |
 | — | Death, end sequence, in-flight pause/F5/Esc menu | `oracle_e1_full.rs::flight_01_idle_death_matches_oracle`, `::flight_01_modal_screens_match_oracle` | C-0157, C-0158 | PASS |
-| — | Flight 21 (scripted, no mission file; U-044) | `td-flow/tests/e1_block_flow.rs` (flow only) | none | NOT COVERED |
+| — | Flight 21 (scripted, no mission file; U-044) | `oracle_e1_full.rs::flights_19_and_21_in_one_run_match_oracle`, `::flights_19_and_21_after_the_whole_story_match_oracle` (VE-5, RE-18; IM-23's path arrays from the heap, OB-140, U-500) | C-0200, C-0300 | PASS (VE-8 update) |
 | — | Teardown outcome 0 paths, failures (lost) in flights 13, 17, 18, 20 | unit tests only (`logic/tests.rs::outcomes`, `::flight_18_bomb_after_1000_ticks`) | none | PARTIAL |
 
 ### sim/e2-mission-setup.md (rev 1; T1)
@@ -477,7 +481,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 3 | Flight 9 | `td-sim/tests/flight_e3.rs::e3_flight_9_setup`, full flight E3 9 | C-0136 | PASS |
 | 4 | Flight 12 | `td-sim/tests/flight_e3.rs::e3_flight_12_setup`, full flight | C-0148 | PASS |
 | 5 | Flight 5 | `td-sim/tests/flight_e3.rs::e3_flight_5_setup`, full flight | C-0129 | PASS |
-| 6 | Flight 7 (inherited phase, OB-043) | `td-sim/tests/flight_e3.rs::e3_flight_7_setup` | static (flight 7 not captured) | PARTIAL |
+| 6 | Flight 7 (inherited phase, OB-043) | `td-sim/tests/flight_e3.rs::e3_flight_7_setup`, `oracle_e3_full.rs::flights_06_and_07_in_one_run_match_oracle` | C-0201 | PASS (VE-8 update) |
 | 7 | Flight 17 after flight 16 | `td-sim/tests/flight_e3.rs::e3_flight_17_restores_the_class_tables` | static | PASS |
 | 8 | Flight 18 markers (OB-052) | `td-sim/tests/flight_e3.rs::e3_flight_18_setup` | C-0154 | PASS |
 | 9 | Flight 15 Kreel's shields (OB-048) | `td-sim/tests/flight_e3.rs::e3_flight_15_setup` | C-0151 | PASS |
@@ -528,8 +532,8 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 10–21: 28 | No outcome test in 11, 13–19, 21 | `logic/e3/tests.rs::comm_table_and_outcomes` | static | PASS |
 | 10–21: 29 | Timed events inert elsewhere | `logic/e3/tests.rs::timed_events_are_inert_elsewhere` | static | PASS |
 | — | 18 E3 flights to success | `oracle_e3_full.rs` (18), `replays_e3.rs` (18) | C-0125..C-0159 | PASS |
-| — | Flights 7 and 21 in a capture (U-481) | static tests only | none | NOT COVERED |
-| — | U-430 hangar re-entry, flight 10 | none (C-0183 schedule not replayed in td-sim) | C-0182, C-0183 | NOT COVERED |
+| — | Flights 7 and 21 in a capture (U-481) | `oracle_e3_full.rs::flights_06_and_07_in_one_run_match_oracle`, `::flights_11_and_21_in_one_run_match_oracle` (VE-5) | C-0201, C-0202 | PASS (VE-8 update) |
+| — | U-430 hangar re-entry, flight 10 | `oracle_e3_full.rs::flight_10_hangar_return_b_matches_oracle`, `::flight_10_hangar_return_c_matches_oracle` (VE-5) | C-0182, C-0183 | PASS (VE-8 update) |
 
 ### flow/screens.md (rev 3; T0 layouts, T1 retry `Random`, T2 timing)
 
@@ -600,7 +604,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 20 | All 16 heading blits | `td-render/tests/heading_parity.rs::vector_20_every_heading_matches_c0080` | C-0080 | PASS |
 | §4.1 | Menu fades 2 frames per level, ramp 11 (BUG-8) | `…::menu_fades_take_two_frames_per_level_and_the_ramp_eleven_steps_per_frame` | C-0012 | PASS |
 | §4.10 | Flight-17 cut-scene, flight-19 V.C.I. screen (BUG-3) | `td-flow/tests/interlude_parity.rs::flight_17_cut_scene_matches_c0067`, `::flight_19_vci_screen_matches_c0069` | C-0067, C-0069 | PASS |
-| §4.5.3 | Flight-start fade-in (34 frames before tick 1) | none: not ported (M12-timing §7) | C-0002 | NOT COVERED |
+| §4.5.3 | Flight-start fade-in (34 frames before tick 1) | `td2192/src/flight.rs::opening_frames_match_the_original` (IM-21, BUG-10) | C-0017 f490, C-0015 f660, C-0036 f690 | PASS (VE-8 update: pixels exact, DACs within one level) |
 | — | Comm typing pace (M12-timing row 13) | none | not measured | NOT COVERED |
 
 ### flow/e2-flight-screens.md (rev 1; as flight-screens)
@@ -660,14 +664,14 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 1 | Mode A = intro flyover | `td-flow/tests/launcher_shell.rs::credits_mode_a_and_b`, `td-flow/src/credits.rs::pages_fade_hold_and_end` | C-0047 (through intro) | N/A |
 | 2 | Mode B page layout | `td-flow/src/credits.rs::spec_vector_2_page_layout` | this spec | N/A |
 
-### frontend/port-front-end.md (rev 2; T3)
+### frontend/port-front-end.md (rev 4; T3)
 
 | # | Behaviour | Test(s) | Evidence | Status |
 |---|---|---|---|---|
 | §2–§5 | Start screen, options, game data (folder or ZIP), controls, controller navigation, colour-blind guidance | `td-flow/src/front/start.rs` (10), `front/options.rs` (12 + 1 ignored), `front/data.rs` (2), `front/ui.rs` (6), `settings.rs` (6), `controls.rs` (5), `td-assets/src/archive.rs` (5), `import.rs` (3), `td2192/src/data.rs` (6), `td-render/src/enhanced/guidance.rs` (3) | design | N/A |
 | §5 | Original screens unchanged except the listed controller answers | `td-flow/src/main_menu.rs::a_controller_answers_the_boxes` | design | N/A |
 
-### enhanced/presentation.md (rev 4; T3, Enhanced only)
+### enhanced/presentation.md (rev 5; T3, Enhanced only)
 
 | # | Behaviour | Test(s) | Evidence | Status |
 |---|---|---|---|---|
@@ -676,16 +680,22 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 
 ## 5. Ignored tests and code ASSUMPTIONs
 
-### 5.1 `#[ignore]` tests (4; none refers to a U-id)
+Regenerated by VE-8 on 2026-11-06 (main `b158e78` plus VE-8's branch) with `grep -rn "#\[ignore\|ASSUMPTION\|TODO\|FIXME" crates tools`. VE-6's list is replaced: IM-22 removed the four stale ASSUMPTIONs it named (U-313, `DEFAULT_TICK_HZ`, U-146, the `fade.rs` header), and IM-23 re-enabled `flight_20_weapons_matches_oracle` (BUG-11).
+
+### 5.1 `#[ignore]` tests (10)
 
 | Test | Reason | Note |
 |---|---|---|
 | `td-flow/src/front/options.rs::dump_pages` | writes images for a visual check (`TD2192_UI_DUMP`) | developer tool |
-| `td-render/tests/enhanced_lighting_timing.rs::lighting_and_bloom_fit_the_budget` | timing, release build on an idle machine | Enhanced performance (M12-12) |
-| `td-render/tests/enhanced_timing.rs::stage_timings` | timing | Enhanced performance |
+| `td-render/tests/enhanced_lighting_timing.rs::lighting_and_bloom_fit_the_budget` | timing, release | Enhanced performance (M12-12); 3.55 ms on 16 threads ([M12-soak](M12-soak.md) §4) |
+| `td-render/tests/enhanced_timing.rs::stage_timings` | timing, release | Enhanced performance |
 | `td2192/src/flight/lights.rs::render_lit_frames` | renders lit frames for tuning | developer tool |
-
-`td-sim/tests/oracle_e1_flights.rs::class_ffh_slots_setup_shields_and_armour` (BUG-1) is no longer ignored and passes. [M8-missions](M8-missions.md) D1 now says so (§8).
+| `td2192/src/flight/lights.rs::frame_cost` | timing, release, data | M12-06 frame cost ([M12-soak](M12-soak.md) §4) |
+| `td-formats/tests/fuzz.rs::long_fuzz` | long fuzz (`TD2192_FUZZ_SECS`) | M12-06 |
+| `td-assets/tests/fuzz.rs::long_fuzz` | long fuzz | M12-06 |
+| `td-sim/tests/fuzz_replay.rs::long_fuzz` | long fuzz | M12-06 |
+| `td-sim/tests/soak.rs::long_soak` | long random-input and replay soak | M12-06; fails while BUG-18 is open |
+| `td-sim/tests/soak.rs::e3_flight_19_idle_outlives_tick_4235` | **BUG-18** (U-570) | re-enable with the fix |
 
 ### 5.2 ASSUMPTIONs and TODOs in the code
 
@@ -693,24 +703,22 @@ There is no `TODO` or `FIXME` in `crates/` or `tools/`. Every ASSUMPTION:
 
 | Place | U-id | U-id status | Finding |
 |---|---|---|---|
-| `td-flow/src/flight_screens/mod.rs:158` (E2 ship library uses E1's line table) | U-313 | RESOLVED 2026-11-05 (e2-flight-screens §3.3) | **Stale.** The behaviour is verified by `e2_flight_screens.rs::ship_library_matches_c0044` (C-0044, 36 of 36 lines). Replace the comment with the spec citation |
-| `td-flow/src/timing.rs:45` (`DEFAULT_TICK_HZ` = 70 Hz) | U-001 | OPEN, but measured (19.2015 Hz; ADR-0007 proposed) | **Stale.** The constant is exported and never used (M12-timing §6). Remove it once ADR-0007 is accepted |
-| `td-sim/src/flight/logic.rs:1541` (flight 19: "armour := 1" is the player's) | U-146 | OPEN | **Closable.** C-0069 (full flight 19) compares the player's armour and weapon every tick across the switch at tick 205 and passes. Close U-146 and drop the ASSUMPTION |
-| `td-render/src/fade.rs:3` (linear fade; "`fades.md`, to be written") | none (M5-02) | — | **Stale header.** Fades are specified in flow/screens rev 3 §2.1 and dialogue-player §3.4, and implemented (`frames_per_level`) |
-| `td-sim/src/flight/logic.rs:561` (mission explosions use slots 1..20, no `Random` when none is idle) | U-145 | OPEN | Not stale. Full flights 7, 17 and 20 (C-0057, C-0067, C-0090) pass with this choice; the no-idle-slot case is not exercised |
-| `td-flow/src/small_text.rs:32` (one frame per character) | U-062 | OPEN | Not stale. One frame per character at P1 is confirmed (C-0002, `dialogue_parity`); only real hardware is open |
-| `td-flow/src/main_menu.rs:24, 558, 575`, `program.rs:680`, `campaign.rs:954` | U-302 | OPEN | Not stale (five E1 front-end details) |
-| `td-sim/src/flight/mod.rs:536` (flight-16 afterburner test placement) | U-330 | OPEN | Not stale |
-| `td-sim/src/flight/shots.rs:90` (palette at the ghost volleys) | U-246 | OPEN | Not stale. C-0139 (E2 flight 13) never removes the Areo-1, so the ghost volleys are not exercised |
+| `td-render/src/small_text.rs:32` (one frame per character) | U-062 | RESOLVED (RE-19, with U-521) | **Known wrong:** a line that starts mid-frame shows two characters in its first frame (text rev 5 §4.3); BUG-20 |
+| `td-render/src/flight_palette.rs:235` (E2 Alt back to mode 1: DAC 255 and 37) | U-530 | RESOLVED (RE-19, C-0320) | **Closable:** check the two values against RE-19's answer and replace the ASSUMPTION with the spec citation |
+| `td-sim/src/flight/shots.rs:266` (missile writes life 200 into slot 40 before storing) | none | — | Now specified as OB-143 (weapons §4.3, §5): cite it; C-0011 and C-0207 pass |
+| `td-sim/src/flight/logic.rs:561` (mission explosions, no `Random` when no slot is idle) | U-145 | OPEN | Not stale |
+| `td-sim/src/flight/mod.rs:586` (flight-16 afterburner test placement) | U-330 | OPEN | Not stale |
+| `td-sim/src/flight/mod.rs:884` (cheat-chord order) | U-531 | OPEN | Not stale (IM-22) |
+| `td-sim/src/flight/shots.rs:92` (palette at the ghost volleys) | U-246 | OPEN | Not stale |
+| `td-sim/src/flight/front_end.rs:492`, `front_end/tests.rs:353` (flights 7 and 21 take their block's start) | U-490 | OPEN | Not stale |
+| `td-flow/src/main_menu.rs:27, 603, 620`, `program.rs:712`, `campaign.rs:965` | U-302 | OPEN | Not stale (five E1 front-end details) |
+| `td-flow/src/bios_key.rs:10` (NumLock off) | U-491 | OPEN | Not stale |
 | `td-flow/src/scenes_e3.rs:20` (`maraud3` separators) | U-350 | OPEN | Not stale |
-| `td-render/src/fade.rs:38` (crossover 380) | U-461 | OPEN | Not stale |
+| `td-render/src/fade.rs:41` (crossover 380) | U-461 | OPEN | Not stale |
 | `td-audio/src/worx.rs:15` (X / R) | U-470 | OPEN | Not stale |
 | `td-audio/src/sfx.rs:186` (effect id 1 sets the priority, plays nothing) | none (U-141) | OPEN | Not stale; cite U-141 |
-| `td-flow/src/flight_screens/menu.rs:42` (seven whole retraces per poll) | none | — | T2 |
+| `td-flow/src/flight_screens/menu.rs:45` (seven whole retraces per poll) | none | — | T2 |
 | `td-flow/src/intro/flyover.rs:366` (BIOS phase chosen to fit C-0047) | none | — | T2, fitted to the capture |
-| `td-sim/src/flight/shots.rs:264` (missile writes life 200 into slot 40 before storing) | none | — | C-0011 (`oracle_weapons`) passes |
-
-The first four are the stale or closable ones.
 
 ## 6. Open U-ids that affect Classic behaviour
 
@@ -821,7 +829,7 @@ One row per OB. "Decided" is "no" where the catalogue's last column still says "
 | 009 | fix-all: too far | no | `sfx.rs`, `mixer.rs`, `hit_flash.rs` | `sfx.rs::distance_overflow_is_too_far`, `mixer.rs::far_and_overflowing_effects_never_play`, `hit_flash.rs::wrapped_and_negative_squares` | OK |
 | 010 | preserve (T1) | no | bit-exact Real48 | `real48.rs::matches_all_vectors_from_the_original` (vector 8) | OK |
 | 011 | preserve; record the device | no | PC-speaker path not ported; replays have no device field | none | Moot until M12-05; M12-05 must draw the `Random` calls and record the device |
-| 012 | fix-enhanced | no | Classic restarts every cue; `CueRestart::IfDifferent` exists in td-audio, but `td-flow/src/program.rs:107` always passes `CueRestart::Always` | `music_cues.rs::classic_restarts_on_every_cue`; the mechanism by `::enhanced_keeps_a_looping_song` | **Enhanced fix missing** (not wired to the profile) |
+| 012 | fix-enhanced | yes | Classic restarts every cue; Enhanced keeps a looping song (`td_flow::program::cue_restart`, IM-22) | `music_cues.rs::classic_restarts_on_every_cue`, `tests/enhanced_fixes.rs` | OK, both profiles (VE-8 update) |
 | 013 | preserve as no-op | no | `ships.rs` | `oracle_ships.rs` (C-0009), full flights | OK |
 | 014 | preserve | yes | `ships.rs` | `oracle_ships.rs`, full flights | OK |
 | 015 | preserve | no | `ships.rs` | `oracle_ships.rs` (slot 19 detour) | OK |
@@ -831,17 +839,17 @@ One row per OB. "Decided" is "no" where the catalogue's last column still says "
 | 019 | preserve | no | `hud.rs` | `hud_parity.rs::c0002_f3543_instruments_match` | OK |
 | 020 | preserve | no | `hud.rs` | `hud.rs::same_column_uses_the_plus_two_test` | OK |
 | 021 | preserve | no | flight-7 re-arm rule (`logic.rs:934`, `msn_near` without a class test, uncited) | full flight 7 (C-0057) only lays mines | **Not pinned** for re-arming a destroyed mine |
-| 022 | fix-enhanced candidate | no | Classic preserved | none | **Not pinned**; needs a decision (§7.2) |
-| 023 | fix-enhanced | no | **Classic not preserved**: `FlightDac::toggle` writes the whole new-mode palette in every episode | none | **BUG-9** (Classic deviation); the player guide is wrong here |
-| 024 | preserve Classic, fix-enhanced | no | Classic: `td2192/src/flight.rs:471` and the session | none | **Enhanced fix missing**; Classic not pinned |
+| 022 | preserve Classic, fix-enhanced (user) | yes (user) | `Flight::enhanced_fixes` (IM-22) | `logic::tests::flight_8_ob022_soft_lock_only_in_classic` | OK, both profiles (VE-8 update) |
+| 023 | fix-enhanced | yes | E2 Classic rewrites DAC 255 and 37 only (`FlightDac::toggle_e2_classic`, BUG-9 fixed, U-530 confirmed by RE-19); full toggle under the Enhanced fixes | `flight_palette::tests::e2_alt_back_to_mode_1_rewrites_only_255_and_37` | OK (VE-8 update) |
+| 024 | preserve Classic, fix-enhanced | yes | radar table chosen at flight start (`td2192::flight`, IM-22) | `td2192::flight::tests::ob024_*` | OK, both profiles (VE-8 update) |
 | 025 | preserve | no | `logic/e2.rs` | `logic/e2/tests.rs::outcome_tests`, `e2_front_end.rs::block_16_ending_b` | OK |
 | 026 | preserve (T1) | no | `shots.rs:461` | none | **Not pinned** (U-204) |
 | 027 | preserve | no | `campaign_e2.rs`, `campaign_e3.rs`, `scenes_e3.rs` | `e2_front_end.rs::death_accepted_flies_again`, `e3_front_end.rs::replay_blocks_offer_the_block_again`, `scenes_e3.rs::sel_pain_third_caption_is_off_screen` | OK |
 | 028 | fix-all | yes (user) | `setup/e3.rs::restore_class_tables` | `setup/e3.rs::every_flight_setup_restores_the_class_tables`, `flight_e3.rs::e3_ob028_freeze_never_leaks` | OK |
 | 029 | preserve | no | `flight_palette.rs` | `flight_screens_parity.rs::ir_palettes_match_c0014` (vector 16) | OK |
 | 030 | preserve | no | `flight_screens/menu.rs:555` | none | **Not pinned** |
-| 031 | fix-enhanced | no | the comm screen waits for Space; port-front-end §5 binds controller South to Space in **both** profiles | none | **Fixed in Classic too**, by the binding layer: policy and port disagree (§7.2) |
-| 032 | fix-enhanced | no | Classic preserved (`flight_palette.rs`) | `flight_palette.rs::white_flash_frames` | **Enhanced fix missing** |
+| 031 | T3 port behaviour (bound buttons answer "hit any key") | yes | port-front-end §4–§5 | `main_menu.rs::a_controller_answers_the_boxes` (the binding layer) | OK: policy and port agree since the decision (VE-8 update) |
+| 032 | fix-enhanced | yes | Enhanced restores the palette at the end of the mode-2 white flash (`flight_palette`, IM-22) | `flight_palette::tests` (both profiles) | OK (VE-8 update) |
 | 033 | preserve | no | `flight.rs` | `flight.rs::explosions_follow_the_window_and_page_rules` | OK |
 | 034 | fix-all (port counts frames) | no | frame counts | `timing.rs::dos_time_waits_count_bios_ticks` | OK, but mislabelled (§7.1) |
 | 035 | preserve | no | `setup/e2.rs` | full flight E2 2 (C-0121) | OK |
@@ -865,26 +873,40 @@ One row per OB. "Decided" is "no" where the catalogue's last column still says "
 | 053 | preserve | no | `map.rs` | `map.rs::e3_board` | OK |
 | 054 | preserve | yes (RE-10, C-0041) | hazard test | `oracle_e3.rs::e3_flight_8_matches_c0041`, `logic/e3/tests.rs::hazard_damage_wraps_through_the_end_sequence` | OK |
 | 055 | fix-all | no | missing slots are empty; first save creates the files | `saves.rs::short_or_missing_files_are_empty_slots`, `save_parity.rs::the_menu_restores_from_and_saves_to_the_port_s_own_files` | OK |
-| 056 | preserve Classic; fix-enhanced | no | Esc ignored | `save_parity.rs::restore_and_save_with_the_shipped_files_match_c0043` | **Enhanced fix missing** |
-| 057 | preserve Classic; fix-enhanced | no | slot-0 reload | `td2192/src/flight.rs::mission_sprites_land_where_flight_screens_says` | **Enhanced fix missing** |
-| 058 | preserve Classic; fix-enhanced | no | `IntroOptions::fix_ob058` under Enhanced | `intro_parity.rs::ob058_fragment_in_classic_only` | OK, both profiles |
+| 056 | preserve Classic; fix-enhanced | yes | Esc cancels the name entry only with the fixes (`SaveScreen::esc_cancels_entry`, IM-22) | `save_screens::tests::esc_cancels_the_name_entry_only_with_the_fix` | OK (VE-8 update; VE-8 also made South end the entry in both profiles, port-front-end rev 4 §5) |
+| 057 | preserve Classic; fix-enhanced | yes | no slot-0 reload with the fixes (`td2192::flight`, IM-22) | `td2192::flight::tests::ob057_*` | OK (VE-8 update) |
+| 058 | preserve Classic; fix-enhanced | yes | `IntroOptions::fix_ob058` follows the Enhanced fixes setting (IM-22) | `intro_parity.rs::ob058_fragment_in_classic_only` | OK, both profiles |
 | 059 | preserve | no | `td-render/src/intro.rs` | `intro.rs::hoverskid_is_flipped_shifted_and_wraps_on_the_low_byte`, `intro_parity.rs::vectors_3_6_7_every_captured_frame` | OK |
 | 090 | preserve as observed | no (implemented) | `hud.rs` | `hud_parity.rs::weapon_0_icon_matches_c0069` | OK |
 | 100 | preserve with the oracle's offsets | no | `td_audio::worx` | `worx.rs::intro_busy_times_match_c0081_to_the_frame`, `sfx.rs::boomboom_holds_its_priority_for_its_busy_time` | OK |
 | 101 | preserve "first tick at the start" | no | `CmfPlayer::start` | `oracle_parity.rs::looping_menu_music_matches_capture_c0073` | OK |
-| 102 | preserve Classic; Enhanced may use one rate | no | `fade::frames_per_level` | `story_parity.rs::the_first_title_card_fades_at_one_frame_per_level`, `::a_title_card_after_the_story_so_far_fades_at_two_frames_per_level` | Optional fix not implemented |
+| 102 | preserve, no Enhanced fix | yes | `fade::frames_per_level` | `story_parity.rs::the_first_title_card_fades_at_one_frame_per_level`, `::a_title_card_after_the_story_so_far_fades_at_two_frames_per_level` | OK |
+| 140 | preserve (E1 flight 21's path arrays from the heap) | yes | `td_sim::flight::heap` (IM-23, U-500) | `oracle_e1_full.rs::flights_19_and_21_*` (C-0200, C-0300), `heap/tests.rs` | OK (VE-8 update) |
+| 141 | preserve (text pen past x = 351; title widths) | yes | port clips at the edge (moot with shipped text); centring by measured width | title-card L5 tests for the shipped titles (`story_parity`) | OK as far as the shipped strings go; (a) not pinned |
+| 142 | preserve (low-armour lamp value 64; missile column) | yes | `td_render::hud` | `hud_parity.rs` (C-0002, C-0069) for the captured states | Not separately pinned for the recovery case |
+| 143 | preserve (projectile-array index slips; life 200 into slot 40) | yes | `shots.rs` | `oracle_weapons.rs` (C-0011), `oracle_e2_full::flight_20_weapons_*` (C-0207) | OK; the drawn list of that tick deviates (BUG-21) |
+| 144 | preserve (setup leftovers) | yes | `ships.rs`, setup | full flights, `oracle_ships.rs` | OK along the captured paths |
+| 145 | preserve (distance flash colour, 16-bit square) | yes | `hit_flash.rs` | `hit_flash.rs::wrapped_and_negative_squares` | OK |
+| 146 | preserve (joystick brake predicates) | yes | `player.rs` | unit only; the joystick was never captured (U-024) | Not pinned against a capture |
+| 147 | preserve (WORX CMF driver quirks) | yes | `td_audio` CMF driver | `oracle_parity.rs` (C-0001, C-0002, C-0073 register streams) | OK |
+| 148 | preserve (Real48 inexactness) | yes | `real48.rs` | `real48.rs::matches_all_vectors_from_the_original` | OK |
+| 149 | preserve (mission-script rules as written) | yes | `logic.rs`, `logic/e2.rs`, `logic/e3.rs` | the mission-logic vectors and full flights (§4) | OK as far as §4 goes |
+| 150 | preserve (`td1-20` at x = 1 + c) | yes | **not yet**: drawn at x = c (BUG-13, spec fixed by RE-19) | `screens_parity.rs::e1_stills_*` pins the difference | **Deviating** (BUG-13, IM) |
+| 151 | fix-enhanced (two unscrolled frames at the end of the fade-in) | yes | Classic: as the original (IM-21's opening); Enhanced fix not checked by VE-8 | `opening_frames_match_the_original` (Classic) | Enhanced side not verified |
 
-**Totals.**
+**Totals** (VE-8 update: 75 OBs, every one decided).
 
 | Group | Count | OBs |
 |---|---:|---|
-| Total | 63 | |
-| Policy implemented and pinned | 45 | |
-| Classic side implemented but not pinned | 8 | OB-018, 021, 022, 026, 030, 037, 038, 046 |
-| Missing or deviating | 8 | OB-012, 024, 032, 056, 057 (Enhanced fix missing); OB-017 (E2/E3 missing); OB-023 (Classic deviation); OB-031 (Classic deviates from the policy) |
+| Total | 75 | 63 reviewed by VE-6 plus OB-140..151 |
+| Policy implemented and pinned | 60 | VE-6's 45, plus OB-012, 022, 023, 024, 032, 056, 057 (IM-22), OB-017 (E2/E3 bytes, IM-20), OB-031 (by decision), and OB-140, 143, 145, 147, 148, 149 |
+| Implemented, not pinned or only in part | 12 | OB-018, 021, 026, 030, 037, 038, 046 (VE-6's list less OB-022), OB-141, 142, 144, 146, 151 (Enhanced side not verified) |
+| Deviating | 1 | OB-150 (BUG-13) |
 | Moot | 2 | OB-008, 011 |
 
 ### 7.1 OBs still "proposed" or "open": the decision each needs
+
+*VE-8 update:* every OB is now decided. The main session accepted the batch below and the relabels on 2026-11-06 (OB-005 "preserve as observed", OB-008 "preserve (moot)", OB-031 "T3 port behaviour", OB-034 "T3 deviation", OB-102 "no Enhanced fix"), the user decided OB-022 (Classic preserve plus an Enhanced fix), and RE-18/RE-19's OB-140..151 were accepted by the M12-03 rule. The text below is VE-6's, kept for the record.
 
 55 OBs say "proposed" in their policy or "decided by" cell, and OB-008 says "open". Only seven are settled: OB-001, 002, 006, 014, 017, 028 and 054.
 
@@ -908,6 +930,8 @@ The ones that need more than a rubber stamp:
 | OB-102 | preserve in Classic; "fix-enhanced may use one rate" | **Preserve; no Enhanced fix** (the speed difference is barely noticeable; not worth an option) |
 
 ### 7.2 Fix-enhanced OBs whose Enhanced fix is not implemented
+
+*VE-8 update:* none is missing any more. IM-22 implemented OB-012, 022, 023 (with BUG-9's Classic side), 024, 032, 056, 057 and wired OB-058 to the fixes setting; OB-031 is T3 port behaviour by decision. The new fix-enhanced OB-151 (two unscrolled frames at the end of the fade-in) was not checked by VE-8. The candidates OB-036, 038, 041, 043, 046 and 102 were decided as "preserve, no Enhanced fix" except OB-038, whose Enhanced fix stays deferred past 1.0. VE-6's tables below are kept for the record.
 
 The player guide (`docs/player/README.md` §8) says the planned Enhanced fixes are not selectable yet. Since D5 (user, 2026-11-06) the Enhanced preset includes every fix-enhanced fix, so these are 1.0 work for M12-04. Exactly these are missing:
 
