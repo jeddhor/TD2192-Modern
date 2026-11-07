@@ -340,8 +340,9 @@ fn flight_7_completion_by_the_guidance_rule() {
 }
 
 /// Flight 8 (§5.8), OB-022: both Vulture IIs gone in phase 3 before the player came near
-/// them. Classic keeps phase 3 for ever (the soft lock, preserved); the Enhanced fix moves on
-/// to phase 5, and the flight then ends as usual (rule F).
+/// them. Without the fix (the original, the simulation's default) phase 3 lasts for ever (the
+/// soft lock); with it (set by the game host in every profile: OB-022 is fix-all) the flight
+/// moves on to phase 5 and then ends as usual (rule F).
 #[test]
 fn flight_8_ob022_soft_lock_only_in_classic() {
     for fix in [false, true] {
