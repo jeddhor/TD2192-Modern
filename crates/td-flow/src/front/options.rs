@@ -588,7 +588,13 @@ impl OptionsScreen {
                     return;
                 }
                 // A tick with a button press may carry the keys its binding stands for.
-                if let (true, Some(&key)) = (pressed.is_empty(), input.pressed.first()) {
+                // F10..F12 belong to the host (scaling, fullscreen, screenshot) and are never bound
+                // (M12-07): a flight key on F11 would toggle fullscreen every time it is used.
+                let key = input
+                    .pressed
+                    .iter()
+                    .find(|k| !matches!(**k, Key::F10 | Key::F11 | Key::F12));
+                if let (true, Some(&key)) = (pressed.is_empty(), key) {
                     self.capture = None;
                     if key != Key::ESCAPE {
                         self.bind(k, column, Some(BindingInput::Key(key)));
@@ -1215,6 +1221,30 @@ mod tests {
         assert_eq!(
             rig.settings.controls,
             crate::controls::ControlsSettings::default()
+        );
+    }
+
+    /// M12-07: the host keys F10..F12 never become a binding; the capture waits for another
+    /// key.
+    #[test]
+    fn a_capture_skips_the_host_keys() {
+        let mut rig = Rig::new();
+        let mut s = rig.screen();
+        rig.settle(&mut s);
+        rig.key(&mut s, Key::DOWN);
+        rig.key(&mut s, Key::DOWN);
+        rig.key(&mut s, Key::ENTER);
+        assert_eq!(s.row(), Row::Binding(FlightKey::Kp8));
+        rig.key(&mut s, Key::ENTER);
+        for k in [Key::F10, Key::F11, Key::F12] {
+            rig.key(&mut s, k);
+            assert!(s.capturing(), "{k:?} is the host's");
+        }
+        rig.key(&mut s, Key::letter('q').unwrap());
+        assert!(!s.capturing());
+        assert_eq!(
+            rig.settings.controls.keyboard.get(FlightKey::Kp8),
+            Key::letter('q')
         );
     }
 

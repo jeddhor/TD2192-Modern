@@ -280,8 +280,8 @@ The single source of truth for **who is doing what**. Protocol: [AGENT_DEVELOPME
 | M12-03 | Bug-parity review (original-bugs.md) | VE/SP | M12-01 | REVIEW | VE-6 | VE-6 2026-11-06: docs/parity/M12-checklist.md §7. 63 OBs: 45 implemented and pinned; 8 not pinned (OB-018, 021, 022, 026, 030, 037, 038, 046); 8 missing or deviating; 2 moot (OB-008, 011). Missing or deviating: Enhanced fixes OB-012, 024, 032, 056 and 057 (1.0 scope since D5); OB-017 E2/E3 (M10-46); OB-023 Classic not preserved (BUG-9); OB-031 fixed in both profiles by the binding layer. Decisions: 55 OBs are still proposed and OB-008 is open. Recommended: accept 37 as proposed in one batch; relabel OB-005 and OB-034; OB-008 preserve (moot); OB-022 is a user decision; no Enhanced fix for OB-036, 041, 043, 046 or 102 |
 | M12-04 | Enhanced features for 1.0 (D5) | IM | D5 | REVIEW | IM-16, IM-22 | IM-16 2026-11-06: colour-blind guidance line done (td_render::enhanced::guidance: Okabe-Ito orange/sky blue + white cores with black outline per marker, drawn at the RGBA stage after the palette and over the final image; works under either profile; Classic unchanged with the setting off, invariant test with data; spec frontend/port-front-end rev 2 3.3). The other Enhanced features of this row wait for D5 · IM-22 2026-11-06: **D5 preset** (`td_flow::settings`: `ENHANCED_PRESET` 16:9 / xbr3 / subtle / bloom off, `PRESET_SFX_MODE` polyphonic, `PRESET_FIXES` on; Classic forces all of them off, the SFX policy and the fixes included; `settings.toml` format 2: an absent Enhanced key is the preset, a written one an explicit choice; format-1 files migrate, their old "off" defaults becoming the preset); options screen: sound effects and `original bug fixes` are Enhanced rows, `restore the enhanced preset`; spec frontend/port-front-end rev 3 §3.4, enhanced/presentation rev 5 §2, MDG §6.2, player guide §5-§8. **Fix-enhanced OBs**, each pinned in both profiles: OB-012 (`program::cue_restart`), OB-022 (E1 flight 8, `Flight::enhanced_fixes`, user decision), OB-024 (radar table by map set), OB-032 (mode-2 white flash), OB-056 (Esc cancels the save name), OB-057 (no slot-0 reload), OB-058 (follows the fixes setting); **BUG-9** (OB-023 Classic: E2 rewrites DAC 255 and 37 only, U-530; full toggle as the Enhanced fix). Stale ASSUMPTIONs removed (U-313 citation, `DEFAULT_TICK_HZ`, U-146 resolved, `fade.rs` header). Analog steering (D5 option) is not implemented |
 | M12-05 | PC-speaker SFX mode (optional) | RE/IM | D5 | TODO | | |
-| M12-06 | Replay soak, fuzzing, profiling | VE | M12-01 | TODO | | |
-| M12-07 | Accessibility review | VE | M12-04 | TODO | | |
+| M12-06 | Replay soak, fuzzing, profiling | VE | M12-01 | REVIEW | VE-8 | 2026-11-06 (VE-8): docs/parity/M12-soak.md. **Soak:** 68 committed replays × 20 rounds in 16 `tdtool replay --verify` processes (tools/scripts/replay-soak.ps1; `--verify` prints the final hash) all identical; `td-sim/tests/soak.rs` (cheap in the suite, `long_soak` ignored): 15,616 seeded random-input flights of every flight of E1–E3, 1.05 billion ticks (15,161 h of game time) twice each, deterministic across runs and threads, clone checks pass, 8,704 replay runs on 16 threads agree; **BUG-18 (major crasher): ship offset Y overflows i16 at the map's bottom row (E3 flight 19, tick 4235, any input) and top row (E1 flights 6, 7 with some inputs); U-570**. **Fuzzing:** never-panic proptest/mutation tests for every td-formats parser, the ZIP import, exe resources and replays (tests/fuzz.rs ×2, fuzz_replay.rs; long runs ignored); BUG-14..BUG-17 found and fixed (`fix:` commit, unit tests). **Frame cost** (`td2192::flight::lights::tests::frame_cost`, i7-10700F): Classic 0.11 ms, D5 preset 1.2–1.3 ms (p95 1.7), heaviest 21:9/xbr4/full/bloom 4.2–4.5 ms (p95 5.1–5.3) on 16 threads, 5.0/6.1 on 6, 6.4/7.2 on 4 (over budget). **Runtime** (`td2192 --dev-stats --dev-keys`, headless): campaign flights E1–E3 19.18–19.20 ticks/s, front end 70.08 (BUG-5 re-check PASS); peak working set 68–72 MB. M12-checklist brought up to date (339/376 Classic PASS, 90.2 %) |
+| M12-07 | Accessibility review | VE | M12-04 | REVIEW | VE-8 | 2026-11-06 (VE-8): docs/parity/M12-accessibility.md, 16 findings ranked. MEETS: no required chords, colour-blind line, separate volumes, 4K scaling; PARTIAL: rebinding (flight keys only), pause anywhere, controller-only play; GAP: adjustable paging, photosensitivity (held Alt flickers the whole screen at 5.45 Hz in IR flights, U-571; no reduce-flashing option, design in §4). Fixed here (`fix:` commit, tests, port-front-end rev 4): South ends the save-name entry (a controller could not save, and under Classic not leave it), F10..F12 cannot be bound; player guide: photosensitivity warning, controller save. Recommendations ranked in §2.0 |
 | M12-08 | Enhanced presentation pipeline + `[enhanced]` settings (ADR-0006) | IM | M6-05 | REVIEW | IM-12 | IM-12: td_flow::Settings profile + [enhanced]; td_render::enhanced Pipeline (palette->RGBA, upscale, PostStage hook for IM-13), td-platform present_rgba; td2192 EnhancedView shared with the flight arena, live settings.toml reload, debug hotkeys F7/F8 (Shift: lighting/bloom), --dev-enhanced. Tests: Classic invariance (synthetic + C-0002/command.scr with data). Spec questions Q4-Q7 added |
 | M12-09 | Widescreen viewport (16:10, 16:9, 21:9, auto) | IM | M12-08 | REVIEW | IM-12, IM-16 | IM-12: width-generic Framebuffer; td_render::flight Viewport, drawing functions shift by the margin, *_in visibility relaxed by m; HUD bar at m with mirrored-repeat panels darkened at RGBA; overlays centred; front-end screens centred. Centre invariance vs Classic and C-0002 f3500/f3543 passes for 384/428/560 (straddling objects: spec Q4). IM-16 2026-11-06: pause line drawn over the wide frame as an overlay (spec enhanced/presentation rev 4 4.3, test with data); F12 also saves the pipeline output at (W*k) x (200*k) before window scaling as *.enhanced.png |
 | M12-10 | Pixel-art upscaling (Scale2x/3x/4x, xBR 2x/3x/4x) | IM | M12-08 | REVIEW | IM-12 | IM-12: Scale2x/3x/4x, xBR level 2 at 2x/3x/4x (exact-coverage blend weights, spec Q6), hard edge at row 160, rayon rows. xbr4 560x200: ~1.3 ms (16 threads), ~1.7 ms (6), ~6.8 ms (1); timing test behind --ignored. Golden hashes on a synthetic sprite |
@@ -359,7 +359,7 @@ Template: ADG §17.5.
 - Actual (port): `Episode1` / `LaterEpisode` do not override `Screen::tick_hz`, so `Flow::tick_hz` is `RETRACE_HZ`, and `campaign.rs` ticks the flight child once per episode tick: 70.086 ticks/s, 3.65× fast. Only `--flight` dev mode (`FlightArena::tick_hz`) runs at `FLIGHT_TICK_HZ`
 - Spec reference: core/timing.md §4.1–4.2; M12-timing row 2
 - Severity: blocker for Classic parity. Fix: IM, delegate `tick_hz` to the flight child (and to its modal screens)
-- **Status: FIXED** (main session, 2026-11-06): `Campaign`, `CampaignE2` and `CampaignE3` report their child's `tick_hz` (a flight's own rate, the retrace rate while it shows a modal screen), and `Episode1` and `LaterEpisode` report the campaign's. Test: `td-flow/tests/story_parity.rs` `a_campaign_flight_runs_at_the_flight_rate`. A runtime tick count in the real binary is still to be taken (M12-02 re-check)
+- **Status: FIXED** (main session, 2026-11-06): `Campaign`, `CampaignE2` and `CampaignE3` report their child's `tick_hz` (a flight's own rate, the retrace rate while it shows a modal screen), and `Episode1` and `LaterEpisode` report the campaign's. Test: `td-flow/tests/story_parity.rs` `a_campaign_flight_runs_at_the_flight_rate`. A runtime tick count in the real binary is still to be taken (M12-02 re-check). **Re-checked** (VE-8, 2026-11-06, M12-06): `td2192 --dev-stats` headless, campaign flights of E1, E2 and E3 at 19.18–19.20 ticks/s and the front end at 70.08 (docs/parity/M12-soak.md §5)
 
 ### BUG-6: mission title card fades take 34 frames; the original takes 18–20
 - Found by / date / milestone: VE-3, 2026-11-06, M12-02
@@ -447,6 +447,56 @@ Template: ADG §17.5.
 - Severity: minor (one-pixel shift of one picture). Fix: RE/SP confirm the position (U-522, the same one-pixel offset as OB-003), then IM: x = 1 + c, column 0 black
 - **Spec part DONE (RE-19, 2026-11-06):** asset-load-sites §4, FORMATS §11, OB-150 (preserve, as OB-003), U-522 resolved: still set 2's plot loop counts x from 0 but reads the row buffer from index 1 (`051A:44AD..44D9`), so byte c of each row is at x = 1 + c (c = 0..318), x = 0 shows the byte before the buffer (DS:0AE7, always 0: U-227 resolved), byte 319 is never shown. Port (IM): `story::still_set` set 2 at x = 1 + c with column 0 black; then `assert_sequence` over the whole still like the other sets
 - **Status: FIXED, in REVIEW** (IM-24, 2026-11-06, M12-16): `story::still_set` set 2 through `shifted_still` (byte c at x = 1 + c, column 0 black, byte 319 not shown; also `td1-15`); `screens_parity` compares the whole `td1-20` sequence (C-0276 to f10058) with `assert_sequence`: exact
+
+### BUG-14: `picture::parse_cells` panics on a layout with an empty cell
+- Found by / date / milestone: VE-8, 2026-11-06, M12 (M12-06 fuzzing, `td-formats/tests/fuzz.rs`)
+- Profile: both
+- Steps: `parse_cells(&[], &CellLayout { name: "x", cell_width: 0, cell_height: 0, count: 0 })`
+- Expected: an error (a parser never panics, MDG §9.2)
+- Actual: `chunks_exact(0)` panics ("chunk size must be non-zero") in every build
+- Spec reference: FORMATS §12 (cell sheets); reachable only with a caller-made layout (the shipped `CELL_SHEETS` are non-empty)
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06, `fix:` commit on the M12-06 branch): an empty or overflowing cell is `FormatError::Invalid`; test `picture::tests::absurd_layouts_are_errors`
+
+### BUG-15: caller-supplied picture and sprite sizes overflow
+- Found by / date / milestone: VE-8, 2026-11-06, M12-06 fuzzing
+- Profile: both
+- Steps: `SpriteSheet::parse(&[], 1 << 32)`; a `StillLayout` of width `usize::MAX / 4 + 1` and height 5; a `CellLayout` whose `cell_width * cell_height * count` overflows
+- Expected: an error
+- Actual: "attempt to multiply with overflow" in debug builds (`picture.rs` `width * height + 768`, `cell * count`; `sprites.rs` `size * size`); a wrapped size in release
+- Spec reference: FORMATS §10–§12; reachable only with caller-made layouts or sizes
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06): checked multiplications, an overflowing size is an error; tests `picture::tests::absurd_layouts_are_errors`, `sprites::tests::overflowing_frame_size_is_an_error`
+
+### BUG-16: `mz::pstring_seq` reserves the caller's count before reading
+- Found by / date / milestone: VE-8, 2026-11-06, M12-06 fuzzing
+- Profile: both
+- Steps: `pstring_seq(&[], 0, usize::MAX)` (or a count of `1 << 59`)
+- Expected: an error (the data ends)
+- Actual: `Vec::with_capacity(count)` panics with "capacity overflow"; a count in the terabytes would abort on allocation failure
+- Spec reference: none (the counts come from the compiled-in resource maps, `exe_res.rs`, so no file can trigger it)
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06): the reservation is capped by the remaining bytes; test `mz::tests::huge_pstring_counts_fail_without_reserving`
+
+### BUG-17: `Replay::from_bytes` reserves memory from the header's counts
+- Found by / date / milestone: VE-8, 2026-11-06, M12-06 fuzzing (`td-sim/tests/fuzz_replay.rs`)
+- Profile: both
+- Steps: a 24-byte TDR header that declares `u32::MAX` ticks
+- Expected: `Truncated`, quickly and without a large allocation
+- Actual: `Truncated` in about 20 µs, but after reserving 256 MiB for inputs (and 8 MiB for checkpoints)
+- Spec reference: `td_sim::replay` module doc (our own format)
+- Severity: minor
+- **Status: FIXED** (VE-8, 2026-11-06): reservations follow the input length; test `replay::tests::huge_declared_counts_are_truncation_errors`
+
+### BUG-18: ship offsets overflow i16 at the map's top and bottom rows: E3 flight 19 crashes the game in tick 4235, E1 flights 6 and 7 can
+- Found by / date / milestone: VE-8, 2026-11-06, M12 (M12-06 random-input soak, `td-sim/tests/soak.rs`)
+- Profile: both (td-sim keeps overflow checks in release builds, MDG §8.6, so the game panics)
+- Steps: E3 flight 19 with any input or none: `tdtool plan 19 --episode 3 --probe 5000`, or `cargo test -p td-sim --test soak e3_flight_19_idle_outlives_tick_4235 -- --ignored` with `TD2192_DATA`. The top edge: `cargo test -p td-sim --test soak e1_flights_6_and_7_outlive_the_top_edge_overflow -- --ignored` (two seeds of the soak's input generator)
+- Expected (original): no crash; the original's 16-bit ADD wraps (what the ship does afterwards is U-570)
+- Actual (port): slot 2 (class 0) parks at tile (102, 199) with down speed 23..24 and goal (102, 200); its offset Y grows about 8.5 a tick (1,023 at tick 500, 32,762 at tick 4234) and `sub_y += d - 16` overflows in tick 4235 (`td_sim::flight::ships` drift, mission-ships §4.2.3 "Y never wraps at row 199 (offsetY grows)"): a panic, 3 min 40 s into the flight. A player who has not finished flight 19 by then loses the game. The success replay ends at tick 441 (the oracle capture with it), so no L4/L5 test reached it. **The top edge, the same rule mirrored:** a class-7 ship flying up at tile row 1 toward a goal on row 0 is removed by the edge rule, the mission logic gives the slot its class back, and its offset Y falls by about 6 a tick until `sub_y += 16 - up` overflows: E1 flight 6 slot 19 in tick 5528 and E1 flight 7 slot 13 in tick 8831, in 2 of the 15,616 random flights of two soak runs (input-dependent)
+- Spec reference: sim/mission-ships §4.2.3 (offsets i16; the wrap is not stated); U-570
+- Severity: **major** (a crasher on a reachable path: any slow E3 flight 19)
+- Fix: RE/SP answer U-570 and state the wrap in §4.2.3 (both edges); IM makes the offset arithmetic of the drift step wrap as the original's (`wrapping_add` on offset Y, so the port matches the original after the wrap), then un-ignores the two tests and runs `long_soak`
 
 ### BUG-20 (filed by RE-19 as BUG-14; renumbered at merge): typed lines show one character fewer than the original in their first frame after a fade-in (and after some `Crt.Delay`s); 2000 ms delays are one frame short
 - Found by / date / milestone: RE-19 (from VE-7's M12-screens D1), 2026-11-06, M12 (M12-16)

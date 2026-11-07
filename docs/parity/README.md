@@ -5,3 +5,5 @@ Evidence that the port matches the original. Each milestone exit includes the re
 Playthrough checklists go in `playthrough-e1.md`, `playthrough-e2.md` and `playthrough-e3.md`.
 
 The master parity checklist for M12, which covers every spec, the bug-parity review and the open unknowns, is [M12-checklist.md](M12-checklist.md).
+
+M12-06 (replay soak, fuzzing, frame cost, runtime tick rate, memory) is [M12-soak.md](M12-soak.md); M12-07 (accessibility review) is [M12-accessibility.md](M12-accessibility.md).

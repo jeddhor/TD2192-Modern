@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `frontend/port-front-end` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, port additions. The original screens are unchanged except where §5 says so |
 | **Tasks** | M11-01 (start screen), M11-03 (settings screens incl. game data), M11-04 (controller navigation), M13-02 (first run), M12-04 (colour-blind guidance line; the D5 Enhanced preset, §3.4) |
@@ -83,6 +83,7 @@ Reached from the start screen and with **F2** during play (the original reads no
 ### 3.1 Controls
 
 - Enter (or South) on a cell waits up to 5 s for a key (keyboard column) or a controller button (gamepad column). Esc cancels a key capture, East cancels too; Esc cancels a button capture. Delete clears the selected cell.
+- F10, F11 and F12 are never bound: a key capture ignores them and waits for another key (rev 4, M12-07). They belong to the host (scaling, fullscreen, screenshot), which acts on them whatever the screen.
 - A key or button stands for one flight key: binding it to another flight key takes it away from the first, and the screen says `taken from <action> - <key>`.
 - `reset to defaults` restores both columns.
 
@@ -193,7 +194,8 @@ esc = "start"
 - Port screens: stick or D-pad moves (first push, then repeats after 24 frames every 7), South confirms, East goes back. A tick with a button press ignores that tick's keys, which may be the keys the button's binding stands for; Start therefore works as back through its Esc binding.
 - Original menus keep the original joystick rules (main menu, save screens and the flight's computer menu: the stick moves, either button selects). Port additions so that a controller alone never gets stuck:
   - the main menu's confirmation boxes (quit, current game lost), which read one key (`y` = yes): South answers yes, East no;
-  - the script-choice screen, which reads only 1 and 2: South is 1 (original script), East is 2 (edited script).
+  - the script-choice screen, which reads only 1 and 2: South is 1 (original script), East is 2 (edited script);
+  - the save screen's name entry ([save-screens](../flow/save-screens.md)), which ends only on Enter: a press of South (joystick button 2) ends it as Enter does, and the keys its binding stands for in that frame are not typed (rev 4, M12-07). The press that chooses the slot comes before the entry, so it does not save at once. Without this a controller-only player could not save, and under Classic (OB-056) could not leave the entry either.
 - "Hit any key" screens (story cards, dialogue, pause, the tactical map, the comm viewer) take the keys of bound buttons, for example South (Space) or Start (Esc).
 
 ## 6. Tests
@@ -219,3 +221,4 @@ esc = "start"
 | 1 | 2026-11-05 | IM-14 | Start screen, options pages, bindings, controller navigation (M11-01, M11-03, M11-04) |
 | 2 | 2026-11-06 | IM-16 | First run from a folder or the original ZIP (§2.1, M13-02); the game-data page and the data switch at the start screen (§2, §3.2, M11-03); the colour-blind guidance line design (§3.3, M12-04) |
 | 3 | 2026-11-06 | IM-22 | The D5 Enhanced preset (§3.4): preset table, explicit choices, `settings.toml` format 2 (absent key = preset) and the format-1 migration; the sound effects and the original-bug fixes join the Enhanced rows (§3); the profile page's `original bug fixes` and `restore the enhanced preset` rows |
+| 4 | 2026-11-06 | VE-8 | M12-07 small fixes: South ends the save-name entry (§5); F10..F12 cannot be bound (§3.1) |
