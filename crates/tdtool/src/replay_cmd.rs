@@ -35,6 +35,8 @@ pub struct Verified {
     pub outcome: bool,
     /// The view at the end: tile X, tile Y, sub X, sub Y.
     pub view: (i16, i16, i16, i16),
+    /// The state hash after the last tick (M12-06: runs compared across processes).
+    pub hash: u64,
 }
 
 /// Re-runs `r` (read from `file`) and checks its checkpoints.
@@ -90,6 +92,7 @@ pub fn verify(root: &Path, r: &Replay, file: &Path) -> Result<Verified> {
             f.player.view.sub_x,
             f.player.view.sub_y,
         ),
+        hash: state_hash(&f),
     })
 }
 
@@ -152,8 +155,16 @@ pub fn run(
     if verify_it {
         let v = verify(root, &r, file)?;
         println!(
-            "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {} view {:?}",
-            v.checkpoints, v.finished_at, v.succeeded, v.lost, v.died, v.kills, v.outcome, v.view
+            "verified: {} checkpoints match; finished at tick {:?}; succeeded {} lost {} died {} kills {} outcome {} view {:?} final hash {:016X}",
+            v.checkpoints,
+            v.finished_at,
+            v.succeeded,
+            v.lost,
+            v.died,
+            v.kills,
+            v.outcome,
+            v.view,
+            v.hash
         );
     }
     if let Some(out) = rewrite {
