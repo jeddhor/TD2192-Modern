@@ -9,10 +9,12 @@ use std::fs;
 use std::path::Path;
 
 use td_formats::map::TileMap;
+use td_formats::palette::Palette;
 use td_formats::sprites::SpriteSheet;
 use td_formats::tileset::Tileset;
 use td_render::Framebuffer;
 use td_render::flight::{self, PLAYFIELD, ViewPos};
+use td_render::flight_palette::FlightDac;
 use td_test_support::{require_data, require_oracle};
 
 /// Draws flight `flight`'s playfield at view (`x`, `y`), offsets (32, 16), with the player
@@ -49,6 +51,72 @@ fn diff(
         }
     }
     out
+}
+
+/// sim/hit-flash rev 4 §6 vectors 2 and 3 (VE-9): the DAC of every C-0041 framebuffer dump
+/// from tick 267 to tick 295 of E3 flight 8 (the hazard death and the end sequence; dumps every
+/// 4th frame, `hazard`) in which the DAC was not being written (`frames.tsv`), against the port's
+/// [`FlightDac`] step (palette mode 0) from the flight palette `g_FlightPalette` (DS:1300) and
+/// `g_HitFlash` (DS:11E4) of the same frame's DGROUP dump: before the flash, during it (15, 13,
+/// …, 1: entries 0..45 but 36 and 38 brightened by the level) and after it (the palette
+/// restored). Entry 144 is left out: another E3 effect rewrites it every tick (vector 3).
+#[test]
+fn hit_flash_dac_matches_c0041() {
+    let _data = require_data!();
+    let oracle = require_oracle!();
+    let cap = oracle.join("C-0041");
+    let tsv = fs::read_to_string(cap.join("frames.tsv")).unwrap();
+    let mut lines = tsv.lines();
+    let head: Vec<&str> = lines.next().unwrap().split('\t').collect();
+    let col = head.iter().position(|&c| c == "dac_3c9").unwrap();
+    let writes: std::collections::BTreeMap<u32, u32> = lines
+        .map(|l| {
+            let v: Vec<&str> = l.split('\t').collect();
+            (v[0].parse().unwrap(), v[col].parse().unwrap())
+        })
+        .collect();
+    let mut levels = vec![];
+    for f in (2040..=2140).step_by(4) {
+        if writes[&f] != 0 {
+            continue;
+        }
+        let dg = fs::read(
+            cap.join("mem")
+                .join(format!("f{f:08}_3AE9-0000_9800_dg.bin")),
+        )
+        .unwrap();
+        // Entry 144 is the E3 effect's (it can hold 64 there); it is not compared.
+        let mut raw = dg[0x1300..0x1300 + 768].to_vec();
+        raw[3 * 144..3 * 145].fill(0);
+        let p = Palette::parse_prefix(&raw).unwrap();
+        let h = u16::from_le_bytes([dg[0x11E4], dg[0x11E5]]);
+        let fb = fs::read(cap.join("fb").join(format!("f{f:08}_320x192_hazard.vga"))).unwrap();
+        let dac = Palette::parse_prefix(&fb).unwrap();
+        // Step 14 decays the level by 2 in mode 0 and writes what is left; a level of 0 left
+        // by the last write is the restore (or no flash at all, where P is shown already).
+        let mut d = FlightDac::start(&p, 0);
+        if h > 0 {
+            d.set_hit_flash(h + 2);
+            d.step(&p, 0, 0, false);
+        }
+        let bad: Vec<usize> = (0..256)
+            .filter(|&e| e != 144 && d.current().colors[e] != dac.colors[e])
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "C-0041 f{f} (g_HitFlash {h}): DAC entries {bad:?} differ, first ours {:?} orig {:?}",
+            d.current().colors[bad[0]],
+            dac.colors[bad[0]]
+        );
+        levels.push(h);
+    }
+    // Before (0), during (15, 13, …, 1) and after (0) the flash.
+    assert!(levels.contains(&15) && levels.contains(&1), "{levels:?}");
+    assert_eq!((levels[0], levels[levels.len() - 1]), (0, 0), "{levels:?}");
+    eprintln!(
+        "C-0041: {} complete DACs equal (levels {levels:?})",
+        levels.len()
+    );
 }
 
 #[test]

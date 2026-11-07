@@ -672,23 +672,43 @@ fn e3_flight_19_idle_outlives_tick_4235() {
     assert!(f.ticks >= 4433, "the flight reached the removal");
 }
 
-/// BUG-18, the top edge: with these random inputs, a class-7 ship of E1 flight 6 (slot 19) and
-/// of E1 flight 7 (slot 13) keeps flying up at tile row 1 toward a goal on row 0; the edge rule
+/// BUG-18, the top edge: with these random inputs, a class-7 ship of E1 flight 6 (slot 20) and
+/// of E1 flight 7 (slot 14) keeps flying up at tile row 1 toward a goal on row 0; the edge rule
 /// removes it, the mission logic brings the class back, and its offset Y falls by about 6 a
-/// tick until `sub_y += 16 - up` passes the i16 range (ticks 5528 and 8831). Fixed with the bottom
-/// edge case above: the offset wraps (U-570 asks what the original does afterwards).
+/// tick until `sub_y += 16 - up` passes the i16 range and wraps (mission-ships rev 8 §4.2.3;
+/// ticks 6760 and 5578). The test asserts that the wrap happens (VE-9, 2026-11-07: the seeds
+/// VE-8 found, 0xc4c2… and 0x0e8c…, stopped reaching the edge as td-sim changed, RE-20) and
+/// that nothing panics in the 100 ticks after it.
 #[test]
 fn e1_flights_6_and_7_outlive_the_top_edge_overflow() {
     let Some(data) = data_dir() else {
         eprintln!("SKIPPED: TD2192_DATA not set (data-gated test soak)");
         return;
     };
-    for (n, seed, tick) in [
-        (6, 0xc4c2_e355_fd51_c5c0, 5528),
-        (7, 0x0e8c_bfa7_1515_28ff, 8831),
+    for (n, seed, slot, tick) in [
+        (6, 0xb4c4_b6d3_dce8_1682, 20, 6760),
+        (7, 0x2319_a9f8_39d6_dc03, 14, 5578),
     ] {
         let setup = load(&data, Episode::E1, n);
         let e = fly(&setup, seed, tick + 100);
         assert_eq!(e.panic, None, "E1 flight {n}");
+        // The same inputs again, watching the slot's offset Y at the wrap.
+        let mut f = setup.start();
+        let mut inputs = Inputs::new(seed);
+        let mut prev = 0i16;
+        let mut wrapped = None;
+        for t in 1..=tick {
+            td_sim::replay::step(&mut f, &setup.world, inputs.next_word());
+            let s = &f.ships.0[slot - 1];
+            if prev < -30_000 && s.sub_y > 30_000 {
+                wrapped = Some(t);
+            }
+            prev = s.sub_y;
+        }
+        assert_eq!(
+            wrapped,
+            Some(tick),
+            "E1 flight {n} slot {slot}: the top-edge wrap"
+        );
     }
 }

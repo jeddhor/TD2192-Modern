@@ -425,6 +425,56 @@ pub fn replay(l: &Layout, flight: u8, suffix: &str) -> Option<Replay> {
     Some(Replay::from_bytes(&bytes).unwrap())
 }
 
+/// The DGROUP record of tick value `value` of watcher generation `generation` in the capture
+/// whose scenario starts with `# <tag> ` (VE-9), if there is one.
+pub fn tick_record(
+    l: &Layout,
+    oracle: &Path,
+    tag: &str,
+    generation: usize,
+    value: u32,
+) -> Option<Vec<u8>> {
+    let cap = find_capture(oracle, tag)?;
+    let gs = gen_suffix(generation);
+    let p = mem_file(&cap, "tick_", &format!("-0000_{:X}_ds{gs}.bin", l.ds_len))?;
+    load_packed(&p, l.ds_len)
+        .into_iter()
+        .find(|r| r.value == value)
+        .map(|r| r.bytes)
+}
+
+/// The replays of a two-flight run whose second flight was written as a program-start replay
+/// (`tdtool schedule-replay`; VE-9): the first as it is, the second with the seed the first
+/// leaves in the session (flown here in its direct-start world, weapons rev 7 §3.3) and no
+/// checkpoints (they were computed from a program start).
+pub fn chained(
+    l: &Layout,
+    data: &Path,
+    (f1, s1): (u8, &str),
+    (f2, s2): (u8, &str),
+) -> Option<Vec<Replay>> {
+    let (r1, mut r2) = (replay(l, f1, s1)?, replay(l, f2, s2)?);
+    let dir = DataDir::open(data).unwrap();
+    let res = ExeResources::load(&dir).unwrap();
+    let Some(ResourceValue::Bytes(table)) = res.get("flight.muzzle_offsets").cloned() else {
+        panic!("muzzle table");
+    };
+    let ep = l.episode;
+    let muzzles = direct_start_world_music(ep, f1, &table, true, |f| dir.read(f)).unwrap();
+    let map = TileMap::parse_episode(&dir.read(episode::map_file(ep, f1)).unwrap()).unwrap();
+    let world = episode::world(ep, f1, map, muzzles);
+    let mission = episode::mission_file(ep, f1)
+        .map(|file| Mission::parse(&dir.read(&file).unwrap()).unwrap());
+    let mut f = Flight::start(f1, mission.as_ref(), &world, Session::for_episode(ep));
+    for &w in &r1.inputs {
+        td_sim::replay::step(&mut f, &world, w);
+    }
+    r2.seed = f.session().rng.seed();
+    r2.interval = 0;
+    r2.checkpoints.clear();
+    Some(vec![r1, r2])
+}
+
 type Fields = Vec<(String, i64, i64)>;
 
 fn field(name: &str, ours: impl Into<i64>, orig: impl Into<i64>) -> (String, i64, i64) {
@@ -830,12 +880,42 @@ pub fn check_run_with(
         Arc::make_mut(&mut session.paths)
             .apply(leg.front_end, |f| dir.read(f))
             .unwrap();
-        let f = check_leg(l, data, &cap, (i + 1, outcome_dump), leg, r, session);
+        let f = check_leg(l, data, &cap, (i + 1, outcome_dump), leg, r, session, None);
         session = f.session();
     }
 }
 
+/// [`check_run`] for one flight that the player quits from the flight menu (VE-9): the menu
+/// the replay opens in tick `abort` (its Esc) is answered with Quit (flight-screens §4.1:
+/// `g_MissionAborted` := 1), so that tick is the flight's last (tick-order step 35) and the
+/// outcome after teardown is compared.
+pub fn check_abort(l: &Layout, (data, oracle): (&Path, &Path), tag: &str, leg: &Leg, abort: u32) {
+    let Some(r) = replay(l, leg.flight, leg.suffix) else {
+        eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
+        return;
+    };
+    let Some(cap) = find_capture(oracle, tag) else {
+        eprintln!("SKIPPED: no {tag} capture under the oracle root");
+        return;
+    };
+    let session = Session::for_episode(l.episode);
+    let f = check_leg(l, data, &cap, (1, true), leg, &r, session, Some(abort));
+    assert!(f.aborted, "flight {}: not aborted", leg.flight);
+    // E2 `g_MissionAborted` DS:11F2 (e2-program-flow §3), after `g_PlayerDied`.
+    if l.episode == Episode::E2 {
+        let end = fs::read(end_dump(l, &cap, 1)).unwrap();
+        assert_eq!(
+            end[l.lost + 2],
+            1,
+            "flight {}: g_MissionAborted",
+            leg.flight
+        );
+    }
+}
+
 /// Compares one flight (generation `generation` of the capture) and returns its final state.
+/// `abort`: the tick whose flight menu the player quits ([`check_abort`]).
+#[allow(clippy::too_many_arguments)]
 fn check_leg(
     l: &Layout,
     data: &Path,
@@ -844,6 +924,7 @@ fn check_leg(
     leg: &Leg,
     r: &Replay,
     session: Session,
+    abort: Option<u32>,
 ) -> Flight {
     let flight = leg.flight;
     let name = format!(
@@ -934,6 +1015,8 @@ fn check_leg(
             // out and back, which zeroes it (hit-flash §4.2; the host's part).
             if m == td_sim::Modal::FlightMenu {
                 f.hit_flash = 0;
+                // Quit (the host's part of the menu): the tick then leaves the loop.
+                f.aborted = abort == Some(t);
             }
             result = f.resume(&world, &td_sim::TickControls::default(), &mut ev);
         }
@@ -961,7 +1044,13 @@ fn check_leg(
             );
         };
         let d = dump(i);
-        let errs = differences(&f, &d, has_proj);
+        let mut errs = differences(&f, &d, has_proj);
+        // A quit tick is compared with the stall record taken while the flight menu was
+        // opening (150 ms after the tick began): the Esc that opened it may still be down
+        // there, and the menu clears the key bytes later (flight-screens §4.1).
+        if abort == Some(t) {
+            errs.retain(|e| !e.starts_with("key "));
+        }
         if !errs.is_empty() {
             panic!(
                 "{name} flight {flight}: first divergence after tick {t} (record frame {}), \

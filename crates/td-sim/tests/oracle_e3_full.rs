@@ -242,3 +242,206 @@ fn flight_19_idle_through_the_offset_wrap_matches_oracle() {
         false,
     );
 }
+
+/// A flight with no input from setup to its end (VE-9, M12 checklist; `tdtool plan --idle`,
+/// replay `e3f<NN>-idle.tdr`), against the capture `ve9-e3f<NN>-idle` (C-0360..): every tick,
+/// the outcome after teardown.
+fn idle(flight: u8) {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let tag = format!("ve9-e3f{flight:02}-idle");
+    full_flight::check_replay(&full_flight::E3, &data, &oracle, flight, "-idle", &tag);
+}
+
+/// e3-mission-logic §7 vector 17: the six trucks of flight 2 drive to row 199 and leave by the
+/// exit rules; A completes the flight in the tick of the last exit and the outcome is 0
+/// (752 ticks).
+#[test]
+fn flight_02_idle_trucks_escape_matches_oracle() {
+    idle(2);
+}
+
+/// e3-mission-logic §7 vector 19 (second part): the trucks of flight 4 reach (199, 111), so the
+/// flight completes with outcome 0 (761 ticks).
+#[test]
+fn flight_04_idle_trucks_escape_matches_oracle() {
+    idle(4);
+}
+
+/// e3-mission-logic §7 vector 15 (second part): flight 8 without input ends with outcome 0
+/// (1,312 ticks).
+#[test]
+fn flight_08_idle_matches_oracle() {
+    idle(8);
+}
+
+/// e3-mission-logic §7 vector 16: the last truck reaches (168, 199) with the player unmoved;
+/// the exit hides it, A sets phase 100, the base test succeeds two ticks later; outcome 0
+/// (1,054 ticks).
+#[test]
+fn flight_09_idle_truck_exit_matches_oracle() {
+    idle(9);
+}
+
+/// e3-mission-logic §7 vectors 6–8 without input: flight 10's counter phases and the truck's
+/// end; outcome 0 (1,049 ticks).
+#[test]
+fn flight_10_idle_matches_oracle() {
+    idle(10);
+}
+
+/// Blocks 16 and 17 in one program run (VE-9; U-284 vector 7, e3-mission-logic §7 flights
+/// 10–21 vectors 19 and 23): flight 16 with `e3f16.tdr` (the forced transmission in tick 278,
+/// phase 5 and the class patch, success in tick 908), the debrief, Esc at the `tdlab` card, the
+/// menu's Enter, Esc at block 17's `kolorvci` card, then flight 17 without input for 300 ticks
+/// with the session flight 16 left. Both flights every tick; and the class tables in the
+/// original's DGROUP (`k_ClassMaxSpeed` DS:041C, `k_ClassAccel` DS:043A): patched after the
+/// freeze (vector 19), restored at flight 17's tick 1 (vector 23).
+#[test]
+fn flights_16_and_17_in_one_run_match_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let tag = "ve9-e3f16-f17";
+    let Some(replays) = full_flight::chained(&full_flight::E3, &data, (16, ""), (17, "-idle"))
+    else {
+        eprintln!("SKIPPED: no replays for flights 16 and 17");
+        return;
+    };
+    let legs = [
+        Leg {
+            flight: 16,
+            suffix: "",
+            muzzles: Muzzles::Capture,
+            ends: true,
+            front_end: &[],
+        },
+        Leg {
+            flight: 17,
+            suffix: "-idle",
+            muzzles: Muzzles::Capture,
+            ends: false,
+            front_end: &[],
+        },
+    ];
+    full_flight::check_run_with(
+        &full_flight::E3,
+        (&data, &oracle),
+        tag,
+        &legs,
+        &replays,
+        true,
+    );
+    let tables = |r: &[u8]| (r[0x041C..0x0425].to_vec(), r[0x043A..0x0443].to_vec());
+    let Some(frozen) = full_flight::tick_record(&full_flight::E3, &oracle, tag, 1, 300) else {
+        return;
+    };
+    assert_eq!(
+        tables(&frozen),
+        (
+            vec![0, 0, 20, 0, 0, 0, 0, 0, 0],
+            vec![0, 0, 4, 0, 0, 0, 0, 0, 0]
+        ),
+        "flight 16 after the freeze"
+    );
+    let first = full_flight::tick_record(&full_flight::E3, &oracle, tag, 2, 1).unwrap();
+    assert_eq!(
+        tables(&first),
+        (
+            vec![24, 28, 32, 28, 28, 28, 24, 28, 32],
+            vec![2, 4, 4, 4, 4, 4, 2, 4, 4]
+        ),
+        "flight 17 at tick 1"
+    );
+}
+
+/// Flight 16 without input (VE-9, C-0378), the first `ticks` ticks against the capture.
+fn flight_16_idle(ticks: usize) {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let Some(mut r) = full_flight::replay(&full_flight::E3, 16, "-idle") else {
+        eprintln!("SKIPPED: no replay for flight 16-idle");
+        return;
+    };
+    r.inputs.truncate(ticks);
+    let leg = Leg {
+        flight: 16,
+        suffix: "-idle",
+        muzzles: Muzzles::Capture,
+        ends: false,
+        front_end: &[],
+    };
+    full_flight::check_run_with(
+        &full_flight::E3,
+        (&data, &oracle),
+        "ve9-e3f16-idle",
+        &[leg],
+        &[r],
+        true,
+    );
+}
+
+/// U-276 (OB-046): flight 16 without input (VE-9, C-0378): the three convoy trucks (slots 2..4)
+/// drive from the city to (168, 199), slot 4 arriving there in tick 872. Every tick to then.
+#[test]
+fn flight_16_idle_convoy_matches_oracle() {
+    flight_16_idle(872);
+}
+
+/// BUG-34 (U-276, OB-046): the original removes each convoy truck in the tick after it reaches
+/// (168, 199) (slot 4 in tick 873, slot 3 in 880, slot 2 in 887), so rule A posts M2[4] and
+/// forces the transmission in tick 888 with no truck destroyed; e3-mission-logic rev 1 §5.16
+/// calls the exit rules inert (transposed to (199, 168)), and the port keeps the trucks, which
+/// turn back along their paths.
+#[test]
+#[ignore = "BUG-34: the original removes the flight-16 trucks at (168, 199); OB-046 says the exit is inert"]
+fn flight_16_idle_trucks_leave_at_168_199_bug_34() {
+    flight_16_idle(887);
+}
+
+/// The player's death in E3 (VE-9): flight 8 on C-0041's keypad route into the hazard cells
+/// (40, 131..133), tick-keyed (`e3f08-death.tdr`: keypad 2 from tick 22, 6 from 38, 8 from 109,
+/// 6 from 252 to 280). The hazard damage (e3-mission-ships §7 vectors 7–9, OB-054) destroys the
+/// ship; the end sequence and its hit flash 17, 15, …, 0 (sim/hit-flash §6 vector 1) are
+/// compared every tick to the end of the flight (297 ticks) and the outcome after teardown.
+#[test]
+fn flight_08_hazard_death_matches_oracle() {
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_replay(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        8,
+        "-death",
+        "ve9-e3f08-death",
+    );
+}
+
+/// The flight model's LIKELY parts in a capture (VE-9; flight-model §4.3–§4.6, collision rule
+/// 1): flight 9 from the hangar, keypad 4 for ticks 1..149 (against the hangar wall), keypad 2
+/// for 150..349 (vertical bounces off the hangar's south wall, ticks 180..198), keypad 8 and 6
+/// together for 350..499 (the diagonal steering out of the hangar), keypad 8 for 500..649, then
+/// nothing to tick 700. Every tick (the flight does not end).
+#[test]
+fn flight_09_movement_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E3,
+        &data,
+        &oracle,
+        "ve9-e3f09-move",
+        &[Leg {
+            flight: 9,
+            suffix: "-move",
+            muzzles: Muzzles::Capture,
+            ends: false,
+            front_end: &[],
+        }],
+    );
+}
+
+/// e3-mission-logic §7 vector 11: flight 12 without input; truck 4 on (93, 76) at teardown,
+/// outcome 0 (645 ticks).
+#[test]
+fn flight_12_idle_matches_oracle() {
+    idle(12);
+}

@@ -495,6 +495,75 @@ fn flight_16_chain() {
     assert_eq!(f.tick(&w, &c, &mut vec![]), crate::flight::TickResult::Done);
 }
 
+/// §7 flights 1–9 vector 1 (VE-9): `Msn_NearLive(5, 0, 15)` with E3's numbers. View (167, 66),
+/// so the player tile is (172, 69) (view + (5, 3)); slot 5 of class 7 at (158, 69) / (157, 69)
+/// / (186, 83) / (186, 84): true / false / true / false.
+#[test]
+fn vector_1_near_live_uses_the_player_tile() {
+    let mut f = scripted(1);
+    view(&mut f, 167, 66, 16);
+    for (tile, near) in [
+        ((158, 69), true),
+        ((157, 69), false),
+        ((186, 83), true),
+        ((186, 84), false),
+    ] {
+        put(&mut f, 5, 7, tile);
+        assert_eq!(f.near_live(5, 0, 15), near, "tile {tile:?}");
+    }
+    put(&mut f, 5, NO_SHIP, (158, 69));
+    assert!(!f.near_live(5, 0, 15), "a gone slot is never near");
+}
+
+/// §7 flights 10–21 vectors 16 and 17 (VE-9): flight 16's forced transmission by the draw page
+/// of the tick in which the trucks are found gone. Page 0 at step 15 of tick t: screen 3 in t
+/// itself, phase 5 after it, `M2[6]` and phase 100 in t + 1, whose step 14 ends the hit flash.
+/// Page 1: no screen in t (the F6 lamp only), screen 3 and phase 5 in t + 1, `M2[6]` and phase
+/// 100 in t + 2.
+#[test]
+fn vectors_16_and_17_flight_16_transmission_by_page() {
+    let w = world(&[]);
+    for page in [0u8, 1] {
+        let mut f = scripted(16);
+        view(&mut f, 40, 150, 16);
+        f.draw_page = page;
+        let mut ticks = vec![];
+        let mut screen_tick = None;
+        for t in 1..=3u32 {
+            let r = f.tick(&w, &TickControls::default(), &mut vec![]);
+            if r == crate::flight::TickResult::Modal(crate::flight::Modal::CommViewer) {
+                assert_eq!(f.mission.transmission, 3, "page {page}");
+                assert_eq!(
+                    f.mission.phase, 3,
+                    "page {page}: phase while the screen shows"
+                );
+                assert!(!f.mission.comm_pending, "page {page}");
+                screen_tick = Some(t);
+                f.resume(&w, &TickControls::default(), &mut vec![]);
+                assert_eq!(f.mission.phase, 5, "page {page}: phase after the screen");
+                assert!(f.mission.tint, "page {page}");
+                assert_eq!(f.classes.max_speed[2], 20, "page {page}");
+                // The flash the next tick's step 14 must end.
+                f.hit_flash = 9;
+            }
+            ticks.push((f.mission.phase, f.mission.ticker.message));
+        }
+        let t = screen_tick.expect("the transmission screen");
+        assert_eq!(t, 1 + u32::from(page), "page {page}: screen tick");
+        assert_eq!(
+            ticks[0].0,
+            if page == 0 { 5 } else { 2 },
+            "page {page}: tick 1"
+        );
+        assert_eq!(
+            ticks[t as usize],
+            (PHASE_DONE, Some(M2(6))),
+            "page {page}: the tick after the screen"
+        );
+        assert_eq!(f.hit_flash, 0, "page {page}: step 14 after phase 5");
+    }
+}
+
 /// §7 vector 25: flight 18's rule A one tick after the timer.
 #[test]
 fn flight_18() {
