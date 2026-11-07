@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `enhanced/presentation` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, intentional deviation, Enhanced profile only. The Classic profile is unaffected |
 | **Decision** | [ADR-0006](../../adr/0006-enhanced-presentation-pipeline.md); requested by the user, 2026-11-05 |
@@ -79,7 +79,8 @@ compose (indexed, W x 200)        <- flight screen / front-end screens, as today
 
 - The 320 × 32 HUD bar is drawn at x = *m*.
 - The side panels of the HUD band are filled with a mirrored repeat of the bar's outermost 16 columns (columns 0, 1, .., 15, 15, .., 0, 0, 1, .. outward), darkened by half at the RGBA stage, so the frame is continuous at every seam.
-- All 320 × 200 front-end screens (menus, story, dialogue, comm screens, Esc menu, F5 map) are centred, with black side panels.
+- The flight's own 320 × 200 screens (comm screens, Esc menu, F5 map, the real-time screens of the mission events, the opening fade) are centred in the *W*-wide frame, with black side panels, so the picture keeps its size inside a flight.
+- Every other screen (menus, story, dialogue, the port's own screens) is presented 320 wide (rev 6, M12-18, VE-8's F10): the window scaling fits the 320 × 200 frame, so text keeps its Classic size in any window, as under the Classic profile. Before rev 6 these screens were centred in the *W*-wide frame too, which made text 25–43 % smaller in a widescreen window (17.9 px instead of 24 at 16:9 in the default 1280 × 960 window).
 - Text drawn over the finished flight picture is an overlay, not a screen. That covers the infra-red notice and, from rev 4, the pause line. It is drawn over the wide frame at x = *m*, with the pixels it does not touch keeping the wide picture (`widescreen::overlay_centred`). While paused, the frame is the one the pause was drawn over (the tick is suspended).
 
 ## 5. Upscaling (M12-10)
@@ -167,6 +168,8 @@ vis_l(p)   = 1 if l does not cast shadows, else the fraction of the segment pos_
 
 - Bloom runs after upscaling, at output resolution.
 - It covers the whole flight frame, HUD rows included, so the lamps glow. It never runs on front-end screens or the flight modals.
+- The reduce-flashing option (frontend/port-front-end rev 5 §3.5) turns bloom off, removes the muzzle-flash lights and scales the explosion intensities of §6.1 by 0.4.
+- How it is computed (rev 6, M12-18; the output is the same): with lighting on, step 1 for the playfield rows is done while the light map modulates each pixel (`LightMap::apply_with_bloom`), and only the HUD rows are read again; a pixel whose green byte is too dark for any red and blue to reach 0.9 is rejected at once; the vertical blur pass and step 4 visit only the columns between the first and the last that hold any glow in each row.
 
 ### 6.4 Interaction with original palette effects
 
@@ -186,6 +189,26 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
   - 5.1 ms on 6 threads.
 - Per-frame buffers are reused, with no allocation in the steady state.
 - A `tdtool bench-enhanced` command, or a criterion-free timing test behind `--ignored`, reports the time per stage.
+
+**Rev 6 (M12-18, IM-25): the bloom and lighting cost on real flights.** M12-soak §4 found the heaviest setting over budget on 4 threads (6.4 ms) and at the edge on 6. The speed-ups of §6.3's last item and one in the light map (where both samples of a pixel's tap hold the ambient, the gain is the ambient whatever the weights, so the pixel goes through a per-frame table) change no output: `bloom_with_the_light_map_is_bit_identical` compares with digests recorded from the code before, and `frame_cost` with `TD2192_BENCH_DIGEST` gives the same digest of every output of 750 real frames (E1 1, 13, 7; E2 13; E3 15) for all four settings before and after.
+
+`td2192::flight::lights::tests::frame_cost` (release, `--ignored`; E1 flights 1 and 13, 400 frames each), i7-10700F, 2026-11-06, other agents' builds running (load 15–25 %). The builds before and after were run alternately, three rounds each; frame = compose + light scene + pipeline, milliseconds:
+
+| Setting | Threads | Median before (3 runs) | Median after (3 runs) | p95 before | p95 after |
+|---|---:|---:|---:|---:|---:|
+| Preset: 16:9, xbr3, subtle | 4 | 1.96 (1.91–2.06) | 1.87 (1.75–1.87) | 2.47 | 2.38 |
+| Preset | 6 | 1.63 (1.60–1.63) | 1.50 (1.48–1.53) | 2.32 | 2.10 |
+| Preset | 16 | 1.46 (1.44–1.47) | 1.36 (1.36–1.38) | 1.94 | 1.88 |
+| 16:9, xbr3, subtle, bloom | 4 | 3.00 (2.88–3.10) | 2.62 (2.46–2.63) | 3.71 | 3.43 |
+| 16:9, xbr3, subtle, bloom | 6 | 2.40 (2.38–2.40) | 2.14 (2.13–2.17) | 3.25 | 2.94 |
+| 16:9, xbr3, subtle, bloom | 16 | 2.17 (2.16–2.19) | 2.00 (2.00–2.02) | 2.87 | 2.67 |
+| **Heaviest: 21:9, xbr4, full, bloom** | 4 | **6.68** (6.38–6.82) | **5.45** (5.13–5.46) | 8.01 | 6.74 |
+| **Heaviest** | 6 | **5.44** (5.42–5.45) | **4.58** (4.50–4.64) | 7.17 | 6.16 |
+| **Heaviest** | 16 | **5.03** (5.02–5.04) | **4.40** (4.37–4.41) | 6.38 | 5.53 |
+
+- Of the heaviest frame on 4 threads after the change: light map 0.07, modulation with the bright pass 1.9, the HUD rows' bright pass 0.15, blur 0.25, upsample 0.29; the rest is the palette and xBR 4× (about 2.8). Bloom fell from about 2.0 ms (bright pass 0.75, blur 0.39, upsample 0.85) to about 0.7.
+- **Against the 6 ms budget:** the heaviest setting now fits at the median on 4, 6 and 16 threads (it was over on 4); its 95th percentile fits on 16 threads and is 3 % over on 6 and 12 % over on 4, in runs where other agents' builds kept the machine 15–25 % busy (M12-soak §4's quieter 6-thread run had 6.12 ms before the change). The D5 preset (1.4–1.9 ms) and Classic (0.1 ms) are far inside it. The next step, if needed, is the xBR 4× upscaler, now the largest stage.
+- The synthetic busy night of `tests/enhanced_lighting_timing.rs` (49 lights, glow nearly everywhere) gains less (lighting and bloom about 5.3 → 4.8 ms on 4 threads): its glow covers most columns of most rows.
 
 ## 8. Tests
 
@@ -222,3 +245,4 @@ Budget: at most 6 ms per presented frame on a mid-range desktop CPU (release bui
 | 3 | 2026-11-05 | IM-13 | §6 made precise from the implementation (M12-11, M12-12): source positions and which sources are added (muzzle flash by shot age, explosions drawn or not), occluder grid extent, the HUD lamp entries, the light's own cell excluded from the shadow march, the march points, the half-resolution sample grid, the clamp in both modes, fixed-point precision; §6.3 luminance weights, box mean, blur order, linear-light add, and that bloom covers the HUD rows. §6.1 table tuned by eye in the E1 flight-1 arena (Q1): shot intensity 0.9 → 0.5, because a volley's overlapping lights saturated into a flat tint; engine glows 20 px / 0.35 → 22 / 0.5 (player) and 16 / 0.25 → 18 / 0.4 (mission ships), because they were invisible at night. §7 budget split (lighting and bloom at most 4 ms) and measured timings |
 | 4 | 2026-11-06 | IM-16 | §4.3: the pause line is an overlay drawn over the wide frame, like the infra-red notice. §3: fixed-colour marks (the colour-blind guidance line, which takes this pipeline at *W* = 320 under either profile) and the F12 output screenshot at the pipeline's size |
 | 5 | 2026-11-06 | IM-22 | §2: the D5 preset (16:9, xbr3, subtle, bloom off) under the Enhanced profile; `[enhanced]` holds only explicit choices (frontend/port-front-end rev 3 §3.4) |
+| 6 | 2026-11-06 | IM-25 | M12-18: §4.3 screens outside the flights presented 320 wide (text keeps its size); §6.3 reduce flashing turns bloom off and softens the lights, and how bloom is computed faster with the same output; §7 frame cost before and after on real flights |
