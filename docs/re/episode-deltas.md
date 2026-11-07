@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Document** | RE knowledge base, cross-episode deltas |
-| **Revision** | 4 (2026-11-06) |
+| **Revision** | 5 (2026-11-06) |
 | **Task** | M1-09 (RE-7, Archaeologist + Spec author) |
 | **Read with** | The E1 specs under [docs/spec/](../spec/), [EXECUTABLES.md §1.1](EXECUTABLES.md#11-ghidra-image-base-segments-and-dgroup-m0-08-2026-11-02), symbol tables [td2.csv](symbols/td2.csv), [td3.csv](symbols/td3.csv) |
 | **Confidence** | Unit and function identity: CONFIRMED (instruction-level comparison of every function, §2). Behavioural deltas: CONFIRMED where a row says so (static reading of the instruction stream), otherwise as stated |
@@ -147,7 +147,9 @@ E2/E3 order:
 3. `Gfx_HitFlashStep`;
 4. decrement.
 
-For flash frames 1..4 the final DAC is the same in both orders, so no visible difference is expected (LIKELY; a capture would confirm it).
+When no white flash runs (flash frames 0) the two orders are the same. While one runs, E2/E3 cancel the hit flash **before** `Gfx_HitFlashStep`, which therefore writes nothing, and E1 decays and writes the hit flash and then overwrites it: frames 4, 3 and 2 rewrite all 256 entries, and frame 1 rewrites all of them in palette modes 0 and 1. So the final DAC and `g_HitFlash` (0 in both) are the same in every case but one: **flash frame 1 in palette mode 2 with `g_HitFlash` > 0 at the step** (frame 1 writes nothing in mode 2, OB-032). There E1 leaves the hit-flash entries of mode 2 over frame 2's colours, and E2/E3 leave frame 2's colours. That case needs a homing kill (class 5, weapon 6) during infra-red mode 2 plus a distance flash in the same few ticks: E3 has no infra-red flight and E2's (3, 10) fly class 2, so only an F5 switch to a class-5 ship could reach it (U-204 resolved, RE-20: static; the state is confirmed every tick by the L5 harness in all E2/E3 whole flights, including 23 captures with framebuffer dumps taken during a hit flash, and C-0207/C-0321 during white-flash frames). Port: in E2 and E3, run the white-flash writes, then the cancel, then the hit-flash step.
+
+**Double kill of a wreck (OB-026) in captures.** E2/E3 leave the class of a destroyed ship alone until the AI pass of the same tick removes it (armour < 1), so every further shot of the same projectile step that reaches the wreck counts another kill: 57 such ticks in the E2/E3 whole-flight captures (C-0120..C-0154, C-0202, C-0204), up to 6 kills for one ship in one tick (C-0121 tick 941: kills 16 → 22, slot 15); td-sim equals every one of them (U-204 resolved).
 
 **Per-flight event routines.** These are new. Their rules belong in the M10 mission specs; summaries follow.
 
@@ -810,3 +812,4 @@ This table lists every routine that is not IDENT in E2 or E3, plus the new routi
 | 2 | 2026-11-02 | RE-9 (M10-01) | §10 message-table row is `Msn_LoadTargetInfo` `1E0B:0DCC`; `Msn_UpdateB` completed; OB-018 E2 instance; U-200, U-201, U-205 resolved; corrections §13.1. E2 per-flight content now lives in sim/e2-mission-setup, sim/e2-mission-logic, sim/e2-mission-ships and flow/e2-program-flow |
 | 3 | 2026-11-05 | RE-10 (M10-02) | E3 corrections (§13.2): flight-12 patch, hazard tiles on `td4.map` only (C-0041), U-202 and U-203 resolved, U-205 confirmed for E3 (C-0036, C-0041), comm viewer order, `Msn_LoadTargetInfo` `1BD8:0DCF`, OB-028 corrected, campaign details. E3 per-flight content now lives in sim/e3-mission-setup, sim/e3-mission-logic, sim/e3-mission-ships and flow/e3-program-flow |
 | 4 | 2026-11-06 | RE-17 | §5.1 P4, P5: step 4's kind-6 branch is unreachable in all three episodes (U-421); E1/E3 step 3 keeps the projectile-kind store and plays no sound. The E2/E3 two-digit muzzle bytes (U-441) are in [weapons](../spec/sim/weapons.md) rev 5 §3.3.2, §3.3.3 |
+| 5 | 2026-11-06 | RE-20 (Archaeologist) | §4.1: the palette-effect reorder differs from E1 only for flash frame 1 in mode 2 with a hit flash running (static, U-204); OB-026 double kills: 57 ticks in the E2/E3 whole-flight captures, all reproduced |

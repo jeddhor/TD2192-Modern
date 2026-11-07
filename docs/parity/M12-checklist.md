@@ -743,75 +743,77 @@ The other 67 are listed here. "Closable" means existing captures or tests alread
 
 | U-id | Pri | Topic | Port today / evidence |
 |---|---|---|---|
-| U-001 | P1 | Canonical tick rate | 19.2015 Hz; measured (C-0074, C-0010). **Closable** once ADR-0007 is accepted |
-| U-009 | P1 | Map collision (ships, shots) | Player, ship and shot collisions are reproduced by C-0007/8, C-0009, C-0011 and 78 full flights. **Likely closable** for E1–E3; vertical bounces are uncaptured |
-| U-024 | P1 | Key bindings, joystick mapping | Keys confirmed by the full flights; the joystick was never captured |
+| U-001 | P1 | Canonical tick rate | **Resolved** (RE-18): ADR-0007 accepted, 19.2015 Hz |
+| U-009 | P1 | Map collision (ships, shots) | **Resolved** (RE-18): every collision reproduced; only the player's vertical bounce and the map-edge push-back are static (LIKELY) |
+| U-024 | P1 | Key bindings, joystick mapping | **Keyboard confirmed** (RE-20: every flight key byte exercised by the whole-flight captures; Alt by C-0341). Open: the joystick, which the oracle cannot drive; recipe (an oracle 4 `joy` action) in UNKNOWNS |
 | U-044 | P3 | E1 flight 21 | Static only; no capture |
 | U-061 | P3 | Small-font `!` lookup | The port draws nothing (OB-004) |
-| U-062 | P2 | Typing speed | One character per frame at P1 is confirmed (C-0002); real hardware open |
+| U-062 | P2 | Typing speed | **Resolved** (RE-19, with U-521) |
 | U-063 | P3 | `Read(ch)` then `Read(s)` on 3-byte speaker lines (E3) | Port per spec |
 | U-080 | P3 | Which condition leads to each E1 game-over path | Flow tests only |
 | U-126 | P3 | Byte 1Ah in the dialogue scripts | Port reads a plain byte |
-| U-140 | P2 | Does `death.cmf` loop? | Port: looping off |
+| U-140 | P2 | Does `death.cmf` loop? | **Resolved** (RE-20): `death` never loops (it is cut by the next song or ends while the flag is still 0; seven captures). Port as implemented |
 | U-141 | P3 | Effect id 1 | Port keeps the playing sound |
-| U-144 | P2 | Mission globals reset between flights | Port per mission-logic §3.3; **not verifiable with direct starts** (§0 item 3) |
+| U-144 | P2 | Mission globals reset between flights | **Resolved** (RE-20, static CONFIRMED): every flight start clears comm pending, the cut-scene request, the event counter, the 20 base-hit bytes (bomb flag included), the ion timer and the indicator phase. **Port change needed**: the port carries them across flights (STATUS, RE-20) |
 | U-145 | P3 | Mission-explosion slots and `Random` calls | Port: slots 1..20; C-0057, C-0067, C-0090 pass |
-| U-146 | P2 | Flight-19 armour := 1 | **Closable** (C-0069, §5.2) |
+| U-146 | P2 | Flight-19 armour := 1 | **Resolved** (IM-22) |
 | U-147 | P3 | Keys during the cut-scene and the V.C.I. screen | See U-450 |
 | U-162 | P3 | Detour step with a facing not in {2, 4, 6, 8} loops forever | Would be a hang (fix-all) if reachable |
 | U-180 | P3 | Flight-7 guidance rule pre-empts the message | C-0057 passes (phase 100 at t648) |
-| U-182 | P2 | Flight-8 soft lock reachable? (OB-022) | Classic preserved |
-| U-184 | P3 | Flight-20 lander success rule | C-0090 passes (success at t424). **Likely closable** |
+| U-182 | P2 | Flight-8 soft lock reachable? (OB-022) | **Resolved** (RE-20, C-0342): yes, with plain input (head east when phase 3 starts); td-sim equal. OB-022 escalation is the owner's call |
+| U-184 | P3 | Flight-20 lander success rule | **Resolved** (RE-18) |
 | U-185 | P3 | Ticker text past x = 351 | Port clips |
-| U-204 | P2 | E2/E3 double kill (OB-026), palette-step order | Implemented; no capture of a double kill |
+| U-204 | P2 | E2/E3 double kill (OB-026), palette-step order | **Resolved** (RE-20): 57 double-kill ticks in the E2/E3 captures, all reproduced; the palette reorder differs only for flash frame 1 in mode 2 with a hit flash running (static; port change: E2/E3 order) |
 | U-206 | P3 | E2/E3 menu details | Partly resolved; C-0120 and C-0125 match the menus |
 | U-220 | P3 | F5 closed by typematic repeat | Port ignores the repeat |
 | U-221 | P3 | E1 transmissions 2..9 | State confirmed for all nine in full flights (C-0052..C-0068); screen pixels only for transmission 1 (C-0013) |
 | U-222 | P3 | Afterburner flame, explosion and shot drawing | Static only |
 | U-224 | P3 | Comm inks follow the IR palette | Port follows the code |
 | U-226 | P3 | Flight-21 F5 shows stale data | Static |
-| U-227 | P3 | Byte before the row buffer | Port 0 (observed) |
+| U-227 | P3 | Byte before the row buffer | **Resolved** (RE-19) |
 | U-228 | P3 | Hint screens flush after the fade-in | Port per spec |
 | U-229 | P3 | Main-menu debug leftovers | Port per spec |
 | U-230 | P3 | Transmission 2, line 16 box | Port: box A |
-| U-231 | P3 | Does the comm viewer fade? | Port: no fade. **Closable:** C-0058 keeps the hit flash (10) across the screen, so it does not fade (M9-playthrough, harness note) |
+| U-231 | P3 | Does the comm viewer fade? | **Resolved** (RE-18): no fade |
 | U-240 | P3 | E2 empty slots given a class later | 20 E2 full flights pass |
-| U-241 | P2 | E2 setup vectors (flights 2, 8, 17) | **Closable:** setups compared in C-0121, C-0132, C-0143 |
-| U-242 | P2 | E2 flight-8 slot 11 loops (OB-036) | C-0132: slot 11 gone at t1860, phase 100 at t1861, port equal; check whether that was a kill or a removal |
-| U-243 | P3 | E2 flight-2 slot 8 (OB-035) | **Closable:** C-0121 tick 1 shows "slot 8 class FF" and matches |
+| U-241 | P2 | E2 setup vectors (flights 2, 8, 17) | **Resolved** (RE-18) |
+| U-242 | P2 | E2 flight-8 slot 11 loops (OB-036) | **Resolved** (RE-20, C-0132): slot 11 loops; it leaves when a turn at the path end crosses (1, 122) (second lap, tick 1860), else it must be destroyed. Port equal (L5) |
+| U-243 | P3 | E2 flight-2 slot 8 (OB-035) | **Resolved** (RE-18) |
 | U-244 | P3 | Base test during the end sequence | Static |
 | U-245 | P3 | E2 flight-16 transmission (OB-038) | Not tested (§4) |
-| U-246 | P2 | E2 flight-13 ghost volleys (OB-039) | ASSUMPTION in `shots.rs:90`; not exercised |
+| U-246 | P2 | E2 flight-13 ghost volleys (OB-039) | ASSUMPTION in `shots.rs`; C-0139 never destroys the Areo-1, so no capture yet. Static: the ghost shots are invisible and hit hard (30/54/78 to the player). Recipe in UNKNOWNS |
 | U-247 | P3 | E2 flight-18 race | Static |
 | U-248 | P3 | E2 flight-11 slot-12 exit | C-0137 passes along its path |
 | U-249 | P3 | E2 front end in captures | Partly resolved; C-0120, C-0015 and C-0016 match |
 | U-251 | P3 | E2 17/18: died and lost both set | Flow test `lost_flights_17_and_18` |
 | U-271 | P3 | E3 flight-8 F6 lamp | Static (`logic/e3/tests.rs::flight_8`) |
-| U-272 | P2 | E3 flight-5 escort on (80, 199) | **Closable:** C-0129 passes ("slot 2 hidden at (80, 199)", phase 100 at t853) |
-| U-274 | P2 | E3 flight 16: ships after the freeze | C-0152 ends one tick after the freeze; not exercised |
-| U-276 | P2 | E3 OB-046 convoy turns back | Static |
+| U-272 | P2 | E3 flight-5 escort on (80, 199) | **Resolved** (RE-18) |
+| U-274 | P2 | E3 flight 16: ships after the freeze | Not captured; recipe (C-0152 continued 300 ticks past the freeze) in UNKNOWNS |
+| U-276 | P2 | E3 OB-046 convoy turns back | C-0340 confirms that E3 row 199 removes nothing; td-sim keeps the trucks for 6,000 idle ticks. The post-freeze part waits for U-274 |
 | U-277 | P3 | E3 flight-10 medical truck | C-0159 (idle run, truck destroyed at t1048) partly |
-| U-278 | P3 | E3 flight 14: slots vanish | **Closable:** C-0150 compares every slot every tick through ticks 76 and 176 |
+| U-278 | P3 | E3 flight 14: slots vanish | **Resolved** (RE-18) |
 | U-279 | P3 | E3 F5 entry 21 presentation | Static |
 | U-280 | P3 | E3 front end in captures | Partly confirmed (C-0036, C-0041, C-0125) |
 | U-282 | P3 | OB-051 in the rig | Flow test only |
 | U-283 | P3 | E3 F5 fixed points | Static (`map.rs::e3_board`) |
-| U-284 | P2 | E3 setup vectors 3–9 | **Closable for 3, 4, 5, 8, 9:** setups compared in C-0136, C-0148, C-0129, C-0154, C-0151. Vectors 6 (flight 7) and 7 (after flight 16) stay open |
+| U-284 | P2 | E3 setup vectors 3–9 | **Partly resolved** (RE-18): vectors 3–6, 8, 9 confirmed; vector 7 needs a block-16 campaign run (recipe in UNKNOWNS) |
 | U-285 | P3 | E3: anything visible before the flight fade-in | Ties in with BUG-10 |
 | U-286 | P3 | E3 hazard: armour gauge during the wrap | Static |
 | U-302 | P3 | E1 front-end details (a–e) | ASSUMPTIONs (§5.2) |
 | U-312 | P3 | E2 abort cursor in block 1 | Port follows §4.2 |
 | U-330 | P3 | E3 flight-16 afterburner test placement | ASSUMPTION |
 | U-350 | P3 | `maraud3` separators | ASSUMPTION |
-| U-430 | P3 | E3 flight-10 hangar re-entry | Original: yes (C-0182, C-0183); td-sim not compared (§4) |
+| U-430 | P3 | E3 flight-10 hangar re-entry | **Resolved** (VE-5) |
 | U-440 | P3 | Long E1 campaign: `g_MemAvailText`, font segment | Not verifiable with direct starts (OB-017) |
-| U-450 | P3 | Keys during the real-time screens | ASSUMPTION in `td2192` `held_controls` |
+| U-450 | P3 | Keys during the real-time screens | **Resolved** (RE-19); BUG-23 fixed (IM-24) |
 | U-451 | P3 | `Crt.Delay` at P1 | Port uses real ms; cut-scene about 12 retraces short |
 | U-461 | P3 | Fade crossover | Port 380 |
 | U-470 | P3 | WORX status phase | Port X / R |
 | U-480 | P3 | E2/E3 menu drain key | Feeds M10-46 |
+| U-570 | P2 | Ship offsets after the 16-bit wrap (BUG-18) | **Resolved** (RE-20, C-0340): the wrap, the one-row-a-tick climb and the removal are reproduced by td-sim for 4,499 ticks. **Port changes needed**: the 16-bit hit tests (abs16), the volley-spawn and explosion adds (overflow panics), the i16 draw test and low-byte sprite row (mission-ships rev 8 §4.2.5) |
+| U-571 | P3 | Alt flicker on typematic repeats | **Resolved** (RE-20, C-0341): one flip per tick per repeat, no debounce, in all three episodes; the port's model is right (OB-176 proposed) |
 
-By priority: three P1 (U-001, U-009, U-024); thirteen P2 (U-062, U-140, U-144, U-146, U-182, U-204, U-241, U-242, U-246, U-272, U-274, U-276, U-284); the rest P3. Ten rows are closable or likely closable from existing evidence: U-001 (after the ADR), U-009 (likely), U-146, U-184 (likely), U-231, U-241, U-243, U-272, U-278, and U-284 in part.
+By priority, as written (VE-6): three P1 (U-001, U-009, U-024); thirteen P2 (U-062, U-140, U-144, U-146, U-182, U-204, U-241, U-242, U-246, U-272, U-274, U-276, U-284); the rest P3. **State after RE-20 (2026-11-06):** P1: U-001 and U-009 resolved, U-024 partly (keyboard confirmed, joystick open). P2: U-062, U-140, U-144, U-146, U-182, U-204, U-241, U-242, U-272 resolved; U-284 partly (vector 7 open); U-246, U-274 and U-276 open, each with a capture recipe in UNKNOWNS. Added since: U-570 (P2) and U-571 (P3), both resolved. P3 rows resolved since the table was written: U-184, U-227, U-231, U-243, U-278, U-430, U-450. Port changes that follow from these: U-144 (clear the flight-start globals), U-570 (16-bit position arithmetic), U-204 (E2/E3 palette-step order); see STATUS.
 
 ## 7. M12-03 bug-parity review (`original-bugs.md`)
 
