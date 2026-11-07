@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
 | **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014), the 16 heading blits (C-0080) |
@@ -558,7 +558,7 @@ E3 sets no cut-scene request ([e3-mission-logic](../sim/e3-mission-logic.md) §2
 | Quirk | Original behaviour | Port policy (proposal) |
 |---|---|---|
 | Menu clears the wrong key bytes (OB-030) | Keypad 8/2 repeat while held | Preserve (Classic) |
-| IR palette differs by path (OB-029) | Mode 1 after a menu, help or comm fade uses B/8 and no entry-37 fix; after a hit flash ends, truncating formulas | Preserve |
+| IR palette differs by path (OB-029) | Mode 1 after a menu, help or ship-library fade uses B/8 and no entry-37 fix (the comm viewer does not fade: no call of `0E8B:01F6`/`0426` from `0E8B:80D3` or `0E8B:5435`; C-0058 keeps the hit flash across it; U-231); after a hit flash ends, truncating formulas | Preserve |
 | White flash in mode 2 (OB-032) | Last frame restores nothing: the screen stays (63, B, B) until the next hit flash or Alt | Preserve (Classic), fix-enhanced |
 | Explosions at the top edge (OB-033) | Skipped on page 0 frames only: flicker at the top of the playfield | Preserve |
 | Comm Space wait ignores the joystick (OB-031) | Joystick players must press Space | Preserve; Enhanced may accept a button |
@@ -647,3 +647,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | 3 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | §4.9 pixel transform of all 16 heading blits (U-360): mirrors on E, S, NE, SE and the four mirrored 22.5°/67.5° headings; one-pixel shift on ten blits; 40 × 40 boxes drawn at the 32 × 32 corner, not centred. Test vector 20 (C-0080, every heading of the player) |
 | 4 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §4.10 new: the flight-17 cut-scene and the flight-19 V.C.I. screen in full (frame, image rows, text pens and inks, delays, DAC flashes, page-0 clear, keys, tick); list of the other mission-requested real-time effects of E1–E3 (BUG-3) |
 | 5 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.3: flight fades take 2 frames per level at P1, 33–34 frames (BUG-8, C-0012); §3.5: menu item ramp 11 steps per frame (C-0012), poll delay in real ms; §4.10 delays are `Crt.Delay` (real ms) |
+| 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §5 OB-029 row: the comm viewer has no fade (U-231 resolved: the flight fades' callers are the menu, help, ship library, joystick calibration, the flight-17/19 screens and flight start/end; C-0058) |

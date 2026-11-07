@@ -128,10 +128,10 @@ Consequences:
 | Quirk | Original | Port policy |
 |---|---|---|
 | Negative 16-bit square | RunError 207 in `Sqrt` (reached first in `Snd_PlayEffect`, OB-009) | fix-all with OB-009: no flash |
-| Wrapped square ≥ 65,536 | Distant kill flashes | preserve (unreachable in practice) |
+| Wrapped square ≥ 65,536 | Distant kill flashes | preserve (unreachable in practice) (OB-145) |
 | Flash 1 or 2 shows nothing but rewrites the palette | IR palette changes variant (OB-029) | preserve |
 | Exclusion list names 85h, 86h, 90h, C1h | No effect (U-225) | follow the code |
-| "Red" flash also raises green | Orange-yellow tint | preserve |
+| "Red" flash also raises green | Orange-yellow tint | preserve (OB-145) |
 
 ## 6. Test vectors
 

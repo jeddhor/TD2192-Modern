@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `render/hud` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for geometry, element positions and colours; T1 for update order and for the two game rules found here (§4.3, flight 7) |
 | **Confidence** | CONFIRMED for the display geometry, both bars, the missile column, the radar (map, ship markers, player), the compass lamps and the guidance dots: a model written from this spec reproduces C-0002 frame 3543 with 0 differing pixels (§6). LIKELY for the ticker window, the F6 indicator and the weapon icon (static) |
@@ -293,9 +293,9 @@ if comm pending = 0 and phase ≠ 0:  phase := 0; draw frame 0
 | Ticker at half rate | Advances on page-0 ticks only | Preserve |
 | Radar ships one pixel east | Ships and shots are plotted at buffer column tile − view + 10, the map at tile − view + 9 | Preserve (T0); OB-019 |
 | Guidance, same column | Directly above/below uses `viewY − ty + 2 > 0`: a target exactly one row above the player tile gets the "down" angle | Preserve; OB-020 |
-| Low-armour red 64 | When missionTicks mod 8 = 0 the entry is set to 64, which the 6-bit DAC shows as 0; the flight palette keeps 64 (fades read it) | Preserve the stored value; display `v & 63` |
-| Low-armour colour after recovery | Entry 90h keeps its last red value when armour rises above 6 (cheat chord, flight-20 rule) | Preserve |
-| Missile column with 26 vs 27+ missiles | Both light rows 2..29; row 2 keeps colour 26h | Preserve |
+| Low-armour red 64 | When missionTicks mod 8 = 0 the entry is set to 64, which the 6-bit DAC shows as 0; the flight palette keeps 64 (fades read it) | Preserve the stored value; display `v & 63` (OB-142) |
+| Low-armour colour after recovery | Entry 90h keeps its last red value when armour rises above 6 (cheat chord, flight-20 rule) | Preserve (OB-142) |
+| Missile column with 26 vs 27+ missiles | Both light rows 2..29; row 2 keeps colour 26h | Preserve (OB-142) |
 | Ticker strip wrap | Text past x = 351 continues one VGA row lower at x − 352; the trailing spaces of every message write background into rows 737..741 at x ≈ 0..46 | Preserve (emulate the strip as 352-pixel rows); U-185 asks whether any visible ink is hit |
 | Dead code at the player's death | `0E8B:E555` clears a strip (x 8..131, y 12..13) when the word DS:18BA = 2; nothing writes DS:18BA, so it never runs | Not ported (U-186) |
 | Flight-7 rule in the HUD routine | The guidance routine sets phase 100 in flight 7 | Implement it in the mission runtime, called at the same point of the tick (mission-logic §5.7) |
@@ -345,3 +345,4 @@ The transmission indicator pairs with sound effect 200 (`income.voc`, [sfx-polic
 | 1 | 2026-11-02 | RE-3 | Draft from static analysis (M2-09) |
 | 2 | 2026-11-02 | RE-6 (Archaeologist + Spec author) | M6-07 RE part: bars, low-armour pulse, missile lamp and column, compass lamps, guidance line maths, radar markers, ticker strip and window rules, F6 indicator rule, weapon icon source corrected (`g_Weapon`, not the class), `k_TileRadarColour`, test vectors from C-0002 |
 | 3 | 2026-11-06 | RE-15 | §5: OB-090, the weapon icon for weapon 0 (flight 19 as the first flight of a run) shows colour B2h (C-0069) |
+| 4 | 2026-11-06 | RE-18 (Spec author) | §5: the low-armour and missile-column quirks mirrored as OB-142 (no behaviour change) |

@@ -301,11 +301,11 @@ Underflow is never an error: results with exponent ≤ 0 become canonical zero. 
 | Quirk | Original behaviour | Port policy |
 |---|---|---|
 | Subtraction not correctly rounded | Up to 1 ulp high when the exponents differ by ≥ 9 and the aligned operand lost bits (§4.1) | **Preserve** (T1) |
-| −0 | `cmp(−0, +0)` = less; `−0 = 0` is false | **Preserve**. Keep the sign bit when negating zero |
-| Non-canonical zero | Exponent 0 with other bytes nonzero is zero for every operation. `add` returns its other operand unchanged; the bytes survive in `add(x, 0)` = `x` | Preserve byte-exact results (they can reach save files or `state_hash`) |
-| `Cos(0)`, `Sin(π/2)` ≠ 1 | `80 FA FF FF FF 7F` | Preserve |
-| Tiny arguments | `Sin(x) = x` for `e(x) < 108` (\|x\| < 2^−21). `ArcTan(x)` returns `x` for tiny x because the polynomial rounds to `x·1`. `Cos(x)` for tiny x is `sin(π/2 − x)` | Preserve |
-| Huge `Sin`/`Cos` arguments | 0 once `x/2π` has no fractional bits | Preserve |
+| −0 | `cmp(−0, +0)` = less; `−0 = 0` is false | **Preserve**. Keep the sign bit when negating zero (OB-148) |
+| Non-canonical zero | Exponent 0 with other bytes nonzero is zero for every operation. `add` returns its other operand unchanged; the bytes survive in `add(x, 0)` = `x` | Preserve byte-exact results (they can reach save files or `state_hash`) (OB-148) |
+| `Cos(0)`, `Sin(π/2)` ≠ 1 | `80 FA FF FF FF 7F` | Preserve (OB-148) |
+| Tiny arguments | `Sin(x) = x` for `e(x) < 108` (\|x\| < 2^−21). `ArcTan(x)` returns `x` for tiny x because the polynomial rounds to `x·1`. `Cos(x)` for tiny x is `sin(π/2 − x)` | Preserve (OB-148) |
+| Huge `Sin`/`Cos` arguments | 0 once `x/2π` has no fractional bits | Preserve (OB-148) |
 | Overflow inside `Sqrt`/`Sin`/`Cos`/`ArcTan` | Ignored (never seen in testing) | Treat as unreachable; assert in debug builds |
 
 ## 6. Test vectors
