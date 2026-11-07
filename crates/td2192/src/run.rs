@@ -88,8 +88,12 @@ pub fn parse_dev_keys(spec: &str) -> Result<Vec<(u64, Key)>> {
     Ok(out)
 }
 
+/// `--dev-stats`: a tick or a frame (draw and present) longer than this is logged on its own.
+const SLOW: Duration = Duration::from_millis(50);
+
 /// `--dev-stats`: ticks and frames counted over each second of wall time, and the average rate
-/// since the tick rate last changed (the run loop's own clock, `FixedStep`).
+/// since the tick rate last changed (the run loop's own clock, `FixedStep`); ticks and frames
+/// longer than [`SLOW`].
 #[derive(Debug)]
 struct Stats {
     second: Instant,
@@ -109,6 +113,17 @@ impl Stats {
             frame_time: Duration::ZERO,
             rate_since: now,
             rate_ticks: 0,
+        }
+    }
+
+    /// Logs a tick or frame that took longer than [`SLOW`] (a visible hitch).
+    fn slow(&self, what: &str, tick: u64, took: Duration) {
+        if took > SLOW {
+            tracing::info!(
+                target: "td2192::stats",
+                "slow {what} at tick {tick}: {:.1} ms",
+                took.as_secs_f64() * 1e3
+            );
         }
     }
 
@@ -260,9 +275,17 @@ pub fn run(
                 settings: &session,
                 audio: &mut commands,
             };
+            let tick_start = Instant::now();
             flow.tick(&mut ctx, &input);
+            if options.stats {
+                stats.slow("tick", total_ticks + 1, tick_start.elapsed());
+            }
+            let audio_start = Instant::now();
             for c in commands.drain(..) {
                 mixer.command(c);
+            }
+            if options.stats {
+                stats.slow("audio command", total_ticks + 1, audio_start.elapsed());
             }
             let path = rd.user_dir.join("settings.toml");
             if let Some(new) = rd.port.take() {
@@ -313,11 +336,15 @@ pub fn run(
                 break;
             }
         }
+        let audio_start = Instant::now();
         let frames = platform.audio_frames_wanted(AUDIO_TARGET_FRAMES);
         if frames > 0 {
             audio_buf.resize(frames as usize * 2, 0.0);
             mixer.render(&mut audio_buf);
             platform.queue_audio(&audio_buf)?;
+        }
+        if options.stats {
+            stats.slow("audio render", total_ticks, audio_start.elapsed());
         }
         let frame_start = Instant::now();
         let enhanced_frame = enhanced.begin_frame(platform.output_size(), platform.scale_mode());
@@ -330,6 +357,7 @@ pub fn run(
         }
         if options.stats {
             let now = Instant::now();
+            stats.slow("frame", total_ticks, now - frame_start);
             stats.frames += 1;
             stats.frame_time += now - frame_start;
             stats.maybe_log(now, hz, total_ticks);
