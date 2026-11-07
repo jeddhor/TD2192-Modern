@@ -282,3 +282,38 @@ fn flights_19_and_21_with_music_off_match_oracle() {
         &front_end,
     );
 }
+
+/// Ending B (RE-19, C-0324; episode-program-flow rev 7 §6 vector 5): flight 17 at a direct
+/// start, flown with `e1f17.tdr` for ticks 1..150 (ship 1 killed, transmission 8 answered),
+/// every key up from tick 151, then nothing: three ships reach the base and the flight ends
+/// lost at tick 1075 (kills 1). Every tick against the capture; the last against the stall
+/// record after it (no outcome dump: the capture goes on to the retry prompt, the debrief and
+/// the ending-B screens, `td-flow/tests/screens_parity.rs`).
+#[test]
+fn flight_17_lost_matches_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    let Some(mut r) = full_flight::replay(&full_flight::E1, 17, "") else {
+        eprintln!("SKIPPED: no replay for flight 17");
+        return;
+    };
+    r.inputs.truncate(150);
+    r.inputs.resize(1075, 0);
+    r.interval = 0;
+    r.checkpoints.clear();
+    let leg = Leg {
+        flight: 17,
+        suffix: "",
+        muzzles: Muzzles::DirectStart,
+        ends: true,
+        front_end: &[],
+    };
+    full_flight::check_run_with(
+        &full_flight::E1,
+        (&data, &oracle),
+        "re19-e1f17-lost",
+        &[leg],
+        &[r],
+        false,
+    );
+}

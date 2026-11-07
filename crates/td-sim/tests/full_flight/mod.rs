@@ -419,6 +419,12 @@ fn replay_path(l: &Layout, flight: u8, suffix: &str) -> PathBuf {
         .join(format!("e{}f{flight:02}{suffix}.tdr", l.number()))
 }
 
+/// The replay `e<E>f<NN><suffix>.tdr` of `l`'s episode, if it exists.
+pub fn replay(l: &Layout, flight: u8, suffix: &str) -> Option<Replay> {
+    let bytes = fs::read(replay_path(l, flight, suffix)).ok()?;
+    Some(Replay::from_bytes(&bytes).unwrap())
+}
+
 type Fields = Vec<(String, i64, i64)>;
 
 fn field(name: &str, ours: impl Into<i64>, orig: impl Into<i64>) -> (String, i64, i64) {
@@ -791,25 +797,40 @@ pub fn check_replay(l: &Layout, data: &Path, oracle: &Path, flight: u8, suffix: 
 /// before it left (`Flight::session`; the front end between them draws no `Random`), after the
 /// leg's heap uses ([`Leg::front_end`]).
 pub fn check_run(l: &Layout, data: &Path, oracle: &Path, tag: &str, legs: &[Leg]) {
+    let mut replays = vec![];
+    for leg in legs {
+        let Some(r) = replay(l, leg.flight, leg.suffix) else {
+            eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
+            return;
+        };
+        replays.push(r);
+    }
+    check_run_with(l, (data, oracle), tag, legs, &replays, true);
+}
+
+/// [`check_run`] with the replays given (`replays[i]` for `legs[i]`). Without `outcome_dump`
+/// a leg that ends has no outcome dump in the capture: its last tick is compared with the
+/// stall record the original left after it (the state after that tick, before the teardown),
+/// and the original must have flown no further tick.
+pub fn check_run_with(
+    l: &Layout,
+    (data, oracle): (&Path, &Path),
+    tag: &str,
+    legs: &[Leg],
+    replays: &[Replay],
+    outcome_dump: bool,
+) {
     let Some(cap) = find_capture(oracle, tag) else {
         eprintln!("SKIPPED: no {tag} capture under the oracle root");
         return;
     };
-    let mut replays = vec![];
-    for leg in legs {
-        let Ok(bytes) = fs::read(replay_path(l, leg.flight, leg.suffix)) else {
-            eprintln!("SKIPPED: no replay for flight {}{}", leg.flight, leg.suffix);
-            return;
-        };
-        replays.push(Replay::from_bytes(&bytes).unwrap());
-    }
     let dir = DataDir::open(data).unwrap();
     let mut session = Session::for_episode(l.episode);
-    for (i, (leg, r)) in legs.iter().zip(&replays).enumerate() {
+    for (i, (leg, r)) in legs.iter().zip(replays).enumerate() {
         Arc::make_mut(&mut session.paths)
             .apply(leg.front_end, |f| dir.read(f))
             .unwrap();
-        let f = check_leg(l, data, &cap, i + 1, leg, r, session);
+        let f = check_leg(l, data, &cap, (i + 1, outcome_dump), leg, r, session);
         session = f.session();
     }
 }
@@ -819,7 +840,7 @@ fn check_leg(
     l: &Layout,
     data: &Path,
     cap: &Path,
-    generation: usize,
+    (generation, outcome_dump): (usize, bool),
     leg: &Leg,
     r: &Replay,
     session: Session,
@@ -984,6 +1005,26 @@ fn check_leg(
     // The original flew no further tick, and its outcome is ours.
     let last = by_tick.keys().last().copied().unwrap();
     assert_eq!(last, n, "{name} flight {flight}: original's last tick");
+    if !outcome_dump {
+        assert!(
+            stalls.contains_key(&n),
+            "{name} flight {flight}: a stall record after the last tick"
+        );
+        eprintln!(
+            "{name} flight {flight}: PASS {} ticks (the last against the stall record; no \
+             outcome dump), {} slot-ticks, kills {}, succeeded {}, lost {}, died {}, comm {:?}, \
+             events {:?}",
+            cov.ticks,
+            cov.slot_ticks,
+            f.kills,
+            f.succeeded,
+            f.lost,
+            f.died(),
+            cov.comm_viewers,
+            cov.events
+        );
+        return f;
+    }
     let end = fs::read(end_dump(l, cap, generation)).unwrap();
     // g_PlayerDied follows g_MissionLost in every episode.
     assert_eq!(
