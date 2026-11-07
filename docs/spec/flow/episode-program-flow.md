@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/episode-program-flow` |
-| **Revision** | 6 |
+| **Revision** | 7 |
 | **Status** | Draft |
 | **Fidelity tier** | T2 for the order of screens, scenes, dialogue, music and flights (the player sees it); T1 for the state that flows between missions (mission number, kills, outcome flags); T3 for the text-mode configuration screen and the `tdstatus.dat` hand-off (replaced by the port's own shell) |
 | **Confidence** | LIKELY overall (static analysis of the complete sequencer and menu). The mission-1 path is CONFIRMED by capture C-0002 (config → script choice → menu → title card → hangar card → dialogue → hint → flight → retry) |
@@ -285,6 +285,7 @@ flowchart TD
 | 2 | Flight 1 with no input | Player destroyed after about 33 s, retry prompt shown (`051A:6A33`) | C-0002 scenario notes |
 | 3 | Debrief tiers | T = 0 → tier 1; 10 → 2; 20 → 3; 40 → 4; 300 → 11; 30000 → cheater; −1 → cheater | static (`051A:6FF2`) |
 | 4 | Music index | `Snd_PlayMusic(12)` opens `death.cmf`; 13 opens `mood3.cmf` | static (`0E8B:07ED`) |
+| 5 | **Ending B.** Flight 17 (direct start, Esc at the title card) flown with `e1f17.tdr` for ticks 1..150 only (ship 1 killed: phases 2–5; F6 transmission 8 answered at tick 110), every key up from tick 151, then nothing | The ships reach the base: three on tile (107, 106) start the destruction and the flight ends **lost** at tick 1075 (kills 1, armour 15; td-sim predicts the same tick). Retry prompt; Esc declines; `low` + debrief (failure note, outcome 0), `vulture` + C:voffice, D75 (5 page breaks), `death` + C:intro2[0E6B/0E9B/0EC3], game over, menu with `menu.cmf` | C-0324 (`int21.tsv` opens f5804 retry `td.pal`, f5907 `low.CMF`, f6951 `vulture.CMF`/`voffice.scr`, f7703 `dialogue.dat`, f8331 `death.CMF`, f8335 `intro2.scr`, f9079 `menu.CMF`; fb every 10 frames) |
 
 ## 7. Presentation and audio hooks
 
@@ -321,3 +322,4 @@ Music cues are the `Mn` entries in §4.4; the flight picks its own song (§3.1).
 | 4 | 2026-11-05 | RE-13 | §4.6 and Q3: which extra the launcher runs per status ([launcher](launcher.md)); no behaviour change |
 | 5 | 2026-11-06 | RE-14 (Archaeologist + Spec author) | U-207: mission 20 has no `M8` and no debrief (`0000:2C87..2CA5`). U-081: flight 21 outcome handling (only abort tested, died ignored, abort → mission not advanced); in mission 19 the skip tests before flight 21 jump to flight 21, not to the block end (`0000:2A45..2A9D`) |
 | 6 | 2026-11-06 | RE-17 (Archaeologist + Spec author) | U-420: after block 19 the menu adds flight 21's kills (flight 21 zeroes `g_MissionKills` at entry; the only writers are that reset and the two kill increments, `0000:3BBB`/`3942` add it once); §4.4 row 19 and §5 row |
+| 7 | 2026-11-06 | RE-19 (Archaeologist) | §6 vector 5: ending B reached and captured (C-0324): flight 17 lost at tick 1075 by letting the base fall after phase 5, the retry declined, the outcome-0 post-flight story and the ending-B card; no behaviour change |

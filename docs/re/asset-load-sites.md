@@ -59,7 +59,7 @@ All scene routines live in unit `051A`. Unless stated otherwise each one: calls 
 | `td1-16.pic` | `051A:4113` variant 1 | 768 → `g_Palette`; 170 rows × 150 | x 86..235, y 0..169 | 25 s | LIKELY |
 | `td1-14.pic` | `051A:4113` variant 3 | 768 → `g_Palette`; 200 rows × 200 | x 1..200, y 0..199 | 25 s | LIKELY |
 | `td1-13.pic` | `051A:4113` variant 4 | 768 → `g_Palette`; 86 rows × 202 | x 44..245, y 39..124 | 25 s | LIKELY |
-| `td1-20.pic` | `051A:4113` variant 2 | Skips 768 bytes (read one at a time and discarded: **the file's palette is not used**; `td.pal`, loaded first, stays); 100 rows × 320 | x 0..319, y 50..149 | 25 s | LIKELY |
+| `td1-20.pic` | `051A:4113` variant 2 | Skips 768 bytes (read one at a time and discarded: **the file's palette is not used**; `td.pal`, loaded first, stays); 100 rows × 320, each row plotted at **x = 1..319** (byte c at x = 1 + c; x = 0 gets the byte before the row buffer, DS:0AE7, 0 in practice; the row's last byte is never shown): the plot loop counts x from 0 but indexes the buffer from 1 (`051A:44AD..44D9`; OB-150, U-522) | x 1..319 (column 0 black), y 50..149 | 25 s | CONFIRMED (C-0276 f8412..10058: every row equals the file's row shifted right by one) |
 | `td.pal` | `051A:4113` (before the variants) and the text screens `62FD`, `6653`, `6A33`, `6FF2`, `74B2` | 768 → `g_Palette` | — | — | CONFIRMED |
 | `td1-18.pic` | `051A:471B` | 768 → `g_Palette`; 104 rows × 170 | x 76..245, y 20..123 | 15 s | LIKELY |
 | `td1-15.pic` | `051A:4979` | 768 → `g_Palette`; 121 rows × 255 | x 32..286, y 30..150 | 10 s | LIKELY |
@@ -127,3 +127,4 @@ Loaded later, during flight:
 | Date | Change |
 |---|---|
 | 2026-11-02 | First version (RE-3, M1-05): all E1 load sites, VGA memory layout, FilePos/FileSize correction |
+| 2026-11-06 | RE-19 (U-522, BUG-13): `td1-20.pic` is plotted one pixel to the right (x = 1 + c, column 0 = the byte before the row buffer), like the `.scr` scenes; OB-150 |
