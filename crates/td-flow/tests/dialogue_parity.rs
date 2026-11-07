@@ -161,7 +161,7 @@ fn dump_diff(ours: &td_render::Framebuffer, (dac, px): &(Palette, Vec<u8>)) -> V
     out
 }
 
-//// E1 ending B (episode-program-flow rev 7 §4.5, §6 vector 5): block 17's failed post-flight
+/// E1 ending B (episode-program-flow rev 7 §4.5, §6 vector 5): block 17's failed post-flight
 /// story plays dialogue 75 between the voffice card and the ending-B card (VE-9). C-0324 (RE-19)
 /// opens `dialogue.dat` in frame 7703, starts the fade-in in f7713 (the first frame of the run of
 /// DAC-writing frames that leads into the first lit dump, `frames.tsv`) and answers the scene's
