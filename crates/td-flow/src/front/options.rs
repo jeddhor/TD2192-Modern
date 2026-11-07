@@ -11,11 +11,14 @@
 //! [`super::data`]); the first run opens it on its own ([`OptionsScreen::data_setup`]) to show
 //! what was found.
 //!
-//! The Classic profile forces every `[enhanced]` feature off (MDG §6.2, spec
-//! enhanced/presentation rev 2 §2), so their rows are shown but cannot be changed until the
-//! profile is Enhanced; the choices made under Enhanced are kept. The SFX policy and the
-//! accessibility options are separate settings (default off), not governed by the profile.
-//! Widescreen is marked "affects gameplay - visibility" (spec enhanced/presentation §2).
+//! The Enhanced profile turns on the D5 preset (`crate::settings`, spec frontend/port-front-end
+//! rev 3 §3.4): widescreen, upscaler, lighting, bloom, sound effects and the original-bug
+//! fixes show the preset's value until the player changes them, which records an explicit
+//! choice; `restore the enhanced preset` drops the choices. The Classic profile forces every
+//! Enhanced feature off (MDG §6.2), so those rows are shown but cannot be changed until the
+//! profile is Enhanced; the choices are kept. The accessibility options and the intro setting
+//! are separate options (default off). Widescreen is marked "affects gameplay - visibility"
+//! (spec enhanced/presentation §2).
 //!
 //! Keys: arrows (or keypad 8/2/4/6) move and change, Enter or Space opens or changes, Esc or
 //! Backspace goes back, Delete clears a binding. Controller: stick or D-pad, South confirms,
@@ -62,9 +65,13 @@ pub enum Row {
     SfxVolume,
     SfxMode,
     Profile,
+    /// The fix-enhanced original-bug fixes (`enhanced.fixes`; Enhanced only).
+    Fixes,
     /// When the intro plays before Episode 1 (`[intro] play`; Enhanced only, Classic always
     /// plays it, launcher spec §4.10).
     Intro,
+    /// Drops every explicit Enhanced choice (Enhanced only).
+    Preset,
     ColorblindGuidance,
     Binding(FlightKey),
     ResetControls,
@@ -96,7 +103,7 @@ const VIDEO_ROWS: [Row; 7] = [
     Row::Back,
 ];
 const AUDIO_ROWS: [Row; 4] = [Row::MusicVolume, Row::SfxVolume, Row::SfxMode, Row::Back];
-const PROFILE_ROWS: [Row; 3] = [Row::Profile, Row::Intro, Row::Back];
+const PROFILE_ROWS: [Row; 5] = [Row::Profile, Row::Fixes, Row::Intro, Row::Preset, Row::Back];
 const ACCESSIBILITY_ROWS: [Row; 2] = [Row::ColorblindGuidance, Row::Back];
 const DATA_ROWS: [Row; 4] = [Row::PickFolder, Row::PickZip, Row::Extract, Row::Back];
 
@@ -139,13 +146,18 @@ pub fn data_row_enabled(row: Row, info: Option<&DataInfo>) -> bool {
     }
 }
 
-/// True for the rows of the `[enhanced]` features, which the Classic profile forces off. The
-/// profile governs only `[enhanced]` (spec enhanced/presentation rev 2 §2): the SFX policy
-/// and the accessibility options are separate settings that default to off.
+/// True for the rows of the Enhanced features (the D5 preset), which the Classic profile
+/// forces off. The accessibility options are separate settings that default to off.
 pub fn is_enhanced(row: Row) -> bool {
     matches!(
         row,
-        Row::Widescreen | Row::Upscaler | Row::Lighting | Row::Bloom
+        Row::Widescreen
+            | Row::Upscaler
+            | Row::Lighting
+            | Row::Bloom
+            | Row::SfxMode
+            | Row::Fixes
+            | Row::Preset
     )
 }
 
@@ -168,7 +180,9 @@ fn label(row: Row) -> String {
         Row::SfxVolume => "sound volume".into(),
         Row::SfxMode => "sound effects".into(),
         Row::Profile => "profile".into(),
+        Row::Fixes => "original bug fixes".into(),
         Row::Intro => "intro before episode 1".into(),
+        Row::Preset => "restore the enhanced preset".into(),
         Row::ColorblindGuidance => "colour-blind guidance line".into(),
         Row::Binding(k) => flight_key_action(k).into(),
         Row::ResetControls => "reset to defaults".into(),
@@ -183,8 +197,10 @@ fn on_off(b: bool) -> String {
     if b { "on" } else { "off" }.into()
 }
 
-/// The value shown for `row`.
+/// The value shown for `row`. The Enhanced rows show what the Enhanced profile uses (the
+/// choice, else the preset), also while Classic locks them.
 pub fn value(row: Row, s: &Settings) -> Option<String> {
+    let e = s.enhanced_values();
     Some(match row {
         Row::Fullscreen => on_off(s.video.fullscreen),
         Row::Scale => match s.video.scale {
@@ -193,7 +209,7 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
             Scale::Stretch => "stretch",
         }
         .into(),
-        Row::Widescreen => match s.enhanced.widescreen {
+        Row::Widescreen => match e.widescreen {
             Widescreen::Off => "off",
             Widescreen::W16x10 => "16x10",
             Widescreen::W16x9 => "16x9",
@@ -201,7 +217,7 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
             Widescreen::Auto => "auto",
         }
         .into(),
-        Row::Upscaler => match s.enhanced.upscaler {
+        Row::Upscaler => match e.upscaler {
             Upscaler::None => "none",
             Upscaler::Scale2x => "scale2x",
             Upscaler::Scale3x => "scale3x",
@@ -211,16 +227,16 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
             Upscaler::Xbr4 => "xbr4",
         }
         .into(),
-        Row::Lighting => match s.enhanced.lighting {
+        Row::Lighting => match e.lighting {
             Lighting::Off => "off",
             Lighting::Subtle => "subtle",
             Lighting::Full => "full",
         }
         .into(),
-        Row::Bloom => on_off(s.enhanced.bloom),
+        Row::Bloom => on_off(e.bloom),
         Row::MusicVolume => percent(s.audio.music_volume).to_string(),
         Row::SfxVolume => percent(s.audio.sfx_volume).to_string(),
-        Row::SfxMode => match s.audio.sfx_mode {
+        Row::SfxMode => match s.sfx_mode_value() {
             SfxMode::Classic => "classic",
             SfxMode::Polyphonic => "polyphonic",
         }
@@ -230,6 +246,7 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
             Profile::Enhanced => "enhanced",
         }
         .into(),
+        Row::Fixes => on_off(s.fixes_value()),
         Row::Intro => match s.intro.play {
             IntroPolicy::Always => "always",
             IntroPolicy::FirstLaunch => "first launch",
@@ -240,6 +257,7 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
         Row::Open(_)
         | Row::Binding(_)
         | Row::ResetControls
+        | Row::Preset
         | Row::PickFolder
         | Row::PickZip
         | Row::Extract
@@ -254,6 +272,8 @@ fn note(row: Row) -> Option<&'static str> {
         Row::Scale => Some("aspect keeps the original 4x3 shape"),
         Row::Upscaler => Some("smooths the pixel art"),
         Row::SfxMode => Some("polyphonic plays several effects at once"),
+        Row::Fixes => Some("fixes small bugs of the original game"),
+        Row::Preset => Some("every enhanced option back to the preset"),
         Row::ColorblindGuidance => Some("the guidance line in colours safe for colour blindness"),
         Row::Intro => Some("the classic profile always plays it"),
         Row::PickFolder => Some("an installed copy - used where it is"),
@@ -284,6 +304,7 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
     if !row_enabled(row, s) {
         return false;
     }
+    let e = s.enhanced_values();
     match row {
         Row::Fullscreen => s.video.fullscreen = !s.video.fullscreen,
         Row::Scale => {
@@ -293,20 +314,22 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
                 dir,
             );
         }
+        // An Enhanced row changed records an explicit choice over the preset.
         Row::Widescreen => {
-            s.enhanced.widescreen = cycle(&Widescreen::ALL, s.enhanced.widescreen, dir);
+            s.enhanced.widescreen = Some(cycle(&Widescreen::ALL, e.widescreen, dir));
         }
-        Row::Upscaler => s.enhanced.upscaler = cycle(&Upscaler::ALL, s.enhanced.upscaler, dir),
-        Row::Lighting => s.enhanced.lighting = cycle(&Lighting::ALL, s.enhanced.lighting, dir),
-        Row::Bloom => s.enhanced.bloom = !s.enhanced.bloom,
+        Row::Upscaler => s.enhanced.upscaler = Some(cycle(&Upscaler::ALL, e.upscaler, dir)),
+        Row::Lighting => s.enhanced.lighting = Some(cycle(&Lighting::ALL, e.lighting, dir)),
+        Row::Bloom => s.enhanced.bloom = Some(!e.bloom),
+        Row::Fixes => s.enhanced.fixes = Some(!s.fixes_value()),
         Row::MusicVolume => s.audio.music_volume = step_volume(s.audio.music_volume, dir),
         Row::SfxVolume => s.audio.sfx_volume = step_volume(s.audio.sfx_volume, dir),
         Row::SfxMode => {
-            s.audio.sfx_mode = cycle(
+            s.audio.sfx_mode = Some(cycle(
                 &[SfxMode::Classic, SfxMode::Polyphonic],
-                s.audio.sfx_mode,
+                s.sfx_mode_value(),
                 dir,
-            );
+            ));
         }
         Row::Profile => {
             s.profile = cycle(&[Profile::Classic, Profile::Enhanced], s.profile, dir);
@@ -328,6 +351,7 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
         Row::Open(_)
         | Row::Binding(_)
         | Row::ResetControls
+        | Row::Preset
         | Row::PickFolder
         | Row::PickZip
         | Row::Extract
@@ -652,6 +676,11 @@ impl Screen for OptionsScreen {
                     self.say("controls reset to the defaults".into());
                     self.submit();
                 }
+                Row::Preset if self.enabled(row) => {
+                    self.settings.restore_preset();
+                    self.say("enhanced preset restored".into());
+                    self.submit();
+                }
                 Row::PickFolder | Row::PickZip | Row::Extract if self.enabled(row) => {
                     // The host opens the dialog or extracts after this tick, then describes
                     // the outcome in the data info.
@@ -838,16 +867,16 @@ impl OptionsScreen {
             if self.page == Page::Profile {
                 let lines: &[&str] = match s.profile {
                     Profile::Classic => &[
-                        "the original presentation",
-                        "every enhanced video option is off",
+                        "the original presentation, sound and rules",
+                        "every enhanced option is off",
                     ],
                     Profile::Enhanced => &[
-                        "the enhanced video options you turn on",
-                        "widescreen, upscaler, lighting, bloom",
+                        "16x9 - xbr3 - subtle lighting - polyphonic - fixes",
+                        "each option can be changed",
                     ],
                 };
                 for (i, l) in lines.iter().enumerate() {
-                    ui.text_centred(fb, l, 92 + i as i32 * 10, INK_TEXT);
+                    ui.text_centred(fb, l, 118 + i as i32 * 10, INK_TEXT);
                 }
             }
         }
@@ -1030,16 +1059,89 @@ mod tests {
         rig.key(&mut s, Key::DOWN);
         rig.key(&mut s, Key::DOWN);
         assert_eq!(s.row(), Row::Widescreen);
+        // The preset (D5): 16x9 until the player changes it.
+        assert_eq!(
+            value(Row::Widescreen, &rig.settings).as_deref(),
+            Some("16x9")
+        );
+        assert_eq!(rig.settings.enhanced.widescreen, None);
         rig.key(&mut s, Key::RIGHT);
-        assert_eq!(rig.settings.enhanced.widescreen, Widescreen::W16x10);
+        assert_eq!(rig.settings.enhanced.widescreen, Some(Widescreen::W21x9));
         assert_eq!(
             rig.settings.effective_enhanced().widescreen,
-            Widescreen::W16x10
+            Widescreen::W21x9
         );
         // Back to Classic: the choice is kept, but forced off.
         rig.settings.profile = Profile::Classic;
         assert!(rig.settings.effective_enhanced().is_off());
-        assert_eq!(rig.settings.enhanced.widescreen, Widescreen::W16x10);
+        assert_eq!(rig.settings.enhanced.widescreen, Some(Widescreen::W21x9));
+    }
+
+    /// D5: under Enhanced every preset row shows the preset until changed; a change is an
+    /// explicit choice that survives the profile; Classic locks every one of them, the sound
+    /// effects and the bug fixes included; `restore the enhanced preset` drops the choices.
+    #[test]
+    fn the_enhanced_preset_rows() {
+        let mut s = Settings::default();
+        for row in [
+            Row::Widescreen,
+            Row::Upscaler,
+            Row::Lighting,
+            Row::Bloom,
+            Row::SfxMode,
+            Row::Fixes,
+            Row::Preset,
+        ] {
+            assert!(!row_enabled(row, &s), "{row:?} is locked under Classic");
+            assert!(!change(row, &mut s, 1), "{row:?}");
+        }
+        assert!(row_enabled(Row::ColorblindGuidance, &s));
+        assert_eq!(s.effective_sfx_mode(), SfxMode::Classic);
+        assert!(!s.enhanced_fixes());
+        s.profile = Profile::Enhanced;
+        let shown = |s: &Settings, r| value(r, s).unwrap_or_default();
+        assert_eq!(shown(&s, Row::Widescreen), "16x9");
+        assert_eq!(shown(&s, Row::Upscaler), "xbr3");
+        assert_eq!(shown(&s, Row::Lighting), "subtle");
+        assert_eq!(shown(&s, Row::Bloom), "off");
+        assert_eq!(shown(&s, Row::SfxMode), "polyphonic");
+        assert_eq!(shown(&s, Row::Fixes), "on");
+        assert!(s.enhanced_fixes());
+        // Changes become choices.
+        assert!(change(Row::Upscaler, &mut s, -1));
+        assert!(change(Row::SfxMode, &mut s, 1));
+        assert!(change(Row::Fixes, &mut s, 1));
+        assert_eq!(s.enhanced.upscaler, Some(Upscaler::Xbr2));
+        assert_eq!(s.audio.sfx_mode, Some(SfxMode::Classic));
+        assert_eq!(s.enhanced.fixes, Some(false));
+        assert!(!s.enhanced_fixes());
+        assert_eq!(s.enhanced.widescreen, None, "untouched rows stay preset");
+        // Kept across Classic.
+        s.profile = Profile::Classic;
+        assert_eq!(shown(&s, Row::Upscaler), "xbr2");
+        s.profile = Profile::Enhanced;
+        assert_eq!(s.effective_enhanced().upscaler, Upscaler::Xbr2);
+        // The preset row, through the screen.
+        let mut rig = Rig::new();
+        rig.settings = s;
+        let mut screen = rig.screen();
+        rig.settle(&mut screen);
+        screen.open(Page::Profile);
+        assert_eq!(
+            rows(Page::Profile),
+            [Row::Profile, Row::Fixes, Row::Intro, Row::Preset, Row::Back]
+        );
+        for _ in 0..3 {
+            rig.key(&mut screen, Key::DOWN);
+        }
+        assert_eq!(screen.row(), Row::Preset);
+        rig.key(&mut screen, Key::ENTER);
+        assert!(rig.settings.enhanced.is_preset());
+        assert_eq!(rig.settings.audio.sfx_mode, None);
+        assert_eq!(rig.settings.profile, Profile::Enhanced);
+        let mut fb = Framebuffer::new();
+        screen.draw(&mut fb);
+        assert!(fb.pixels.contains(&INK_HEADING), "the message is shown");
     }
 
     #[test]
@@ -1237,7 +1339,7 @@ mod tests {
         assert!(change(Row::Intro, &mut s, 1));
         assert!(change(Row::Intro, &mut s, 1));
         assert_eq!(s.intro.play, IntroPolicy::Always);
-        assert_eq!(rows(Page::Profile), [Row::Profile, Row::Intro, Row::Back]);
+        assert!(rows(Page::Profile).contains(&Row::Intro));
     }
 
     #[test]

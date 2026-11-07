@@ -414,8 +414,9 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
     }
 
     /// The save (item 1) or restore (item 2) screen over the files as they are now; it gets
-    /// the menu's palette buffer (save-screens §4.1).
-    fn open_saves(&mut self, item: u8) {
+    /// the menu's palette buffer (save-screens §4.1). `fixes`: the Enhanced original-bug fixes
+    /// (OB-056, Esc cancels the name entry).
+    fn open_saves(&mut self, item: u8, fixes: bool) {
         let (kind, labels) = if item == SAVE {
             let kind = SaveKind::Save {
                 mission: self.mission,
@@ -439,7 +440,8 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
             &self.prog.texts(labels),
             self.menu.palette_buffer(),
             set,
-        );
+        )
+        .esc_cancels_entry(fixes);
         self.stage = Stage::Saves(Box::new(s));
     }
 
@@ -477,7 +479,7 @@ impl<C: EpisodeCampaign> LaterEpisode<C> {
         match item {
             0 => self.start_block(1, 0, 0),
             NEXT_MISSION => self.start_block(self.mission, self.kills_to_date, NEXT_MISSION),
-            SAVE | RESTORE => self.open_saves(item),
+            SAVE | RESTORE => self.open_saves(item, ctx.settings.enhanced_fixes()),
             4 => {
                 let s = story::help(&self.prog.data);
                 self.sub(s, Back::FadeIn, SkipRule::Keep, "help");

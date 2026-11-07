@@ -40,12 +40,6 @@ pub fn delay_ms_frames(ms: u32) -> u32 {
     (f64::from(ms) * RETRACE_HZ / 1000.0).round() as u32
 }
 
-/// Placeholder tick rate until the original's timing is established.
-///
-/// ASSUMPTION(U-001): 70 Hz, the VGA mode 13h refresh rate, is the most likely candidate.
-/// Replace with the value from `docs/spec/core/timing.md` once confirmed.
-pub const DEFAULT_TICK_HZ: f64 = 70.0;
-
 /// Longest real-time step accepted in one call; longer pauses (debugger, window drag) are
 /// clamped so the simulation does not try to catch up.
 pub const MAX_STEP: Duration = Duration::from_millis(250);

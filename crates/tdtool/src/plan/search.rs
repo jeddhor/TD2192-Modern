@@ -95,7 +95,7 @@ struct Node {
     /// Keys down in the last tick.
     keys: Vec<FlightKey>,
     parent: usize,
-    inputs: Vec<u64>,
+    inputs: Vec<u128>,
     score: i64,
     /// The flight succeeded in this decision.
     won: bool,
@@ -478,7 +478,7 @@ fn weapons_bonus(n: &Node) -> i64 {
 }
 
 /// One replay tick ([`td_sim::replay::step`]) that also tells whether the comm viewer opened.
-fn step(f: &mut Flight, world: &World, w: u64) -> (TickResult, bool) {
+fn step(f: &mut Flight, world: &World, w: u128) -> (TickResult, bool) {
     let c = td_sim::TickControls::from_word(w);
     let mut r = f.tick(world, &c, &mut vec![]);
     let mut comm = false;
@@ -682,7 +682,7 @@ pub fn plan(setup: &FlightSetup, alt: Option<&FlightSetup>, opts: &Options) -> O
         friends_leave: friends_leave(setup.episode, setup.number),
         weapons,
     };
-    let mut arena: Vec<(usize, Vec<u64>)> = vec![(usize::MAX, vec![])];
+    let mut arena: Vec<(usize, Vec<u128>)> = vec![(usize::MAX, vec![])];
     let mut beam = vec![Node {
         score: score(&start, world, &g),
         flight: start,
@@ -847,6 +847,6 @@ pub fn plan(setup: &FlightSetup, alt: Option<&FlightSetup>, opts: &Options) -> O
 }
 
 /// Arena index of beam entry `i` (the beam is always the last `len` arena entries).
-fn beam_arena_index(arena: &[(usize, Vec<u64>)], len: usize, i: usize) -> usize {
+fn beam_arena_index(arena: &[(usize, Vec<u128>)], len: usize, i: usize) -> usize {
     arena.len() - len + i
 }

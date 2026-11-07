@@ -11,6 +11,11 @@
 //! whether it is down now and whether a make code arrived since the previous tick; the table
 //! is updated as `byte = down && (byte || made)`. A key pressed and released within one tick
 //! leaves the byte 0, as when the break arrives before the game reads the byte.
+//!
+//! The cheat chords (`docs/re/globals.md` §5, tick-order step 34; decision D9) read the bytes
+//! of eleven more letters, [`ChordKey`]. They are not flight keys (nothing binds them) and
+//! ride in the upper half of the replay word, so a word without them is the 64-bit word of
+//! replay version 2.
 
 use crate::hash::{HashState, StateHasher};
 
@@ -126,6 +131,94 @@ pub struct Joystick {
     pub button2: bool,
 }
 
+/// The letter keys the cheat chords read besides [`FlightKey::M`] (`docs/re/globals.md` §5:
+/// T+I+M, H+A+R+D, J+O+H+N, J+D+W, M+K+A+R), with their set-1 scan codes. The host passes the
+/// letter keys of the keyboard as they are; they are not remappable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum ChordKey {
+    /// T (14h).
+    T,
+    /// I (17h).
+    I,
+    /// H (23h).
+    H,
+    /// A (1Eh).
+    A,
+    /// R (13h).
+    R,
+    /// D (20h).
+    D,
+    /// J (24h).
+    J,
+    /// O (18h).
+    O,
+    /// N (31h).
+    N,
+    /// W (11h).
+    W,
+    /// K (25h).
+    K,
+}
+
+impl ChordKey {
+    /// Every chord letter, in bit order.
+    pub const ALL: [ChordKey; 11] = [
+        Self::T,
+        Self::I,
+        Self::H,
+        Self::A,
+        Self::R,
+        Self::D,
+        Self::J,
+        Self::O,
+        Self::N,
+        Self::W,
+        Self::K,
+    ];
+
+    /// The original's key-table index (set-1 scan code).
+    pub const fn scan_code(self) -> u16 {
+        match self {
+            Self::T => 0x14,
+            Self::I => 0x17,
+            Self::H => 0x23,
+            Self::A => 0x1E,
+            Self::R => 0x13,
+            Self::D => 0x20,
+            Self::J => 0x24,
+            Self::O => 0x18,
+            Self::N => 0x31,
+            Self::W => 0x11,
+            Self::K => 0x25,
+        }
+    }
+
+    /// The letter, lower case.
+    pub const fn letter(self) -> char {
+        match self {
+            Self::T => 't',
+            Self::I => 'i',
+            Self::H => 'h',
+            Self::A => 'a',
+            Self::R => 'r',
+            Self::D => 'd',
+            Self::J => 'j',
+            Self::O => 'o',
+            Self::N => 'n',
+            Self::W => 'w',
+            Self::K => 'k',
+        }
+    }
+
+    const fn bit(self) -> u16 {
+        1 << self as u16
+    }
+}
+
+/// Where the chord letters sit in [`KeyTable`]'s bits, above the flight keys.
+const CHORD_SHIFT: u32 = FlightKey::ALL.len() as u32;
+
 // Joystick bits in the `down` mask, above the keys.
 const JOY_LEFT: u32 = 1 << 24;
 const JOY_RIGHT: u32 = 1 << 25;
@@ -141,6 +234,10 @@ pub struct TickControls {
     down: u32,
     /// Keys with a make code (press or typematic repeat) since the previous tick.
     made: u32,
+    /// Chord letters down at the tick (bit = `ChordKey as u8`).
+    chord_down: u16,
+    /// Chord letters with a make code since the previous tick.
+    chord_made: u16,
 }
 
 impl TickControls {
@@ -152,6 +249,26 @@ impl TickControls {
     /// Records a make code for `key` since the previous tick.
     pub fn set_made(&mut self, key: FlightKey) {
         self.made |= key.bit();
+    }
+
+    /// Marks chord letter `key` as down now.
+    pub fn set_chord_down(&mut self, key: ChordKey) {
+        self.chord_down |= key.bit();
+    }
+
+    /// Records a make code for chord letter `key` since the previous tick.
+    pub fn set_chord_made(&mut self, key: ChordKey) {
+        self.chord_made |= key.bit();
+    }
+
+    /// True if chord letter `key` is down now.
+    pub fn is_chord_down(&self, key: ChordKey) -> bool {
+        self.chord_down & key.bit() != 0
+    }
+
+    /// True if any key or chord letter got a make code since the previous tick.
+    pub fn any_made(&self) -> bool {
+        self.made != 0 || self.chord_made != 0
     }
 
     /// Sets the joystick (centred = default).
@@ -193,28 +310,44 @@ impl TickControls {
         }
     }
 
-    /// The replay word: `down` in the low half, `made` in the high half.
-    pub fn to_word(self) -> u64 {
-        u64::from(self.down) | u64::from(self.made) << 32
+    /// The replay word: `down` in bits 0..32, `made` in 32..64 (replay version 2's word), the
+    /// chord letters down in 64..80 and made in 96..112 (version 3).
+    pub fn to_word(self) -> u128 {
+        u128::from(self.down)
+            | u128::from(self.made) << 32
+            | u128::from(self.chord_down) << 64
+            | u128::from(self.chord_made) << 96
     }
 
-    /// Inverse of [`Self::to_word`].
-    pub fn from_word(w: u64) -> Self {
+    /// Inverse of [`Self::to_word`]. A version-2 word is the same word zero-extended.
+    pub fn from_word(w: u128) -> Self {
         Self {
             down: w as u32,
             made: (w >> 32) as u32,
+            chord_down: (w >> 64) as u16,
+            chord_made: (w >> 96) as u16,
         }
     }
 }
 
-/// The original's key-state bytes for the keys in [`FlightKey`].
+/// The original's key-state bytes for the keys in [`FlightKey`] (bits 0..20) and the chord
+/// letters in [`ChordKey`] (bits 20..31).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct KeyTable(u32);
 
 impl KeyTable {
     /// Applies one tick's input: `byte = down && (byte || made)`.
     pub fn update(&mut self, c: &TickControls) {
-        self.0 = c.down & (self.0 | c.made) & ((1 << FlightKey::ALL.len()) - 1);
+        let keys = (1 << FlightKey::ALL.len()) - 1;
+        let down = (c.down & keys) | u32::from(c.chord_down) << CHORD_SHIFT;
+        let made = (c.made & keys) | u32::from(c.chord_made) << CHORD_SHIFT;
+        let all = (1 << (CHORD_SHIFT + ChordKey::ALL.len() as u32)) - 1;
+        self.0 = down & (self.0 | made) & all;
+    }
+
+    /// The byte for chord letter `key`.
+    pub fn chord(&self, key: ChordKey) -> bool {
+        self.0 & u32::from(key.bit()) << CHORD_SHIFT != 0
     }
 
     /// The byte for `key`.
@@ -265,6 +398,41 @@ mod tests {
         assert!(!t.get(Kp0), "break");
         t.update(&controls(&[], &[Kp8]));
         assert!(!t.get(Kp8), "pressed and released within one tick");
+    }
+
+    #[test]
+    fn chord_letters_follow_make_break_and_pack_above_the_v2_word() {
+        let mut c = controls(&[FlightKey::M], &[FlightKey::M]);
+        c.set_chord_down(ChordKey::T);
+        c.set_chord_made(ChordKey::T);
+        c.set_chord_down(ChordKey::K);
+        let mut t = KeyTable::default();
+        t.update(&c);
+        assert!(t.get(FlightKey::M) && t.chord(ChordKey::T));
+        assert!(!t.chord(ChordKey::K), "down without a make code");
+        assert!(!t.chord(ChordKey::I));
+        let w = c.to_word();
+        assert_eq!(TickControls::from_word(w), c);
+        // The low 64 bits are the version-2 word of the same flight keys.
+        let v2 = controls(&[FlightKey::M], &[FlightKey::M]).to_word();
+        assert_eq!(w as u64 as u128, v2);
+        assert_eq!(
+            TickControls::from_word(v2),
+            controls(&[FlightKey::M], &[FlightKey::M])
+        );
+        assert!(c.any_made() && !TickControls::default().any_made());
+        // The scan codes are the set-1 letters; none is a flight key's.
+        for k in ChordKey::ALL {
+            assert!(
+                FlightKey::ALL
+                    .iter()
+                    .all(|f| f.scan_code() != k.scan_code())
+            );
+        }
+        t.clear_all();
+        assert!(!t.chord(ChordKey::T));
+        // A table without chord letters hashes as before (bits 20.. are clear).
+        assert_eq!(KeyTable::default().0 >> CHORD_SHIFT, 0);
     }
 
     #[test]

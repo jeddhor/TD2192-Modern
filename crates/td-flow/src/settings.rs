@@ -3,24 +3,41 @@
 //! Every field has a default so that older or hand-edited files keep working; unknown keys are
 //! ignored.
 //!
-//! The `[enhanced]` section (`docs/spec/enhanced/presentation.md` rev 1 §2) holds the Enhanced
-//! presentation features. Every key defaults to off, and they only take effect with
-//! `profile = "enhanced"`: the Classic profile (the default, MDG §6.2) forces them all off
-//! ([`Settings::effective_enhanced`]). For example:
+//! **Profiles and the Enhanced preset** (MDG §6.2, decision D5 of 2026-11-06; spec
+//! frontend/port-front-end rev 3 §3.4). The Classic profile (the default) forces every Enhanced
+//! feature off. Choosing the Enhanced profile turns on a preset ([`ENHANCED_PRESET`],
+//! [`PRESET_SFX_MODE`], [`PRESET_FIXES`]): 16:9 widescreen, xBR 3x, subtle lighting, bloom
+//! off, polyphonic sound effects and every fix-enhanced original-bug fix
+//! (`docs/spec/original-bugs.md`). Each stays adjustable: a value the player sets is an
+//! explicit choice and overrides the preset, under the Enhanced profile only, and it is kept
+//! when the profile changes. The accessibility options and the intro setting are separate and
+//! off by default.
+//!
+//! **How the file tells a preset default from a choice** (format 2, `version = 2`): an
+//! Enhanced key is written only when the player chose its value; an absent key takes the
+//! preset. So `[enhanced]` holds only choices, and `audio.sfx_mode` and `enhanced.fixes` work
+//! the same way. For example, the Enhanced preset with widescreen turned off:
 //!
 //! ```toml
+//! version = 2
 //! profile = "enhanced"
 //!
 //! [enhanced]
-//! widescreen = "16:9"   # off | "16:10" | "16:9" | "21:9" | "auto"
-//! upscaler = "xbr3"     # none | scale2x | scale3x | scale4x | xbr2 | xbr3 | xbr4
-//! lighting = "off"      # off | subtle | full
-//! bloom = false
+//! widescreen = "off"    # off | "16:10" | "16:9" | "21:9" | "auto"; absent: the preset (16:9)
+//! # upscaler = none | scale2x | scale3x | scale4x | xbr2 | xbr3 | xbr4; absent: xbr3
+//! # lighting = off | subtle | full; absent: subtle
+//! # bloom = true | false; absent: false
+//! # fixes = true | false (the fix-enhanced original-bug fixes); absent: true
 //! ```
+//!
+//! **Older files** (format 1, no `version` key, written before D5) wrote every key, so a value
+//! there cannot be told from an untouched default. On loading, the format-1 defaults (`"off"`,
+//! `"none"`, `false`, `sfx_mode = "classic"`) are read as "no choice" (the preset), and any
+//! other value as an explicit choice; the next save writes format 2 ([`Settings::migrate`]).
 
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 pub use crate::controls::ControlsSettings;
@@ -84,7 +101,11 @@ impl Default for VideoSettings {
 pub struct AudioSettings {
     pub music_volume: f32,
     pub sfx_volume: f32,
-    pub sfx_mode: SfxMode,
+    /// The sound-effect policy chosen for the Enhanced profile; `None` takes the preset
+    /// ([`PRESET_SFX_MODE`]). Classic always mixes like the original
+    /// ([`Settings::effective_sfx_mode`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sfx_mode: Option<SfxMode>,
 }
 
 impl Default for AudioSettings {
@@ -94,7 +115,7 @@ impl Default for AudioSettings {
         Self {
             music_volume: 0.8,
             sfx_volume: 0.8,
-            sfx_mode: SfxMode::Classic,
+            sfx_mode: None,
         }
     }
 }
@@ -103,10 +124,10 @@ impl Default for AudioSettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Profile {
-    /// The original presentation: every `[enhanced]` key is forced off.
+    /// The original presentation, sound and rules: every Enhanced feature is forced off.
     #[default]
     Classic,
-    /// Enhanced features as chosen per key.
+    /// The Enhanced preset (D5), with the player's explicit choices over it.
     Enhanced,
 }
 
@@ -195,8 +216,8 @@ impl Lighting {
     pub const ALL: [Lighting; 3] = [Lighting::Off, Lighting::Subtle, Lighting::Full];
 }
 
-/// The Enhanced presentation features (`[enhanced]`, spec enhanced/presentation §2). Widescreen
-/// affects gameplay (the player sees further).
+/// The Enhanced presentation features in effect (spec enhanced/presentation §2): what the
+/// renderer reads. Widescreen affects gameplay (the player sees further).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct EnhancedSettings {
@@ -209,6 +230,70 @@ pub struct EnhancedSettings {
 impl EnhancedSettings {
     /// True when every feature is off (the Classic presentation path).
     pub fn is_off(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The presentation half of the Enhanced preset (D5, user 2026-11-06): 16:9 widescreen, xBR
+/// 3x, subtle lighting, bloom off.
+pub const ENHANCED_PRESET: EnhancedSettings = EnhancedSettings {
+    widescreen: Widescreen::W16x9,
+    upscaler: Upscaler::Xbr3,
+    lighting: Lighting::Subtle,
+    bloom: false,
+};
+
+/// The Enhanced preset's sound effects (D5): polyphonic.
+pub const PRESET_SFX_MODE: SfxMode = SfxMode::Polyphonic;
+
+/// The Enhanced preset's original-bug fixes (D5): every fix-enhanced fix on.
+pub const PRESET_FIXES: bool = true;
+
+/// The `[enhanced]` section as stored: the player's explicit choices. `None` (an absent key)
+/// takes the preset ([`ENHANCED_PRESET`], [`PRESET_FIXES`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EnhancedChoices {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub widescreen: Option<Widescreen>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upscaler: Option<Upscaler>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lighting: Option<Lighting>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bloom: Option<bool>,
+    /// The fix-enhanced original-bug fixes (`docs/spec/original-bugs.md`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixes: Option<bool>,
+}
+
+impl EnhancedChoices {
+    /// Every presentation feature chosen explicitly as `e` (`--dev-enhanced`); the fixes keep
+    /// the preset.
+    #[must_use]
+    pub fn chosen(e: EnhancedSettings) -> Self {
+        Self {
+            widescreen: Some(e.widescreen),
+            upscaler: Some(e.upscaler),
+            lighting: Some(e.lighting),
+            bloom: Some(e.bloom),
+            fixes: None,
+        }
+    }
+
+    /// The presentation features: each choice, else the preset's value.
+    #[must_use]
+    pub fn values(&self) -> EnhancedSettings {
+        EnhancedSettings {
+            widescreen: self.widescreen.unwrap_or(ENHANCED_PRESET.widescreen),
+            upscaler: self.upscaler.unwrap_or(ENHANCED_PRESET.upscaler),
+            lighting: self.lighting.unwrap_or(ENHANCED_PRESET.lighting),
+            bloom: self.bloom.unwrap_or(ENHANCED_PRESET.bloom),
+        }
+    }
+
+    /// True when nothing is chosen (the whole preset applies).
+    pub fn is_preset(&self) -> bool {
         *self == Self::default()
     }
 }
@@ -232,18 +317,33 @@ pub struct DevSettings {
     pub tick_hz: Option<f64>,
 }
 
+/// The settings-file format written now: 2 since D5 (2026-11-06), where an absent Enhanced
+/// key means the preset (module docs). Files without a `version` key are format 1.
+pub const SETTINGS_VERSION: u32 = 2;
+
+fn format_1() -> u32 {
+    1
+}
+
 /// All user settings.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+///
+/// Serialised by the derived code (`remote = "Self"`), wrapped so that loading migrates older
+/// formats ([`Settings::migrate`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(remote = "Self", default)]
 pub struct Settings {
+    /// The settings-file format ([`SETTINGS_VERSION`]; 1 when the key is absent).
+    #[serde(default = "format_1")]
+    pub version: u32,
     /// The original game directory.
     pub data_dir: Option<PathBuf>,
-    /// Classic forces every Enhanced feature off.
+    /// Classic forces every Enhanced feature off; Enhanced turns on the preset.
     pub profile: Profile,
     pub video: VideoSettings,
     pub audio: AudioSettings,
-    /// Enhanced presentation (spec enhanced/presentation §2).
-    pub enhanced: EnhancedSettings,
+    /// The player's Enhanced choices (spec enhanced/presentation §2); absent keys take the
+    /// preset.
+    pub enhanced: EnhancedChoices,
     /// Host keys and controller buttons for the original's flight keys (M11-03).
     pub controls: ControlsSettings,
     pub accessibility: AccessibilitySettings,
@@ -252,19 +352,108 @@ pub struct Settings {
     pub intro: crate::intro::IntroSettings,
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            version: SETTINGS_VERSION,
+            data_dir: None,
+            profile: Profile::default(),
+            video: VideoSettings::default(),
+            audio: AudioSettings::default(),
+            enhanced: EnhancedChoices::default(),
+            controls: ControlsSettings::default(),
+            accessibility: AccessibilitySettings::default(),
+            dev: DevSettings::default(),
+            intro: crate::intro::IntroSettings::default(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Settings {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        // The derived code (an inherent function under `remote = "Self"`), then the migration.
+        let mut s = Settings::deserialize(d)?;
+        s.migrate();
+        Ok(s)
+    }
+}
+
+impl Serialize for Settings {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        Settings::serialize(self, s)
+    }
+}
+
 impl Settings {
-    /// The `[enhanced]` features in effect: all off under the Classic profile.
+    /// Brings settings read from an older file up to [`SETTINGS_VERSION`]. Format 1 (before
+    /// D5) wrote every key and had "off" as the only default, so its default values record no
+    /// choice and become the preset; other values stay explicit choices.
+    pub fn migrate(&mut self) {
+        if self.version < 2 {
+            let e = &mut self.enhanced;
+            e.widescreen = e.widescreen.filter(|&w| w != Widescreen::Off);
+            e.upscaler = e.upscaler.filter(|&u| u != Upscaler::None);
+            e.lighting = e.lighting.filter(|&l| l != Lighting::Off);
+            e.bloom = e.bloom.filter(|&b| b);
+            self.audio.sfx_mode = self.audio.sfx_mode.filter(|&m| m != SfxMode::Classic);
+        }
+        self.version = self.version.max(SETTINGS_VERSION);
+    }
+
+    /// True under the Enhanced profile.
+    pub fn is_enhanced(&self) -> bool {
+        self.profile == Profile::Enhanced
+    }
+
+    /// The presentation features the Enhanced profile uses: each explicit choice, else the
+    /// preset. The options screen shows these values under either profile.
+    pub fn enhanced_values(&self) -> EnhancedSettings {
+        self.enhanced.values()
+    }
+
+    /// The presentation features in effect: all off under the Classic profile.
     pub fn effective_enhanced(&self) -> EnhancedSettings {
         match self.profile {
             Profile::Classic => EnhancedSettings::default(),
-            Profile::Enhanced => self.enhanced,
+            Profile::Enhanced => self.enhanced_values(),
         }
+    }
+
+    /// The SFX policy the Enhanced profile uses: the choice, else the preset (polyphonic).
+    pub fn sfx_mode_value(&self) -> SfxMode {
+        self.audio.sfx_mode.unwrap_or(PRESET_SFX_MODE)
+    }
+
+    /// The SFX policy in effect: the original's under the Classic profile (MDG §6.2).
+    pub fn effective_sfx_mode(&self) -> SfxMode {
+        match self.profile {
+            Profile::Classic => SfxMode::Classic,
+            Profile::Enhanced => self.sfx_mode_value(),
+        }
+    }
+
+    /// Whether the Enhanced profile fixes the fix-enhanced original bugs: the choice, else the
+    /// preset (on).
+    pub fn fixes_value(&self) -> bool {
+        self.enhanced.fixes.unwrap_or(PRESET_FIXES)
+    }
+
+    /// Whether the fix-enhanced original-bug fixes are in effect (`docs/spec/original-bugs.md`:
+    /// preserved in Classic, fixed in Enhanced). Never under the Classic profile.
+    pub fn enhanced_fixes(&self) -> bool {
+        self.is_enhanced() && self.fixes_value()
+    }
+
+    /// Drops every explicit Enhanced choice, so the whole preset applies again.
+    pub fn restore_preset(&mut self) {
+        self.enhanced = EnhancedChoices::default();
+        self.audio.sfx_mode = None;
     }
 
     /// `self` (the file's settings) with every value that differs between `before` and
     /// `after` taken from `after`. The options screen edits the session's settings, which may
     /// hold command-line overrides (`--fullscreen`, `--dev-enhanced`); only what the player
-    /// changed goes to the file.
+    /// changed goes to the file. A choice `after` dropped (back to the preset) is removed.
     pub fn with_changes(&self, before: &Settings, after: &Settings) -> Settings {
         fn merge(file: &mut toml::Value, before: Option<&toml::Value>, after: &toml::Value) {
             match (file, after) {
@@ -314,7 +503,8 @@ impl Settings {
         }
     }
 
-    /// Loads settings from `path`; a missing file yields the defaults.
+    /// Loads settings from `path`; a missing file yields the defaults. Older formats are
+    /// migrated ([`Settings::migrate`]).
     pub fn load(path: &Path) -> Result<Self, SettingsError> {
         match std::fs::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|source| SettingsError::Parse {
@@ -357,50 +547,168 @@ mod tests {
         assert_eq!(toml::from_str::<Settings>(&text).unwrap(), s);
 
         let partial: Settings = toml::from_str("[audio]\nsfx_mode = \"polyphonic\"\n").unwrap();
-        assert_eq!(partial.audio.sfx_mode, SfxMode::Polyphonic);
+        assert_eq!(partial.audio.sfx_mode, Some(SfxMode::Polyphonic));
         assert_eq!(partial.audio.music_volume, 0.8);
         assert_eq!(partial.video, VideoSettings::default());
+        assert_eq!(partial.version, SETTINGS_VERSION, "migrated on loading");
     }
 
     #[test]
-    fn enhanced_section_round_trips_and_classic_forces_it_off() {
+    fn enhanced_choices_round_trip_and_classic_forces_them_off() {
         let s = Settings {
             profile: Profile::Enhanced,
-            enhanced: EnhancedSettings {
-                widescreen: Widescreen::W16x9,
-                upscaler: Upscaler::Xbr3,
-                lighting: Lighting::Full,
-                bloom: true,
+            enhanced: EnhancedChoices {
+                widescreen: Some(Widescreen::W21x9),
+                upscaler: Some(Upscaler::Scale2x),
+                lighting: Some(Lighting::Full),
+                bloom: Some(true),
+                fixes: Some(false),
             },
             ..Settings::default()
         };
         let text = toml::to_string_pretty(&s).unwrap();
-        assert!(text.contains("widescreen = \"16:9\""), "{text}");
-        assert!(text.contains("upscaler = \"xbr3\""), "{text}");
+        assert!(text.contains("widescreen = \"21:9\""), "{text}");
+        assert!(text.contains("upscaler = \"scale2x\""), "{text}");
+        assert!(text.contains("fixes = false"), "{text}");
         assert_eq!(toml::from_str::<Settings>(&text).unwrap(), s);
-        assert_eq!(s.effective_enhanced(), s.enhanced);
+        assert_eq!(
+            s.effective_enhanced(),
+            EnhancedSettings {
+                widescreen: Widescreen::W21x9,
+                upscaler: Upscaler::Scale2x,
+                lighting: Lighting::Full,
+                bloom: true,
+            }
+        );
+        assert!(!s.enhanced_fixes());
         let classic = Settings {
             profile: Profile::Classic,
             ..s.clone()
         };
         assert!(classic.effective_enhanced().is_off());
-
-        let parsed: Settings = toml::from_str(
-            "profile = \"enhanced\"\n[enhanced]\nwidescreen = \"auto\"\nupscaler = \"scale4x\"\n",
-        )
-        .unwrap();
-        assert_eq!(parsed.enhanced.widescreen, Widescreen::Auto);
-        assert_eq!(parsed.enhanced.upscaler, Upscaler::Scale4x);
-        assert_eq!(parsed.enhanced.lighting, Lighting::Off);
-        assert!(!parsed.enhanced.bloom);
-        // Every key defaults to off, and so does the profile.
-        let default = Settings::default();
-        assert_eq!(default.profile, Profile::Classic);
-        assert!(default.enhanced.is_off());
         for w in ["off", "16:10", "16:9", "21:9", "auto"] {
-            let t = format!("[enhanced]\nwidescreen = \"{w}\"\n");
+            let t = format!("version = 2\n[enhanced]\nwidescreen = \"{w}\"\n");
             assert!(toml::from_str::<Settings>(&t).is_ok(), "{w}");
         }
+    }
+
+    /// D5: the Enhanced profile turns on the preset; each feature stays adjustable.
+    #[test]
+    fn the_enhanced_profile_turns_on_the_preset() {
+        let mut s = Settings {
+            profile: Profile::Enhanced,
+            ..Settings::default()
+        };
+        assert_eq!(
+            s.effective_enhanced(),
+            EnhancedSettings {
+                widescreen: Widescreen::W16x9,
+                upscaler: Upscaler::Xbr3,
+                lighting: Lighting::Subtle,
+                bloom: false,
+            }
+        );
+        assert_eq!(s.effective_sfx_mode(), SfxMode::Polyphonic);
+        assert!(s.enhanced_fixes());
+        // The options of D5 stay off by default.
+        assert!(!s.accessibility.colorblind_guidance);
+        assert_eq!(s.intro.play, crate::intro::IntroPolicy::Always);
+        // Explicit choices override the preset, one feature at a time.
+        s.enhanced.lighting = Some(Lighting::Off);
+        s.audio.sfx_mode = Some(SfxMode::Classic);
+        s.enhanced.fixes = Some(false);
+        let e = s.effective_enhanced();
+        assert_eq!(
+            (e.widescreen, e.upscaler, e.lighting),
+            (Widescreen::W16x9, Upscaler::Xbr3, Lighting::Off)
+        );
+        assert_eq!(s.effective_sfx_mode(), SfxMode::Classic);
+        assert!(!s.enhanced_fixes());
+        // Restoring the preset drops the choices.
+        s.restore_preset();
+        assert!(s.enhanced.is_preset());
+        assert_eq!(s.effective_enhanced(), ENHANCED_PRESET);
+        assert_eq!(s.effective_sfx_mode(), PRESET_SFX_MODE);
+        assert!(s.enhanced_fixes());
+    }
+
+    /// Format 2 writes only the explicit choices; an absent key is the preset.
+    #[test]
+    fn the_file_keeps_only_explicit_choices() {
+        let default = Settings::default();
+        let text = toml::to_string_pretty(&default).unwrap();
+        assert!(text.contains("version = 2"), "{text}");
+        for key in [
+            "widescreen",
+            "upscaler",
+            "lighting",
+            "bloom",
+            "fixes",
+            "sfx_mode",
+        ] {
+            assert!(!text.contains(key), "{key} is no choice: {text}");
+        }
+        // An explicit choice equal to the old "off" default survives a round trip.
+        let off = Settings {
+            profile: Profile::Enhanced,
+            enhanced: EnhancedChoices {
+                widescreen: Some(Widescreen::Off),
+                bloom: Some(false),
+                ..EnhancedChoices::default()
+            },
+            audio: AudioSettings {
+                sfx_mode: Some(SfxMode::Classic),
+                ..AudioSettings::default()
+            },
+            ..Settings::default()
+        };
+        let back: Settings = toml::from_str(&toml::to_string_pretty(&off).unwrap()).unwrap();
+        assert_eq!(back, off);
+        assert_eq!(back.effective_enhanced().widescreen, Widescreen::Off);
+        assert_eq!(back.effective_enhanced().upscaler, Upscaler::Xbr3);
+        assert_eq!(back.effective_sfx_mode(), SfxMode::Classic);
+    }
+
+    /// Format-1 files (before D5) keep loading: their "off" defaults become the preset, other
+    /// values stay choices.
+    #[test]
+    fn older_files_load_and_migrate() {
+        // What the M12-08 saver wrote for a Classic player: every key, all off.
+        let classic = "data_dir = \"C:/games/td\"\nprofile = \"classic\"\n\
+            [audio]\nmusic_volume = 0.5\nsfx_volume = 0.8\nsfx_mode = \"classic\"\n\
+            [enhanced]\nwidescreen = \"off\"\nupscaler = \"none\"\nlighting = \"off\"\n\
+            bloom = false\n";
+        let s: Settings = toml::from_str(classic).unwrap();
+        assert_eq!(s.version, SETTINGS_VERSION);
+        assert_eq!(s.audio.music_volume, 0.5);
+        assert!(s.enhanced.is_preset());
+        assert_eq!(s.audio.sfx_mode, None);
+        assert!(s.effective_enhanced().is_off(), "still Classic");
+        let enhanced = Settings {
+            profile: Profile::Enhanced,
+            ..s
+        };
+        assert_eq!(enhanced.effective_enhanced(), ENHANCED_PRESET);
+        // An Enhanced player of format 1 keeps what was turned on.
+        let chosen = "profile = \"enhanced\"\n[audio]\nsfx_mode = \"polyphonic\"\n\
+            [enhanced]\nwidescreen = \"21:9\"\nupscaler = \"none\"\nlighting = \"full\"\n\
+            bloom = true\n";
+        let s: Settings = toml::from_str(chosen).unwrap();
+        assert_eq!(s.enhanced.widescreen, Some(Widescreen::W21x9));
+        assert_eq!(s.enhanced.upscaler, None, "the old default is no choice");
+        assert_eq!(s.enhanced.lighting, Some(Lighting::Full));
+        assert_eq!(s.enhanced.bloom, Some(true));
+        assert_eq!(s.audio.sfx_mode, Some(SfxMode::Polyphonic));
+        // Saved again, the file is format 2 and reads back the same.
+        let text = toml::to_string_pretty(&s).unwrap();
+        assert!(text.contains("version = 2"), "{text}");
+        assert_eq!(toml::from_str::<Settings>(&text).unwrap(), s);
+        // A format-2 file is not migrated: its "off" is a choice.
+        let v2: Settings = toml::from_str(
+            "version = 2\nprofile = \"enhanced\"\n[enhanced]\nupscaler = \"none\"\n",
+        )
+        .unwrap();
+        assert_eq!(v2.enhanced.upscaler, Some(Upscaler::None));
     }
 
     #[test]
@@ -417,13 +725,14 @@ mod tests {
             audio: AudioSettings {
                 music_volume: 0.25,
                 sfx_volume: 1.0,
-                sfx_mode: SfxMode::Polyphonic,
+                sfx_mode: Some(SfxMode::Classic),
             },
-            enhanced: EnhancedSettings {
-                widescreen: Widescreen::Auto,
-                upscaler: Upscaler::Scale2x,
-                lighting: Lighting::Subtle,
-                bloom: true,
+            enhanced: EnhancedChoices {
+                widescreen: Some(Widescreen::Auto),
+                upscaler: Some(Upscaler::Scale2x),
+                lighting: None,
+                bloom: Some(true),
+                fixes: Some(false),
             },
             accessibility: AccessibilitySettings {
                 colorblind_guidance: true,
@@ -455,7 +764,7 @@ mod tests {
         let mut session = file.clone();
         session.video.fullscreen = true;
         session.profile = Profile::Enhanced;
-        session.enhanced.upscaler = Upscaler::Xbr3;
+        session.enhanced.upscaler = Some(Upscaler::Xbr4);
         // The player changes the scaling, the music volume and a key.
         let mut after = session.clone();
         after.video.scale = Scale::Integer;
@@ -473,7 +782,7 @@ mod tests {
             "the override stays out of the file"
         );
         assert_eq!(saved.profile, Profile::Classic);
-        assert_eq!(saved.enhanced, EnhancedSettings::default());
+        assert_eq!(saved.enhanced, EnhancedChoices::default());
         assert_eq!(saved.data_dir, file.data_dir);
         // Turning an override off is a change too.
         let mut off = session.clone();
@@ -483,6 +792,18 @@ mod tests {
         assert!(!file_fs.with_changes(&session, &off).video.fullscreen);
         // Unchanged: the file as it is.
         assert_eq!(file.with_changes(&session, &session), file);
+        // A choice reaches the file; restoring the preset removes it again.
+        let mut file = file;
+        let mut chose = file.clone();
+        chose.profile = Profile::Enhanced;
+        chose.enhanced.lighting = Some(Lighting::Full);
+        file = file.with_changes(&file.clone(), &chose);
+        assert_eq!(file.enhanced.lighting, Some(Lighting::Full));
+        let mut preset = chose.clone();
+        preset.restore_preset();
+        file = file.with_changes(&chose, &preset);
+        assert!(file.enhanced.is_preset());
+        assert_eq!(file.profile, Profile::Enhanced);
     }
 
     #[test]
@@ -490,14 +811,15 @@ mod tests {
         let s = Settings {
             profile: Profile::Classic,
             audio: AudioSettings {
-                sfx_mode: SfxMode::Polyphonic,
+                sfx_mode: Some(SfxMode::Polyphonic),
                 ..AudioSettings::default()
             },
-            enhanced: EnhancedSettings {
-                widescreen: Widescreen::W21x9,
-                upscaler: Upscaler::Xbr4,
-                lighting: Lighting::Full,
-                bloom: true,
+            enhanced: EnhancedChoices {
+                widescreen: Some(Widescreen::W21x9),
+                upscaler: Some(Upscaler::Xbr4),
+                lighting: Some(Lighting::Full),
+                bloom: Some(true),
+                fixes: Some(true),
             },
             accessibility: AccessibilitySettings {
                 colorblind_guidance: true,
@@ -505,11 +827,14 @@ mod tests {
             ..Settings::default()
         };
         assert!(s.effective_enhanced().is_off());
-        // The profile governs only [enhanced] (spec enhanced/presentation rev 2 §2).
-        assert_eq!(s.audio.sfx_mode, SfxMode::Polyphonic);
+        assert_eq!(s.effective_sfx_mode(), SfxMode::Classic);
+        assert!(!s.enhanced_fixes());
+        // The accessibility options are not Enhanced features (MDG §6.2, D5).
         assert!(s.accessibility.colorblind_guidance);
         // The choices themselves are kept for when the profile changes back.
-        assert_eq!(s.enhanced.lighting, Lighting::Full);
+        assert_eq!(s.enhanced.lighting, Some(Lighting::Full));
+        assert_eq!(s.sfx_mode_value(), SfxMode::Polyphonic);
+        assert_eq!(Settings::default().profile, Profile::Classic);
     }
 
     #[test]

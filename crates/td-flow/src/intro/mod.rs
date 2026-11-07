@@ -125,11 +125,12 @@ pub struct IntroOptions {
 }
 
 impl IntroOptions {
-    /// The options for `settings`: OB-058 is fixed under the Enhanced profile only.
+    /// The options for `settings`: OB-058 is fixed with the fix-enhanced original-bug fixes,
+    /// which only the Enhanced profile turns on (its preset does, D5).
     #[must_use]
     pub fn for_settings(settings: &crate::Settings) -> Self {
         Self {
-            fix_ob058: settings.profile == crate::settings::Profile::Enhanced,
+            fix_ob058: settings.enhanced_fixes(),
         }
     }
 

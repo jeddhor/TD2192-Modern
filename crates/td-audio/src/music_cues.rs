@@ -181,6 +181,11 @@ impl MusicCues {
         self.table
     }
 
+    /// Changes the restart rule (the profile can change between cues).
+    pub fn set_restart(&mut self, restart: CueRestart) {
+        self.restart = restart;
+    }
+
     /// The cue last started, until [`Self::stop`].
     pub fn current(&self) -> Option<u8> {
         self.current

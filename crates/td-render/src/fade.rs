@@ -1,9 +1,12 @@
 //! Palette fades in the VGA 6-bit domain.
 //!
-//! Fidelity: provisional. ASSUMPTION(M5-02): a fade moves every component linearly from the
-//! source to the target palette over `steps` ticks, truncating toward the source
-//! (`src + (dst - src) * step / steps`). The original's step count, rate and rounding come from
-//! its DAC-writing routines (`docs/spec/render/fades.md`, to be written).
+//! Spec: `docs/spec/flow/screens.md` rev 3 §2.1 (the scene fades: 17 levels, their speed and
+//! the level phase) and `docs/spec/narrative/dialogue-player.md` §3.4 (the level formula);
+//! the flight fades are `crate::flight_palette` (flight-screens rev 5 §4.5.3). Fidelity: T0 per
+//! level, T2 for the pacing ([`write_level`], [`frames_per_level`], [`level_frames`]).
+//!
+//! [`Fade`] is a generic linear fade for the port's own screens (T3); no original screen
+//! uses it.
 
 use td_formats::palette::{Palette, Rgb6};
 

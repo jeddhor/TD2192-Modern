@@ -75,6 +75,18 @@ impl fmt::Debug for Program {
     }
 }
 
+/// When a music cue restarts the song already playing (music-cues §4.1, OB-012 fix-enhanced):
+/// every time under Classic, as the original; with the Enhanced profile's original-bug fixes a
+/// looping song requested again keeps playing.
+#[must_use]
+pub fn cue_restart(settings: &crate::Settings) -> CueRestart {
+    if settings.enhanced_fixes() {
+        CueRestart::IfDifferent
+    } else {
+        CueRestart::Always
+    }
+}
+
 impl Program {
     /// The Episode 1 program's services.
     pub fn new(
@@ -149,8 +161,10 @@ impl Program {
         }
     }
 
-    /// `Snd_PlayMusic(n)`.
+    /// `Snd_PlayMusic(n)`. The Enhanced fixes keep a looping song that is requested again
+    /// ([`cue_restart`], OB-012).
     pub fn play_cue(&mut self, ctx: &mut FlowContext<'_>, n: u8) {
+        self.cues.set_restart(cue_restart(ctx.settings));
         let load = Self::song_loader(&self.data, &mut self.songs);
         self.cues.play_cue(n, load, ctx.audio);
     }
@@ -167,6 +181,7 @@ impl Program {
 
     /// The flight song of flight `n`.
     pub fn play_flight_song(&mut self, ctx: &mut FlowContext<'_>, n: u8) {
+        self.cues.set_restart(cue_restart(ctx.settings));
         let load = Self::song_loader(&self.data, &mut self.songs);
         self.cues.play_flight(n, load, ctx.audio);
     }
@@ -334,6 +349,22 @@ impl Program {
         s
     }
 
+    /// The debrief's last line (episode-program-flow §4.5, MDG §9.6.9, U-010): the failure note
+    /// when the outcome is 0, else the rating of T = kills to date + kills, where T < 0 or
+    /// T > 29,999 gives the original's "cheater" line (D9: text only; impossible in normal
+    /// play, the cheat chords do not touch the kills).
+    #[must_use]
+    pub fn debrief_verdict(&self, kills: i16, kills_to_date: i16, outcome: bool) -> String {
+        let (_, cheater, tiers, failure, _) = self.debrief_texts();
+        if !outcome {
+            return failure;
+        }
+        match rating(i32::from(kills_to_date) + i32::from(kills)) {
+            Rating::Cheater => cheater,
+            Rating::Tier(t) => line(&tiers, usize::from(t) - 1),
+        }
+    }
+
     /// The debrief texts: labels (7), the cheater line, tiers (11), the failure note and the
     /// note label. E2 and E3 keep them as one run of 21 strings in this order (`e2.debrief`,
     /// `e3.debrief`; E3 has its own failure note, episode-deltas §9.1).
@@ -369,17 +400,10 @@ impl Program {
         kills_to_date: i16,
         outcome: bool,
     ) -> StoryScreen {
-        let (l, cheater, tiers, failure, note_label) = self.debrief_texts();
+        let (l, _, _, _, note_label) = self.debrief_texts();
         let get = |i: usize| line(&l, i);
         let total = i32::from(kills_to_date) + i32::from(kills);
-        let verdict = if !outcome {
-            failure
-        } else {
-            match rating(total) {
-                Rating::Cheater => cheater,
-                Rating::Tier(t) => line(&tiers, usize::from(t) - 1),
-            }
-        };
+        let verdict = self.debrief_verdict(kills, kills_to_date, outcome);
         let items = vec![
             TextItem::typed((20, 45), format!("{}{}{}", get(0), mission, get(1)), 40),
             TextItem::typed((20, 65), get(2), 40),
@@ -697,7 +721,11 @@ impl Episode1 {
                 } else {
                     SaveKind::Restore
                 };
-                self.stage = Stage::Saves(Box::new(self.save_screen(kind)));
+                // OB-056: Esc cancels the name entry with the Enhanced fixes.
+                let s = self
+                    .save_screen(kind)
+                    .esc_cancels_entry(ctx.settings.enhanced_fixes());
+                self.stage = Stage::Saves(Box::new(s));
                 return;
             }
             // In-process pictures with intro.cmf, as E2/E3 (launcher §4.10). The original
