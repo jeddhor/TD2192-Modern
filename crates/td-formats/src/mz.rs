@@ -74,7 +74,8 @@ pub fn pstring(data: &[u8], offset: usize) -> Result<&[u8]> {
 
 /// Reads `count` consecutive ShortStrings starting at `offset`.
 pub fn pstring_seq(data: &[u8], offset: usize, count: usize) -> Result<Vec<&[u8]>> {
-    let mut out = Vec::with_capacity(count);
+    // Each string takes at least its length byte, so the data bounds the count (BUG-16).
+    let mut out = Vec::with_capacity(count.min(data.len().saturating_sub(offset)));
     let mut at = offset;
     for _ in 0..count {
         let s = pstring(data, at)?;
@@ -114,5 +115,13 @@ mod tests {
         assert_eq!(pstring_seq(data, 0, 3).unwrap(), [&b"abc"[..], b"de", b""]);
         assert!(pstring(data, 8).is_err());
         assert!(pstring(b"\x05ab", 0).is_err());
+    }
+
+    #[test]
+    fn huge_pstring_counts_fail_without_reserving() {
+        // BUG-16 (M12-06 fuzzing): the count used to size the vector up front.
+        assert!(pstring_seq(&[], 0, usize::MAX).is_err());
+        assert!(pstring_seq(&[0, 0], 0, 1 << 59).is_err());
+        assert_eq!(pstring_seq(&[0, 0], 0, 2).unwrap().len(), 2);
     }
 }

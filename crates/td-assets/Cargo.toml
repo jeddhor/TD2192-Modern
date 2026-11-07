@@ -19,6 +19,7 @@ zip.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 td-test-support.workspace = true
 
 [lints]

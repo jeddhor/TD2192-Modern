@@ -11,9 +11,13 @@
 //! F12 saves the indexed frame as an indexed PNG and, when the Enhanced pipeline presented the
 //! frame, also the pipeline's RGBA output at its own size, (W·k) × (200·k), before the window
 //! scaling (`*.enhanced.png`).
+//!
+//! Developer options for headless checks (M12-06): `--dev-stats` logs, once a second, the tick
+//! rate the loop runs at and the ticks and frames it ran ([`Stats`]); `--dev-keys` presses keys
+//! at given ticks ([`parse_dev_keys`]).
 
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use td_audio::{AudioCommand, Mixer, SfxPolicy};
@@ -46,6 +50,95 @@ fn scale_mode(s: Scale) -> ScaleMode {
 pub struct RunOptions {
     /// Developer: save a screenshot and quit after this many ticks.
     pub exit_after_ticks: Option<u64>,
+    /// Developer: log the tick and frame rates once a second (`--dev-stats`).
+    pub stats: bool,
+    /// Developer: keys pressed at given ticks (`--dev-keys`), sorted by tick.
+    pub keys: Vec<(u64, Key)>,
+}
+
+/// Parses `--dev-keys`: comma-separated `TICK=KEY` or `FIRST-LAST/STEP=KEY` (every STEP ticks
+/// from FIRST to LAST), ticks counted from 1 over the whole run, key names as in `[controls]`
+/// (`td_input::Key::from_name`, for example `escape`, `enter`, `1`, `space`).
+pub fn parse_dev_keys(spec: &str) -> Result<Vec<(u64, Key)>> {
+    let mut out = Vec::new();
+    for item in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let (when, name) = item
+            .split_once('=')
+            .with_context(|| format!("{item:?}: expected TICK=KEY"))?;
+        let key = Key::from_name(name.trim()).with_context(|| format!("unknown key {name:?}"))?;
+        let num = |s: &str| -> Result<u64> {
+            s.trim()
+                .parse()
+                .with_context(|| format!("{item:?}: bad tick {s:?}"))
+        };
+        match when.split_once('-') {
+            None => out.push((num(when)?, key)),
+            Some((first, rest)) => {
+                let (last, step) = rest.split_once('/').unwrap_or((rest, "1"));
+                let (first, last, step) = (num(first)?, num(last)?, num(step)?.max(1));
+                let mut t = first;
+                while t <= last {
+                    out.push((t, key));
+                    t += step;
+                }
+            }
+        }
+    }
+    out.sort_by_key(|&(t, k)| (t, k.0));
+    Ok(out)
+}
+
+/// `--dev-stats`: ticks and frames counted over each second of wall time, and the average rate
+/// since the tick rate last changed (the run loop's own clock, `FixedStep`).
+#[derive(Debug)]
+struct Stats {
+    second: Instant,
+    ticks: u64,
+    frames: u64,
+    frame_time: Duration,
+    rate_since: Instant,
+    rate_ticks: u64,
+}
+
+impl Stats {
+    fn new(now: Instant) -> Self {
+        Self {
+            second: now,
+            ticks: 0,
+            frames: 0,
+            frame_time: Duration::ZERO,
+            rate_since: now,
+            rate_ticks: 0,
+        }
+    }
+
+    /// The loop changed its tick rate: start a new average.
+    fn rate_changed(&mut self, now: Instant) {
+        self.rate_since = now;
+        self.rate_ticks = 0;
+    }
+
+    /// Logs and restarts the counts once a second.
+    fn maybe_log(&mut self, now: Instant, hz: f64, total_ticks: u64) {
+        let dt = now - self.second;
+        if dt < Duration::from_secs(1) {
+            return;
+        }
+        let span = (now - self.rate_since).as_secs_f64();
+        tracing::info!(
+            target: "td2192::stats",
+            "rate {hz:.4} Hz: {:.2} ticks/s this second; {:.4} ticks/s over {span:.1} s at this rate; \
+             {:.1} frames/s, {:.3} ms per frame (draw + present); {total_ticks} ticks in all",
+            self.ticks as f64 / dt.as_secs_f64(),
+            self.rate_ticks as f64 / span.max(1e-9),
+            self.frames as f64 / dt.as_secs_f64(),
+            self.frame_time.as_secs_f64() * 1e3 / self.frames.max(1) as f64,
+        );
+        self.second = now;
+        self.ticks = 0;
+        self.frames = 0;
+        self.frame_time = Duration::ZERO;
+    }
 }
 
 /// Shared data a run needs (the game data itself is the [`DataHost`]'s).
@@ -109,6 +202,8 @@ pub fn run(
     let mut session = settings.clone();
     let mut saved = rd.saved.clone();
     let mut pad_buttons = 0;
+    let mut stats = Stats::new(last);
+    let mut dev_keys = options.keys.iter().peekable();
     while flow.running() {
         let mut snap: InputSnapshot = platform.poll();
         if snap.quit {
@@ -141,7 +236,7 @@ pub fn run(
         let ticks = step.advance(now - last);
         last = now;
         for _ in 0..ticks {
-            let input = std::mem::replace(
+            let mut input = std::mem::replace(
                 &mut pending,
                 TickInput {
                     held: snap.held.clone(),
@@ -149,6 +244,16 @@ pub fn run(
                     pad: snap.pad,
                 },
             );
+            // --dev-keys: a press (and hold) during this tick.
+            while let Some(&&(t, k)) = dev_keys.peek()
+                && t <= total_ticks + 1
+            {
+                if t == total_ticks + 1 {
+                    input.pressed.push(k);
+                    input.held.insert(k);
+                }
+                dev_keys.next();
+            }
             let mut ctx = FlowContext {
                 data: host.data(),
                 resources: host.resources(),
@@ -171,6 +276,8 @@ pub fn run(
                 session = new;
             }
             total_ticks += 1;
+            stats.ticks += 1;
+            stats.rate_ticks += 1;
             if options.exit_after_ticks == Some(total_ticks) {
                 return dev_capture(&flow, &mut fb, &mut platform, &mut enhanced, rd.user_dir);
             }
@@ -192,12 +299,17 @@ pub fn run(
                 // The dialog took wall time that must not turn into ticks.
                 last = Instant::now();
                 step = FixedStep::new(hz);
+                stats.rate_changed(last);
                 break;
             }
             // A screen change may change the pace; restart the clock at the new rate.
             if rate_of(&flow) != hz {
                 hz = rate_of(&flow);
                 step = FixedStep::new(hz);
+                stats.rate_changed(now);
+                if options.stats {
+                    tracing::info!(target: "td2192::stats", "tick rate now {hz:.4} Hz at tick {total_ticks}");
+                }
                 break;
             }
         }
@@ -207,6 +319,7 @@ pub fn run(
             mixer.render(&mut audio_buf);
             platform.queue_audio(&audio_buf)?;
         }
+        let frame_start = Instant::now();
         let enhanced_frame = enhanced.begin_frame(platform.output_size(), platform.scale_mode());
         flow.draw(&mut fb);
         if enhanced_frame {
@@ -214,6 +327,12 @@ pub fn run(
             enhanced.present(&fb, &mut platform, false)?;
         } else {
             platform.present(&fb)?;
+        }
+        if options.stats {
+            let now = Instant::now();
+            stats.frames += 1;
+            stats.frame_time += now - frame_start;
+            stats.maybe_log(now, hz, total_ticks);
         }
         if shot {
             save_screenshots(
@@ -381,4 +500,29 @@ pub fn screenshot(fb: &Framebuffer, user_dir: &Path) -> Result<std::path::PathBu
         .write_image_data(&fb.pixels)
         .context("png data")?;
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dev_keys_parse_single_ticks_and_ranges() {
+        let k = parse_dev_keys("100=1, 300=enter,400-460/20=escape").unwrap();
+        assert_eq!(
+            k,
+            vec![
+                (100, Key::DIGIT_1),
+                (300, Key::ENTER),
+                (400, Key::ESCAPE),
+                (420, Key::ESCAPE),
+                (440, Key::ESCAPE),
+                (460, Key::ESCAPE),
+            ]
+        );
+        assert!(parse_dev_keys("100").is_err());
+        assert!(parse_dev_keys("x=enter").is_err());
+        assert!(parse_dev_keys("5=nokey").is_err());
+        assert!(parse_dev_keys("").unwrap().is_empty());
+    }
 }

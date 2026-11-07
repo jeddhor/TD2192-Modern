@@ -96,9 +96,14 @@ pub struct Picture {
 impl Picture {
     /// Parses a still with the given layout; the file length must match exactly.
     pub fn parse(data: &[u8], layout: &StillLayout) -> Result<Self> {
-        let pixels_len = layout.width * layout.height;
         let pal_len = if layout.has_palette { PALETTE_LEN } else { 0 };
-        FormatError::check_size("picture", data, pal_len + pixels_len)?;
+        // A caller's layout may be absurd (BUG-15): an overflowing size matches no input.
+        let size = layout
+            .width
+            .checked_mul(layout.height)
+            .and_then(|p| p.checked_add(pal_len))
+            .ok_or_else(|| too_large("picture"))?;
+        FormatError::check_size("picture", data, size)?;
         Ok(Self {
             palette: layout
                 .has_palette
@@ -125,9 +130,26 @@ pub fn cell_layout(name: &str) -> Option<&'static CellLayout> {
 
 /// Splits a cell sheet into its cells (row-major pixels each).
 pub fn parse_cells(data: &[u8], layout: &CellLayout) -> Result<Vec<Box<[u8]>>> {
-    let cell = layout.cell_width * layout.cell_height;
-    FormatError::check_size("cell sheet", data, cell * layout.count)?;
+    // A caller's layout may be absurd: an empty cell (BUG-14) or an overflowing size (BUG-15).
+    let cell = layout
+        .cell_width
+        .checked_mul(layout.cell_height)
+        .filter(|&c| c > 0)
+        .ok_or_else(|| too_large("cell sheet"))?;
+    let size = cell
+        .checked_mul(layout.count)
+        .ok_or_else(|| too_large("cell sheet"))?;
+    FormatError::check_size("cell sheet", data, size)?;
     Ok(data.chunks_exact(cell).map(Into::into).collect())
+}
+
+/// The error for a layout whose size is empty or does not fit in `usize`.
+fn too_large(format: &'static str) -> FormatError {
+    FormatError::Invalid {
+        format,
+        offset: 0,
+        detail: "the layout's size is empty or overflows".into(),
+    }
 }
 
 #[cfg(test)]
@@ -154,5 +176,38 @@ mod tests {
         let cells = parse_cells(&vec![3u8; 28 * 28 * 5], l).unwrap();
         assert_eq!(cells.len(), 5);
         assert!(parse_cells(&[0u8; 100], l).is_err());
+    }
+
+    #[test]
+    fn absurd_layouts_are_errors() {
+        // BUG-14: an empty cell; BUG-15: sizes that overflow (M12-06 fuzzing).
+        let empty = CellLayout {
+            name: "x",
+            cell_width: 0,
+            cell_height: 0,
+            count: 0,
+        };
+        assert!(parse_cells(&[], &empty).is_err());
+        let huge = CellLayout {
+            name: "x",
+            cell_width: usize::MAX,
+            cell_height: 2,
+            count: 1,
+        };
+        assert!(parse_cells(&[], &huge).is_err());
+        let many = CellLayout {
+            name: "x",
+            cell_width: 1 << 40,
+            cell_height: 1,
+            count: 1 << 40,
+        };
+        assert!(parse_cells(&[], &many).is_err());
+        let still = StillLayout {
+            name: "x",
+            width: usize::MAX / 4 + 1,
+            height: 5,
+            has_palette: true,
+        };
+        assert!(Picture::parse(&[], &still).is_err());
     }
 }

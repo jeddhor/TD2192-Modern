@@ -1043,6 +1043,7 @@ name = "td-assets"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "proptest",
  "serde",
  "sha2",
  "td-formats",

@@ -154,6 +154,8 @@ pub struct SaveScreen {
     wait: u32,
     keys: Vec<(Key, bool)>,
     pad: Option<Pad>,
+    /// The controller's South button (joystick button 2) was down in the previous frame.
+    south_held: bool,
     outcome: Option<SaveOutcome>,
     /// OB-056 fixed: Esc cancels the name entry (Enhanced).
     esc_cancels: bool,
@@ -192,6 +194,7 @@ impl SaveScreen {
             wait: fade::first_level_frames(pal, 1, 0),
             keys: Vec::new(),
             pad: None,
+            south_held: false,
             outcome: None,
             esc_cancels: false,
             before_entry: None,
@@ -277,9 +280,19 @@ impl SaveScreen {
     /// Advances one frame.
     pub fn step(&mut self, input: &TickInput) {
         let shift = input.held(Key::LSHIFT) || input.held(Key::RSHIFT);
-        for &k in &input.pressed {
-            if is_keystroke(k) && self.keys.len() < KEY_BUFFER {
-                self.keys.push((k, shift));
+        // Port addition (port-front-end §5, M12-07): a press of South (joystick button 2) ends
+        // the name entry as Enter does, so a controller alone can save. The keys its binding
+        // stands for in that frame (Space by default) are not typed.
+        let south = input.pad.is_some_and(|p| p.button2);
+        let south_pressed = south && !self.south_held;
+        self.south_held = south;
+        if south_pressed && self.phase == Phase::Name {
+            self.keys.push((Key::ENTER, false));
+        } else {
+            for &k in &input.pressed {
+                if is_keystroke(k) && self.keys.len() < KEY_BUFFER {
+                    self.keys.push((k, shift));
+                }
             }
         }
         self.pad = input.pad;
@@ -694,6 +707,50 @@ mod tests {
         assert_eq!(set.names.names[0], "-", "empty slots get the label");
         assert_eq!(set.slots.slots[9].mission, 0, "21 is normalised");
         assert_eq!(set.slots.slots[9].kills, 5, "kills word kept");
+    }
+
+    /// M12-07 (port-front-end §5): a controller alone can save. South chooses the slot (as its
+    /// Space binding), and its next press ends the name entry like Enter without typing a space.
+    #[test]
+    fn south_ends_the_name_entry() {
+        let mut s = SaveScreen::new(
+            SaveKind::Save {
+                mission: 7,
+                kills: 99,
+            },
+            &Palette::default(),
+            &font(),
+            &labels(),
+            None,
+            set_with(1, 4, 12),
+        );
+        settle(&mut s);
+        let south = |down: bool, keys: Vec<Key>| TickInput {
+            pressed: keys,
+            held: Default::default(),
+            pad: Some(Pad {
+                button2: down,
+                ..Pad::default()
+            }),
+        };
+        // The press that chooses the slot comes with its binding's Space.
+        s.step(&south(true, vec![Key::SPACE]));
+        assert!(s.entering_name());
+        s.step(&south(true, Vec::new()));
+        s.step(&south(false, Vec::new()));
+        assert!(s.entering_name(), "held South does not save");
+        s.step(&press(Key::letter('a').unwrap()));
+        s.step(&south(true, vec![Key::SPACE]));
+        settle(&mut s);
+        let Some(SaveOutcome::Saved(set)) = s.outcome() else {
+            panic!("{:?}", s.outcome());
+        };
+        assert_eq!(
+            set.names.names[0],
+            format!("{:<24}", " a"),
+            "no space typed"
+        );
+        assert_eq!(set.slots.slots[0].mission, 7);
     }
 
     /// OB-056: Classic ignores Esc in the name entry (the slot is lost once chosen); with the
