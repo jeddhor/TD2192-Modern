@@ -695,9 +695,19 @@ impl Flight {
                 self.hit_flash = 0;
             }
             self.frame.hit_flash = self.hit_flash;
-            hit_flash::decay(&mut self.hit_flash, self.palette_mode);
-            if self.white_flash > 0 {
-                self.hit_flash = 0;
+            if self.episode == Episode::E1 {
+                hit_flash::decay(&mut self.hit_flash, self.palette_mode);
+                if self.white_flash > 0 {
+                    self.hit_flash = 0;
+                }
+            } else {
+                // E2 and E3 cancel the hit flash before their hit-flash step (episode-deltas
+                // rev 5 §4.1, BUG-32): the step then finds 0. The level ends the same; the DAC
+                // can differ (`td_render::flight_palette::FlightDac::step_for`).
+                if self.white_flash > 0 {
+                    self.hit_flash = 0;
+                }
+                hit_flash::decay(&mut self.hit_flash, self.palette_mode);
             }
             self.frame.white_flash = self.white_flash;
             self.white_flash = self.white_flash.saturating_sub(1);

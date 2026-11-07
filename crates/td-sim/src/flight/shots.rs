@@ -1,11 +1,19 @@
 //! Projectiles: one pool of 51 slots shared by the player and the mission ships.
 //!
 //! Spec: `docs/spec/sim/weapons.md` rev 6 (§4.2 spawning, §4.3 per-tick update, the per-slot
-//! order of U-502). Fidelity: T1. Shots move one whole tile per tick along a principal heading;
-//! hit tests use the positions before the move. Each slot's update latches its heading first
-//! and moves along it, so a homing missile's steering takes effect the next tick (BUG-11).
-//! "Freeing" a slot writes FFh to its tile X, as the original does; later tests in the same
-//! pass then fail on distance by themselves.
+//! order of U-502) and rev 8 §2 (16-bit world positions). Fidelity: T1. Shots move one whole
+//! tile per tick along a principal heading; hit tests use the positions before the move. Each
+//! slot's update latches its heading first and moves along it, so a homing missile's steering
+//! takes effect the next tick (BUG-11). "Freeing" a slot writes FFh to its tile X, as the
+//! original does; later tests in the same pass then fail on distance by themselves.
+//!
+//! **16-bit positions** (mission-ships rev 8 §4.2.5, U-570, BUG-30). The original never forms
+//! a 32-bit world position: `tile × 32 + offset` ([`pos16`]), the hit-test differences, the
+//! volley spawn offset and the hit explosion offset are 16-bit two's-complement sums, and the
+//! hit tests compare the original's absolute value (`wrapping_abs`: −32,768 stays negative and
+//! passes `< r`; [`near16`]). With offsets in their normal range this equals 32-bit arithmetic;
+//! it differs (and 32-bit adds would overflow) only after a ship's offset wrapped at a map edge
+//! (§4.2.3).
 
 use super::explosions::Explosions;
 use super::hit_flash;
@@ -59,13 +67,36 @@ impl Shot {
         self.tile_x != FREE
     }
 
-    /// World pixel (`tile × 32 + offset`).
-    pub fn world(&self) -> (i32, i32) {
+    /// World pixel (`tile × 32 + offset` per axis) in the original's 16-bit arithmetic
+    /// ([`pos16`]; weapons rev 8 §2).
+    pub fn world16(&self) -> (i16, i16) {
         (
-            i32::from(self.tile_x) * 32 + i32::from(self.off_x),
-            i32::from(self.tile_y) * 32 + i32::from(self.off_y),
+            pos16(self.tile_x, self.off_x),
+            pos16(self.tile_y, self.off_y),
         )
     }
+}
+
+/// One axis of a world pixel as the original computes it (mission-ships rev 8 §4.2.5): the
+/// tile byte zero-extended, × 32, plus the offset, in 16-bit two's-complement arithmetic (it
+/// wraps; `{$Q-}`, bp7-runtime-semantics §4.3).
+#[must_use]
+pub fn pos16(tile: u8, offset: i16) -> i16 {
+    (i16::from(tile) * 32).wrapping_add(offset)
+}
+
+/// The original's absolute value of a 16-bit word (`CWD; XOR AX,DX; SUB AX,DX`, "abs16" in
+/// mission-ships rev 8 §4.2.5): −32,768 stays −32,768, so it passes every `abs16(d) < r` test.
+#[must_use]
+pub fn abs16(d: i16) -> i16 {
+    d.wrapping_abs()
+}
+
+/// The hit-box test of weapons §4.3 steps 3–5 (mission-ships rev 8 §4.2.5 rows 4–6): the
+/// per-axis difference `a − b` in 16 bits (wrapping), [`abs16`], and a signed `< r`.
+#[must_use]
+pub fn near16(a: (i16, i16), b: (i16, i16), r: i16) -> bool {
+    abs16(a.0.wrapping_sub(b.0)) < r && abs16(a.1.wrapping_sub(b.1)) < r
 }
 
 /// The muzzle-offset table (DS:035C, read from the executable): signed byte pairs, muzzle `m`
@@ -139,10 +170,6 @@ impl Default for Shots {
     fn default() -> Self {
         Self([Shot::UNUSED; SHOT_SLOTS])
     }
-}
-
-fn near(a: (i32, i32), b: (i32, i32), r: i32) -> bool {
-    (a.0 - b.0).abs() < r && (a.1 - b.1).abs() < r
 }
 
 /// Applies `d` damage: shields absorb first, the rest goes to armour.
@@ -231,11 +258,13 @@ impl Shots {
                     // Two-digit headings read past the muzzle table (OB-017): (0, 0) here
                     // (U-160 proposal); such a shot is deleted by its first move.
                     let (dx, dy) = muzzles.get(s.heading, m);
+                    // `dx + offset − 16` is a 16-bit sum that wraps (mission-ships rev 8
+                    // §4.2.5 row 8): a ship whose offset wrapped at a map edge fires too.
                     self.0[slot] = Shot {
                         tile_x: s.tile_x,
                         tile_y: s.tile_y,
-                        off_x: dx + s.sub_x - 16,
-                        off_y: dy + s.sub_y - 16,
+                        off_x: dx.wrapping_add(s.sub_x).wrapping_sub(16),
+                        off_y: dy.wrapping_add(s.sub_y).wrapping_sub(16),
                         heading: s.heading,
                         kind: entry - 1,
                         life: 1,
@@ -385,14 +414,15 @@ impl Shots {
                 self.map_test(i, h, c.world);
             }
         }
-        // 3. Homing missile: destroys the first ship within 40 px.
+        // 3. Homing missile: destroys the first ship within 40 px (16-bit difference and abs16,
+        // mission-ships rev 8 §4.2.5 row 4).
         if self.0[i].kind == HOMING {
             for s in 0..SHIP_SLOTS {
                 let shot = self.0[i];
                 let ship = c.ships.0[s];
                 if ship.alive()
                     && s + 1 != usize::from(shot.owner)
-                    && near(ship.world(), shot.world(), 40)
+                    && near16(ship.world16(), shot.world16(), 40)
                 {
                     self.free(i);
                     if c.episode == Episode::E2 {
@@ -417,21 +447,22 @@ impl Shots {
                 }
             }
         }
-        // 4. Hits on mission ships (E1: not slot 1's shots in flight 20; P1 removed it).
+        // 4. Hits on mission ships (E1: not slot 1's shots in flight 20; P1 removed it); row 5
+        // of mission-ships rev 8 §4.2.5.
         if !(c.episode == Episode::E1 && c.flight == 20 && self.0[i].owner == 1) {
             for s in 0..SHIP_SLOTS {
                 let shot = self.0[i];
                 if c.ships.0[s].alive()
                     && s + 1 != usize::from(shot.owner)
-                    && near(c.ships.0[s].world(), shot.world(), 20)
+                    && near16(c.ships.0[s].world16(), shot.world16(), 20)
                 {
                     self.hit_ship(i, s, c);
                 }
             }
         }
-        // 5. Hits on the player.
+        // 5. Hits on the player (row 6 of mission-ships rev 8 §4.2.5).
         let shot = self.0[i];
-        if shot.owner != 0 && !c.late_draw && near(player_ref(c.player), shot.world(), 20) {
+        if shot.owner != 0 && !c.late_draw && near16(player_ref(c.player), shot.world16(), 20) {
             self.hit_player(i, c);
         }
         // 6. The drawing (the host's, with `h`: `Flight::drawn`), then a homing missile steers:
@@ -513,10 +544,12 @@ impl Shots {
             // The Random calls sit inside the slot search (weapons rev 3): none without a slot.
             let rx = c.rng.random(16) as i16;
             let ry = c.rng.random(16) as i16;
+            // Only the low byte of `offset + Random(16)` is stored (mission-ships rev 8 §4.2.5
+            // row 7), so the sum may wrap: a wrapped ship's offset is near ±32,768.
             c.explosions.start_in(
                 e,
                 (ship.tile_x, ship.tile_y),
-                (ship.sub_x + rx, ship.sub_y + ry),
+                (ship.sub_x.wrapping_add(rx), ship.sub_y.wrapping_add(ry)),
             );
         }
     }
@@ -594,13 +627,13 @@ fn five_explosions(explosions: &mut Explosions, (x, y): (u8, u8)) {
     }
 }
 
-/// The player's hit reference point (`weapons.md` §2).
-pub fn player_ref(p: &Player) -> (i32, i32) {
+/// The player's hit reference point (`weapons.md` rev 8 §2): `(view + 5 or 3) × 32 + viewSub`
+/// per axis, a 16-bit sum.
+pub fn player_ref(p: &Player) -> (i16, i16) {
     let v = p.view;
-    (
-        (i32::from(v.tile_x) + 5) * 32 + i32::from(v.sub_x),
-        (i32::from(v.tile_y) + 3) * 32 + i32::from(v.sub_y),
-    )
+    let axis =
+        |tile: i16, add: i16, sub: i16| tile.wrapping_add(add).wrapping_mul(32).wrapping_add(sub);
+    (axis(v.tile_x, 5, v.sub_x), axis(v.tile_y, 3, v.sub_y))
 }
 
 impl HashState for Shots {

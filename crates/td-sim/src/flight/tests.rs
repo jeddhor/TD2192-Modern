@@ -356,7 +356,7 @@ fn weapons_vector_3_player_hit() {
     // Stop shield regeneration from hiding the result: class 4 regenerates +1 per tick, so
     // read the values after the hit and before step 27 by making the hit the only change.
     let at = shots::player_ref(&f.player);
-    f.shots.0[0] = shot_at(0, 3, at, 8);
+    f.shots.0[0] = shot_at(0, 3, (at.0.into(), at.1.into()), 8);
     f.tick(&w, &TickControls::default(), &mut vec![]);
     // Hit: shields 0, armour 24; then step 27 regenerates one shield point.
     assert_eq!((f.player.shields, f.player.armour), (1, 24));

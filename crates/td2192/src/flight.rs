@@ -988,9 +988,15 @@ impl FlightArena {
             // 14. Palette effects, in the mode the step saw (Alt acts later, at step 33), from
             // the hit-flash level the step found (hit-flash.md §4.3).
             self.dac.set_hit_flash(self.flight.frame.hit_flash);
-            // OB-032: the Enhanced fixes restore mode 2 after a white flash.
-            self.dac
-                .step(&self.palette, mode, self.flight.frame.white_flash, fixes);
+            // OB-032: the Enhanced fixes restore mode 2 after a white flash. E2 and E3 run the
+            // white flash before the hit flash (episode-deltas rev 5 §4.1, BUG-32).
+            self.dac.step_for(
+                self.flight.episode,
+                &self.palette,
+                mode,
+                self.flight.frame.white_flash,
+                fixes,
+            );
             r
         };
         while let TickResult::Modal(m) = result {
@@ -1515,8 +1521,9 @@ impl FlightArena {
         }
     }
 
-    /// Mission ships and their target brackets (`mission-ships.md` rev 2 §4.7, T2, with the
-    /// row reading of U-127): sprite = class code at the slot's heading.
+    /// Mission ships and their target brackets (`mission-ships.md` rev 8 §4.7, T2, with the
+    /// row reading of U-127 and the 16-bit rules of §4.2.5): sprite = class code at the slot's
+    /// heading.
     ///
     /// A ship removed at the map edge is drawn once more by the original (with sprite FFh),
     /// but only inside the drawing window, which never reaches the edge rows and columns (the
@@ -1531,15 +1538,14 @@ impl FlightArena {
                 sub_y: s.sub_y,
                 marker: s.marker,
             };
-            let Some(pos) = flight::mission_ship_pos_in(view, page, &mark, Viewport::of(fb)) else {
-                continue;
-            };
             let heading = Heading::from_code(s.heading).unwrap_or(Heading::N);
             let frame = self
                 .ships
                 .frame(usize::from(s.class), heading.sprite_index())
                 .map(|f| (f, td_render::headings::CELL));
-            flight::draw_mission_ship(fb, frame, pos, s.marker);
+            // The window test, the sprite and the brackets in the original's 16-bit arithmetic
+            // (mission-ships rev 8 §4.2.5 rows 2 and 3, BUG-30).
+            flight::draw_mission_ship_in(fb, frame, view, page, &mark);
         }
     }
 

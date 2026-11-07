@@ -1,9 +1,10 @@
 //! The 20 mission-ship slots: setup, AI, movement, fire requests and removal.
 //!
 //! Spec: `docs/spec/sim/mission-ships.md` rev 2 (CONFIRMED against C-0009; setup steps 2–4 and
-//! the turn directions kept across flights per rev 6 §2, §4.1, U-501, U-500) and
-//! `docs/spec/sim/mission-setup.md` rev 1. Fidelity: T1. Slot `i` here is the original's slot
-//! `i + 1`; target selectors and `owner` fields keep the original's 1-based numbers.
+//! the turn directions kept across flights per rev 6 §2, §4.1, U-501, U-500; the 16-bit offsets
+//! and positions per rev 8 §4.2.3, §4.2.5, U-570) and `docs/spec/sim/mission-setup.md` rev 1.
+//! Fidelity: T1. Slot `i` here is the original's slot `i + 1`; target selectors and `owner`
+//! fields keep the original's 1-based numbers.
 //!
 //! The ship record (1,065 bytes in the original) is kept as typed fields; [`Ship::record_byte`]
 //! gives the original byte view, which the path cursor reads through (path step 0 is the cursor
@@ -205,11 +206,23 @@ impl Ship {
         self.class != NO_SHIP
     }
 
-    /// World pixel (`tile × 32 + offset` per axis).
+    /// World pixel (`tile × 32 + offset` per axis) as a true 32-bit value. The original never
+    /// forms this (mission-ships rev 8 §4.2.5): no simulation rule uses it; it is for tools
+    /// (the route planner's line of fire) and tests. The rules use [`Ship::world16`].
     pub fn world(&self) -> (i32, i32) {
         (
             i32::from(self.tile_x) * 32 + i32::from(self.sub_x),
             i32::from(self.tile_y) * 32 + i32::from(self.sub_y),
+        )
+    }
+
+    /// World pixel as the original computes it (mission-ships rev 8 §4.2.5, weapons rev 8 §2):
+    /// `tile × 32 + offset` per axis in 16-bit two's-complement arithmetic, which wraps once an
+    /// offset has wrapped at a map edge (§4.2.3, U-570).
+    pub fn world16(&self) -> (i16, i16) {
+        (
+            super::shots::pos16(self.tile_x, self.sub_x),
+            super::shots::pos16(self.tile_y, self.sub_y),
         )
     }
 
@@ -948,9 +961,10 @@ impl Ship {
     /// Drift, drag, carry and edge removal (§4.2.3).
     ///
     /// The offsets are 16-bit and wrap silently, as the original's `{$Q-}` arithmetic does
-    /// (bp7-runtime-semantics §3): a ship parked against row 199 or row 1 keeps moving its offset
-    /// and wraps after a few thousand ticks (BUG-18; what the original does after the wrap is
-    /// U-570).
+    /// (bp7-runtime-semantics §4.3; mission-ships rev 8 §4.2.3, §4.2.5 row 1): a ship parked
+    /// against row 199 or row 1 keeps moving its offset and wraps after a few thousand ticks
+    /// (BUG-18, U-570). After the wrap the bottom-edge ship climbs one row per tick to row 1,
+    /// where it is removed; the top-edge ship descends one row per tick to row 199 (C-0340).
     fn drift(&mut self) {
         while self.sub_x > 80 || self.sub_x < -16 {
             if self.sub_x > 80 {

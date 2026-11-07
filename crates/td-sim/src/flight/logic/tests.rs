@@ -3,7 +3,7 @@
 use super::*;
 use crate::flight::player::{Player, View};
 use crate::flight::{START_VIEW, World};
-use crate::flight::{TickResult, tables};
+use crate::flight::{Session, TickResult, tables};
 use crate::input::{FlightKey, TickControls};
 use td_formats::map::TileMap;
 
@@ -500,6 +500,136 @@ fn outcomes() {
     f.lost = true;
     assert!(!f.outcome());
     assert!(scripted(1).outcome());
+}
+
+/// BUG-30: `Msn_PlayerTouches` takes ΔY in 16 bits with the original's absolute value
+/// (mission-logic rev 5 §3.1, mission-ships rev 8 §4.2.5 row 10): −32,768 passes.
+#[test]
+fn player_touches_compares_delta_y_in_16_bits() {
+    let mut f = scripted(7);
+    // View (102, 104), offsets (32, 16): ΔX = 5 × 32 + 0 − (32 + 128) = 0; ΔY = offset − 100.
+    put(&mut f, 2, 3, (107, 104));
+    f.ships.0[1].sub_x = 0;
+    f.ships.0[1].sub_y = -32_668;
+    assert!(f.player_touches(2), "ΔY −32,768 passes abs16 < 32");
+    f.ships.0[1].sub_y = -32_667;
+    assert!(!f.player_touches(2), "ΔY −32,767");
+    f.ships.0[1].sub_y = -32_700;
+    assert!(!f.player_touches(2), "ΔY −32,800 wraps to 32,736");
+    f.ships.0[1].sub_y = 131;
+    assert!(f.player_touches(2), "ΔY 31");
+    f.ships.0[1].sub_x = 32;
+    assert!(!f.player_touches(2), "ΔX 32");
+}
+
+/// BUG-30: E1 flight 20's lander shots (slot 1's offset + 32 or − 10) and the sinking of
+/// slots 1..5 below row 160 are 16-bit sums (mission-ships rev 8 §4.2.5 rows 1 and 9).
+#[test]
+fn flight_20_lander_arithmetic_wraps() {
+    let mut f = scripted(20);
+    put(&mut f, 1, 2, (100, 100));
+    f.ships.0[0].sub_x = i16::MAX - 10;
+    f.ships.0[0].sub_y = i16::MIN + 5;
+    put(&mut f, 2, 2, (100, 100));
+    f.ships.0[1].sub_y = i16::MAX - 1;
+    // Slot 5: armour above 50 (the lander fires on page 1, Random(3) > 1), below row 170.
+    put(&mut f, 5, 2, (100, 180));
+    f.draw_page = 1;
+    let mut fired = false;
+    for _ in 0..30 {
+        let l = f.ships.0[0];
+        f.flight_20_events(&mut vec![]);
+        if f.shots.0[40].alive() {
+            assert_eq!(f.shots.0[39].off_x, l.sub_x.wrapping_add(32));
+            assert_eq!(f.shots.0[38].off_y, l.sub_y.wrapping_sub(10));
+            fired = true;
+            break;
+        }
+    }
+    assert!(fired, "the lander fires within 30 page-1 calls");
+    // Slot 2 sank by 2 + 4 per call: 32,766 wraps.
+    assert!(f.ships.0[1].sub_y < 0);
+}
+
+/// Mission globals as a lost flight 18 (the bomb) and a flight 17 that reached its
+/// destruction count leave them, with the comm lamp mid-pulse.
+fn stale_session(ep: Episode) -> Session {
+    let mut s = Session::for_episode(ep);
+    let m = &mut s.mission;
+    m.comm_pending = true;
+    m.comm_phase = 5;
+    m.cutscene = true;
+    m.count = 47;
+    m.hit = [true; SHIP_SLOTS];
+    m.ion_timer = 1_000;
+    m.bomb = true;
+    m.base_rubble = true;
+    m.white_out = true;
+    m.truck = [125, 73, 32, 16];
+    s
+}
+
+/// The list of mission-logic rev 5 §3.3 is clear (comm pending aside, which `want_comm`
+/// gives: E2 flight 11 starts with a transmission waiting), and flight 19's copy of slot 19 is
+/// `truck`, as the flight before left it.
+fn assert_cleared(m: &MissionState, want_comm: bool, truck: [i16; 4], what: &str) {
+    assert_eq!(m.comm_pending, want_comm, "{what}: comm pending");
+    assert_eq!(m.comm_phase, 0, "{what}: indicator phase");
+    assert!(!m.cutscene, "{what}: cut-scene request");
+    assert_eq!(m.count, 0, "{what}: event counter");
+    assert_eq!(m.hit, [false; SHIP_SLOTS], "{what}: base-hit bytes");
+    assert_eq!(m.ion_timer, 0, "{what}: ion timer");
+    assert!(!m.bomb, "{what}: bomb flag (base-hit byte 18)");
+    assert!(
+        !m.base_rubble && !m.white_out,
+        "{what}: reloaded map and palette"
+    );
+    assert_eq!(m.truck, truck, "{what}: DS:16EE..16F4 is not cleared");
+}
+
+/// BUG-31 (U-144): a retry of E1 flight 18 after the bomb is not lost in tick 1.
+#[test]
+fn flight_18_retry_after_the_bomb_starts_clear() {
+    let w = open_world();
+    let mut f = Flight::start(18, None, &w, Session::new());
+    put(&mut f, 3, 7, (105, 105));
+    for _ in 0..1_000 {
+        f.msn_update();
+    }
+    assert!(f.mission.bomb);
+    f.msn_update_events(&mut vec![]);
+    assert!(f.lost, "the first attempt is lost to the bomb");
+    // The retry: the same flight with the session the lost one left.
+    let mut g = Flight::start(18, None, &w, f.session());
+    assert_cleared(&g.mission, false, f.mission.truck, "E1 flight 18 retry");
+    assert_eq!(g.mission.phase, 1);
+    // The ion truck is far from the player at the start.
+    put(&mut g, 3, 7, (150, 150));
+    let r = g.tick(&w, &TickControls::default(), &mut vec![]);
+    assert!(!g.lost, "not lost in tick 1");
+    assert_ne!(r, TickResult::Finished);
+    assert!(!g.mission.bomb);
+}
+
+/// BUG-31: every flight start of every episode clears the list of mission-logic rev 5 §3.3
+/// (E2 `0E96:A76E..A801`, E3 `0C5D:A9CC..AA5F` and e3-mission-setup §4.1 step 9 for the
+/// indicator phase), whatever the flight before it left.
+#[test]
+fn every_flight_start_clears_the_flight_start_globals() {
+    let w = open_world();
+    for (ep, flights) in [
+        (Episode::E1, &[1u8, 7, 17, 18, 19, 20, 21][..]),
+        (Episode::E2, &[1, 11, 17, 18, 20][..]),
+        (Episode::E3, &[1, 7, 16, 17, 19, 21][..]),
+    ] {
+        for &n in flights {
+            let f = Flight::start(n, None, &w, stale_session(ep));
+            let comm = ep == Episode::E2 && n == 11;
+            let what = format!("{ep} flight {n}");
+            assert_cleared(&f.mission, comm, [125, 73, 32, 16], &what);
+            assert!(!f.lost && !f.succeeded, "{ep} flight {n}");
+        }
+    }
 }
 
 #[test]

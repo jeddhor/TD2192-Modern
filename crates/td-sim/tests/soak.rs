@@ -638,7 +638,10 @@ fn long_soak() {
 /// §4.2.3: "Y never wraps at row 199 (offsetY grows)") and overflows i16 in tick 4235, which
 /// panics in every build (td-sim keeps overflow checks in release, MDG §8.6): the game crashes
 /// 3 minutes 40 seconds into the flight. Fixed: the drift's offsets wrap like the original's
-/// 16-bit arithmetic (bp7-runtime-semantics §3); the flight now runs to tick 6000.
+/// 16-bit arithmetic (bp7-runtime-semantics §3); the flight now runs to tick 6000. After the
+/// wrap the ship climbs one row per tick and is removed on row 1 (mission-ships rev 8 §4.2.3
+/// test vector, §6 vector 7, C-0340; U-570): slot 3's (class, tile Y, offset Y) after the
+/// ticks the spec lists.
 #[test]
 fn e3_flight_19_idle_outlives_tick_4235() {
     let Some(data) = data_dir() else {
@@ -647,11 +650,26 @@ fn e3_flight_19_idle_outlives_tick_4235() {
     };
     let setup = load(&data, Episode::E3, 19);
     let mut f = setup.start();
-    for _ in 0..6000 {
+    let want: BTreeMap<u32, (u8, u8, i16)> = [
+        (500, (0, 199, 1_023)),
+        (4234, (0, 199, 32_762)),
+        (4235, (0, 199, -32_766)),
+        (4236, (0, 198, -32_725)),
+        (4299, (0, 135, -30_174)),
+        (4433, (0xFF, 1, -24_747)),
+    ]
+    .into();
+    for t in 1..=6000 {
         if td_sim::replay::step(&mut f, &setup.world, 0) == TickResult::Finished {
             break;
         }
+        if let Some(&w) = want.get(&t) {
+            let s = &f.ships.0[2];
+            assert_eq!((s.class, s.tile_y, s.sub_y), w, "slot 3 after tick {t}");
+            assert_eq!(s.tile_x, 102, "slot 3 after tick {t}");
+        }
     }
+    assert!(f.ticks >= 4433, "the flight reached the removal");
 }
 
 /// BUG-18, the top edge: with these random inputs, a class-7 ship of E1 flight 6 (slot 19) and

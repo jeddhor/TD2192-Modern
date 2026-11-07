@@ -19,6 +19,7 @@
 //! DAC 255 and 37 ([`FlightDac::toggle_e2_classic`]; the fix is [`FlightDac::toggle`]).
 
 use td_formats::palette::{Palette, Rgb6};
+use td_sim::flight::Episode;
 
 /// Brightness steps of a flight fade: s = 0..=16 (§4.5.3).
 pub const FADE_STEPS: u8 = 16;
@@ -160,11 +161,52 @@ impl FlightDac {
         self.hit_flash = v;
     }
 
-    /// Tick-order step 14 (§4.5.4) in palette `mode`, with the white-flash counter
+    /// Tick-order step 14 (§4.5.4) of E1 in palette `mode`, with the white-flash counter
     /// `flash_frames` (`g_FlashFrames`) as the step read it (4 = first white frame .. 1 =
-    /// restore, 0 = none). In mode 2 the last frame restores nothing (OB-032), unless
+    /// restore, 0 = none): the hit-flash step, the cancel (a white flash ends the hit flash),
+    /// then the white-flash writes. In mode 2 the last frame restores nothing (OB-032), unless
     /// `fix_ob032` (Enhanced), where it writes the mode-2 palette of the Alt toggle.
     pub fn step(&mut self, p: &Palette, mode: u8, flash_frames: u8, fix_ob032: bool) {
+        self.hit_flash_step(p, mode);
+        if flash_frames > 0 {
+            self.hit_flash = 0;
+        }
+        self.white_flash_writes(p, mode, flash_frames, fix_ob032);
+    }
+
+    /// Tick-order step 14 of E2 and E3 (episode-deltas rev 5 §4.1, U-204, BUG-32): the
+    /// white-flash writes, then the cancel, then the hit-flash step (`Gfx_HitFlashStep`, an
+    /// exact copy of E1's block), which therefore writes nothing while a white flash runs. The
+    /// result differs from E1's [`FlightDac::step`] only in white-flash frame 1 in palette mode
+    /// 2 with a hit flash running (Classic): E1 leaves the hit-flash entries over frame 2's
+    /// colours, E2 and E3 leave frame 2's colours.
+    pub fn step_e2_e3(&mut self, p: &Palette, mode: u8, flash_frames: u8, fix_ob032: bool) {
+        self.white_flash_writes(p, mode, flash_frames, fix_ob032);
+        if flash_frames > 0 {
+            self.hit_flash = 0;
+        }
+        self.hit_flash_step(p, mode);
+    }
+
+    /// Tick-order step 14 in `episode`'s order: [`FlightDac::step`] (E1) or
+    /// [`FlightDac::step_e2_e3`].
+    pub fn step_for(
+        &mut self,
+        episode: Episode,
+        p: &Palette,
+        mode: u8,
+        flash_frames: u8,
+        fix_ob032: bool,
+    ) {
+        match episode {
+            Episode::E1 => self.step(p, mode, flash_frames, fix_ob032),
+            Episode::E2 | Episode::E3 => self.step_e2_e3(p, mode, flash_frames, fix_ob032),
+        }
+    }
+
+    /// The hit-flash block (§4.5.4; E2/E3 `Gfx_HitFlashStep`): decay, then the brightened
+    /// entries, or the mode's palette when the flash ends.
+    fn hit_flash_step(&mut self, p: &Palette, mode: u8) {
         if self.hit_flash > 0 && mode <= 2 {
             let decay = if mode == 1 { 3 } else { 2 };
             self.hit_flash = self.hit_flash.wrapping_sub(decay);
@@ -197,9 +239,10 @@ impl FlightDac {
                 }
             }
         }
-        if flash_frames > 0 {
-            self.hit_flash = 0;
-        }
+    }
+
+    /// The white-flash DAC writes of frame `flash_frames` (4..=1; 0 writes nothing).
+    fn white_flash_writes(&mut self, p: &Palette, mode: u8, flash_frames: u8, fix_ob032: bool) {
         match flash_frames {
             4 => self.dac.colors.fill(rgb(63, 63, 63)),
             3 => {
@@ -403,6 +446,80 @@ mod tests {
                     (_, true) => c(60, 0, 0),    // OB-032 fixed: the mode-2 palette
                 };
                 assert_eq!(d.current().colors[10], want, "mode {mode}, fix {fix}");
+            }
+        }
+    }
+
+    /// BUG-32 (episode-deltas rev 5 §4.1): white-flash frame 1 in palette mode 2 (Classic)
+    /// with a hit flash running. E1 decays and draws the hit flash before the frame, which
+    /// writes nothing in mode 2 (OB-032), so the hit-flash entries stay over frame 2's colours;
+    /// E2 and E3 write the frame, cancel the hit flash, and their hit-flash step then writes
+    /// nothing: frame 2's colours stay.
+    #[test]
+    fn e2_e3_white_flash_runs_before_the_hit_flash() {
+        let p = pal(&[(10, (40, 20, 30)), (50, (8, 8, 8))]);
+        let run = |ep: Episode| {
+            let mut d = FlightDac::start(&p, 2);
+            for frames in [4, 3, 2] {
+                d.step_for(ep, &p, 2, frames, false);
+            }
+            // A distance flash in the tick of frame 1.
+            d.start_hit_flash(10);
+            d.step_for(ep, &p, 2, 1, false);
+            assert_eq!(
+                d.hit_flash(),
+                0,
+                "{ep}: the white flash cancels the hit flash"
+            );
+            d
+        };
+        let e1 = run(Episode::E1);
+        // Decay 10 → 8; mode 2 brightens (3R >> 1) + 8 = 68 → 63; nothing restores it.
+        assert_eq!(e1.current().colors[10], c(63, 0, 0));
+        assert_eq!(e1.current().colors[50], c(63, 8, 8), "above 45: frame 2");
+        for ep in [Episode::E2, Episode::E3] {
+            let d = run(ep);
+            assert_eq!(
+                d.current().colors[10],
+                c(63, 30, 30),
+                "{ep}: frame 2's colour"
+            );
+            assert_eq!(d.current().colors[50], c(63, 8, 8), "{ep}");
+        }
+    }
+
+    /// Every other case of step 14 ends the same in both orders: no white flash, frames 4..2
+    /// (all 256 entries rewritten), frame 1 in modes 0 and 1, frame 1 in mode 2 with the
+    /// OB-032 fix, or no hit flash.
+    #[test]
+    fn step_orders_agree_but_for_frame_1_in_mode_2() {
+        let mut p = Palette::default();
+        for (i, c) in p.colors.iter_mut().enumerate() {
+            let v = (i * 7 % 64) as u8;
+            *c = Rgb6 {
+                r: v,
+                g: 63 - v,
+                b: (i % 64) as u8,
+            };
+        }
+        for mode in 0..=2 {
+            for fix in [false, true] {
+                for frames in 0..=4 {
+                    for flash in [0, 1, 5, 25] {
+                        let mut e1 = FlightDac::start(&p, mode);
+                        e1.set_hit_flash(flash);
+                        let mut e3 = e1.clone();
+                        e1.step_for(Episode::E1, &p, mode, frames, fix);
+                        e3.step_for(Episode::E3, &p, mode, frames, fix);
+                        assert_eq!(e1.hit_flash(), e3.hit_flash());
+                        let differs = mode == 2 && frames == 1 && !fix && flash > 0;
+                        assert_eq!(
+                            e1 != e3,
+                            differs,
+                            "mode {mode}, fix {fix}, frames {frames}, flash {flash}"
+                        );
+                    }
+                }
             }
         }
     }
