@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Builds a portable release folder and tarball of TD2192-Modern for Linux x64 (M13-01, M13-03;
-# decision D6: Windows x64 and Linux x64, unsigned).
+# Builds a portable release folder and tarball of TD2192-Modern for Linux x64 (M13-01, M13-03,
+# M13-05; decision D6: Windows x64 and Linux x64, unsigned). The release checklist is
+# docs/RELEASE.md.
 #
-# 1. cargo build --release -p td2192 (and tdtool unless --no-tools). SDL3 is built from source
+# 1. Checks that CHANGELOG.md has a section for the workspace version.
+# 2. cargo build --release -p td2192 (and tdtool unless --no-tools). SDL3 is built from source
 #    and linked statically, so the build needs cmake, a C/C++ compiler and SDL3's Linux build
 #    dependencies (https://wiki.libsdl.org/SDL3/README-linux; on Ubuntu 22.04 the -dev packages for
 #    ALSA, PulseAudio, JACK, sndio, X11 (Xext, Xrandr, Xcursor, Xfixes, Xi, Xss, Xtst, xkbcommon),
 #    DRM, GBM, EGL/GLES, D-Bus, IBus, udev, PipeWire, Wayland and libdecor).
-# 2. Copies the binaries, LICENSE, README.md, THIRD_PARTY.md and the player guide
+# 3. Copies the binaries, LICENSE, README.md, CHANGELOG.md, THIRD_PARTY.md and the player guide
 #    (docs/player/README.md, as PLAYER-GUIDE.md) into <out>/TD2192-Modern-<version>-linux-x64/,
-#    and generates THIRD_PARTY_NOTICES.txt with tools/scripts/gen-notices.py.
-# 3. Packs the folder as <name>.tar.gz next to it.
+#    and generates THIRD_PARTY_NOTICES.txt and COPYRIGHT-rust-std.html with
+#    tools/scripts/gen-notices.py.
+# 4. Packs the folder as <name>.tar.gz next to it.
 #
 # The package contains no game data: players supply their own copy of Traffic Department 2192
 # (ADR-0003). The output folder must be outside the repository.
@@ -30,7 +33,7 @@ while [[ $# -gt 0 ]]; do
         --out) out="$2"; shift 2 ;;
         --no-tools) tools=0; shift ;;
         --target-dir) target_dir="$2"; shift 2 ;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -46,6 +49,8 @@ esac
 cd "$repo"
 version="$(cargo metadata --format-version 1 --no-deps \
     | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"]=="td2192"))')"
+grep -qF "## [$version]" CHANGELOG.md \
+    || { echo "CHANGELOG.md has no '## [$version]' section (docs/RELEASE.md)." >&2; exit 1; }
 packages=(-p td2192)
 [[ $tools -eq 1 ]] && packages+=(-p tdtool)
 if [[ -n "$target_dir" ]]; then
@@ -63,10 +68,11 @@ dir="$stage/$name"
 mkdir -p "$dir"
 install -m 755 "$bin_dir/td2192" "$dir/"
 [[ $tools -eq 1 ]] && install -m 755 "$bin_dir/tdtool" "$dir/"
-install -m 644 LICENSE README.md THIRD_PARTY.md "$dir/"
+install -m 644 LICENSE README.md CHANGELOG.md THIRD_PARTY.md "$dir/"
 install -m 644 docs/player/README.md "$dir/PLAYER-GUIDE.md"
-python3 tools/scripts/gen-notices.py --out "$dir/THIRD_PARTY_NOTICES.txt" --target x86_64-unknown-linux-gnu
-chmod 644 "$dir/THIRD_PARTY_NOTICES.txt"
+python3 tools/scripts/gen-notices.py --out "$dir/THIRD_PARTY_NOTICES.txt" \
+    --target x86_64-unknown-linux-gnu --std-copyright-out "$dir/COPYRIGHT-rust-std.html"
+chmod 644 "$dir/THIRD_PARTY_NOTICES.txt" "$dir/COPYRIGHT-rust-std.html"
 
 tarball="$out_full/$name.tar.gz"
 rm -f "$tarball"

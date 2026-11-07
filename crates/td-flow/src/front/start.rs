@@ -82,6 +82,9 @@ pub struct StartScreen {
     error: Option<String>,
     /// The port's data generation this screen's fonts and episodes come from.
     data_generation: u32,
+    /// The release version shown in the corner (the workspace version; tests pin it so that
+    /// a version bump does not change their snapshots).
+    version: &'static str,
 }
 
 fn episode_index(e: Episode) -> usize {
@@ -112,6 +115,7 @@ impl StartScreen {
             fader: Fader::fading_in(),
             pad: PadNav::default(),
             error: None,
+            version: env!("CARGO_PKG_VERSION"),
         };
         if !s.enabled(0) {
             s.cursor = s.next_enabled(0, 1);
@@ -302,7 +306,7 @@ impl Screen for StartScreen {
         );
         ui.text(
             fb,
-            &format!("td2192-modern {}", env!("CARGO_PKG_VERSION")),
+            &format!("td2192-modern {}", self.version),
             (4, 190),
             INK_NOTE,
         );
@@ -387,20 +391,34 @@ mod tests {
         }
     }
 
+    /// The version the snapshot hashes were taken with: the corner line is drawn from it, not
+    /// from the workspace version, so a release bump leaves the snapshots alone.
+    const SNAPSHOT_VERSION: &str = "0.1.0";
+
     fn screen(
         available: [bool; 3],
     ) -> (StartScreen, std::rc::Rc<std::cell::RefCell<Vec<Episode>>>) {
         let rec = Recorder::default();
         let launched = rec.launched.clone();
-        (
-            StartScreen::new(
-                UiAssets::blank(),
-                available,
-                Box::new(rec),
-                SettingsPort::new(),
-            ),
-            launched,
-        )
+        let mut s = StartScreen::new(
+            UiAssets::blank(),
+            available,
+            Box::new(rec),
+            SettingsPort::new(),
+        );
+        s.version = SNAPSHOT_VERSION;
+        (s, launched)
+    }
+
+    #[test]
+    fn the_corner_shows_the_workspace_version() {
+        let s = StartScreen::new(
+            UiAssets::blank(),
+            [true; 3],
+            Box::new(Recorder::default()),
+            SettingsPort::new(),
+        );
+        assert_eq!(s.version, env!("CARGO_PKG_VERSION"));
     }
 
     /// Ticks until the screen waits (or 200 ticks), returning the first transition that is
@@ -641,6 +659,7 @@ mod tests {
             Box::new(rec),
             SettingsPort::new(),
         );
+        s.version = SNAPSHOT_VERSION;
         settle(&mut rig, &mut s);
         let mut fb = Framebuffer::new();
         s.draw(&mut fb);
