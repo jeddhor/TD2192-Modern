@@ -156,6 +156,11 @@ fn ordinary_hits_request_9_and_100_on_a_kill() {
 /// An open map and every shot of `shots` run through one update (step 6 of a tick) in E2 with
 /// `ships`; the headings the update latched.
 fn update_once(shots: &mut Shots, ships: &mut Ships) -> [u8; SHOT_SLOTS] {
+    update_drawn(shots, ships).latched
+}
+
+/// [`update_once`], returning what the update leaves for the drawing.
+fn update_drawn(shots: &mut Shots, ships: &mut Ships) -> Drawn {
     let mut attr = [tables::TILE_SOLID; 256];
     attr[0] = tables::TILE_OPEN;
     let world = World {
@@ -265,4 +270,49 @@ fn a_shot_off_the_map_skips_steps_2_to_6() {
     assert_eq!(shots.0[10].life, 3, "no ageing");
     assert_eq!(shots.0[41].heading, 2, "no steering");
     assert_eq!((latched[10], latched[41]), (4, 2));
+}
+
+#[test]
+fn a_shot_is_drawn_in_the_tick_that_frees_it_for_age() {
+    // flight-screens rev 7 §4.8 (BUG-21, C-0321 tick 118): step 6 draws the shot, step 7 then
+    // frees it because its life is above 25; a shot freed earlier (map test) is not drawn.
+    let mut ships = Ships::default();
+    let mut shots = Shots::default();
+    let shot = Shot {
+        tile_x: 100,
+        tile_y: 100,
+        off_x: 16,
+        off_y: 16,
+        heading: 8,
+        kind: 1,
+        life: MAX_LIFE,
+        owner: 3,
+    };
+    shots.0[40] = shot;
+    shots.0[39] = Shot { life: 4, ..shot };
+    let drawn = update_drawn(&mut shots, &mut ships);
+    assert!(!shots.0[40].alive(), "freed for age in step 7");
+    assert_eq!(
+        drawn.shown.0[40],
+        Shot {
+            life: MAX_LIFE + 1,
+            ..shot
+        },
+        "drawn at its tile before the move"
+    );
+    // The younger shot: drawn at (100, 100), then moved to (100, 99).
+    assert_eq!(
+        (drawn.shown.0[39].tile_x, drawn.shown.0[39].tile_y),
+        (100, 100)
+    );
+    assert_eq!((shots.0[39].tile_x, shots.0[39].tile_y), (100, 99));
+    // Free slots and a shot off the map draw nothing.
+    assert!(!drawn.shown.0[0].alive());
+    let mut shots = Shots::default();
+    shots.0[5] = Shot {
+        tile_x: 1,
+        life: 2,
+        ..shot
+    };
+    assert!(!update_drawn(&mut shots, &mut ships).shown.0[5].alive());
 }

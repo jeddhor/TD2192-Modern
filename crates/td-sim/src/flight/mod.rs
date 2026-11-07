@@ -141,8 +141,12 @@ pub struct DrawnObjects {
     /// every slot's heading replaced by the one its update latched: the heading the shot was
     /// drawn with and moved along (weapons rev 6 §4.3 step 0). Undoing one step along it gives
     /// the drawn tile. Only a homing missile that steered has another heading in the arrays
-    /// (the next tick's, U-502).
+    /// (the next tick's, U-502). What the radar reads at step 19.
     pub shots: Shots,
+    /// The shots as step 6 drew them: at the tile before their move, with the latched
+    /// heading, including a shot that step 7 freed for age in the same tick
+    /// (`shots::Drawn::shown`; flight-screens rev 7 §4.8, BUG-21).
+    pub shown_shots: Shots,
     pub ships: Ships,
     pub explosions: Explosions,
 }
@@ -594,7 +598,7 @@ impl Flight {
                 events,
             );
             // 6. Projectiles and hits.
-            let drawn_headings = self.shots.update(&mut Combat {
+            let drawn = self.shots.update(&mut Combat {
                 world,
                 ships: &mut self.ships,
                 player: &mut self.player,
@@ -617,9 +621,10 @@ impl Flight {
             // The shots as step 6 left them, each with the heading it was drawn with and moved
             // along (weapons rev 6 §4.3 step 0; [`DrawnObjects::shots`]).
             self.drawn.shots.clone_from(&self.shots);
-            for (s, h) in self.drawn.shots.0.iter_mut().zip(drawn_headings) {
+            for (s, h) in self.drawn.shots.0.iter_mut().zip(drawn.latched) {
                 s.heading = h;
             }
+            self.drawn.shown_shots = drawn.shown;
             // 7. Player ship (unless drawn late).
             if !self.late_draw {
                 self.frame.heading = self.player.heading;

@@ -1058,13 +1058,14 @@ impl FlightArena {
                 flight::draw_sprite(fb, frame, cell, pos);
             }
         }
-        // 6. Shots (flight-screens §4.8), where they were drawn: before their move.
-        for s in drawn.shots.0.iter().filter(|s| s.alive()) {
+        // 6. Shots (flight-screens rev 7 §4.8) as step 6 drew them: before their move, and
+        // also in the tick that frees them for age (BUG-21).
+        for s in drawn.shown_shots.0.iter().filter(|s| s.alive()) {
             let look = flight::shot_look_in(
                 view,
                 s.kind,
                 s.heading,
-                drawn_shot_tile(s),
+                (s.tile_x, s.tile_y),
                 (s.off_x, s.off_y),
                 vp,
             );
@@ -1270,25 +1271,6 @@ fn overwrite(buf: &mut [u8], at: usize, bytes: &[u8]) -> Result<()> {
             bytes.len()
         ),
     }
-}
-
-/// The tile a shot was drawn at: `Flight::drawn` holds the shots after step 6, whose last part
-/// moves every live shot one tile along its heading (weapons.md §4.3 step 8) after drawing it.
-/// A shot freed by the age limit in that step was drawn once more by the original but is no
-/// longer in the slot table, so it is missing here.
-fn drawn_shot_tile(s: &td_sim::flight::shots::Shot) -> (u8, u8) {
-    let (dx, dy): (u8, u8) = match s.heading {
-        8 => (0, 255),
-        2 => (0, 1),
-        4 => (255, 0),
-        6 => (1, 0),
-        9 => (1, 255),
-        7 => (255, 255),
-        1 => (255, 1),
-        3 => (1, 1),
-        _ => (0, 0),
-    };
-    (s.tile_x.wrapping_sub(dx), s.tile_y.wrapping_sub(dy))
 }
 
 impl FlightArena {
