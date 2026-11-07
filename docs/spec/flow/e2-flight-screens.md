@@ -100,7 +100,7 @@ The line loop index is a byte that starts at 1 and stops only at an end marker. 
 |---|---|---|
 | E2 transmission 5, line 21 (the end marker) has no speaker byte written | The byte keeps the value of an earlier transmission (or 0 after start-up). The end marker is typed in both boxes regardless, so nothing visible changes | Preserve (no effect) |
 | Speaker bytes beyond the last line (E2 n = 2: 9, 10; n = 6: 11) | Written but never read before the next loader | Preserve (no effect) |
-| E2 transmission 7 shows portrait 5 | The loader writes record 5 (the same portrait as transmission 5), not 7 | Preserve |
+| E2 transmission 7 shows portrait 5 | The loader writes record 5 (the same portrait as transmission 5), not 7 | Preserve (OB-149) |
 | E2 library: text and hatch of sprites 5 and 6 depend on the flight number | Sprite 5 entry from flight 11, sprite 6 entry from flight 15; before that the sprite is drawn and hatched with no text | Preserve |
 
 No new original bug. Two resource-map errors were fixed in the same change: `e2.comms.06` had count 2 (the 8 strings `td2:2555:11E3..12E9` that transmission 6 uses were in no resource) and `e3.comms.02` had count 4 (12 strings of screen 2 were missing).

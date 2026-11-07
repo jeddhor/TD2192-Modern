@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `render/text` |
-| **Revision** | 3 |
+| **Revision** | 4 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 (pixel-exact glyph shapes, advances and positions); T2 for the timing of §4.3 and §4.5.2 |
 | **Confidence** | CONFIRMED (static analysis of every text routine in `file0001`; three oracle frames matched with 0 pixel differences, §6) |
@@ -215,11 +215,11 @@ The ink is a palette index. Glyph pixels are never taken from the font file (§3
 
 1. **Out-of-table characters (small font).** A character outside §3.1 (upper case, `:`, `'`, `(`, `)` ...) is looked up at glyph index *character − 61h*, which lies before the font block: `!` reads the 25 bytes 1,600 bytes before it. Any non-zero byte there is drawn in the ink colour. For `!` the code marks are then drawn on top. In C-0002 every `!` came out clean, so those bytes were zero (U-061). Other unsupported characters also advance 0, so they overprint the next character. **Port policy:** draw nothing for the lookup (equivalent to the observed result); keep the 0 advance.
 2. **Title `:`** maps to glyph 39, which is never loaded; the 64 bytes come from uninitialised heap memory. **Port policy:** draw nothing. The `.` and `,` shapes also fall through to a glyph lookup far outside the block; the result observed is the plain dot. **Port policy:** draw only the shapes of §3.4.
-3. **Pen beyond x = 351** wraps into the next VGA row (address = y × 88 + x div 4) and becomes visible at the left edge one pixel row lower. No shipped string is long enough to reach it on the screens analysed (the longest dialogue lines end before x = 320). **Port policy:** clip at the screen edge (T2 deviation, unobservable with the shipped data).
-4. **Measured vs drawn title width** differ by a pixel for `1` and `M`; centring uses the measured width (§3.4). Preserve.
+3. **Pen beyond x = 351** wraps into the next VGA row (address = y × 88 + x div 4) and becomes visible at the left edge one pixel row lower. No shipped string is long enough to reach it on the screens analysed (the longest dialogue lines end before x = 320). **Port policy:** clip at the screen edge (T2 deviation, unobservable with the shipped data). OB-141.
+4. **Measured vs drawn title width** differ by a pixel for `1` and `M`; centring uses the measured width (§3.4). Preserve (OB-141).
 5. Glyph 38 of the small font (the 39th slot of the 975-byte block) is uninitialised; nothing maps to it.
 
-Mirror items 1–3 in `original-bugs.md` when that catalogue is next updated.
+Mirrored in `original-bugs.md`: items 1 and 2 as OB-004 and OB-005, items 3 and 4 as OB-141 (RE-18).
 
 ## 6. Test vectors
 
@@ -262,3 +262,4 @@ None. Typed text paces itself on vertical retrace (§4.3): one character per fra
 | 1 | 2026-11-02 | RE-3 | Initial, from static analysis of `file0001` and C-0002 frames |
 | 2 | 2026-11-05 | RE-12 (Archaeologist + Spec author) | §4.5.1: the 14 E1 scene cards do not share one caption layout: per-card pens, shadow styles, inks and waits; `marauder` (15 rows down, one joined caption line) and `voffice` (centred, outlined, entry 216). The rev-1 row applied the hangar layout to all of them (U-311) |
 | 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.2: title-card fade speed depends on the palette left in `g_Palette` (1 or 2 frames per level, BUG-6; C-0002, C-0160, C-0170); 5 s DOS-time hold; typed text one character per frame in the oracle (§7) |
+| 4 | 2026-11-06 | RE-18 (Spec author) | §5: items 3 and 4 mirrored as OB-141 (no behaviour change) |

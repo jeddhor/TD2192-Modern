@@ -139,6 +139,12 @@ Oracle build 3 (watcher generations, `re-work\dosbox\ORACLE.md` §5b; `re-work\d
 
 **Open questions (VE-5):** U-500 (D6), U-501 (D7, spec and `Session`), and for E2 U-502/BUG-11 ([M10-playthrough](M10-playthrough.md)).
 
+**Answers (RE-18, 2026-11-06):**
+
+- U-500 (D6): flight 21's path arrays are heap blocks at fixed offsets from the flight's heap mark; flight 21 reads `m19.td`'s arrays overwritten in part by the songs, fonts and portraits of the screens between the two flights (the debrief portrait, `vulture.cmf`, the `C:voffice` font, and D88's and D89's last portraits when the story is not skipped). Rule: [mission-ships](../spec/sim/mission-ships.md) rev 6 §4.1.1 (OB-140). A model of those writes equals C-0200 and C-0300 (new: the same block with the whole post-flight story) in every byte of the path buffers it defines. Once td-sim builds the arrays by that rule, `flights_19_and_21_in_one_run_match_oracle` can be re-enabled, and C-0300 can serve as a second two-flight test.
+- U-501 (D7): the player's turn direction is 0 at program start and carried across flights; setup never writes it ([flight-model](../spec/sim/flight-model.md) rev 3 §2, §4.6). It cannot change a course from the setup heading, so the harness's copy hides only a state difference; a `Session` field removes the copy. The slots' part is in [mission-ships](../spec/sim/mission-ships.md) rev 6 §2.
+- U-502/BUG-11: [weapons](../spec/sim/weapons.md) rev 6 §4.3 (see M10-playthrough).
+
 ## Reproducing
 
 - Plan: `cargo run --release -p tdtool -- plan N [--alt-muzzles BYTES] [--beam 40]` writes `tests/replays/e1fNN.tdr`.

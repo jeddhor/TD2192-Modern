@@ -453,6 +453,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:13E6,data,g_FlightPalette,u8[768],u8[768] flight palette (td.pal); also: td.pal copy for fades and flashes,CONFIRMED,M1-05
 3C43:16E7,data,g_MapKeyChar,u8,F5 map: last ReadKey character (9 = Tab),CONFIRMED,RE-8
 3C43:16E8,data,g_MapKeyExt,u8,F5 map: last extended key byte (3Fh = F5 closes),CONFIRMED,RE-8
+3C43:16EA,data,g_FlightHeapMark,farptr,"heap top saved by BP_Mark at flight start (0E8B:B8D9) and restored by BP_Release at its end; the flight buffers sit at fixed offsets from it (path X +9328, path Y +19352)",CONFIRMED,RE-18 U-500
 3C43:16EE,data,g_F19PinSlot19,"u8,_,u8,_,i16,i16","flight 19 (phase > 1): slot 19 tile X (16EE), tile Y (16F0), offset X (16F2), offset Y (16F4) are copied from here every tick",LIKELY,M8-01
 3C43:16F6,data,g_PlayerSprite,u8,sprite set used to draw the player,LIKELY,M1-07
 3C43:16F8,data,g_MissionFileName,string[10],m<n>.td,CONFIRMED,M1-07
@@ -473,7 +474,7 @@ address,kind,name,signature,comment,confidence,source_task
 3C43:1A54,data,g_J,u16,shared global loop counter,CONFIRMED,M1-07
 3C43:1A56,data,g_PlayerHeading,u8,player heading (keypad code),CONFIRMED,M1-07
 3C43:1A57,data,g_PlayerClass,u8,player ship class,CONFIRMED,M1-07
-3C43:1A5A,data,g_PlayerTurnDir,u8,1 counter-clockwise; 2 clockwise,CONFIRMED,M1-07
+3C43:1A5A,data,g_PlayerTurnDir,u8,"1 counter-clockwise; 2 clockwise; 0 at program start, written only by the steering (0E8B:EFAC..F2B5), never reset at flight setup (U-501)",CONFIRMED,M1-07
 3C43:1A5C,data,g_KeyDown,,key-state bytes indexed by scan code (+100h for E0-prefixed keys),LIKELY,M1-03
 3C43:1CB3,data,g_AnyKeyLatch,u8,pause: any key pressed,LIKELY,M1-07
 3C43:1CB6,data,g_KeyExtOffset,u16,"100h after an E0 prefix byte, else 0",LIKELY,M1-03
