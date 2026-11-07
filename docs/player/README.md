@@ -20,6 +20,8 @@ This guide covers:
 
 > TD2192-Modern is still being developed, and this guide describes the current version. Some parts of the game are not finished yet; see [the project page](../../README.md) for the current state.
 
+> **Photosensitivity warning.** Like the 1994 original, the game flashes the whole screen: white when a homing missile destroys a ship, red and yellow in some explosions and mission events, and dark/red when the infra-red view is switched (holding the infra-red key repeats it several times a second). There is no setting to reduce the flashing yet. If you or anyone watching is sensitive to flashing lights, take care, and avoid holding the infra-red key.
+
 ## 1. What you need
 
 - **A copy of Traffic Department 2192 version 1.0.** Either form works:
@@ -180,7 +182,9 @@ The other buttons are bound to keys, and each acts exactly like its key everywhe
 
 On TD2192-Modern's own screens (the start screen and the options), the stick or D-pad moves, South confirms and East goes back. The original's own menus read the stick and buttons as the original did.
 
-On Episode 1's script choice, South answers 1 and East answers 2. The main menu's yes/no questions take South for yes and East for no.
+On Episode 1's script choice, South answers 1 and East answers 2. The main menu's yes/no questions take South for yes and East for no. When you save a game, South chooses the slot and, after you have typed a name (or none), South again saves it; the name itself can only be typed on a keyboard.
+
+During play a controller cannot open the options (F2) or use F10 to F12, and P (pause) has no button by default; you can bind one on the controls page.
 
 ### Keys that work everywhere
 
@@ -227,7 +231,7 @@ One row for each key the game reads in flight:
 - **keyboard**: your keyboard key;
 - **gamepad**: your controller button.
 
-To change a binding, move to the cell and press Enter (or South), then press the new key or button within 5 seconds. Escape cancels. Delete clears the binding. A key or button can do only one thing, so binding it to a new action takes it from the old one; the screen says which. **reset to defaults** restores the original keys and the controller defaults above.
+To change a binding, move to the cell and press Enter (or South), then press the new key or button within 5 seconds. Escape cancels. Delete clears the binding. F10, F11 and F12 cannot be bound: they always scale the picture, switch fullscreen and save a screenshot. A key or button can do only one thing, so binding it to a new action takes it from the old one; the screen says which. **reset to defaults** restores the original keys and the controller defaults above.
 
 ### profile
 
