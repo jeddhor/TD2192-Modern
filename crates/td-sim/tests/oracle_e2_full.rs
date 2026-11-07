@@ -152,6 +152,30 @@ fn flight_18_idle_lost_matches_oracle() {
     idle(18);
 }
 
+/// U-246, OB-039 (VE-9, C-0379): flight 13 with random key holds (a td-sim search) that destroy
+/// the Areo-1 (slot 2) in tick 77 with heading 4, then 150 ticks without input. Flight 13's
+/// rule keeps raising a fire request on slot 2's heading every tick, so the gone ship fires a
+/// class-FFh volley every second tick from its last tile. Every tick, the projectiles included
+/// (the flight goes on).
+#[test]
+fn flight_13_ghost_volleys_match_oracle() {
+    use full_flight::{Leg, Muzzles};
+    let (data, oracle) = (require_data!(), require_oracle!());
+    full_flight::check_run(
+        &full_flight::E2,
+        &data,
+        &oracle,
+        "ve9-e2f13-ghost",
+        &[Leg {
+            flight: 13,
+            suffix: "-ghost",
+            muzzles: Muzzles::Capture,
+            ends: false,
+            front_end: &[],
+        }],
+    );
+}
+
 /// An aborted E2 flight (VE-9; flight-screens §4.1, e2-program-flow §4.3): flight 7 without
 /// input, Esc in tick 300, Up (cursor 0 → 3, Quit) and Enter in the menu: `g_MissionAborted`
 /// := 1 and the loop ends in tick 300. Every tick (the last against the stall record during

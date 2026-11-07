@@ -449,6 +449,118 @@ fn tactical_map_matches_c0012() {
 }
 
 /// The panel's text area: headers and both boxes, x 92..271.
+/// M12-timing row 13 (VE-9): the comm screen's typing pace (flight-screens §4.2: one character
+/// per retrace, `Txt_FlightTypeString`) against C-0380, E1 flight 2 with F6 150 frames after
+/// `m2.td` opens (C-0013's keys) and every frame dumped from then on. The capture's first frame
+/// with typed text is aligned with the port's first step with text; then every following
+/// frame up to the first prompt must show the port's text area of the same distance, and the
+/// prompt must come in the same frame.
+#[test]
+fn comm_typing_pace_matches_c0380() {
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let cap = "C-0380";
+    let Ok(dir) = fs::read_dir(oracle.join(cap).join("fb")) else {
+        eprintln!("SKIPPED: no {cap} under the oracle root");
+        return;
+    };
+    let (_dir, a, pal) = load(&data);
+    let mut names: Vec<String> = dir
+        .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
+        .filter(|n| n.ends_with("_c.vga"))
+        .collect();
+    names.sort();
+    let caps: Vec<(u32, Vec<u8>)> = names
+        .iter()
+        .map(|n| {
+            (
+                n[1..9].parse().unwrap(),
+                text_area(&frame(&oracle, cap, n).1),
+            )
+        })
+        .collect();
+    assert!(
+        caps.windows(2).all(|w| w[1].0 == w[0].0 + 1),
+        "{cap}: every frame"
+    );
+    let mut shown = Framebuffer::new();
+    shown.palette = pal.clone();
+    let mut c = CommScreen::new(shown, &a, 1).unwrap();
+    // The port's text area per step, up to its first prompt.
+    let mut ours = vec![text_area(&c.canvas().pixels)];
+    while ours.len() < 2_000 && !c.waiting_for_space() {
+        c.tick(&a, &idle());
+        ours.push(text_area(&c.canvas().pixels));
+    }
+    // Each capture frame against the port's steps: the step showing the same text area.
+    let matches: Vec<(u32, Option<usize>)> = caps
+        .iter()
+        .map(|(f, t)| (*f, ours.iter().position(|o| o == t)))
+        .collect();
+    let first = matches
+        .iter()
+        .position(|(_, s)| s.is_some())
+        .expect("a capture frame showing the port's comm screen");
+    let (f0, s0) = (matches[first].0, matches[first].1.unwrap());
+    // The original runs a frame behind after each retrace its typing loop missed (frames.tsv:
+    // 3DAh polled, no retrace seen; text rev 5 §4.3 item 6).
+    let tsv = fs::read_to_string(oracle.join(cap).join("frames.tsv")).unwrap();
+    let mut lines = tsv.lines();
+    let head: Vec<&str> = lines.next().unwrap().split('\t').collect();
+    let col = |n: &str| head.iter().position(|&c| c == n).unwrap();
+    let (pc, vc) = (col("p3da"), col("p3da_vr"));
+    let missed: Vec<u32> = lines
+        .map(|l| l.split('\t').collect::<Vec<_>>())
+        .filter(|v| v[pc] != "0" && v[vc] == "0")
+        .map(|v| v[0].parse().unwrap())
+        .filter(|&f| f > f0)
+        .collect();
+    // Every frame from there to the port's prompt shows the port's step at the same distance,
+    // less the missed retraces before it. A frame that caught a scroll of the text box in
+    // progress (the beam passed the box mid-copy; one frame per typed line, T2) shows each row
+    // of that step, the one before or the one after, except rows the scroll is rewriting.
+    let last = ours.len() - 1;
+    let (mut bad, mut torn) = (vec![], vec![]);
+    let mut f1 = f0;
+    for &(f, s) in &matches[first..] {
+        let behind = missed.iter().filter(|&&m| m < f).count();
+        let want = (f - f0) as usize + s0 - behind;
+        if want > last {
+            break;
+        }
+        f1 = f;
+        if s == Some(want) {
+            continue;
+        }
+        let px = &caps[(f - caps[0].0) as usize].1;
+        let w = SCROLL_X.1 - SCROLL_X.0 + 1;
+        let near = [want.saturating_sub(1), want, (want + 1).min(last)];
+        // A row the port rewrites from step want − 1 to want + 1 (the scroll, the line typed
+        // under it) may show the copy in progress.
+        let moving = |r: usize| ours[near[0]][r..r + w] != ours[near[2]][r..r + w];
+        let row_ok =
+            |r: usize| moving(r) || near.iter().any(|&k| ours[k][r..r + w] == px[r..r + w]);
+        if s.is_none() && (0..px.len()).step_by(w).all(row_ok) {
+            torn.push(f);
+        } else {
+            bad.push((f, s, want));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{cap}: {} frames differ from the port's step at the same distance (f{f0} = step \
+         {s0}; prompt at step {last}; missed retraces {missed:?}), first (frame, matching \
+         step, expected step) {:?}",
+        bad.len(),
+        &bad[..bad.len().min(8)]
+    );
+    eprintln!(
+        "{cap}: frames f{f0}..f{f1} equal the port's steps {s0}..{last} (one character per \
+         frame; missed retraces {:?}, scrolls caught mid-copy {torn:?})",
+        missed.iter().filter(|&&m| m <= f1).collect::<Vec<_>>()
+    );
+}
+
 fn text_area(fb: &[u8]) -> Vec<u8> {
     let rows = (35..=40).chain(SCROLL_ROWS[0].0..=SCROLL_ROWS[0].1);
     let rows = rows
