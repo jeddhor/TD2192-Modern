@@ -708,7 +708,7 @@ There is no `TODO` or `FIXME` in `crates/` or `tools/`. Every ASSUMPTION:
 | `td-sim/src/flight/shots.rs:266` (missile writes life 200 into slot 40 before storing) | none | — | Now specified as OB-143 (weapons §4.3, §5): cite it; C-0011 and C-0207 pass |
 | `td-sim/src/flight/logic.rs:561` (mission explosions, no `Random` when no slot is idle) | U-145 | OPEN | Not stale |
 | `td-sim/src/flight/mod.rs:586` (flight-16 afterburner test placement) | U-330 | OPEN | Not stale |
-| `td-sim/src/flight/mod.rs:884` (cheat-chord order) | U-531 | OPEN | Not stale (IM-22) |
+| `td-sim/src/flight/mod.rs:884` (cheat-chord order) | U-531 | RESOLVED (RE-19) | **Closable:** RE-19 confirms the port's results for every combination (globals §5); replace the ASSUMPTION with the citation |
 | `td-sim/src/flight/shots.rs:92` (palette at the ghost volleys) | U-246 | OPEN | Not stale |
 | `td-sim/src/flight/front_end.rs:492`, `front_end/tests.rs:353` (flights 7 and 21 take their block's start) | U-490 | OPEN | Not stale |
 | `td-flow/src/main_menu.rs:27, 603, 620`, `program.rs:712`, `campaign.rs:965` | U-302 | OPEN | Not stale (five E1 front-end details) |
