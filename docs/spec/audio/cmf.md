@@ -246,14 +246,14 @@ Function 1Dh sets `loop` (game: 0 before the non-repeating death theme, 1 after)
 
 | Quirk | Original | Port policy |
 |---|---|---|
-| Velocity ignored | All notes on a channel are equally loud | Preserve (Classic). Enhanced may not "fix" it either: the music was mixed for this |
+| Velocity ignored | All notes on a channel are equally loud | Preserve (Classic). Enhanced may not "fix" it either: the music was mixed for this (OB-147) |
 | Notes < 13 or block ≥ 8 | Corrupt B0 value | Preserve (does not occur in our files) |
 | Toggle drums | A second note-on without a note-off silences the drum | Preserve |
-| Loop restart without key-off | Notes held at the end of the track can hang | Preserve |
-| Init writes use the previous song's instrument 0 | Inaudible (no key-on) | Preserve for write-exact parity |
+| Loop restart without key-off | Notes held at the end of the track can hang | Preserve (OB-147) |
+| Init writes use the previous song's instrument 0 | Inaudible (no key-on) | Preserve for write-exact parity (OB-147) |
 | AH=0Dh all-notes-off | Only channel-13 voices | Preserve |
-| 68h transpose sign | Lowers instead of raising | Preserve (unused) |
-| No voice stealing | Notes lost when all voices are busy | Preserve |
+| 68h transpose sign | Lowers instead of raising | Preserve (unused) (OB-147) |
+| No voice stealing | Notes lost when all voices are busy | Preserve (OB-147) |
 
 ## 6. Test vectors
 

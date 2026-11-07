@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/weapons` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (projectiles, hits, damage, kills and the RNG calls of hit explosions; the two-digit muzzle bytes of §3.3, §3.3.2, §3.3.3) · T2 for the drawing of shots |
-| **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); CONFIRMED for the two-digit muzzle bytes of §3.3 (every writer read statically; 20 whole flights of VE-2 plus C-0002 and C-0160 reproduced byte for byte) and of §3.3.2/§3.3.3 (every writer read statically; 38 whole E2/E3 flights of VE-4 plus C-0015, C-0036 and C-0180 reproduced byte for byte); CONFIRMED for the homing missile's step 3 and the unreachable kind-6 branch of step 4 (§4.3, code read, U-421); LIKELY for hits, damage and enemy volleys (static) |
+| **Confidence** | CONFIRMED for player volleys, missiles (kind 4), Tab, the cooldown and shot movement/expiry against map tiles (C-0011, main-session VE, two corrections in rev 2); CONFIRMED for the two-digit muzzle bytes of §3.3 (every writer read statically; 20 whole flights of VE-2 plus C-0002 and C-0160 reproduced byte for byte) and of §3.3.2/§3.3.3 (every writer read statically; 38 whole E2/E3 flights of VE-4 plus C-0015, C-0036 and C-0180 reproduced byte for byte); CONFIRMED for the homing missile's step 3 and the unreachable kind-6 branch of step 4 (§4.3, code read, U-421); CONFIRMED for the per-slot order of §4.3 (the heading latched at the start of the slot's update, steering that takes effect the next tick, step 1 ending the update), code read in all three episodes and VE-5's trial build matching all 220 ticks of C-0207 (U-502, RE-18); LIKELY for hits, damage and enemy volleys (static) |
 | **Tasks** | M6-01 (follow-up), feeds M7-02, M7-03, M7-05; M9-11, M9-16; M10-45 |
-| **Unknowns** | U-041 and U-043 (resolved here), U-040 (resolved in mission-ships rev 2), U-061, U-160 and U-391 (resolved here, RE-15), U-440, U-441 and U-421 (resolved here, RE-17), U-480 |
+| **Unknowns** | U-041 and U-043 (resolved here), U-040 (resolved in mission-ships rev 2), U-061, U-160 and U-391 (resolved here, RE-15), U-440, U-441 and U-421 (resolved here, RE-17), U-480, U-502 (resolved here, RE-18) |
 
 ## 1. Summary
 
@@ -304,8 +304,11 @@ mission ship volley: see tick-order step 31 (highest free slot in 0..40, life 1,
 For each projectile slot i = 0..50 in order, if its tile X ≠ FFh:
 
 ```text
-1. if tile X or tile Y < 2 or > 199: free the slot
-2. if kind != 6: life += 1; then, unless (DS:1703 set and owner = 0), test the map:
+0. h := heading[i]   (latched once per slot; the map test of step 2, the drawing of step 6 and the
+                      move of step 8 all use h, never the heading array; U-502)
+1. if tile X or tile Y < 2 or > 199: free the slot and go straight to step 7 (steps 2–6 are
+   skipped: no life increment, no hit tests, no steering, no drawing)
+2. if kind != 6: life += 1; then, unless (DS:1703 set and owner = 0), test the map with h:
      heading with a vertical part (8, 2, 9, 1, 3, 7):
          solid(tileX, tileY) and offsetX < 17  -> free
          solid(tileX + 1, tileY) and offsetX > 16 -> free
@@ -343,16 +346,23 @@ For each projectile slot i = 0..50 in order, if its tile X ≠ FFh:
      if armour < 0: armour := 0;  if shields > 60 or < 0: shields := 0
      explosion at the player: offset view + Random(8) − 8 on each axis (X first, then Y);
            again only if an explosion slot 1..20 is idle (no Random calls otherwise)
-6. kind 6: heading := principal direction from the shot's tile toward the target slot's tile
-     (both axes differ: 3, 9, 1 or 7; same column: 2 if the target is below, else 8;
-      same row: 6 if the target is to the right, else 4; DS:1CBC keeps the last value)
-   draw the shot (kinds 0..3 as short lines in colours 3Ch/3Dh/35h/BEh, kinds 4..6 as sprites)
+6. kind 6, in this order:
+     a. if the shot is inside the drawn window, draw the homing sprite for h
+     b. steer, whether or not it was drawn and even if step 3 freed the slot: the new heading is
+        the principal direction from the shot's tile (before this tick's move) toward the target
+        slot's tile: both axes differ: 3, 9, 1 or 7; same column: 2 if the target is below, else 8;
+        same row: 6 if the target is to the right, else 4 (same tile: 4); DS:1CBC (E2 DS:1BE4,
+        E3 DS:1BE0) keeps the last value. Store it in heading[i] only: it is h of the **next** tick
+   kinds 4 and 5: draw the missile sprite for h; kinds 0..3: draw the short lines for h (colours
+   3Ch/3Dh/35h/BEh)
 7. if life > 25: free the slot
-8. if still alive: move one tile along the heading (8: y−1, 2: y+1, 4: x−1, 6: x+1, 9: y−1 x+1,
-   7: y−1 x−1, 1: y+1 x−1, 3: y+1 x+1); a heading above 9 frees the slot
+8. if still alive: move one tile along h (8: y−1, 2: y+1, 4: x−1, 6: x+1, 9: y−1 x+1,
+   7: y−1 x−1, 1: y+1 x−1, 3: y+1 x+1); h above 9 frees the slot; h = 0 or 5 neither moves nor frees
 ```
 
 The tests in steps 3–5 use the positions before this tick's move; a shot can therefore pass through a target that is less than 20 px wide in its path between two tile steps.
+
+**A homing missile moves along the heading it had at the start of the tick** (U-502, BUG-11; `0E8B:09A4..09B2` latches the heading into `g_J`, `0E8B:1AF7..1CE0` steers into the array, `0E8B:3FCA..4072` moves by `g_J`; the same in `td2:0E96:09CC..09D7`, `0E96:1AC3..1CAC`, `0E96:3F96..4072` and `td3:0C5D:09CA..09D5`, `0C5D:1AF4..1CB3`, `0C5D:3FA3..407F`). The steering of tick t therefore decides the move of tick t + 1: in the tick after the launch the missile moves along the player's heading at the launch, whatever the target. For kinds 0..5 the heading never changes, so the order is invisible for them. The steering of a homing missile that step 3 freed rewrites the heading of a free slot (the tile is then FFh, so the result is 1, 7 or 4); free slots' other fields are never read before the slot is reused (§4.2 writes every field), so this only shows in a byte dump.
 
 **The kind-6 branch of step 4 is unreachable** (U-421, RE-17; `0E8B:0F70..100D` re-reads the shot's tile from the arrays for every ship). A homing missile that step 3 used is already freed (tile X = FFh, far outside the map), and a kind-6 shot that step 3 did not use has no live non-owner ship within 40 px, so none within 20 px either. So in E1 and E3 a homing kill plays **no sound**, counts **one** kill and starts **five** explosions (step 3 only); step 4's second sound 100, second kill and five more explosions never happen. In E2 the kill plays sound 100 once (step 3, P4). The port may keep step 4's kind-6 code; it is dead code, and no test may rely on it.
 
@@ -361,13 +371,14 @@ The tests in steps 3–5 use the positions before this tick's move; a shot can t
 | Quirk | Original | Port policy (proposal) |
 |---|---|---|
 | Missile with no free slot | Writes slot 200 (outside the 51-byte arrays) | Fix (skip the launch); undefined in the original |
-| Homing launch writes life 200 into slot 40 | Slot 40 (if in use) dies next tick | Preserve |
-| Destroyed ship sets projectile kind[s] := 1 | Changes the kind of projectile slot s | Preserve (T1) |
+| Homing launch writes life 200 into slot 40 | Slot 40 (if in use) dies next tick | Preserve (OB-143) |
+| Destroyed ship sets projectile kind[s] := 1 | Changes the kind of projectile slot s | Preserve (T1; OB-143) |
 | Homing missile with target 0 reads slot-0 arrays (DS:3B2D/3B41) | Steers toward garbage | Cannot happen (downgraded to kind 0) unless the target dies; then it keeps homing on the dead ship's last tile |
 | Two-digit headings | Shot deleted on its first move | Preserve |
 | OB-017: two-digit headings read past the muzzle table | Offsets from other globals: constants, the scene palette and the dialogue reader's last line (§3.3); in E2/E3 constants, the menu's discarded key, the last scene-file name and the scene palette (§3.3.2, §3.3.3) | **Preserve** (proposed, §3.3; every episode): the port builds the 272 bytes at flight start from its front-end state and reference-machine constants |
-| Homing kill writes projectile kind[s] := 1 (step 3, E1 and E3) | Changes the kind of projectile slot s, as step 4's kill does | Preserve (T1) |
+| Homing kill writes projectile kind[s] := 1 (step 3, E1 and E3) | Changes the kind of projectile slot s, as step 4's kill does | Preserve (T1; OB-143) |
 | Step 4's kind-6 branch | Unreachable: step 3 has already used the missile (§4.3, U-421) | Dead code; a homing kill requests no sound in E1/E3 |
+| Homing steering takes effect one tick late | The move uses the heading latched at the start of the slot's update; the new heading is stored for the next tick (§4.3, U-502) | Preserve (T1; not a bug, the routine's order) |
 | `g_Weapon` for classes 0 and 1 | Kept from the previous flight of the program run; 0 at program start (§3.2) | Preserve: the session carries it (BUG-2) |
 | Tile-step movement | Shots jump 32 px per tick | Preserve |
 | Flight 20, owner 1 | Slot 1's shots never hit ships | Preserve (mission rule) |
@@ -388,6 +399,7 @@ To be captured (§8). Static examples:
 | 8 | `g_Weapon` at flight 19 started directly (C-0069) | 0 after setup and to the end of the flight, the switch to class 8 included |
 | 9 | E2/E3 two-digit muzzle bytes, VE-4's 38 flights and C-0015, C-0036, C-0180 | §3.3.2 and §3.3.3 test vectors: the construction reproduces every capture's 272 bytes (SHA-256 listed there) |
 | 10 | E1 homing missile (class 5, weapon 6) reaches a live ship: slot 2 and slot 5 both within 40 px, slot 2 within 20 px | step 3: slot 2 destroyed (armour, shields 0), kills + 1, white flash 4, projectile kind[2] := 1, five explosions, no sound; slot 5 untouched; step 4 tests no ship (the shot is at tile X FFh) |
+| 11 | C-0207 (E2 flight 20, class 5): homing missile launched in tick 7 into slot 40 at tile (91, 33), heading 7, target slot 10 at tile (93, 34) | after tick 8: tile (90, 32) (moved along 7), heading 3 (steered from (91, 33)); the steer-then-move order would give (92, 34). The order of §4.3 reproduces all 220 ticks of C-0207 (VE-5 trial build) |
 
 ## 7. Presentation and audio hooks
 
@@ -423,6 +435,7 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 | E2/E3 contents and writers of the eight ranges (§3.3.2, §3.3.3) | `td2:0000:339A..33D2`, `td3:0000:2F01` (drain key); `td2:0000:4438`, `td3:0000:3F62` (`g_SbIrq`); `td2:0000:466F..46DA`, `49C5..4DE3` and the `td3` equivalents `41A1..49CB` (configuration); `td2:0000:0CD2`, `0CD7`, `2E0E..2EA8`, `3F52` (flags); `td2:0000:31C9..3213`, `td3:0000:2D04..2D4E` (`g_MenuRow`); every `Assign` on DS:0E5E in `td2:04EC` (44 calls) and `td3:04A0` (36 calls); the `g_Palette` writers of `td2:04EC` and `td3:04A0`; `Gfx_FadeOutScene` `td2:04EC:013F`, `td3:04A0:013F`; save/restore `Move` of the menu palette (`td3:04A0:5490`, `6453`) | static (operand xref over the RE-7, RE-9 and RE-10 listings); C-0015, C-0036, C-0120..C-0159, C-0180 | CONFIRMED |
 | No E2/E3 writer during a flight | no flight-time unit references the ranges or calls the front end or the main program | static; 31,064 ticks of C-0120..C-0159 | CONFIRMED |
 | Homing step 3 kills at most one ship and frees the shot; step 4 re-reads the freed shot (kind-6 branch unreachable); projectile kind[s] := 1 in step 3 | `0E8B:0C09..0F42`, `0E8B:0F65..100D`, `0E8B:0D22..0D2D`; `td3:0C5D:0D11..0D50` | static (code read) | CONFIRMED |
+| Heading latched per slot (`g_J`), used by the map test, the drawing and the move; steering writes only the array; step 1 jumps to step 7 | `0E8B:09A4..09B2`, `0E8B:09FE..0A0D`, `0E8B:1785..1CE0`, `0E8B:3F9C..40A6`; `td2:0E96:09CC..09D7`, `0E96:0A23..0A32`, `0E96:1AC3..1CAC`, `0E96:3F68..4072`; `td3:0C5D:09CA..09D5`, `0C5D:1AF4..1CB3`, `0C5D:3FA3..407F` (`g_J` = DS:1A54, E2 DS:197C, E3 DS:1978; no other writer in the routine or its callees) | static (code read, all three episodes); C-0207 (VE-5 trial build, 220 ticks) | CONFIRMED |
 
 ## 10. Revision history
 
@@ -433,3 +446,4 @@ Sounds through `1E2A:006A`: player volley (kind = class, or 2), missile (10), hi
 | 3 | 2026-11-02 | RE-8 | The `Random` calls of the hit explosions run only when an explosion slot 1..20 is idle (T1: RNG order); explosion and shot presentation moved to flow/flight-screens §4.7–4.8 |
 | 4 | 2026-11-06 | RE-15 (Archaeologist + Spec author) | §3.3 new: the exact muzzle bytes of the eight two-digit headings (U-160, OB-017), their sources, constancy during a flight, direct start vs campaign, how often they matter, policy proposal *preserve*. §3.2: `g_Weapon` is 0 at program start and carried from flight to flight for classes 0 and 1 (U-391, BUG-2). §3.1: the address rule applies to every heading and to the player too. Vectors 7, 8; capture C-0160 |
 | 5 | 2026-11-06 | RE-17 (Archaeologist + Spec author) | §3.3.2 (E2) and §3.3.3 (E3) new (U-441): the eight ranges hold the System constants, the menu's discarded key, `g_SbIrq`, the configuration bytes, campaign flags and the menu loader's row buffer (0Ch, 0Eh), the menu palette (20h, 24h), the scene-file name (4Ah), the scene palette and two front-end loop counters (4Eh, 60h, 62h); none changes in flight (C-0036's changes are the fade-out before tick 1); construction table, shooter table, policy *preserve*; test vectors from VE-4's 38 flights, C-0015, C-0036 and C-0180. §4.3 step 3 corrected (U-421): kills at most one ship, writes projectile kind[s] := 1 (E1, E3), no sound in E1/E3; step 4's kind-6 branch is unreachable. §5 two rows, §6 vectors 9 and 10, §8 Q6 and Q8 closed, Q7 (U-480) new |
+| 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §4.3 order corrected (U-502, BUG-11): step 0 latches the heading once per slot; the map test, the drawing and the move use it; the kind-6 steering of step 6 only stores the new heading, computed from the tile before the move, for the next tick (all three episodes); step 1 ends the slot's update (steps 2–6 skipped). §5 row, §6 vector 11 (C-0207), §9 row |

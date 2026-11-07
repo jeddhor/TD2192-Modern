@@ -3,12 +3,12 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/flight-model` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 |
 | **Confidence** | **CONFIRMED** for §4.2 drift and drag, §4.3 horizontal collision and bounce, §4.4 tile carry inside the map, §4.5 thrust and braking (classes 4 and 0, keyboard), §4.6 turn step and the side-block steering cases: the rules reproduce every tick of captures C-0007 and C-0008 (215 ticks, 0 mismatches, §6). LIKELY (static only) for vertical collision, map limits, the up/down and diagonal steering cases, the `full` predicates (joystick) and §4.7 |
 | **Tasks** | M6-01 (draft from M1-08 findings) |
-| **Unknowns** | U-002 and U-003 (resolved), U-009 (partial), U-024 (partial), U-043 |
+| **Unknowns** | U-002 and U-003 (resolved), U-009 (partial), U-024 (partial), U-043, U-501 (player part resolved here, RE-18) |
 
 ## 1. Summary
 
@@ -23,7 +23,7 @@ The player's ship does not have a position of its own: it sits at the centre of 
 | Speed components | DS:3995 up, 3996 down, 3997 left, 3998 right | u8 | biased: 0..16 = still, s > 16 moves s − 16 px/tick | Reset to 0 at flight start |
 | Heading | DS:1A56 | u8 | keypad code (`structures.md` §7) | Starts at 8 (up) |
 | Target heading | DS:1CBB | u8 | keypad code (principal directions only) | Starts at 8 |
-| Turn direction | DS:1A5A | u8 | 0 none, 1 counter-clockwise, 2 clockwise | Starts at 0 |
+| Turn direction | DS:1A5A | u8 | 0 none, 1 counter-clockwise, 2 clockwise | **0 at program start, never reset by flight setup**: a flight starts with the value the previous flight of the program run left (§4.6, U-501). Session state, like `g_Weapon` |
 | Class | DS:1A57 | u8 | 0..8 | Per flight (`structures.md` §6) |
 | `max[c]`, `accel[c]` | DS:02BE + c, DS:02DC + c | u8 | raw (biased) speed, speed units per tick | §3 |
 | Armour, shields | DS:398E, DS:398F | i8 | points | From DS:02C8 + c and DS:02D2 + c |
@@ -163,7 +163,9 @@ if L and not over and h != 4:            ccw if h in {9,8,7}; cw if h in {3,2,1}
 elif R and not over and h != 6:          cw if h in {9,8,7};  ccw if h in {3,2,1};  if h != 4: target := 6
 ```
 
-Notes: pressing the direction exactly opposite the current heading does not change the target (the ship keeps its heading); the target persists after the keys are released, so the turn completes; for an intermediate heading the turn direction is left as it was.
+Notes: pressing the direction exactly opposite the current heading does not change the target (the ship keeps its heading) for the four orthogonal directions; for a diagonal heading the opposite diagonal does change the target but sets no turn direction (heading 1 and up-right, 3 and up-left, 7 and down-right, 9 and down-left), so the ship turns the way it last turned; the target persists after the keys are released, so the turn completes; for an intermediate heading the turn direction is left as it was.
+
+**Turn direction across flights (U-501).** The steering above holds the only 16 writers of `g_PlayerTurnDir` (`0E8B:EFAC..F2B5`; E2 `td2:0E96:DD41..E04A`, E3 `td3:0C5D:DD35..E03E`), and the turn step its only two readers; flight setup writes the heading and the target (both 8) but not the direction, and the byte is 0 when the program starts (BSS). So a flight starts with the direction the previous flight of the run left (C-0200: 2 after E1 flight 19, still 2 at flight 21's setup; C-0201, C-0202 likewise in E3). It cannot change a flight's course: from the setup heading 8 every steering input that changes the target also writes the direction (checked for every key and joystick combination of the table above), so the carried value is overwritten before the turn step can read it. It is visible as state only (a byte comparison, the state hash). **Port:** keep it in the session, 0 at program start, carried from flight to flight, never reset at setup.
 
 **Turn step** (top of the next tick, [tick-order](tick-order.md) step 3): if target ≠ heading, find the heading in the 16-entry ring (DS:02AD..02BC); if the turn direction is 1 take the previous ring entry, if 2 the next one (the ring wraps through DS:02AC and DS:02BD). One step (22.5°) per tick.
 
@@ -191,10 +193,11 @@ Components along a heading: left for 4, 1, 7; right for 6, 9, 3; up for 8, 7, 9;
 |---|---|---|
 | Dead zone: speeds 1..16 do nothing | Four thrust ticks before the first pixel of movement (class 4) | Preserve (T1) |
 | Overshoot of `max` by up to `accel − 1` | Steady state oscillates above the nominal top speed | Preserve |
-| `full` predicates pair keys with the opposite joystick direction | Braking can be suppressed only by an odd key + joystick combination | Preserve (harmless with a centred joystick) |
+| `full` predicates pair keys with the opposite joystick direction | Braking can be suppressed only by an odd key + joystick combination | Preserve (harmless with a centred joystick; OB-146) |
 | Map edge pushes the view back a whole tile | 32-pixel jump at the jurisdiction limit | Preserve |
 | Opposite key does not reverse the heading | The ship keeps facing the old way while thrusting backwards | Preserve |
 | Heading does not steer movement | Movement is 8-way by component | Preserve (it is the game's feel) |
+| Turn direction not reset at setup | Carried from the previous flight of the run (U-501) | Preserve (session state; no effect on the course) |
 
 ## 6. Test vectors
 
@@ -204,7 +207,8 @@ Vectors 1 and 2 were first derived from this model and then **observed exactly**
 |---|---|---|---|
 | 1 | Class 4, open street, hold one thrust direction from rest for 14 ticks, then release | t1..5: 0/0/4, 0/0/8, 0/0/12, 0/0/16, 0/0/20; t6: 4/4/23; t7: 7/11/26; t8: 10/21/29; t9: 13/34/28; t10: 12/46/31; t11: 15/61/30; t12: 14/75/29; t13: 13/88/28; t14: 12/100/31; released: t15: 15/115/30, t16: 14, t17: 13, … down to 1 px at t29, then 0 (speed stays 16) | C-0008 keypad 6, physics ticks 40..53 (world X 3296 → 3516) |
 | 2 | Class 0 (accel 2, max 24), hold from rest for 22 ticks, then release | speeds 2, 4, …, 18 (t1..9, no movement); moved px from t10: 2, 3, 4, 5, 6, 7, 8, 9, 8, 9, 8, 9, 8 (speed alternating 25/24); released at speed 24: 9, 8, 7, …, 1, then 0 | C-0008 keypad 4 after the M+K+A+R chord, physics ticks 80..101 |
-| 3 | C-0002 at flight +1 s and +2 s, no input | speeds 0, heading 8, target 8, turn direction 0, view (102, 104, 32, 16), armour 25, shields 25 (class 4) | C-0002 RAM |
+| 3 | C-0002 at flight +1 s and +2 s, no input (the first flight of the program run) | speeds 0, heading 8, target 8, turn direction 0, view (102, 104, 32, 16), armour 25, shields 25 (class 4) | C-0002 RAM |
+| 8 | E1 flight 21 after flight 19 in one program run (C-0200), and flight 19 ended with turn direction 2 | flight 21's setup: heading 8, target 8, turn direction 2 (carried) | C-0200 tick-1 record of generation 2 |
 | 4 | Class 4 at the start position, hold right 14 ticks | the first move (+4 px at the 6th tick) takes offset X to 36 > 32 with cell (108, 106) solid and offset Y 16 < 40: offset X := 32 and left/right swap, then the thrust brakes the new left component by 2 and adds 4 to right; per tick (left, right) = (17, 4), (4, 20), (17, 8), (8, 20), (17, 12), (12, 20), (17, 16), (16, 20), (17, 20); after release (19, 16), (16, 18), (17, 16), (16, 16); the view never moves | C-0007, physics ticks 22..39 |
 | 5 | Class 0 at the start position, hold left (heading 6) | the target heading stays 6 (opposite key ignored); left = 18 is bounced by cell (106, 106) into right = 17, then braked by 1 and left gets +2: (18, 16) every tick | C-0007, physics ticks 74..101 |
 | 6 | Heading 8, hold right | heading 8 → 98 → 9 → 96 → 6, one ring step per tick, turn direction 2 (clockwise), target 6 | C-0007 ticks 22..26 |
@@ -234,6 +238,7 @@ Vectors 1 and 2 were first derived from this model and then **observed exactly**
 | Thrust, half-accel braking | `0E8B:EA2B..EDxx` (`Round(accel / 2.0)` at `0E8B:EA9D..EACA`) | static | LIKELY |
 | Steering | `0E8B:EDxx..F2xx` | static | LIKELY |
 | Turn step and ring | `0E8B:CCE3..CD22`, DS:02AC..02BD | static | CONFIRMED |
+| Turn direction writers and readers; none at setup | `0E8B:EFAC..F2B5` (16 writes), `0E8B:CCF1`, `CD05` (reads); `td2:0E96:DD41..E04A`, `BD1B`, `BD2F`; `td3:0C5D:DD35..E03E`, `BB73`, `BB87` (operand scan of the full instruction tables) | static; C-0200, C-0201, C-0202 | CONFIRMED |
 | Afterburner burst | `0E8B:CD78..D160` | static + hint text before flight 6 | LIKELY |
 | Class tables | DS:02BE..02E4 | static (file bytes) + C-0002 (class 4 armour/shields) | CONFIRMED |
 | Start values | `0E8B:C4E6..C647`; C-0002 | static + capture | CONFIRMED |
@@ -245,3 +250,4 @@ Vectors 1 and 2 were first derived from this model and then **observed exactly**
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-2 (Archaeologist + Spec author) | Initial draft from M1-08 findings |
 | 2 | 2026-11-02 | RE-2 (Verifier) | No rule changes. Test vectors 1 and 2 observed in C-0008; collision, braking, class change and steering cases observed in C-0007 (vectors 4–7); confidence raised per section; edge-alert note names DS:32BC as the HUD ticker position |
+| 3 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §2 and §4.6: the player's turn direction is 0 only at program start and is carried across flights (setup does not write it; U-501, player part); it cannot change a course from the setup heading. §4.6 note: the opposite diagonal changes the target without a direction. §5 row, §6 vector 8 (C-0200), §9 row |

@@ -904,10 +904,10 @@ Notes:
 
 | Quirk | Original behaviour | Port policy |
 |---|---|---|
-| Kill seen one tick late | A ship killed at step 6 stays live for the rules of step 8 in the same tick (episode-deltas §5.1 P3) | Preserve (T1) |
-| Escaped targets count as done | Exit rules and the AI exit marker count like destruction in flights 4, 5, 8; flights 3 and 9 separate the cases only in the outcome | Preserve |
+| Kill seen one tick late | A ship killed at step 6 stays live for the rules of step 8 in the same tick (episode-deltas §5.1 P3) | Preserve (T1) (OB-149) |
+| Escaped targets count as done | Exit rules and the AI exit marker count like destruction in flights 4, 5, 8; flights 3 and 9 separate the cases only in the outcome | Preserve (OB-149) |
 | Base tests without phase | Flight 6 ends when the player reaches (118..123, 70); flight 7 ends at (102, 104) whether or not the transmission was read | Preserve |
-| Base tests differ in the sub-tile limit | subY ≤ 36 (flights 1–3), ≤ 35 (7), ≤ 31 (9), none (4, 5, 6, 8) | Preserve |
+| Base tests differ in the sub-tile limit | subY ≤ 36 (flights 1–3), ≤ 35 (7), ≤ 31 (9), none (4, 5, 6, 8) | Preserve (OB-149) |
 | Flight 2 slot 8 | Setup's class loop 4..8 gives the empty slot 8 class 3 at tile (0, 0); the map-edge rule removes it in tick 1 | Preserve; harmless (U-243) |
 | Flight 3 arrival before the path end | The truck is hidden at x 85..87 and its tile moved to (84, 135) | Preserve (outcome depends on it) |
 | Flight 4 slot 9 exit | Its exit rule tile is not on its (looping) path | Preserve; inert |
@@ -936,9 +936,9 @@ New rows for [original-bugs](../original-bugs.md) (proposed; RE-9 integrates):
 | **OB-040** Flight 10 outcome unreachable | The outcome test wants tile(2) = (151, 199), but slot 2 is removed by its exit rules on (149..153, 198) first, so the debrief never reports a flight-10 failure | Preserve |
 | OB-025 Flight 16 outcome | Always 1 (§4.8.1) | Preserve (existing) |
 | Flight 10 phase 18 | The phase goes 1 → 18 → 2 → 100 | Preserve the values (the comm viewer and saves see them) |
-| Flight 11 stuck comm lamp | If slot 2 is gone before F6, the phase jumps to 4 and comm pending stays 1 to the end | Preserve |
+| Flight 11 stuck comm lamp | If slot 2 is gone before F6, the phase jumps to 4 and comm pending stays 1 to the end | Preserve (OB-149) |
 | Flight 11 D re-spawns 11 and 12 | No lasting effect (§5.11) | Preserve the order |
-| Flight 12 cannot be failed | Destroyed trucks count as delivered; no outcome test | Preserve |
+| Flight 12 cannot be failed | Destroyed trucks count as delivered; no outcome test | Preserve (OB-149) |
 | Flight 13 RNG | One `Random(9)` per tick in step 9, also after slot 2 is gone and after phase 100 | Preserve (T1) |
 | Flight 17 partial delivery | One transport through, one destroyed: success message and success at base, but outcome 0 (failure debrief, retry) | Preserve |
 | Flight 17 lost delay | Lost is set only when the ticker goes idle after M2[15] (155–156 ticks), or later if M restarts the ticker at the right moment | Preserve |
