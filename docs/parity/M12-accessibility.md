@@ -192,7 +192,7 @@ Severity: blocker (a player with that need cannot finish the game), major, minor
 | 11 | F12 | Stop the clock or pause when the window loses focus | IM | **done** (IM-25, M12-18: an option, pause under Enhanced, keep running under Classic by default; held keys released on focus loss) |
 | 12 | F13 | SDL text input for names; the typed character for the yes key | IM | **names done** (IM-25, M12-18); the yes key is still the `y` position |
 | 13 | F14, F15 | Controller binding limits; a steady hit indicator | IM | open |
-| 14 | F16 | Player guide and MDG wording; keep `[dev] tick_hz` out of release builds | docs, IM | guide part done |
+| 14 | F16 | Player guide and MDG wording; keep `[dev] tick_hz` out of release builds | docs, IM | guide part done; the dialogue player's note on joystick buttons and the guide's controller lines updated (IM-25, M12-18) |
 
 ### 2.1 Small fix candidates
 
