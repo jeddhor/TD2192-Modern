@@ -168,8 +168,8 @@ fn dump_diff(ours: &td_render::Framebuffer, (dac, px): &(Palette, Vec<u8>)) -> V
 /// five page breaks with one Space each (down in frames 7743, 7823, 7903, 7983, 8063, all typed
 /// ahead of their page break); it dumps every 10th frame. The port's scene gets the same Spaces
 /// at the same distance from the fade start. Port step s is capture frame `start + s` during the
-/// fade-in; from the first line on the original is [`D75_LEAD`] frames ahead (BUG-33), and one
-/// frame further behind after each retrace its typing loop missed (`frames.tsv`: 3DAh polled, no
+/// fade-in and typing (BUG-33 fixed, dialogue-player rev 3 §4.5), with no startup lead.
+/// The original falls one frame behind after each retrace its typing loop missed (`frames.tsv`: 3DAh polled, no
 /// retrace seen; text rev 5 §4.3 item 6; five in this scene, with music). Under that alignment
 /// every dump from the open to the scene's end is compared: all pixels, and the DAC entries the
 /// frame shows plus the speakers' entries 250 and 251, wherever no DAC write happened in that
@@ -292,9 +292,59 @@ fn ending_b_dialogue_75_matches_c0324() {
     );
 }
 
-/// Frames by which the original's dialogue typing runs ahead of the port's from the first line
-/// after the fade-in (C-0324; BUG-33).
-const D75_LEAD: u32 = 2;
+/// No startup alignment allowance: only measured missed retraces adjust the comparison.
+const D75_LEAD: u32 = 0;
+
+/// Dense C-0381 pins the actual first-character frame independently of the sparse
+/// ending-B comparison: no inferred alignment or startup tolerance (rev 3 §6 vector 7).
+#[test]
+fn dialogue_start_matches_dense_c0381() {
+    let data = require_data!();
+    let oracle = require_oracle!();
+    let dir = DataDir::open(&data).unwrap();
+    let res = ExeResources::load(&dir).unwrap();
+    let mut s = DialogueScene::load(&dir, &res, Episode::E1, ScriptChoice::Original, 75).unwrap();
+    let tsv = fs::read_to_string(oracle.join("C-0381/frames.tsv")).unwrap();
+    let mut lines = tsv.lines();
+    let head: Vec<_> = lines.next().unwrap().split('\t').collect();
+    let dac = head.iter().position(|&h| h == "dac_3c9").unwrap();
+    let writes: std::collections::BTreeMap<u32, u32> = lines
+        .map(|line| {
+            let cols: Vec<_> = line.split('\t').collect();
+            (cols[0].parse().unwrap(), cols[dac].parse().unwrap())
+        })
+        .collect();
+    for frame in 7714..=7755 {
+        s.step(&TickInput {
+            pressed: if frame == 7743 {
+                vec![Key::SPACE]
+            } else {
+                vec![]
+            },
+            ..TickInput::default()
+        });
+        if frame < 7743 {
+            continue;
+        }
+        let bytes = fs::read(
+            oracle
+                .join("C-0381/fb")
+                .join(format!("f{frame:08}_320x200_dense.vga")),
+        )
+        .unwrap();
+        assert_eq!(bytes.len(), 768 + 320 * 200);
+        let expected = (
+            Palette::parse_prefix(&bytes).unwrap(),
+            bytes[768..].to_vec(),
+        );
+        let mut bad = dump_diff(s.screen(), &expected);
+        if writes[&frame] > 0 {
+            // A single whole-frame palette cannot represent writes during raster scan.
+            bad.retain(|d| !d.starts_with("DAC"));
+        }
+        assert!(bad.is_empty(), "C-0381 f{frame}: {bad:?}");
+    }
+}
 
 #[test]
 fn every_scene_of_every_script_plays_to_the_end() {

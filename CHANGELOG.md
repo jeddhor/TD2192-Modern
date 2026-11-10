@@ -6,8 +6,31 @@ TD2192-Modern contains no part of the original game. You need your own copy of *
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-10
+
+The second release candidate. The Classic parity checklist now passes 363 of 376 items
+(96.5%), above the 95% release bar. The owner approved M12 on 2026-11-10.
+Version 1.0 still needs clean-machine install results and the remaining release
+criteria. Version 0.9.1 is published as a beta prerelease.
+
+### Added
+
+- **Qt6 offline installers for Windows and Linux:** self-contained setup bundles the precompiled game, imports the recognized files from a local retail folder, offers menu/desktop shortcuts and includes an uninstaller. Installation defaults to the current user; uninstall preserves saves, settings and changed files.
+- **Optional analog steering:** under Enhanced, the profile page can enable proportional stick thrust with steady facing. It is off by default; keyboard and D-pad movement keep full strength. Analog recordings use replay format 4 and play back without a controller.
+- **Release preparation:** tag-checked Windows and Linux artifact builds, archive/checksum validation, repeatable smoke tests and a generator for an isolated Windows Sandbox test.
+
+### Changed
+
+- **License and distribution:** the project and installer source are now GPL-3.0-or-later. The first public beta is hosted at `jeddhor/TD2192-Modern` on GitHub. Original game data remains bring-your-own.
+- **Windows:** opening the game no longer creates an extra console window. Command-line output is retained when launched from a terminal or redirected; Explorer launches show errors in a dialog. Diagnostics are also written to `td2192.log` in the user folder.
+
 ### Fixed
 
+- **Held keys across screens:** flight entry keeps the keyboard's last-key history; releasing a later key no longer revives an older held movement key (U-582).
+- **Retry prompts:** invisible taunt typing now consumes its original character-count delay before the fade, instead of appearing about half a second early (U-585).
+- **Enhanced fixes:** ships with wrapped offsets no longer appear as ghost sprites or engine lights. Classic retains the original rendering, and simulation and replays are unchanged (OB-175).
+- **Dialogue:** the first typed line now overlaps the final fade writes, as in the original, rather than starting two frames late (BUG-33). Confirmed with a dense reference recording; the comparison no longer uses a startup timing allowance.
+- **Episode 3, flights 15 and 16:** trucks leave the map at the original exit coordinates. Letting flight 16's convoy leave now triggers the transmission and allows the mission to continue (BUG-34). Checked through all three truck departures in the original recording.
 - **Episode 1, flight 18:** a retry after losing to the bomb is no longer lost at once. Every flight now starts with the mission's counters, alarms and transmission lamp cleared, as in the original, in all three episodes (BUG-31).
 - **Very long flights:** a mission ship that wraps round at the top or bottom edge of the map no longer stops the game with an error when it fires or is hit. Hits, shots and the drawing of such a ship now follow the original's 16-bit arithmetic (BUG-30). Checked against the original in Episode 3, flight 19, for 4,499 ticks.
 - **Episodes 2 and 3:** the white flash of a homing-missile kill and the red hit flash are applied in the original's order (BUG-32; visible only in one rare case in the red infra-red mode).

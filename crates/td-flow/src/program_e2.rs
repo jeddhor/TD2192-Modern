@@ -594,6 +594,7 @@ impl<C: EpisodeCampaign> Screen for LaterEpisode<C> {
                 // The controller answered above; no other button ends this wait.
                 s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(&TickInput {
+                    keyboard: input.keyboard,
                     pressed: keys,
                     held: input.held.clone(),
                     pad: None,

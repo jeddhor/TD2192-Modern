@@ -1,6 +1,6 @@
 # Third-party components
 
-Every direct dependency, with its licence. All must be compatible with the project's MIT licence (MDG §5.4). Update this file in the same change that adds or removes a dependency.
+Every direct dependency, with its licence. All must be compatible with the project's GPL-3.0-or-later licence (MDG §5.4). Update this file in the same change that adds or removes a dependency.
 
 | Component | Used by | Licence | Notes |
 |---|---|---|---|
@@ -34,3 +34,22 @@ Also linked into the release binaries, without a `Cargo.toml` entry:
 The packages carry the full texts in `THIRD_PARTY_NOTICES.txt`, generated for each target by `tools/scripts/gen-notices.py` (docs/RELEASE.md §3.6).
 
 Tools used outside the build (not linked, not distributed): Ghidra (Apache-2.0), DOSBox-X (GPL-2.0, built locally as a reference emulator; **no code from it may enter this repository**).
+
+## Qt6 desktop installer (separate distribution)
+
+The owner requested Qt6 installers on 2026-11-10. The Python installer source and
+the Rust game are GPL-3.0-or-later; the game's dependency set is unchanged.
+
+| Component | Licence / purpose |
+|---|---|
+| Qt6, PySide6 and Shiboken6 6.11.1 | LGPLv3 option; dynamic, unmodified runtime libraries for the installer UI |
+| CPython 3.10 | Python Software Foundation licence and bundled third-party notices |
+| PyInstaller 6.20.0 | GPL with the bootloader distribution exception; Apache-2.0 runtime hooks |
+| PyInstaller hooks 2026.5 | GPL with its distribution exception; build tooling |
+
+Installer builds carry their own `installer-notices/` tree, dependency hashes,
+corresponding-source URLs and complete upstream licence/attribution files. They also
+carry the GPL-3.0-or-later installer source and rebuild instructions. The builder's `--onedir`
+mode supports replacing the dynamic Qt libraries for debugging. Linux library
+notices are collected from each bundled library's package; system glibc remains a
+host requirement. See [the installer build guide](tools/installer/README.md).

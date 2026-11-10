@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `frontend/port-front-end` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft (design, not reverse engineering) |
 | **Fidelity tier** | T3, port additions. The original screens are unchanged except where §5 says so |
 | **Tasks** | M11-01 (start screen), M11-03 (settings screens incl. game data), M11-04 (controller navigation), M13-02 (first run), M12-04 (colour-blind guidance line; the D5 Enhanced preset, §3.4), M12-18 (reduce flashing §3.5, text waits §3.6, the window in the background §3.7, controller options and pause §4, any button on waits and typed names §5) |
@@ -70,7 +70,7 @@ Reached from the start screen and with **F2** during play (the original reads no
 | video | fullscreen, scaling (aspect 4x3, integer, stretch), in the background (pause, keep running; §3.7), widescreen\*, pixel upscaler\*, dynamic lighting\*, bloom\* |
 | audio | music volume, sound volume (0..100 in tens, with a bar), sound effects\* (classic, polyphonic) |
 | controls | one row per original flight key: action, original key, keyboard binding, gamepad binding; `options` (the controller button that opens the options, §3.1); reset to defaults |
-| profile | classic or enhanced, with a two-line description; original bug fixes\* (on, off); intro before episode 1 (always, first launch, never: `[intro] play`, read only under Enhanced, so it is drawn in entry 226 under Classic, which always plays the intro); restore the enhanced preset\* |
+| profile | classic or enhanced, with a two-line description; original bug fixes\* (on, off); intro before episode 1 (always, first launch, never: `[intro] play`, read only under Enhanced, so it is drawn in entry 226 under Classic, which always plays the intro); analog steering (Enhanced only, off by default; [spec](analog-steering.md)), restore the enhanced preset\* |
 | accessibility | colour-blind guidance line (§3.3), reduce flashing (§3.5), text waits for a key (§3.6) |
 | game data | the folder or ZIP in use, who set it, its file check and the playable episodes; choose a folder, choose a zip file, extract the zip, back (§3.2) |
 
@@ -156,7 +156,7 @@ The user's decision D5 (2026-11-06): choosing the Enhanced profile turns on a pr
 | Sound effects | `audio.sfx_mode` | polyphonic | classic (one at a time, sfx-policy §4) |
 | Original-bug fixes | `enhanced.fixes` | on: every fix-enhanced fix of `original-bugs.md` | off: every bug preserved |
 
-- Colour-blind guidance (§3.3), reduce flashing (§3.5), text waits for a key (§3.6), the intro setting (`[intro] play`, default `always`, so the intro is not skipped) and analog steering are options, off by default, outside the preset. Analog steering is not implemented yet (MDG §9.5). The background setting (§3.7) has a default per profile.
+- Colour-blind guidance (§3.3), reduce flashing (§3.5), text waits for a key (§3.6), the intro setting (`[intro] play`, default `always`, so the intro is not skipped) and analog steering are options, off by default, outside the preset. Analog steering is implemented as optional proportional stick thrust with steady original facing ([analog-steering](analog-steering.md) rev 1). It is a separate Enhanced-only option on the profile page; Classic forces it off. The background setting (§3.7) has a default per profile.
 - **Explicit choices.** Changing a preset row records the player's choice, which overrides the preset under Enhanced. The choice is kept when the profile changes and when a later version changes the preset. `restore the enhanced preset` (profile page, Enhanced only) drops every choice: the message is `enhanced preset restored`.
 - **Classic** forces every row of the table off, whatever the choices say.
 - The fixes in effect (`Settings::enhanced_fixes`) are read where each bug lives: OB-012 (music cues, `td_flow::program::cue_restart`), OB-022 (`td_sim::Flight::enhanced_fixes`), OB-023 and OB-032 (`td_render::flight_palette`), OB-024 and OB-057 (`td2192::flight`), OB-056 (`td_flow::save_screens`), OB-058 (`td_flow::intro::IntroOptions`). OB-024's radar table is chosen when a flight starts; the others follow a change at once.
@@ -252,6 +252,8 @@ esc = "start"
 
 ## 7. Revision history
 
+- Rev 6 (2026-11-09, IM-28): optional Enhanced analog steering, outside the preset; profile page and replay-safe input rules in [analog-steering](analog-steering.md).
+
 | Rev | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-11-05 | IM-14 | Start screen, options pages, bindings, controller navigation (M11-01, M11-03, M11-04) |
@@ -259,3 +261,10 @@ esc = "start"
 | 3 | 2026-11-06 | IM-22 | The D5 Enhanced preset (§3.4): preset table, explicit choices, `settings.toml` format 2 (absent key = preset) and the format-1 migration; the sound effects and the original-bug fixes join the Enhanced rows (§3); the profile page's `original bug fixes` and `restore the enhanced preset` rows |
 | 4 | 2026-11-06 | VE-8 | M12-07 small fixes: South ends the save-name entry (§5); F10..F12 cannot be bound (§3.1) |
 | 5 | 2026-11-06 | IM-25 | M12-18 (VE-8's M12-07 findings): reduce flashing (§3.5), text waits for a key (§3.6), the window in the background (§3.7), the controller's options button and the pause on the right stick (§3.1, §4), what cannot be rebound and why (§3.1), any button ends a "hit any key" wait and typed save names (§5), inks 226 and 229 raised to 4.3:1 and 7.8:1 (§1) |
+
+
+## 8. Windows launch and diagnostics (IM-28)
+
+The Windows executable uses the GUI subsystem: launching it from Explorer opens no console window. At entry it attempts to attach to its parent's existing console, without creating one, and preserves inherited redirected standard handles. `--help`, `--version`, `--check` and argument errors therefore remain useful in terminals and redirected scripts. When there is no text output, help/version/check use an information dialog, and argument/startup errors use an error dialog. Terminal errors print to stderr and return a failing exit status without waiting for a dialog.
+
+Runtime diagnostics also go to `<user data>/td2192.log`, replaced on each normal startup (argument help/version leave it alone). `TD2192_LOG` still controls the filter. A log-file creation failure does not prevent playing; stderr remains the fallback. The narrow Win32 unsafe exception is confined to `td-platform/src/windows_console.rs`, with borrowed handles, no pointer dereferences and no handle ownership transfer. Its API contracts are the Microsoft AttachConsole/GetStdHandle documentation cited in that module. All other crates retain the workspace unsafe prohibition.

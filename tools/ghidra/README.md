@@ -1,6 +1,6 @@
 # Ghidra scripts
 
-Our own Java GhidraScripts (MIT) for the original executables. They run headless and in the GUI (Script Manager → add this directory to the script paths; category `TD2192`). Background: [ADG §7.2–7.3](../../docs/AGENT_DEVELOPMENT_GUIDE.md#72-ghidra-project-setup-m0-08), [EXECUTABLES.md §1.1](../../docs/re/EXECUTABLES.md#11-ghidra-image-base-segments-and-dgroup-m0-08-2026-11-02).
+Our own Java GhidraScripts (GPL-3.0-or-later) for the original executables. They run headless and in the GUI (Script Manager → add this directory to the script paths; category `TD2192`). Background: [ADG §7.2–7.3](../../docs/AGENT_DEVELOPMENT_GUIDE.md#72-ghidra-project-setup-m0-08), [EXECUTABLES.md §1.1](../../docs/re/EXECUTABLES.md#11-ghidra-image-base-segments-and-dgroup-m0-08-2026-11-02).
 
 All addresses that the scripts read or write are **image-relative** `SSSS:OOOO` (ADG §7.8). Ghidra address = `(0x1000 + SSSS):OOOO` for all five exes. The scripts convert through the containing memory block, so Ghidra's 64 KB-normalised display addresses (`2000:EF75`) never leak into the output.
 

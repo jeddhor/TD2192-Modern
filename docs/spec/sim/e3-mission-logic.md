@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `sim/e3-mission-logic` |
-| **Revision** | 1 |
+| **Revision** | 2 |
 | **Status** | Draft |
 | **Fidelity tier** | T1 (phase changes, spawns, removals, class-table and map patches, success, lost and outcome decide the result of a flight; rule order matters where two rules write the same ship) · T2 for the ticker text ([hud](../render/hud.md) §4.7) and for the flight-16 palette effects (presentation) |
 | **Confidence** | Primitives, base tests, every rule of `td3:1FEB:0A8D..167F` (`Msn_UpdateA`: 81 calls, 64 stores) and `1FEB:19AD..229D` (`Msn_UpdateB`: 75 calls, 56 stores), every branch of `Msn_E3TimedEvents` (`0C5D:959E..9A6C`), start state, comm viewer, outcome tests and the flight-16 specials: CONFIRMED (code; listings checked gap-free). Gameplay consequences (who reaches which tile when, what frozen ships do, what the player sees): LIKELY. Capture C-0036 confirms the flight-1 start state and that no rule fires in its first ticks (§7 vector C1); C-0041 confirms the flight-8 start state and the hazard test (§7, [e3-mission-ships](e3-mission-ships.md) §4.4) |
@@ -198,10 +198,10 @@ Step *k* of slot *s* is at file offset 80 + (*s* − 1) × 501 + *k* − 1 (X) a
 | 13 | 11 / 12 | (150, 50) → (199, 107) / (47, 50) → (1, 18) | exit 11, exit 12 (path ends, map edges) |
 | 14 | 6 / 7 / 9 / 10 | from (95, 83) / (95, 82) / (95, 79) / (89, 81), next to the start tile of the player (93, 79), to (1, 170) / (1, 168) / (1, 95) / (101, 199) | the matching exit rules |
 | 14 | 8 / 11 | from (95, 80) / (85, 81) to (54, 116) / (87, 120); no exit | the tick-175 / tick-75 armour writes (§4.6.5) |
-| 15 | 1 | (98, 1) → … → **(168, 199)** | exit 1 @ **(199, 168)**: not on the walk (OB-046) |
+| 15 | 1 | (98, 1) → … → **(168, 199)** | exit 1 @ **(168, 199)** |
 | 15 | 2 | (98, 3) → … → (199, 126) | exit 2 @ (199, 126) |
 | 15 | 15; 10..14 | Kreel (15) and five class-8 ships loop in x 99..105, y 80..95 | rule A (range 55), engagement |
-| 16 | 2, 3, 4 | (93, 78 / 80 / 82) → … → **(168, 199)** (225 / 223 / 221 walk tiles) | exit 2..4 @ **(199, 168)**: not on the walk (OB-046) |
+| 16 | 2, 3, 4 | (93, 78 / 80 / 82) → … → **(168, 199)** (225 / 223 / 221 walk tiles) | exit 2..4 @ **(168, 199)** |
 | 16 | 6 / 7 | loops x 22..102, y 144..169 (starts at (22, 168)) / x 38..69, y 107..168 | the escort rules (OB-047) |
 | 18 | 7 | loop x 20..32, y 33..58 starting at **(28, 33)**, the destination | — (it patrols the point) |
 | 19 | 2 | Osyluth, loop x 63..87, y 96..112, from (75, 112); first within 25 tiles of the unmoved player tile (93, 79) at walk index 34, tile (69, 96) | rule A |
@@ -263,7 +263,7 @@ Consequences:
 
 - **Timed stores land at the end of tick *n*.** A phase store is seen by `Msn_UpdateB` in tick *n* + 1. A class store (flight 10 slot 4, flight 14 slots 6..11) makes the ship live from the AI pass of tick *n* + 1, where it first moves and is first drawn. An armour := 0 store (flight 14) removes the ship in pass 1 of the AI at tick *n* + 1. The flight-12 map patch is already seen by the hazard test (step 27) of tick *n*, and is first drawn at step 4 of tick *n* + 1. The flight-16 class patch already limits the player at step 29 of the same tick; mission ships from step 10 of tick *n* + 1.
 - **Flight 16 chain in one tick:** rule A (step 9) sets phase 2 → step 15 forces the comm viewer (draw page 0) → phase 3 → the event routine (new step) fades, freezes and sets phase 5 → `Msn_UpdateB` posts M2[6] in the next tick (§5.16).
-- As in E2 §4.1: kills are seen one tick late (P3), arrivals at the next step 8 or 9, and success decided at step 9 ends the loop at step 33 of the same tick. Exit rule before the completion test (same tick): flight 10 (exit 5 before D). Completion test before the exit rules (one tick later): flight 12. The exit rules of flights 15 and 16 that matter are inert (OB-046).
+- As in E2 §4.1: kills are seen one tick late (P3), arrivals at the next step 8 or 9, and success decided at step 9 ends the loop at step 33 of the same tick. Exit rule before the completion test (same tick): flight 10 (exit 5 before D). Completion test before the exit rules (one tick later): flight 12. In flight 16, completion rule A precedes the exits: the last truck exits at step 9 of tick t, then A sees all trucks gone at step 9 of tick t + 1.
 
 Where an exit rule and the "all gone" test of the same ships are in one block, their order decides whether the test sees the removal in the same tick:
 
@@ -960,7 +960,7 @@ A: if Msn_NearLive(15, player, 55) and phase = 1:
 B: if dead(15) and phase < 100:
        comm pending := 0; post(M2[5], c = 42); phase := 100
 for a = 4..15: engage a → player, 15
-exit 1 @ (199,168)                                (inert: slot 1 ends at (168,199), OB-046)
+exit 1 @ (168,199)
 exit 2 @ (199,126)
 ```
 
@@ -986,7 +986,7 @@ for a = 9..14:
     engage 6 → a, 15
     engage 7 → a, 15
     engage a → player, 15
-exit 2 @ (199,168);  exit 3 @ (199,168);  exit 4 @ (199,168)    (inert, OB-046)
+exit 2 @ (168,199);  exit 3 @ (168,199);  exit 4 @ (168,199)
 ```
 
 Sequence (draw page 0 in the tick of A; with draw page 1 everything from the comm screen on moves one tick later):
@@ -1002,7 +1002,7 @@ Sequence (draw page 0 in the tick of A; with draw page 1 everything from the com
 
 Notes:
 
-- **What completes it:** all three trucks gone. Their exit tile is transposed (OB-046), so they cannot leave; at (168, 199) they turn back along their paths (LIKELY, U-276). In practice the player must destroy all three. The rest follows automatically; the transmission cannot be skipped.
+- **What completes it:** all three trucks gone, whether destroyed or allowed to leave at (168, 199). Each exit clears only the class byte at step 9 of the tick after arrival; tile and other slot bytes remain. Rule A runs before the exits, so the last exit is seen on the following tick. C-0378 (no input): slots 4, 3 and 2 exit in ticks 873, 880 and 887; A posts M2[4], phase 2 and comm pending in tick 888 without any truck destroyed. The rest follows automatically; the transmission cannot be skipped (U-276, CONFIRMED).
 - **Enemies never attack the escorts.** For an enemy *a*, the last successful order wins: the player whenever *a* is within 15 of the player, or within 10 of a live escort (OB-047). The escorts attack the highest-numbered enemy within 15.
 - After phase 5 every mission ship is frozen (§4.6.4); they keep turning and firing at the player when ordered (LIKELY).
 - Outcome = 1 (no test).
@@ -1116,7 +1116,7 @@ Recorded in [original-bugs](../original-bugs.md):
 - **OB-043** flight 7 inherits its phase (§5.7);
 - **OB-044** flight 8 transmission is never announced (§5.8);
 - **OB-045** flight 1 completes on four of nine marked ships (§5.1);
-- **OB-046** flights 15/16 exit tile (199, 168) transposed from the path end (168, 199) (§5.15, §5.16);
+- **OB-046 withdrawn:** the flights 15/16 exit tile is (168, 199), matching the path end (§5.15, §5.16); revision 1 transposed the call arguments in its prose. This is a specification correction, not an original bug.
 - **OB-047** flight 16 enemies near an escort are ordered against the player (§5.16);
 - **OB-048** flight 15 Kreel's 1750 shields absorb one hit (§5.15);
 - **OB-049** flight 16 tint inconsistencies (§4.7.3);
@@ -1227,7 +1227,7 @@ Existing unknowns that apply unchanged: U-204 (kills seen one tick late), U-205 
 |---|---|---|---|---|---|---|
 | U-274 | E3 flight 16 after the class patch (max speed 0 and accel 0 for every class but 2; class 2: 20 / 4): what does a moving mission ship do (stop at once, coast, jitter), does it keep turning and firing, and how fast does a player above speed 20 slow down? | P2 | Static: [sim/e3-mission-logic §4.6.4](e3-mission-logic.md); the tables are read by the player thrust (`td3:0C5D:D7CC..`) and by `AI_UpdateShips` | [flight-model](flight-model.md) and [mission-ships](mission-ships.md) owners; capture of flight 16 around the transmission | M10 | OPEN |
 | U-275 | E3 OB-028 outside flight 16: confirm that `Msn_Setup` case 17 restores the tables, that a retry or resume of flight 16 runs frozen from tick 1, and what happens after loading a saved game or New Game in the same run (can a class-3/4/6/7 player move at all?) | P2 | Static: [sim/e3-mission-logic §6.3](e3-mission-logic.md); no other table store in the exported code | Flow owner (menu load/new game paths); capture: play to flight 16 phase 5, die, retry; then load an early save | M10 | OPEN |
-| U-276 | E3 OB-046: confirm that the flight-16 convoy trucks (and flight-15 truck 1) reach (168, 199), are never removed there, and drive back along their paths, so that flight 16 needs all three trucks destroyed | P2 | Static: exit tiles (199, 168) not on the walks; row 199 has no map-edge removal ([mission-ships](mission-ships.md) §4.2.3) | Mission-ships model run on `m16.td3`; capture | M10 | OPEN |
+| U-276 | Flight-15 truck 1 and flight-16 trucks 2..4 exit at (168, 199) | P2 | Corrected call reading and C-0378 | §5.15/§5.16 | M10 | RESOLVED 2026-11-09 (RE-21); OB-046 withdrawn |
 | U-277 | E3 flight 10: confirm that the medical truck leaves its start and exit tile (22, 166) well before tick 335 (when its exit opens), how long its round trip to (41, 57..58) takes, and that it is removed on its return | P3 | Static: [sim/e3-mission-logic §5.10](e3-mission-logic.md); first-waypoint delay U-205 | Mission-ships model run on `m10.td3`; capture | M10 | OPEN |
 | U-278 | E3 flight 14: confirm that slots 11 and 8 vanish without explosion, sound or kill one tick after their armour is zeroed (ticks 76, 176), and what a player hit in the gap does | P3 | Static: [sim/e3-mission-logic §4.6.5](e3-mission-logic.md); E2 e2-mission-logic §5.11 (same pass-1 removal) | Capture of flight 14 ticks 70–180 | M10 | OPEN |
 | U-279 | E3 F5 target-information entry 21: confirm the presentation (flight 18: the point (28, 33) becomes selectable on the F5 screen only after tick 2160; what is drawn for it) and the second point (entry 22) of flights 8, 10, 11/21, and flight 9's missing flag (OB-053) (with U-283) | P3 | Static: [sim/e3-mission-logic §4.9](e3-mission-logic.md); `UI_ShipSwitchScreen` `td3:0C5D:9A99`, `Msn_LoadTargetInfo` `td3:1BD8:0DCF` | [flow/flight-screens](../flow/flight-screens.md) owner; capture of the F5 screen in flights 11 and 18 | M10 | OPEN |
@@ -1245,6 +1245,7 @@ Existing unknowns that apply unchanged: U-204 (kills seen one tick late), U-205 
 
 | Claim | Address / evidence | Method | Confidence |
 |---|---|---|---|
+| Flight-15 slot 1 and flight-16 slots 2..4 exit at (168, 199), clearing class only | `td3:1FEB:1F72..1F7D`, `20C6..20E9`; helper `05DC..0615`; C-0378 ticks 873/880/887/888 | Static re-read of argument order plus per-tick capture | CONFIRMED |
 | Block ranges (dispatch compare to the next compare) | `td3:1FEB:0A8D..0C0D` (1), `0C0E..0D4D` (2), `0D4E..0EC6` (3), `0EC7..1088` (4), `1089..1179` (5), `117A..12B5` (6), `12B6..13E2` (7), `13E3..159F` (8), `15A0..167F` (9); prologue `0A7F..0A8C` (reserves a 2-byte local that is never used), epilogue `1680..1683` | Static: listing `range_1FEB_0000.asm` read in full, gap-free | CONFIRMED (code) |
 | Every rule, compare and loop bound | Same ranges. 81 calls besides the stack check: 10 `Msn_PostTicker`, 23 `Msn_ExitAt`, 24 `Msn_NearLive`, 24 `AI_SetTarget`. Per flight (post / exit / near / set): 1: 1/4/1/1; 2: 1/4/2/2; 3: 2/2/2/2; 4: 1/4/4/5; 5: 1/0/4/4; 6: 1/1/3/3; 7: 1/3/2/2; 8: 1/1/5/4; 9: 1/4/1/1. 64 stores besides the loop counters DS:31E2/31E4: succeeded 18, phase 15, ticker 10, flag DS:31C4 10, flag DS:31C9 3, class 8 (flight 1 A: 4, B: 3; flight 5 hide: 1); nothing else (no marker, comm, armour, lost or over store; no `Random`) | Static; push order of every call read from the instructions | CONFIRMED (code) |
 | Primitives identical to E2 | `td3:1FEB:0000..070E` vs `td2:2236:0000..070E` | Byte compare of the two exe images (differences only relocations and DGROUP −4) | CONFIRMED |
@@ -1284,3 +1285,4 @@ Existing unknowns that apply unchanged: U-204 (kills seen one tick late), U-205 
 | Rev | Date | Author (session/agent) | Change |
 |---|---|---|---|
 | 1 | 2026-11-03 | RE-10a, RE-10b (Archaeologist + Spec author, drafts for RE-10); merged and checked by RE-10 | Initial: E3 architecture, primitives, base tests, comm viewer, outcome tests, flights 1–9 (RE-10a); flights 10, 11, 21, 12–19, `Msn_E3TimedEvents`, flight 16 across the loop, U-202 and U-203 resolved (RE-10b); OB-043..OB-049, OB-028 correction, U-270..U-279; capture vectors C-0036 (flight 1), C-0041 (flight 8) (RE-10) |
+| 2 | 2026-11-09 | RE-21 (Archaeologist + Spec author) | Correct flights 15/16 exits to (168, 199), U-276 resolved and OB-046 withdrawn; C-0378 proves exit and next-tick notification order (BUG-34). |

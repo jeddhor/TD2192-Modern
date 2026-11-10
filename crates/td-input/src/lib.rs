@@ -2,6 +2,11 @@
 //! them). Keys are identified by USB HID usage IDs (the values of SDL scancodes), so bindings
 //! are independent of the keyboard layout.
 
+mod analog;
+mod repeat;
+pub use analog::{AnalogSteering, Steering};
+pub use repeat::{KeyboardHistory, KeyboardRepeat};
+
 use std::collections::BTreeSet;
 
 /// A physical key, identified by its USB HID usage ID.
@@ -247,6 +252,9 @@ impl PadButton {
 pub struct Pad {
     pub x: i8,
     pub y: i8,
+    /// Raw left stick (SDL signs: right/down positive), for Enhanced analog steering.
+    pub stick_x: i16,
+    pub stick_y: i16,
     pub button1: bool,
     pub button2: bool,
     pub buttons: u32,
@@ -352,6 +360,8 @@ impl InputState {
 /// pass between ticks).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TickInput {
+    /// Host keyboard history across all screens. None is a synthetic input without history.
+    pub keyboard: Option<KeyboardHistory>,
     pub held: BTreeSet<Key>,
     pub pressed: Vec<Key>,
     /// The game controller at the tick, if one is connected.

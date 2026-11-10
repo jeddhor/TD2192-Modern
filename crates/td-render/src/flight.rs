@@ -467,6 +467,14 @@ fn bracket_pixels(marker: u8) -> impl Iterator<Item = ((i32, i32), u8)> {
     })
 }
 
+/// OB-175's accepted Enhanced rendering fix (`original-bugs.md`, mission-ships rev 8
+/// section 4.2.5). Classic preserves every offset; Enhanced fixes omit a wrapped ship and
+/// its brackets/engine light when either axis is outside inclusive -16..80. Presentation
+/// only: never change the ship record, AI, hits or replay state.
+pub fn mission_ship_offsets_visible(sub_x: i16, sub_y: i16, fixes: bool) -> bool {
+    !fixes || ((-16..=80).contains(&sub_x) && (-16..=80).contains(&sub_y))
+}
+
 /// Draws a mission ship at `pos` (from [`mission_ship_pos`]): its heading frame (colour 0
 /// transparent; `size` 32, or 40 for a heading frame whose box starts at its corner,
 /// `flight-screens.md` rev 3 §4.9) with x rounded down to a multiple of 4 like every planar
@@ -939,6 +947,28 @@ mod tests {
             "page 0 skips the top row"
         );
         assert_eq!(mission_ship_pos(VIEW, 1, &top), Some((176, -12)));
+    }
+
+    #[test]
+    fn ob175_enhanced_offset_bounds_are_inclusive_on_both_axes() {
+        for x in [-16, 0, 16, 48, 80] {
+            for y in [-16, 0, 16, 48, 80] {
+                assert!(mission_ship_offsets_visible(x, y, true));
+            }
+        }
+        for (x, y) in [
+            (-17, 16),
+            (81, 16),
+            (16, -17),
+            (16, 81),
+            (i16::MIN, i16::MAX),
+        ] {
+            assert!(!mission_ship_offsets_visible(x, y, true));
+            assert!(
+                mission_ship_offsets_visible(x, y, false),
+                "Classic/fixes-off preserves ghosts"
+            );
+        }
     }
 
     /// BUG-30 (mission-ships rev 8 §4.2.5 rows 2 and 3): the draw test and the positions are

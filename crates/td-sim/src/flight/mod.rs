@@ -812,9 +812,23 @@ impl Flight {
             }
         }
         // 30. Thrust and steering.
-        let dirs = Dirs::read(&self.keys, self.joystick);
-        self.player
-            .thrust_and_steer(&self.classes, &dirs, self.mission_over);
+        let joy = if c.steering().is_some() {
+            c.joystick()
+        } else {
+            self.joystick
+        };
+        let dirs = Dirs::read(&self.keys, joy);
+        if let Some(steering) = c.steering() {
+            // T3 optional proportional thrust, stable facing (frontend/analog-steering rev 1).
+            if !self.mission_over {
+                self.player.thrust(&self.classes, &dirs);
+            }
+            let facing = Dirs::read(&self.keys, steering);
+            self.player.steer(&facing, self.mission_over);
+        } else {
+            self.player
+                .thrust_and_steer(&self.classes, &dirs, self.mission_over);
+        }
         // 31. Mission-ship volleys on back page 1; 32. fire requests cleared every tick
         // (mission-ships §4.4.2).
         if self.draw_page == 1 {

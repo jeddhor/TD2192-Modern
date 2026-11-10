@@ -69,3 +69,6 @@ MEMDUMP*.BIN
 # Claude Code agent worktrees and local settings
 /.claude/worktrees/
 /.claude/settings.local.json
+
+# Python release-helper bytecode
+__pycache__/

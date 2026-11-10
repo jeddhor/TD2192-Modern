@@ -5,10 +5,10 @@ members = ["crates/*"]
 [workspace.package]
 # The release version, shared by every crate (docs/RELEASE.md §1: SemVer; 0.9.x are the release
 # candidates before 1.0.0). `td2192 --version`, the start screen and the package names read it.
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 rust-version = "1.95"
-license = "MIT"
+license = "GPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]

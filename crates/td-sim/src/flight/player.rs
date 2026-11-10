@@ -308,7 +308,7 @@ impl Player {
         self.steer(k, over);
     }
 
-    fn thrust(&mut self, classes: &ClassTables, k: &Dirs) {
+    pub(crate) fn thrust(&mut self, classes: &ClassTables, k: &Dirs) {
         let (max, accel) = (classes.max_speed(self.class), classes.accel(self.class));
         // Real48 Round(accel / 2.0): halves round up for these small positive values.
         let half = accel.div_ceil(2);
@@ -359,7 +359,7 @@ impl Player {
         }
     }
 
-    fn steer(&mut self, k: &Dirs, over: bool) {
+    pub(crate) fn steer(&mut self, k: &Dirs, over: bool) {
         let h = self.heading.code();
         let mut d_block = true;
         if k.u && !over {

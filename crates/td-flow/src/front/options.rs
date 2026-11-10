@@ -80,6 +80,8 @@ pub enum Row {
     /// Pause or keep running while the window is in the background (M12-18; the default
     /// follows the profile).
     Background,
+    /// Optional proportional stick thrust (Enhanced only, outside the preset).
+    AnalogSteering,
     Binding(FlightKey),
     /// The controller button that opens the options during play (the host's F2, M12-18).
     OptionsButton,
@@ -113,7 +115,14 @@ const VIDEO_ROWS: [Row; 8] = [
     Row::Back,
 ];
 const AUDIO_ROWS: [Row; 4] = [Row::MusicVolume, Row::SfxVolume, Row::SfxMode, Row::Back];
-const PROFILE_ROWS: [Row; 5] = [Row::Profile, Row::Fixes, Row::Intro, Row::Preset, Row::Back];
+const PROFILE_ROWS: [Row; 6] = [
+    Row::Profile,
+    Row::Fixes,
+    Row::Intro,
+    Row::AnalogSteering,
+    Row::Preset,
+    Row::Back,
+];
 const ACCESSIBILITY_ROWS: [Row; 4] = [
     Row::ColorblindGuidance,
     Row::ReduceFlashing,
@@ -173,6 +182,7 @@ pub fn is_enhanced(row: Row) -> bool {
             | Row::SfxMode
             | Row::Fixes
             | Row::Preset
+            | Row::AnalogSteering
     )
 }
 
@@ -202,6 +212,7 @@ fn label(row: Row) -> String {
         Row::ReduceFlashing => "reduce flashing".into(),
         Row::TextWaits => "text waits for a key".into(),
         Row::Background => "in the background".into(),
+        Row::AnalogSteering => "analog steering".into(),
         Row::Binding(k) => flight_key_action(k).into(),
         Row::OptionsButton => "options".into(),
         Row::ResetControls => "reset to defaults".into(),
@@ -266,6 +277,7 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
         }
         .into(),
         Row::Fixes => on_off(s.fixes_value()),
+        Row::AnalogSteering => on_off(s.analog_steering),
         Row::Intro => match s.intro.play {
             IntroPolicy::Always => "always",
             IntroPolicy::FirstLaunch => "first launch",
@@ -297,11 +309,12 @@ pub fn value(row: Row, s: &Settings) -> Option<String> {
 fn note(row: Row) -> Option<&'static str> {
     match row {
         Row::Widescreen => Some("affects gameplay - visibility"),
+        Row::AnalogSteering => Some("affects gameplay - stick controls thrust strength"),
         Row::Scale => Some("aspect keeps the original 4x3 shape"),
         Row::Upscaler => Some("smooths the pixel art"),
         Row::SfxMode => Some("polyphonic plays several effects at once"),
         Row::Fixes => Some("fixes small bugs of the original game"),
-        Row::Preset => Some("every enhanced option back to the preset"),
+        Row::Preset => Some("restores the enhanced preset features"),
         Row::ColorblindGuidance => Some("the guidance line in colours safe for colour blindness"),
         Row::ReduceFlashing => Some("slower colour changes - softer lights - no bloom"),
         Row::TextWaits => Some("timed text stays until a key - early keys do not skip"),
@@ -353,6 +366,7 @@ pub fn change(row: Row, s: &mut Settings, dir: i8) -> bool {
         Row::Lighting => s.enhanced.lighting = Some(cycle(&Lighting::ALL, e.lighting, dir)),
         Row::Bloom => s.enhanced.bloom = Some(!e.bloom),
         Row::Fixes => s.enhanced.fixes = Some(!s.fixes_value()),
+        Row::AnalogSteering => s.analog_steering = !s.analog_steering,
         Row::MusicVolume => s.audio.music_volume = step_volume(s.audio.music_volume, dir),
         Row::SfxVolume => s.audio.sfx_volume = step_volume(s.audio.sfx_volume, dir),
         Row::SfxMode => {
@@ -1098,6 +1112,19 @@ mod tests {
     }
 
     #[test]
+    fn analog_option_requires_enhanced_and_is_outside_the_preset() {
+        let mut s = Settings::default();
+        assert!(!change(Row::AnalogSteering, &mut s, 1));
+        s.profile = Profile::Enhanced;
+        assert_eq!(value(Row::AnalogSteering, &s).as_deref(), Some("off"));
+        assert!(change(Row::AnalogSteering, &mut s, 1));
+        assert!(s.effective_analog_steering());
+        s.restore_preset();
+        assert!(s.effective_analog_steering());
+        assert!(rows(Page::Profile).contains(&Row::AnalogSteering));
+    }
+
+    #[test]
     fn video_changes_reach_the_host() {
         let mut rig = Rig::new();
         let mut s = rig.screen();
@@ -1221,9 +1248,16 @@ mod tests {
         screen.open(Page::Profile);
         assert_eq!(
             rows(Page::Profile),
-            [Row::Profile, Row::Fixes, Row::Intro, Row::Preset, Row::Back]
+            [
+                Row::Profile,
+                Row::Fixes,
+                Row::Intro,
+                Row::AnalogSteering,
+                Row::Preset,
+                Row::Back
+            ]
         );
-        for _ in 0..3 {
+        for _ in 0..4 {
             rig.key(&mut screen, Key::DOWN);
         }
         assert_eq!(screen.row(), Row::Preset);

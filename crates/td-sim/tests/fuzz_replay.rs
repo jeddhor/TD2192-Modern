@@ -35,6 +35,8 @@ use td_sim::{KeyTable, TickControls};
 
 /// A parse slower than this fails as a suspected hang.
 const SLOW_INPUT: Duration = Duration::from_secs(5);
+// made-bit30 is reserved for version-4 analog input.
+const ANALOG_MARKER: u128 = 1 << 62;
 
 /// splitmix64, seeded so every run reproduces.
 #[derive(Debug, Clone)]
@@ -169,7 +171,9 @@ fn synth_replay(rng: &mut Rng) -> Replay {
         mission: rng.range(1, 21) as u8,
         seed: rng.next_u64() as u32,
         inputs: (0..ticks)
-            .map(|_| u128::from(rng.next_u64()) | u128::from(rng.next_u64()) << 64)
+            .map(|_| {
+                (u128::from(rng.next_u64()) | u128::from(rng.next_u64()) << 64) & !ANALOG_MARKER
+            })
             .collect(),
         interval,
         checkpoints: (0..checks).map(|_| rng.next_u64()).collect(),
@@ -197,15 +201,15 @@ fn check(bytes: &[u8], origin: impl Fn() -> String) {
     let outcome = catch_unwind(AssertUnwindSafe(|| match Replay::from_bytes(bytes) {
         Ok(r) => {
             let version = u16::from_le_bytes([bytes[4], bytes[5]]);
-            let word = if version == 3 { 16 } else { 8 };
-            assert!(version == 2 || version == 3);
+            let word = if version == 2 { 8 } else { 16 };
+            assert!(version == 2 || version == 3 || version == 4);
             assert_eq!(r.inputs.len(), u32_at(bytes, 12) as usize);
             assert_eq!(r.interval, u32_at(bytes, 16));
             assert_eq!(r.checkpoints.len(), u32_at(bytes, 20) as usize);
             let used = 24 + r.inputs.len() * word + r.checkpoints.len() * 8;
             assert!(used <= bytes.len());
             let again = r.to_bytes();
-            if version == 3 {
+            if version == 3 || version == 4 {
                 assert_eq!(again, bytes[..used]);
             }
             assert_eq!(Replay::from_bytes(&again).as_ref(), Ok(&r));
@@ -239,7 +243,27 @@ fn check(bytes: &[u8], origin: impl Fn() -> String) {
             }
         }
         Err(ReplayError::BadMagic) => assert!(bytes.len() >= 4 && bytes[..4] != *b"TDR1"),
-        Err(ReplayError::Version(v)) => assert!(v != 2 && v != 3),
+        Err(ReplayError::Version(v)) => assert!(v != 2 && v != 3 && v != 4),
+        Err(ReplayError::AnalogMetadataInLegacy { version, tick }) => {
+            assert!(version == 2 || version == 3);
+            let word = if version == 2 { 8 } else { 16 };
+            assert!(tick >= 1 && tick <= u32_at(bytes, 12) as usize);
+            let at = 24 + (tick - 1) * word;
+            assert_ne!(
+                u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap()) & (1 << 62),
+                0
+            );
+        }
+        Err(ReplayError::MissingAnalogMetadata) => {
+            assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), 4);
+            for tick in 0..u32_at(bytes, 12) as usize {
+                let at = 24 + tick * 16;
+                assert_eq!(
+                    u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap()) & (1 << 62),
+                    0
+                );
+            }
+        }
         Err(ReplayError::Truncated) => {}
     }));
     let elapsed = start.elapsed();
@@ -301,7 +325,7 @@ proptest! {
     /// length: the parse fails or succeeds in time proportional to the body.
     #[test]
     fn any_header_and_counts_never_panic(
-        version in prop_oneof![2u16..=3, any::<u16>()],
+        version in prop_oneof![2u16..=4, any::<u16>()],
         ticks in prop_oneof![0u32..8, any::<u32>(), Just(u32::MAX), Just(1 << 24)],
         interval in prop_oneof![0u32..4, any::<u32>()],
         checks in prop_oneof![0u32..8, any::<u32>(), Just(u32::MAX), Just(1 << 20)],
@@ -310,6 +334,18 @@ proptest! {
         let mut data = header(version, ticks, interval, checks);
         data.extend(body);
         check(&data, || format!("header v{version} ticks {ticks} interval {interval} checks {checks}"));
+    }
+
+    /// Canonical version-4 input must retain its exact bytes through mutations that parse.
+    #[test]
+    fn analog_replays_mutated_never_panic(seed in any::<u64>(), mutations in 0usize..=4) {
+        let mut rng = Rng::new(seed);
+        let r = analog_replay(&mut rng);
+        let mut data = r.to_bytes();
+        prop_assert_eq!(u16::from_le_bytes([data[4], data[5]]), 4);
+        prop_assert_eq!(Replay::from_bytes(&data), Ok(r));
+        let ops = mutate(&mut data, &mut rng, mutations);
+        check(&data, || format!("analog replay (seed {seed:#x}) + [{ops}]"));
     }
 
     /// Well-formed replays (versions 3 and 2) with random mutations.
@@ -323,6 +359,69 @@ proptest! {
         }
         let ops = mutate(&mut data, &mut rng, mutations);
         check(&data, || format!("synthetic replay (seed {seed:#x}, v2 {v2}) + [{ops}]"));
+    }
+}
+
+fn analog_replay(rng: &mut Rng) -> Replay {
+    let mut r = synth_replay(rng);
+    if r.inputs.is_empty() {
+        r.inputs.push(0);
+    }
+    r.inputs[0] |= ANALOG_MARKER;
+    r
+}
+
+/// Invalid version labels must fail instead of enabling analog behavior or changing bytes.
+#[test]
+fn malformed_analog_version_labels_are_rejected() {
+    for seed in 0..32 {
+        let mut rng = Rng::new(seed);
+        let analog = analog_replay(&mut rng);
+        for version in [2u16, 3] {
+            let mut bytes = if version == 2 {
+                to_v2(&analog)
+            } else {
+                analog.to_bytes()
+            };
+            bytes[4..6].copy_from_slice(&version.to_le_bytes());
+            assert_eq!(
+                Replay::from_bytes(&bytes),
+                Err(ReplayError::AnalogMetadataInLegacy { version, tick: 1 })
+            );
+            check(&bytes, || {
+                format!("analog payload mislabeled v{version}, seed {seed}")
+            });
+        }
+        let legacy = synth_replay(&mut rng);
+        let mut bytes = legacy.to_bytes();
+        bytes[4..6].copy_from_slice(&4u16.to_le_bytes());
+        assert_eq!(
+            Replay::from_bytes(&bytes),
+            Err(ReplayError::MissingAnalogMetadata)
+        );
+        check(&bytes, || {
+            format!("digital payload mislabeled v4, seed {seed}")
+        });
+    }
+}
+
+/// Every incomplete canonical v4 payload is still a truncation error, including headers
+/// whose analog marker has not been read yet; trailing bytes remain ignored.
+#[test]
+fn analog_replays_truncated_at_every_length() {
+    for seed in 0..8 {
+        let r = analog_replay(&mut Rng::new(seed));
+        let bytes = r.to_bytes();
+        for n in 0..bytes.len() {
+            check(&bytes[..n], || {
+                format!("analog seed {seed} truncated to {n}")
+            });
+            assert_eq!(Replay::from_bytes(&bytes[..n]), Err(ReplayError::Truncated));
+        }
+        assert_eq!(Replay::from_bytes(&bytes), Ok(r.clone()));
+        let mut longer = bytes;
+        longer.extend([0xaa; 9]);
+        assert_eq!(Replay::from_bytes(&longer), Ok(r));
     }
 }
 
@@ -393,7 +492,7 @@ fn huge_declared_counts_fail_fast() {
         (1 << 24, 1 << 20),
         ((1 << 24) + 1, (1 << 20) + 1),
     ] {
-        for version in [2, 3] {
+        for version in [2, 3, 4] {
             let data = header(version, ticks, 1, checks);
             let start = Instant::now();
             for _ in 0..16 {

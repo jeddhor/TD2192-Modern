@@ -12,7 +12,7 @@
 | Original game (**read-only**) | `P:\msdos\TD2192\TD2192` (set `TD2192_DATA` to this) |
 | RE work area (Ghidra project, exports, DOSBox copy, captures) | `P:\msdos\TD2192\re-work` (outside the repo) |
 | Ghidra 12.2 | `C:\Users\jason\Desktop\ghidra_12.2_PUBLIC` (needs `JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.5.8-hotspot`) |
-| DOSBox-X source (GPL) / our debug build | `P:\msdos\TD2192\dosbox-x` (a tool only: **never copy or paraphrase its code into the port**, which is MIT-licensed) |
+| DOSBox-X source (GPL) / our debug build | `P:\msdos\TD2192\dosbox-x` (a tool only: **never copy or paraphrase its code into the port**; preserve the clean-room boundary even though this port is now GPL-3.0-or-later) |
 
 ## Non-negotiables
 

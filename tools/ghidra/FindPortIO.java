@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 TD2192-Modern contributors
 //
 // Lists every IN / OUT / INS / OUTS / INT instruction in the program's code blocks with the

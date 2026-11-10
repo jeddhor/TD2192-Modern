@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/flight-screens` |
-| **Revision** | 7 |
+| **Revision** | 8 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for the screen images (layouts, colours, palette formulas); T1 for the state the screens change (abort flag, mission phase, key bytes, `Random` calls); T2 for timing (fade and typing speed) |
 | **Confidence** | LIKELY overall (static analysis of every routine named below). CONFIRMED by capture where §6 says so: computer menu, ship library, help, pause, F5 map (C-0012), transmission screen (C-0013), palette modes 1 and 2 and the IR notice (C-0014), the 16 heading blits (C-0080) |
@@ -296,6 +296,10 @@ latch := 0; P byte := 0
 - The key that ends the pause stays down in the key table, so it acts in the same tick: Esc opens the computer menu (step 25), Space fires, F6 requests a comm, and so on.
 - Ticks stop; `g_TickPrevTime` keeps its old value, so the first tick after a pause does not wait.
 - **Keys held through the pause stay cleared** (U-450, C-0325): the clear at entry zeroes every byte, and the keyboard repeats only the last key pressed (P, then the key that ends the pause), so a movement key held from before the pause does not come back until it is released and pressed again. In C-0325 kp8 and kp4, held from ticks 3 and 6 to tick 25, read 0 from tick 11; the key that ended the pause (B) read 1 for ticks 11..13 until released. The same holds for every screen that clears the key table and is opened by its own key (flight menu, map, comm viewer); the real-time screens of §4.10 clear nothing.
+- **Keyboard history through flight entry (U-582, C-0383/C-0384).** Flight entry clears the game key bytes; it does not create a new physical keyboard or select a new typematic key. Carry the last pressed key identity and its repeat eligibility across story, menu and flight transitions. Releasing that key stops repeats; it does not fall back to an older key that remains physically held. Clearing the game table likewise does not reset the keyboard's last-pressed history. Only later make codes (fresh press or a repeat of the eligible last key) can repopulate a cleared byte. Do not choose the repeating key by looking at the held-key set at flight entry.
+
+  Numeric pair at reference P1, direct E1 flight 1, DS:1AA4 (kp8): C-0383 title open f341, kp8 down f381, Esc down f401/up405, kp8 held through tick 30; mission opens f490, first tick f558; kp8 byte is **0 in all ticks 1..30**. C-0384 Esc down f401/up405, then kp8 down f411 and held; mission opens f421, first tick f489; byte is **1 in all ticks 1..30**. The pair confirms key selection across flight start. It does not measure the sub-frame phase of the first make after keyboard-handler installation: the held kp8 in the second run had already been down 1133 ms by tick 1. Port model: keep the eligible key's repeat clock running across transitions rather than restarting it at flight entry. This preserves the captured key-selection behaviour while keeping the existing AT-default delay/rate as a T2 approximation; the exact first-repeat sub-frame phase is not asserted by these samples. Do not derive a new repeat period from these 30 tick samples. A synthetic call that supplies only a held-key snapshot has no observed last-press history: no repeat identity can be inferred from that snapshot. A host may conservatively leave repeat eligibility empty until an observed press, or expose a labelled synthetic compatibility policy; neither is a newly measured original-game rule.
+
 - C-0012 frame 5724: ink-37 pixels at x 102..242, rows 77..81 (the string starts with one space); DAC 37 = `td.pal` 37 in mode 0.
 
 ### 4.5 Infra-red palette modes (`g_PaletteMode` DS:1704)
@@ -622,7 +626,7 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 - U-224: are ink 40/43/45 and the font background (178) in the comm screen meant to follow the IR palette (they do in the code)?
 - U-225: the code's extra exclusions 85h, 86h, C1h, 90h in the hit-flash loop are dead; was the intended range wider (the HUD lamp entries)?
 - U-226: which flight-21 entries the F5 map shows (nothing is loaded for flight 21).
-- U-582 (IM-24, M12-16): before the first key press of a flight, which key does the keyboard repeat (§4.4's last-key rule needs a last key)? The port lets a key held since before the flight repeat.
+- [x] U-582: C-0383/C-0384 confirm the last-pressed identity is preserved across flight entry (§4.4); held-key set alone is insufficient. Exact sub-frame repeat phase remains within the existing T2 timing approximation.
 - [x] IM-23 (M10-47, SP): §4.8's last sentence contradicted weapons rev 6 §4.3 step 6. Resolved (RE-19, rev 7): §4.8 now says every kind is drawn with the latched heading, kind 6 before its steering.
 - [x] IM-23 (VE): does the original show a shot on the tick step 7 frees it? Yes (RE-19, rev 7, C-0321 tick 118): §4.8's new paragraph; port: the drawn list is taken after step 6.
 
@@ -658,3 +662,4 @@ No sounds are started by these screens. Music keeps playing (WORX is interrupt-d
 | 5 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §4.5.3: flight fades take 2 frames per level at P1, 33–34 frames (BUG-8, C-0012); §3.5: menu item ramp 11 steps per frame (C-0012), poll delay in real ms; §4.10 delays are `Crt.Delay` (real ms) |
 | 6 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §5 OB-029 row: the comm viewer has no fade (U-231 resolved: the flight fades' callers are the menu, help, ship library, joystick calibration, the flight-17/19 screens and flight start/end; C-0058) |
 | 7 | 2026-11-06 | RE-19 (Archaeologist + Spec author) | §4.5.1: E2 Alt back from mode 2 to mode 1 writes only DAC 255 (mode-1 start formula of P[255]) and DAC 37 (P[255]) (U-530, OB-023; `td2:0E96:E52D..E5E0`, C-0320), vector 14a. §4.8: every shot kind is drawn with the heading latched at the start of its update (kind 6 before steering; the old sentence contradicted weapons rev 6, IM-23); a shot freed for age in step 7 is drawn in that tick first (C-0321 tick 118); §8 IM-23 items closed; §4.4: held keys stay cleared after a pause (U-450, C-0325) |
+| 8 | 2026-11-09 | RE-21 (Archaeologist + Spec author) | §4.4 adds confirmed keyboard-history rule across flight start, paired numeric vectors C-0383/C-0384; U-582 resolved for key selection, repeat sub-frame phase explicitly bounded T2. |

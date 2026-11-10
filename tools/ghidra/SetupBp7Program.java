@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 TD2192-Modern contributors
 //
 // Prepares a Borland Pascal 7 real-mode MZ program that was imported with Ghidra's MZ loader

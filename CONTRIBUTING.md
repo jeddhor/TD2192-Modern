@@ -10,4 +10,4 @@ The essentials:
 4. Before handing off: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`, with and without `TD2192_DATA` set.
 5. Update the docs your change affects (formats, unknowns, specs, status).
 
-By contributing you agree that your contributions are licensed under the [MIT License](LICENSE).
+By contributing you agree that your contributions are licensed under the [GNU General Public License, version 3 or any later version](LICENSE) (`GPL-3.0-or-later`).

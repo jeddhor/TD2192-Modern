@@ -2,11 +2,11 @@
 
 A clean-room, modern reimplementation of **Traffic Department 2192** (Safari Software, 1994), the top-down hoverskid combat game set on the desert planet Seche, for current Windows and Linux (macOS later).
 
-> **Status:** release candidate **0.9.0**, not yet 1.0.
+> **Status:** public beta **0.9.1**, not yet 1.0.
 >
 > - **What is in it:** all three episodes, which play from the intro to their endings, with saving, the options, controller support, the Enhanced profile and accessibility options.
-> - **How it is checked:** against recordings of the original game. Every flight of the three episodes matches the original tick for tick, and 90.2 % of the parity checklist passes (see [docs/parity/](docs/parity/)).
-> - **What 1.0 waits for:** a 95 % parity bar, two open major bugs and the owner's sign-off.
+> - **How it is checked:** against recordings of the original game. Every flight of the three episodes matches the original tick for tick, and 96.5 % of the parity checklist passes (see [docs/parity/](docs/parity/)).
+> - **What 1.0 waits for:** clean-machine install tests and the remaining release checklist.
 >
 > What is in this release and what is still missing: [CHANGELOG.md](CHANGELOG.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -31,6 +31,25 @@ td2192 --version
 ```
 
 Building from source needs the Rust toolchain pinned in `rust-toolchain.toml`. SDL 3 is built by Cargo, which needs CMake and a C/C++ compiler. Run `cargo run --release -p td2192`. The release packages are built with `tools/scripts/package.ps1` (Windows) and `tools/scripts/package.sh` (Linux); see [docs/RELEASE.md](docs/RELEASE.md).
+
+### Offline desktop setup
+
+Download the Windows or Linux installer and its matching source/notices ZIP from the
+[0.9.1 beta release](https://github.com/jeddhor/TD2192-Modern/releases/tag/v0.9.1).
+The release also provides SHA-256 checksums and optional portable packages.
+
+The Qt6 setup executable for Windows and `.run` installer for Linux contain the
+precompiled game and installer runtime. Run setup, choose a writable installation
+folder and point it at your local retail game folder. Setup copies the recognized
+game assets into its own `game/` directory and offers Start Menu/Applications and
+desktop shortcuts. Qt and Python do not need to be installed separately.
+
+Defaults are `%LOCALAPPDATA%/Programs/TD2192-Modern` on Windows and
+`~/Games/TD2192-Modern` on Linux. Run the installed uninstaller to remove the
+game; saves, settings and changed files are kept. Windows also lists it under your
+installed applications. For Linux, make the downloaded `.run` executable first.
+Use `Play.cmd` / `play` in the installation folder when launching without shortcuts.
+See [installer build and verification instructions](tools/installer/README.md).
 
 ### Controls (as in the original)
 
@@ -79,4 +98,4 @@ Developer views: `--dev-flight N` (fly flight N), `--dev-dialogue SCENE`, `--dev
 
 ## Legal
 
-Traffic Department 2192 and its content belong to their respective rights holders. This project contains no original game data; you must supply your own copy. This project's code is licensed under the [MIT License](LICENSE). Third-party components and their licences are listed in [THIRD_PARTY.md](THIRD_PARTY.md); release packages include their full notices.
+Traffic Department 2192 and its content belong to their respective rights holders. This project contains no original game data; you must supply your own copy. TD2192-Modern source code and documentation are Copyright (C) 2026 TD2192-Modern contributors and are free software: you may redistribute and modify them under the [GNU General Public License, version 3 or (at your option) any later version](LICENSE) (SPDX: `GPL-3.0-or-later`). This program comes without any warranty. Third-party components retain their own licences, listed in [THIRD_PARTY.md](THIRD_PARTY.md); release packages include their full notices.

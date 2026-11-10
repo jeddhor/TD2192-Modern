@@ -8,7 +8,7 @@ Builds a portable release folder and zip of TD2192-Modern for Windows x64 (M13-0
    with the static C runtime (-C target-feature=+crt-static, and
    tools\scripts\msvc-static-crt.cmake for SDL 3's CMake build), so the program needs no Visual
    C++ Redistributable. Checks with dumpbin, when Visual Studio has it, that no VCRUNTIME/MSVCP
-   DLL is imported.
+   DLL is imported. -RequireRuntimeCheck fails if dumpbin is unavailable (used by CI).
 3. Copies the binaries, LICENSE, README.md, CHANGELOG.md, THIRD_PARTY.md and the player guide
    (docs\player\README.md, as PLAYER-GUIDE.md) into
    <Out>\TD2192-Modern-<version>-windows-x64\, and generates THIRD_PARTY_NOTICES.txt (the
@@ -27,7 +27,8 @@ pwsh tools/scripts/package.ps1 -Out P:\msdos\TD2192\dist
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Out,
-    [switch]$NoTools
+    [switch]$NoTools,
+    [switch]$RequireRuntimeCheck
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +44,9 @@ foreach ($v in 'RUSTFLAGS', 'CMAKE_TOOLCHAIN_FILE', 'CARGO_TARGET_DIR') {
     $savedEnv[$v] = [Environment]::GetEnvironmentVariable($v)
 }
 try {
-    $version = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages |
+    $metadata = cargo metadata --locked --format-version 1 --no-deps
+    if ($LASTEXITCODE -ne 0) { throw 'cargo metadata failed' }
+    $version = ($metadata | ConvertFrom-Json).packages |
         Where-Object name -eq 'td2192' | Select-Object -ExpandProperty version
     if (-not (Select-String -Path CHANGELOG.md -SimpleMatch "## [$version]" -Quiet)) {
         throw "CHANGELOG.md has no '## [$version]' section (docs/RELEASE.md)."
@@ -55,7 +58,7 @@ try {
     $env:CARGO_TARGET_DIR = Join-Path $repo 'target\package'
     $packages = @('-p', 'td2192')
     if (-not $NoTools) { $packages += @('-p', 'tdtool') }
-    cargo build --release @packages
+    cargo build --locked --release @packages
     if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
     $bin = Join-Path $env:CARGO_TARGET_DIR 'release'
     $exes = @('td2192.exe')
@@ -68,13 +71,16 @@ try {
     }
     if ($dumpbin) {
         foreach ($exe in $exes) {
-            $crt = & $dumpbin /dependents (Join-Path $bin $exe) |
-                Select-String -Pattern '(vcruntime|msvcp)\d+.*\.dll' | ForEach-Object { $_.Line.Trim() }
+            $imports = & $dumpbin /dependents (Join-Path $bin $exe)
+            if ($LASTEXITCODE -ne 0) { throw "dumpbin failed for $exe." }
+            $crt = $imports |
+                Select-String -Pattern '((vcruntime|msvcp)\d+.*|api-ms-win-crt-.*)\.dll' | ForEach-Object { $_.Line.Trim() }
             if ($crt) { throw "$exe imports the Visual C++ runtime ($($crt -join ', '))." }
         }
         Write-Host 'Runtime check: no Visual C++ Redistributable DLL imported.'
     }
     else {
+        if ($RequireRuntimeCheck) { throw 'dumpbin not found: runtime check is required.' }
         Write-Warning 'dumpbin not found: the Visual C++ runtime check was skipped.'
     }
 

@@ -98,11 +98,11 @@ const MEM_AVAIL_DIGITS_MUSIC_OFF: [u8; 7] = [6, b'2', b'0', b'9', b'5', b'2', b'
 /// Offset word of E1 `g_FontTitle` (the title-font block starts 8 bytes into its allocation).
 const FONT_TITLE_OFFSET: u16 = 0x0008;
 /// Heap bytes the menu song `menu.cmf` (6,166 bytes, rounded up to 8) takes below the E1
-/// title-font block when music is on (weapons rev 7 §3.3 item 2: the `g_MemAvailText`
-/// difference). ASSUMPTION(U-580): with music off the block, and with it `g_FontTitle`, sits
-/// that much lower, as a BP7 normalised pointer (offset = linear address mod 16): C-0322 and
-/// C-0323 (direct start, `td.cfg` 01 02 02) hold `5C11:0000` at DS:1032..1035, which is
-/// `5D92:0008` − 6,168 bytes; no spec states it yet.
+/// title-font block when music is on (weapons rev 10 §3.3 items 2 and 7; U-580 resolved).
+/// Music off lowers the block and `g_FontTitle` by this amount as a BP7 normalised pointer
+/// (offset = linear address mod 16): C-0322/C-0323 confirm direct `5C11:0000` at
+/// DS:1032..1035 (`5D92:0008` minus 6,168 bytes); C-0382 confirms launcher `6795:0000`.
+/// The pointer's offset word is therefore not always 8.
 const MENU_SONG_HEAP: u32 = 6_168;
 /// E2/E3 DS:066A..066D: `g_CfgWork` and `g_CfgCursor` of the reference start `TD2.EXE /sb` /
 /// `TD3.EXE /sb` with the shipped `td.cfg` and no joystick: music device 2, SFX device 2

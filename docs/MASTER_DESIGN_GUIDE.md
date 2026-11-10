@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Master Design Guide (MDG) |
 | **Version** | 0.1, 2026-11-02 |
-| **Status** | Approved for implementation 2026-11-02 (D1 Rust + SDL3, D2 MIT decided); other decisions in §14 are pending |
+| **Status** | Approved for implementation 2026-11-02 (D1 Rust + SDL3); D2 updated to GPL-3.0-or-later by the owner on 2026-11-10; other decisions in §14 are pending |
 | **Audience** | Every contributor, human or AI agent |
 | **Companions** | [AGENT_DEVELOPMENT_GUIDE.md](AGENT_DEVELOPMENT_GUIDE.md) (how to work), [STATUS.md](STATUS.md) (who is doing what), [re/](re/) (reverse-engineering knowledge base), [spec/](spec/) (behaviour specifications), [adr/](adr/) (architecture decisions) |
 
@@ -244,11 +244,11 @@ An agent session wears one hat per task. The task brief MUST state the hat. Movi
 - Decompiler output, disassembly listings, or code transliterated from either.
 - Ghidra project databases (binary, and they embed the original program bytes).
 - DOSBox captures of the original (screenshots, audio, video). These live in the RE work area outside the repo.
-- Code copied from GPL-licensed emulators (DOSBox, etc.) unless the project licence is GPL-compatible *and* the decision is recorded in an ADR.
+- Code copied from GPL-licensed emulators (DOSBox, etc.). The clean-room boundary still applies after GPL-3.0-or-later relicensing; any change to it requires a separate owner decision and ADR.
 
 ### 5.4 Third-party components
 
-Only permissive licences (MIT, BSD, Apache-2.0, Zlib, ISC) unless D2 picks a copyleft project licence. The planned dependencies are in §7.1. Any new dependency needs a line in `THIRD_PARTY.md` (created in M0) with its licence.
+The project is GPL-3.0-or-later. Existing dependencies use compatible permissive licences; retain the current dependency review and owner approval for new copyleft dependencies. The planned dependencies are in §7.1. Any new dependency needs a line in `THIRD_PARTY.md` (created in M0) with its licence.
 
 ### 5.5 Asset model: bring your own data
 
@@ -1097,12 +1097,12 @@ These need the project owner's decision. Agents MUST NOT decide them; they are l
 | ID | Decision | Recommendation |
 |---|---|---|
 | D1 | Implementation language and stack (ADR-0001) | **DECIDED 2026-11-02: Rust + SDL3** (Bevy considered and not chosen; see ADR-0001) |
-| D2 | Project licence for our code | **DECIDED 2026-11-02: MIT** |
+| D2 | Project licence for our code | **DECIDED 2026-11-10 (user): GPL-3.0-or-later**, replacing the 2026-11-02 MIT decision |
 | D3 | Import original save files? | **DECIDED 2026-11-06 (user): no.** The port keeps its own saves (original byte format) and never reads the game folder's saves |
 | D4 | Include the TFP "about"/"order" extras? | **DECIDED 2026-11-06 (user): no for 1.0.** Menu items 6 and 7 show the about/order pictures in-process |
 | D5 | Which Enhanced features ship in 1.0? | **DECIDED 2026-11-06 (user):** choosing the Enhanced profile turns on a visual preset: 16:9 widescreen, xBR 3x upscaling, subtle lighting, bloom off, polyphonic sound effects and every fix-enhanced original-bug fix; each stays individually adjustable. Colour-blind guidance, skip intro and analog steering are options, off by default |
 | D6 | Target platforms and signing for 1.0 | **DECIDED 2026-11-06 (user): Windows x64 and Linux x64, unsigned;** macOS later if a signing identity becomes available |
-| D7 | Repository hosting and visibility | Private GitHub repository until the rights review (R5) is done |
+| D7 | Repository hosting and visibility | **DECIDED 2026-11-10 (user): public GitHub `jeddhor/TD2192-Modern` with a beta prerelease** |
 | D8 | Default script variant on first run | Ask, exactly like the original |
 | D9 | Reproduce the original's in-game "cheater" judgement (text only)? | **DECIDED 2026-11-06 (user):** port the five harmless cheat chords (T+I+M, H+A+R+D, J+O+H+N, J+D+W, M+K+A+R) exactly as the original, in both profiles, with the debrief's "cheater" text when its rule fires; the host-modifying E+V+L and P+L+A+Y are never ported |
 | D10 | Behaviour when exe hashes don't match (other versions) | Run with degraded text (placeholders), clear warning |

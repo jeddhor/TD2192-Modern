@@ -379,7 +379,7 @@ fn flight_16_idle(ticks: usize) {
     );
 }
 
-/// U-276 (OB-046): flight 16 without input (VE-9, C-0378): the three convoy trucks (slots 2..4)
+/// U-276 (OB-046 withdrawn): flight 16 without input (VE-9, C-0378): the three convoy trucks (slots 2..4)
 /// drive from the city to (168, 199), slot 4 arriving there in tick 872. Every tick to then.
 #[test]
 fn flight_16_idle_convoy_matches_oracle() {
@@ -388,12 +388,10 @@ fn flight_16_idle_convoy_matches_oracle() {
 
 /// BUG-34 (U-276, OB-046): the original removes each convoy truck in the tick after it reaches
 /// (168, 199) (slot 4 in tick 873, slot 3 in 880, slot 2 in 887), so rule A posts M2[4] and
-/// forces the transmission in tick 888 with no truck destroyed; e3-mission-logic rev 1 §5.16
-/// calls the exit rules inert (transposed to (199, 168)), and the port keeps the trucks, which
-/// turn back along their paths.
+/// forces the transmission in tick 888 with no truck destroyed (e3-mission-logic rev 2
+/// §5.16). Compare every captured field through the three exit ticks.
 #[test]
-#[ignore = "BUG-34: the original removes the flight-16 trucks at (168, 199); OB-046 says the exit is inert"]
-fn flight_16_idle_trucks_leave_at_168_199_bug_34() {
+fn flight_16_idle_trucks_leave_at_168_199() {
     flight_16_idle(887);
 }
 

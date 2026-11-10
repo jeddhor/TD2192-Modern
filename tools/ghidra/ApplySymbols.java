@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 TD2192-Modern contributors
 //
 // Applies docs/re/symbols/<exe>.csv (the source of truth for names; ADG 7.3) to the program.

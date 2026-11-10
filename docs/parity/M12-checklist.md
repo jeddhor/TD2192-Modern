@@ -6,11 +6,13 @@ Verifier: VE-6 (Verifier hat; no disassembly read). Tree under test: main `4ba7a
 
 **Updated 2026-11-06 by VE-8 (M12-06)** for what IM-21, IM-22, IM-23, VE-5's two-flight runs, RE-18, RE-19 and VE-8 did after this review (tree: main `b158e78` plus VE-8's branch): the notes marked "VE-8 update" in §0, seven rows of §4 (each says "VE-8 update"), the §2 rows and totals they change, §5 (regenerated), and §7 (IM-22's Enhanced fixes, every OB now decided, OB-140..151 added), §7.1 and §7.2. The other rows are as VE-6 left them.
 
+**0.9.1 continuation update (2026-11-09).** BUG-33 and BUG-34 are fixed: D75 uses zero startup allowance with independent dense C-0381 coverage, and C-0378 now covers all convoy departures through tick 887. U-585 hidden retry typing and accepted OB-175 Enhanced ghost suppression are implemented. C-0382 confirms U-580; C-0383/C-0384 confirm U-582's keyboard-history rule. The audit's 363/376 (96.5%) coverage denominator is retained; new regression coverage is documented in the [candidate record](../handoffs/2026-11-09-release-candidate.md) rather than silently changing the audited count. M12's numerical bar is met; owner sign-off remains required.
+
 ## 0. What remains for Classic 1.0 (ordered by impact on play)
 
 **VE-8 update, before item 1: a crasher.** BUG-18 (major): E3 flight 19 panics in tick 4235 with any input or none, an i16 overflow in ship drift at row 199 (mission-ships §4.2.3, U-570). Found by the random-input soak ([M12-soak](M12-soak.md) §2.2); no other flight panicked in 7,808 random flights of up to 100,000 ticks.
 
-1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10). **Done after this review (VE-7, M12-15, [M12-screens](M12-screens.md)):** captures C-0270..C-0291 and `td-flow/tests/screens_parity.rs` compare 35 such screens in all three episodes, every dump from the fade-in to the hold: exact except typing 1–2 frames early (U-521), the E1 enemy dossier's line 9 (BUG-12, U-520) and `td1-20` one pixel left (BUG-13, U-522). E1 ending B is still not captured (a planned flight-17 "lost" run is needed); E2 ending B is unreachable (OB-025). *VE-9 update: E1 ending B was captured by RE-19 (C-0324); its screens (IM-24) and now dialogue 75 are compared (BUG-33: the dialogue types two frames late, T2).*
+1. **Screens every player sees that were never compared with the original.** The debriefing (after every flight), the assignment orders, the enemy and pilot dossiers, the story-so-far pages, the stills (`td1-13..20.pic`, `secret.pic`, `td1-15`), the E1 episode end, and the endings A/B/C of E1 and E2 (and E3's ending A). They are specified statically (screens §3.4–§3.10, episode-program-flow §4.5, e2/e3-program-flow), drawn by the port, and checked only by flow tests. No capture holds them, except C-0170, a story-so-far run whose frames no test compares (only its title-card fade timing is used). They need captures and L2/L5 tests (§4 flow/screens rows 4, §3.4–3.5, §3.8–3.10). **Done after this review (VE-7, M12-15, [M12-screens](M12-screens.md)):** captures C-0270..C-0291 and `td-flow/tests/screens_parity.rs` compare 35 such screens in all three episodes, every dump from the fade-in to the hold: exact except typing 1–2 frames early (U-521), the E1 enemy dossier's line 9 (BUG-12, U-520) and `td1-20` one pixel left (BUG-13, U-522). E1 ending B is still not captured (a planned flight-17 "lost" run is needed); E2 ending B is unreachable (OB-025). *VE-9 update: E1 ending B was captured by RE-19 (C-0324); its screens (IM-24) and now dialogue 75 are compared (BUG-33 fixed in 0.9.1: dialogue-player rev 3, C-0381 dense startup comparison).*
 2. ~~E2/E3 two-digit muzzle bytes~~ **Done after this review (IM-20, merged 90bd09f):** the E2/E3 worlds are built from front-end state, equal all 58 whole-flight captures and the C-0015/C-0036/C-0180/C-0121/C-0128 campaign states, every L5 flight uses the built bytes, and the dual replays were rewritten.
 3. **Session state across flights is unverified.** *VE-8 update:* VE-5's two-flight runs now compare the second flight of a run every tick with the session the first left: E1 19 → 21 (C-0200, C-0300), E3 6 → 7 (C-0201) and E3 11 → 21 (C-0202). No captured flight follows one that patches the class tables (OB-018) or changes E2's radar colours, so those stay unverified. Every L5 flight is a direct start, the first flight of a program run. The carry-over that a real campaign runs on has never been compared with a capture: the RNG stream after a previous flight, the class-table patches (OB-018, flights 12, 15, 20, 21; E2 flight 8), the mission globals between flights (U-144), `g_Weapon`, E2's radar colours (OB-024), and `g_MemAvailText` in a long campaign (U-440). This needs a capture of two consecutive flights, frame-keyed, or with a re-armable tick watcher (U-481). *VE-9 update: E1 flights 12 → 13 (C-0377: the class-3 patch persists, OB-018) and E3 flights 16 → 17 (C-0376: the tables restored) match every tick (§10).*
 4. ~~The flight-start fade-in is not ported~~ **Done after this review (IM-21, BUG-10; `td2192::flight::tests::opening_frames_match_the_original`, C-0017, C-0015, C-0036).** VE-6 wrote: the flight-start fade-in is not ported (M12-timing §7). Every flight starts with a cut where the original runs a 34-frame `FadeIn` before tick 1. BUG-10 is filed for it.
@@ -575,7 +577,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 | 3 | Debrief tiers | `td-flow/src/campaign.rs::debrief_tiers` | static | PASS |
 | 4 | Music index 12, 13 | `td-audio/src/music_cues.rs::cue_table` | static | PASS |
 | §4.4 | Blocks 19–21 (U-081, U-207, U-420) | `td-flow/tests/e1_block_flow.rs` (5 tests) | static | PASS |
-| §4.5 | Endings A, B, C and the episode end | `td-flow/tests/story_parity.rs::death_without_retry_is_game_over`, `::every_block_plays_to_the_end` (flow); `td-flow/tests/screens_parity.rs::e1_pilot_dossier_matches_c0270` (A), `::ending_c_cards_match_c0279_and_c0285` (C), `::episode_end_cards_match_c0276_c0286_c0288` (end card) (VE-7, M12-15) | C-0270, C-0276, C-0279, C-0324 | PASS (VE-9 update: ending B every screen, `screens_parity::e1_ending_b_screens_match_c0324` (RE-19, IM-24), and D75, `dialogue_parity::ending_b_dialogue_75_matches_c0324` (typing two frames late, BUG-33, T2)) |
+| §4.5 | Endings A, B, C and the episode end | `td-flow/tests/story_parity.rs::death_without_retry_is_game_over`, `::every_block_plays_to_the_end` (flow); `td-flow/tests/screens_parity.rs::e1_pilot_dossier_matches_c0270` (A), `::ending_c_cards_match_c0279_and_c0285` (C), `::episode_end_cards_match_c0276_c0286_c0288` (end card) (VE-7, M12-15) | C-0270, C-0276, C-0279, C-0324 | PASS (VE-9 update: ending B every screen, `screens_parity::e1_ending_b_screens_match_c0324` (RE-19, IM-24), and D75, `dialogue_parity::ending_b_dialogue_75_matches_c0324` (BUG-33 fixed in 0.9.1, zero startup allowance; dense C-0381 test)) |
 
 ### flow/launcher.md (rev 1; T3 launcher, T1 order)
 
@@ -698,7 +700,7 @@ Test paths are `crate/tests/file.rs::name` for integration tests and `crate/src/
 
 Regenerated by VE-8 on 2026-11-06 (main `b158e78` plus VE-8's branch) with `grep -rn "#\[ignore\|ASSUMPTION\|TODO\|FIXME" crates tools`. VE-6's list is replaced: IM-22 removed the four stale ASSUMPTIONs it named (U-313, `DEFAULT_TICK_HZ`, U-146, the `fade.rs` header), and IM-23 re-enabled `flight_20_weapons_matches_oracle` (BUG-11).
 
-### 5.1 `#[ignore]` tests (12; VE-9 update: the two BUG-18 soak tests run again since the wrap was fixed, BUG-34 added)
+### 5.1 Historical ignored-test inventory (VE-9 snapshot; 0.9.1 updates noted below)
 
 | Test | Reason | Note |
 |---|---|---|
@@ -713,7 +715,7 @@ Regenerated by VE-8 on 2026-11-06 (main `b158e78` plus VE-8's branch) with `grep
 | `td-sim/tests/soak.rs::long_soak` | long random-input and replay soak | M12-06; fails while BUG-18 is open |
 | `td-sim/tests/soak.rs::e3_flight_19_idle_outlives_tick_4235` | **BUG-18** (U-570) | re-enable with the fix |
 | `td-sim/tests/soak.rs::e1_flights_6_and_7_outlive_the_top_edge_overflow` | **BUG-18**, top edge (U-570) | re-enable with the fix |
-| `td-sim/tests/oracle_e3_full.rs::flight_16_idle_trucks_leave_at_168_199_bug_34` | **BUG-34** (U-276, OB-046) | VE-9: C-0378 beyond tick 872; re-enable with the fix |
+| `td-sim/tests/oracle_e3_full.rs::flight_16_idle_trucks_leave_at_168_199` | **No longer ignored in 0.9.1** (BUG-34 fixed) | C-0378 through all three exits, tick 887 |
 
 ### 5.2 ASSUMPTIONs and TODOs in the code
 
@@ -806,7 +808,7 @@ The other 67 are listed here. "Closable" means existing captures or tests alread
 | U-271 | P3 | E3 flight-8 F6 lamp | Static (`logic/e3/tests.rs::flight_8`) |
 | U-272 | P2 | E3 flight-5 escort on (80, 199) | **Resolved** (RE-18) |
 | U-274 | P2 | E3 flight 16: ships after the freeze | Not captured; recipe (C-0152 continued 300 ticks past the freeze) in UNKNOWNS |
-| U-276 | P2 | E3 OB-046 convoy turns back | C-0340 confirms that E3 row 199 removes nothing; td-sim keeps the trucks for 6,000 idle ticks. The post-freeze part waits for U-274 |
+| U-276 | P2 | E3 convoy exits | RESOLVED 2026-11-09: C-0378 and corrected e3-mission-logic rev 2 confirm (168,199) exits, BUG-34 fixed and OB-046 withdrawn |
 | U-277 | P3 | E3 flight-10 medical truck | C-0159 (idle run, truck destroyed at t1048) partly |
 | U-278 | P3 | E3 flight 14: slots vanish | **Resolved** (RE-18) |
 | U-279 | P3 | E3 F5 entry 21 presentation | Static |
@@ -974,7 +976,7 @@ Candidates and options with no decision yet:
 | OB-038 | E2 flight 16: test an idle ticker | Pure annoyance (a missable transmission). **Fix-enhanced acceptable**, low value; defer past 1.0 |
 | OB-041 | E2/E3 menu with E1's item-3 colours | **Preserve; no Enhanced fix** (cosmetic, faithful) |
 | OB-043 | E3 flight 7: phase := 1 at setup | **Preserve, no Enhanced fix** (it changes the mission) |
-| OB-046 | E3 flights 15/16: exit at (168, 199) | **Preserve, no Enhanced fix** (it changes flight 16 into "destroy or let escape"; U-276 unconfirmed) |
+| OB-046 | E3 flights 15/16: exit at (168, 199) | **Withdrawn 2026-11-09:** this was a mistaken coordinate reading, not an original bug; preserve the actual exits in both profiles (BUG-34 fixed) |
 | OB-102 | One fade rate | Preserve; no fix (§7.1) |
 
 Also found while reviewing: text.md §5 items 1–3 asks for "mirror in original-bugs.md". Items 1 and 2 are OB-004 and OB-005; item 3 (pen past x = 351 is clipped, T2) has no OB. hud.md §5 "low-armour colour after recovery: preserve" has no OB either. A Spec author should add both and sweep every spec's "Edge cases and original bugs" section for other unmirrored "preserve" items.
@@ -1036,7 +1038,7 @@ Verifier: VE-9 (Verifier hat; no disassembly, Ghidra project or decompiler expor
 | C-0375 | E2 flight 7: Esc in tick 300, Up, Enter (Quit) | `oracle_e2_full::flight_07_abort_matches_oracle` | 300 | PASS (`g_MissionAborted` = 1 after teardown) |
 | C-0376 | E3 flights 16 and 17 in one run (U-284 vector 7) | `oracle_e3_full::flights_16_and_17_in_one_run_match_oracle` | 908 + 300 | PASS (class tables patched after the freeze, restored at flight 17 tick 1) |
 | C-0377 | E1 flights 12 and 13 in one run (OB-018) | `oracle_e1_full::flights_12_and_13_in_one_run_match_oracle` | 697 + 1,500 | PASS (`k_ClassMaxSpeed[3]` = 20h in flight 13) |
-| C-0378 | E3 flight 16 idle (U-276) | `oracle_e3_full::flight_16_idle_convoy_matches_oracle`; `::flight_16_idle_trucks_leave_at_168_199_bug_34` (ignored) | 872 / 887 | PASS to tick 872; **BUG-34** from tick 873 |
+| C-0378 | E3 flight 16 idle (U-276) | `oracle_e3_full::flight_16_idle_convoy_matches_oracle`; `::flight_16_idle_trucks_leave_at_168_199` (enabled in 0.9.1) | 872 / 887 | PASS through tick 887; **BUG-34 fixed** |
 | C-0379 | E2 flight 13: the Areo-1 destroyed in tick 77, then ghost volleys (U-246) | `oracle_e2_full::flight_13_ghost_volleys_match_oracle` | 227 | PASS (projectiles included) |
 | C-0380 | E1 flight 2 comm screen, every frame dumped (M12-timing row 13) | `td-flow flight_screens_parity::comm_typing_pace_matches_c0380` | f577..f757 | PASS (one character per frame; two missed retraces, five scroll frames) |
 
@@ -1044,7 +1046,7 @@ Committed from RE-20's scratch tests: `oracle_e1_full::flight_08_soft_lock_match
 
 Without a new capture:
 
-- **D75 after E1 ending B** (C-0324): `dialogue_parity::ending_b_dialogue_75_matches_c0324`, all 63 dumps f7710..f8330 equal under the alignment fade start (f7713) plus 2 frames from the first line on, minus the five retraces the original missed (f7872, f7907, f8088, f8129, f8234; `frames.tsv`). The two frames are **BUG-33** (T2).
+- **D75 after E1 ending B** (C-0324): `dialogue_parity::ending_b_dialogue_75_matches_c0324`, all 63 dumps f7710..f8330 equal under the alignment fade start (f7713) with zero startup allowance in 0.9.1, minus the five retraces the original missed (f7872, f7907, f8088, f8129, f8234; `frames.tsv`). The earlier two-frame allowance was **BUG-33**, now fixed; dense C-0381 independently pins the first characters.
 - **Hit-flash DACs** (C-0041): `e3_flight_parity::hit_flash_dac_matches_c0041`, 20 complete DACs (before, levels 15..1, after) equal `FlightDac` from the dumped `g_FlightPalette` and `g_HitFlash` (vectors 2 and 3).
 - **Static vectors** (the status rules count a test that asserts the vector's values): bp7 vector 8; E2/E3 home points; e2-mission-logic vector 11 and flights 10–20 vector 7 (OB-038: two whole ticks with and without M); e3-mission-logic vector 1 (E3 `Msn_NearLive`) and vectors 16/17 (the forced transmission by draw page).
 - **Soak**: `soak::e1_flights_6_and_7_outlive_the_top_edge_overflow` had stopped reaching the top edge (RE-20). New seeds (E1 flight 6 slot 20, wrap in tick 6760; flight 7 slot 14, tick 5578), and the test now asserts that the wrap happens.
@@ -1053,8 +1055,8 @@ Without a new capture:
 
 | # | What | Evidence | Disposition |
 |---|---|---|---|
-| V1 | After the dialogue fade-in the original shows the first line two frames before the port; the rest of the scene follows at one character per frame, the original one frame further behind after each missed retrace | C-0324 f7750.. (D75) | **BUG-33** (cosmetic, T2); U-610 asks for the rule (text rev 5 §4.3 rule 2 at row 176) |
-| V2 | E3 flight 16: each convoy truck is removed in the tick after it reaches (168, 199) (slot 4 in tick 873, slot 3 in 880, slot 2 in 887); rule A then posts M2[4] and forces the transmission in tick 888 with no truck destroyed. e3-mission-logic rev 1 §5.16 calls the exit rules inert (transposed to (199, 168), OB-046) and the port keeps the trucks, which drive back | C-0378 | **BUG-34** (U-276; spec and OB-046 need an Archaeologist; flight 15's truck 1 likely the same) |
+| V1 | After the dialogue fade-in the original shows the first line two frames before the port; the rest of the scene follows at one character per frame, the original one frame further behind after each missed retrace | C-0324 f7750.. (D75) | **FIXED in 0.9.1**; U-610 resolved by C-0381 and dialogue-player rev 3 §4.5 |
+| V2 | E3 flight 16: each convoy truck is removed in the tick after it reaches (168, 199) (slot 4 in tick 873, slot 3 in 880, slot 2 in 887); rule A then posts M2[4] and forces the transmission in tick 888 with no truck destroyed. e3-mission-logic rev 1 §5.16 calls the exit rules inert (transposed to (199, 168), OB-046) and the port keeps the trucks, which drive back | C-0378 | **FIXED in 0.9.1**; U-276 resolved, OB-046 withdrawn, flight 15 corrected too |
 | V3 | Comm screen: a frame that caught the six-row scroll of a text box mid-copy shows rows of neither step | C-0380 f594, f636, f676, f716, f748 | T2, one frame per typed line; pinned in the test |
 
 ### 10.3 Evidence added to unknowns
@@ -1064,3 +1066,10 @@ U-246 (C-0379: td-sim equal; ghost volleys of kinds 14, 26, 38; the player never
 ### 10.4 Gate (2026-11-07, branch merged with main `45548a7`)
 
 `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass. `cargo test --workspace --no-fail-fast`: **989 passed, 0 failed, 10 ignored** with `TD2192_DATA` and `TD2192_ORACLE` set (12 min 19 s, debug) and the same counts with both unset. The ten ignored tests are the timing benchmarks, developer tools and long fuzz/soak runs of §5.1 plus `flight_16_idle_trucks_leave_at_168_199_bug_34`. A `--nocapture` run of `oracle_e1_full`, `oracle_e2_full` and `oracle_e3_full` printed a PASS line for every capture of §10.1 and no `SKIPPED` line.
+
+
+## Owner sign-off (2026-11-10)
+
+The owner approved M12: "audio is great, enhanced features are all awesome."
+The release candidate's remaining gates are clean-machine tests and publication
+choices; installer evidence is in [the Qt6 installer record](../handoffs/2026-11-10-qt6-installers.md).

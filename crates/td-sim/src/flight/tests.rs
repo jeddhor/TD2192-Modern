@@ -595,3 +595,49 @@ fn later_episodes_keep_only_t_i_m() {
         assert!(f.ships.0.iter().all(|s| s.record.aggression == 0), "{ep}");
     }
 }
+
+/// T3 proportional pulses do not flicker facing; resolved words replay identically.
+#[test]
+fn analog_facing_is_stable_and_replay_is_exact() {
+    use crate::hash::state_hash;
+    let world = open_world();
+    let mut live = flight_with_class(4);
+    live.joystick_enabled = true;
+    let mut digital = live.clone();
+    let mut playback = live.clone();
+    let mut words = Vec::new();
+    let mut events = Vec::new();
+    for tick in 0..100 {
+        let joy = Joystick {
+            x: -1,
+            y: 1,
+            ..Joystick::default()
+        };
+        let mut c = TickControls::default();
+        c.set_joystick(Joystick {
+            x: if tick % 2 == 1 { -1 } else { 0 },
+            y: 1,
+            ..Joystick::default()
+        });
+        c.set_steering(joy);
+        words.push(c.to_word());
+        live.tick(&world, &c, &mut events);
+        let mut full = TickControls::default();
+        full.set_joystick(joy);
+        digital.tick(&world, &full, &mut events);
+        assert_eq!(
+            (live.player.heading, live.player.target),
+            (digital.player.heading, digital.player.target)
+        );
+        playback.tick(
+            &world,
+            &TickControls::from_word(*words.last().unwrap()),
+            &mut events,
+        );
+        assert_eq!(state_hash(&live), state_hash(&playback), "tick {tick}");
+    }
+    assert_ne!(
+        live.player.view, digital.player.view,
+        "thrust strength affects movement"
+    );
+}

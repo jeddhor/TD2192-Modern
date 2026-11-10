@@ -14,5 +14,11 @@ sdl3.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-[lints]
-workspace = true
+# MDG §8.2 permits a reviewed, justified td-platform exception. Keep unsafe denied
+# here and allow it only in windows_console.rs; every other crate remains forbid.
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

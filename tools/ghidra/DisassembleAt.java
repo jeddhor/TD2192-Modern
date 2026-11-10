@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 TD2192-Modern contributors
 //
 // Forces disassembly at given image-relative addresses (ADG 7.8) and regrows the bodies of the

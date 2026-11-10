@@ -8,12 +8,18 @@
 //! `u128` input word per tick ([`crate::input::TickControls`]), then the checkpoint hashes
 //! (`u64`, one after every `interval` ticks). Version 2 widened the input word from 32 to 64
 //! bits, version 3 to 128 bits for the cheat-chord letters (D9). Version 2 files still load:
-//! their 64-bit words are the low halves of the same version-3 words.
+//! their 64-bit words are the low halves of the same version-3 words. Version 4 keeps
+//! that layout and marks recordings with optional Enhanced stable-facing metadata; older
+//! players must reject it rather than replaying analog thrust with different facing.
 
 use thiserror::Error;
 
 const MAGIC: &[u8; 4] = b"TDR1";
 const VERSION: u16 = 3;
+/// Stable-facing input metadata must be rejected by older players, not silently ignored.
+const VERSION_ANALOG: u16 = 4;
+/// `TickControls` made bit 30, in the unchanged 128-bit input-word layout.
+const ANALOG_MARKER: u128 = 1 << 62;
 /// The older version that still loads (64-bit input words).
 const VERSION_64: u16 = 2;
 
@@ -26,6 +32,14 @@ pub enum ReplayError {
     Version(u16),
     #[error("replay file is truncated")]
     Truncated,
+    #[error(
+        "version {version} replay contains analog input metadata at tick {tick}; analog input requires version 4"
+    )]
+    AnalogMetadataInLegacy { version: u16, tick: usize },
+    #[error(
+        "version 4 replay contains no analog input metadata; digital-only replays use version 3"
+    )]
+    MissingAnalogMetadata,
 }
 
 /// A recorded run.
@@ -47,7 +61,12 @@ impl Replay {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(24 + self.inputs.len() * 16 + self.checkpoints.len() * 8);
         v.extend_from_slice(MAGIC);
-        v.extend_from_slice(&VERSION.to_le_bytes());
+        let version = if self.inputs.iter().any(|&w| w & ANALOG_MARKER != 0) {
+            VERSION_ANALOG
+        } else {
+            VERSION
+        };
+        v.extend_from_slice(&version.to_le_bytes());
         v.push(self.episode);
         v.push(self.mission);
         v.extend_from_slice(&self.seed.to_le_bytes());
@@ -75,7 +94,7 @@ impl Replay {
         }
         let version = u16::from_le_bytes([take(4, 2)?[0], take(4, 2)?[1]]);
         let word = match version {
-            VERSION => 16,
+            VERSION | VERSION_ANALOG => 16,
             VERSION_64 => 8,
             _ => return Err(ReplayError::Version(version)),
         };
@@ -101,6 +120,19 @@ impl Replay {
             let s = take(at, 8)?;
             checkpoints.push(u64::from_le_bytes(s.try_into().expect("8 bytes")));
             at += 8;
+        }
+        // Validate only after reading the whole payload, so every proper prefix of a
+        // canonical file remains Truncated. Legacy reserved bits must never enable T3.
+        let analog_tick = inputs.iter().position(|&w| w & ANALOG_MARKER != 0);
+        match (version, analog_tick) {
+            (VERSION_ANALOG, None) => return Err(ReplayError::MissingAnalogMetadata),
+            (VERSION | VERSION_64, Some(tick)) => {
+                return Err(ReplayError::AnalogMetadataInLegacy {
+                    version,
+                    tick: tick + 1,
+                });
+            }
+            _ => {}
         }
         Ok(Self {
             episode,
@@ -167,6 +199,63 @@ mod tests {
     }
 
     #[test]
+    fn replay_version_is_a_strict_analog_metadata_contract() {
+        let mut r = sample();
+        r.inputs = vec![ANALOG_MARKER];
+        let canonical = r.to_bytes();
+        assert_eq!(Replay::from_bytes(&canonical), Ok(r.clone()));
+        for version in [2u16, 3] {
+            let mut legacy = canonical.clone();
+            legacy[4..6].copy_from_slice(&version.to_le_bytes());
+            if version == 2 {
+                legacy.drain(32..40);
+            }
+            assert_eq!(
+                Replay::from_bytes(&legacy),
+                Err(ReplayError::AnalogMetadataInLegacy { version, tick: 1 })
+            );
+        }
+        for inputs in [vec![], vec![0], vec![1u128 << 56]] {
+            r.inputs = inputs;
+            let mut malformed = r.to_bytes();
+            malformed[4..6].copy_from_slice(&4u16.to_le_bytes());
+            assert_eq!(
+                Replay::from_bytes(&malformed),
+                Err(ReplayError::MissingAnalogMetadata)
+            );
+        }
+        // Reserved direction bits alone have no effect and stay opaque in legacy words.
+        let bytes = r.to_bytes();
+        assert_eq!(Replay::from_bytes(&bytes).unwrap().to_bytes(), bytes);
+    }
+
+    #[test]
+    fn analog_words_require_version_4_and_keep_facing_and_thrust() {
+        use crate::input::{Joystick, TickControls};
+        let mut c = TickControls::default();
+        c.set_joystick(Joystick {
+            x: -1,
+            ..Joystick::default()
+        });
+        c.set_steering(Joystick {
+            x: -1,
+            y: 1,
+            ..Joystick::default()
+        });
+        assert!(!c.any_made(), "facing metadata is not a key press");
+        let mut r = sample();
+        r.inputs = vec![c.to_word()];
+        let bytes = r.to_bytes();
+        assert_eq!(&bytes[4..6], &4u16.to_le_bytes());
+        let back = Replay::from_bytes(&bytes).unwrap();
+        let c2 = TickControls::from_word(back.inputs[0]);
+        assert_eq!(c2, c);
+        assert_eq!(c2.steering().unwrap().y, 1);
+        assert_eq!(c2.joystick().y, 0);
+        assert_eq!(&sample().to_bytes()[4..6], &3u16.to_le_bytes());
+    }
+
+    #[test]
     fn round_trips() {
         let r = sample();
         assert_eq!(Replay::from_bytes(&r.to_bytes()).unwrap(), r);
@@ -193,7 +282,7 @@ mod tests {
     #[test]
     fn version_2_files_still_load() {
         let mut r = sample();
-        r.inputs = vec![0x0000_0001_0000_0001, u128::from(u64::MAX)];
+        r.inputs = vec![0x0000_0001_0000_0001, u128::from(!(1u64 << 62))];
         let mut v2 = r.to_bytes();
         // Rewrite as version 2: the version field and 8-byte words.
         v2[4..6].copy_from_slice(&2u16.to_le_bytes());

@@ -407,10 +407,65 @@ fn find_capture(oracle: &Path, tag: &str) -> Option<PathBuf> {
         .filter_map(|e| e.ok().map(|e| e.path()))
         .collect();
     dirs.sort();
-    dirs.into_iter().rev().find(|dir| {
-        fs::read_to_string(dir.join("scenario.txt"))
-            .is_ok_and(|s| s.lines().next().is_some_and(|l| l.starts_with(&head)))
-    })
+    let matching: Vec<_> = dirs
+        .into_iter()
+        .rev()
+        .filter(|dir| {
+            fs::read_to_string(dir.join("scenario.txt"))
+                .is_ok_and(|s| s.lines().next().is_some_and(|l| l.starts_with(&head)))
+        })
+        .collect();
+    let newest = matching.first()?.clone();
+    // A denser framebuffer-only repeat may retain the source scenario tag (C-0381
+    // repeats C-0324). Full-flight comparisons need packed generation-1 DGROUP.
+    // Prefer the newest RAM recording, not the newest screenshot-only recording.
+    let chosen = matching
+        .into_iter()
+        .find(|dir| mem_file(dir, "tick_", "_ds.bin").is_some())
+        .unwrap_or_else(|| newest.clone());
+    if chosen != newest {
+        eprintln!(
+            "{tag}: using {} RAM capture instead of framebuffer-only {}",
+            chosen.display(),
+            newest.display()
+        );
+    }
+    // If no matching recording has RAM, retain the newest so the caller reports
+    // missing evidence as a failure rather than turning this into a silent skip.
+    Some(chosen)
+}
+
+#[test]
+fn capture_selection_prefers_ram_and_keeps_missing_evidence_visible() {
+    let temp = fs::canonicalize(std::env::temp_dir()).unwrap();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = temp.join(format!(
+        "td2192-capture-selection-{}-{nonce}",
+        std::process::id()
+    ));
+    let make = |name: &str, tag: &str, ram: bool| {
+        let dir = root.join(name);
+        fs::create_dir_all(dir.join("mem")).unwrap();
+        fs::write(dir.join("scenario.txt"), format!("# {tag} fixture\n")).unwrap();
+        if ram {
+            // Selection checks capability; the comparison validates packed contents later.
+            fs::write(dir.join("mem/tick_1234-0000_9DF0_ds.bin"), []).unwrap();
+        }
+        dir
+    };
+    let original = make("C-0001", "same-tag", true);
+    make("C-0002", "same-tag", false);
+    assert_eq!(find_capture(&root, "same-tag"), Some(original));
+    let newer_ram = make("C-0003", "same-tag", true);
+    assert_eq!(find_capture(&root, "same-tag"), Some(newer_ram));
+    let only_frames = make("C-0004", "frames-only", false);
+    assert_eq!(find_capture(&root, "frames-only"), Some(only_frames));
+    assert_eq!(find_capture(&root, "absent-tag"), None);
+    assert!(root.starts_with(&temp));
+    fs::remove_dir_all(root).unwrap();
 }
 
 fn replay_path(l: &Layout, flight: u8, suffix: &str) -> PathBuf {

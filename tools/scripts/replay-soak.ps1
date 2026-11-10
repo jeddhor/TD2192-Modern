@@ -12,7 +12,7 @@ td-sim/tests/oracle_e3_full.rs with the capture's muzzle bytes) fails --verify i
 start; it is reported as such, and its runs must still agree with each other.
 
 Needs a release build of tdtool (cargo build --release -p tdtool) and the game data
-(-Data, else TD2192_DATA). Writes nothing.
+(-Data, else TD2192_DATA). -Tool selects an exact packaged tdtool instead. Writes nothing.
 
 .EXAMPLE
 pwsh tools/scripts/replay-soak.ps1 -Rounds 20 -Parallel 16
@@ -21,13 +21,15 @@ pwsh tools/scripts/replay-soak.ps1 -Rounds 20 -Parallel 16
 param(
     [int]$Rounds = 10,
     [int]$Parallel = [Environment]::ProcessorCount,
-    [string]$Data = $env:TD2192_DATA
+    [string]$Data = $env:TD2192_DATA,
+    # Verify the exact packaged candidate when supplied, rather than a stale release build.
+    [string]$Tool
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$exe = Join-Path $repo 'target\release\tdtool.exe'
-if (-not (Test-Path $exe)) { $exe = Join-Path $repo 'target/release/tdtool' }
+$exe = if ($Tool) { (Resolve-Path -LiteralPath $Tool).Path } else { Join-Path $repo 'target\release\tdtool.exe' }
+if (-not $Tool -and -not (Test-Path $exe)) { $exe = Join-Path $repo 'target/release/tdtool' }
 if (-not (Test-Path $exe)) { throw "No release tdtool; run: cargo build --release -p tdtool" }
 if (-not $Data) { throw 'Pass -Data or set TD2192_DATA.' }
 $files = Get-ChildItem (Join-Path $repo 'tests\replays') -Filter '*.tdr' | Sort-Object Name

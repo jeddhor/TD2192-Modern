@@ -191,6 +191,8 @@ pub struct StoryScreen {
     /// False until the first frame, which arms the wait before the first fade level (the
     /// palette is built after [`StoryScreen::blank`]).
     primed: bool,
+    /// Invisible pre-fade typing still consumes retrace waits (screens rev 6 §3.7).
+    hidden_typing_frames: u32,
     keys: Vec<Key>,
     skip: bool,
     /// The key that ended the last wait.
@@ -247,6 +249,7 @@ impl StoryScreen {
             phase: Phase::FadeIn(0),
             wait: 0,
             primed: false,
+            hidden_typing_frames: 0,
             keys: Vec::new(),
             skip: false,
             last_key: None,
@@ -362,7 +365,8 @@ impl StoryScreen {
         let mut button = self.any_button.pressed(input.pad);
         if !self.primed {
             self.primed = true;
-            self.wait = fade::first_level_frames(&self.pal, 1, 0);
+            self.wait =
+                fade::first_level_frames(&self.pal, 1, 0).saturating_add(self.hidden_typing_frames);
         }
         self.wait = self.wait.saturating_sub(1);
         while self.wait == 0 {
@@ -873,9 +877,12 @@ pub fn typed_page(
     s.with_items(assets.small.clone(), items)
 }
 
-/// Types `text` at once into the screen before the fade-in (the retry taunt, screens §3.7).
-pub fn type_now(s: &mut StoryScreen, font: &Font, text: &str, pen: (i32, i32), ink: u8) {
+/// Types `text` while black, retaining one retrace wait per character before the
+/// fade-in (retry taunt, screens rev 6 §3.7; U-585). Drawing it eagerly is invisible;
+/// keys pressed during these waits remain buffered as in the original.
+pub fn type_before_fade(s: &mut StoryScreen, font: &Font, text: &str, pen: (i32, i32), ink: u8) {
     Typewriter::new(text, pen, ink, 0).finish(&mut s.screen, font);
+    s.hidden_typing_frames = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
 }
 
 /// The two pages of the story so far (`Scene_BackgroundStory` `051A:8EAA`, screens §3.8):

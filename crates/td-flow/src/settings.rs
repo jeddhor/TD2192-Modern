@@ -361,6 +361,8 @@ pub struct Settings {
     pub enhanced: EnhancedChoices,
     /// Host keys and controller buttons for the original's flight keys (M11-03).
     pub controls: ControlsSettings,
+    /// Optional T3 proportional stick thrust; never active in Classic or the preset.
+    pub analog_steering: bool,
     pub accessibility: AccessibilitySettings,
     pub dev: DevSettings,
     /// When the intro plays before Episode 1 (Enhanced only; launcher spec §4.10).
@@ -377,6 +379,7 @@ impl Default for Settings {
             audio: AudioSettings::default(),
             enhanced: EnhancedChoices::default(),
             controls: ControlsSettings::default(),
+            analog_steering: false,
             accessibility: AccessibilitySettings::default(),
             dev: DevSettings::default(),
             intro: crate::intro::IntroSettings::default(),
@@ -418,6 +421,11 @@ impl Settings {
     /// True under the Enhanced profile.
     pub fn is_enhanced(&self) -> bool {
         self.profile == Profile::Enhanced
+    }
+
+    /// Optional analog steering is effective only under Enhanced.
+    pub fn effective_analog_steering(&self) -> bool {
+        self.is_enhanced() && self.analog_steering
     }
 
     /// The presentation features the Enhanced profile uses: each explicit choice, else the
@@ -556,6 +564,27 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn analog_is_opt_in_profile_gated_and_kept_outside_the_preset() {
+        for text in ["", "version = 2", r#"profile = "enhanced""#] {
+            let s: Settings = toml::from_str(text).unwrap();
+            assert!(!s.analog_steering && !s.effective_analog_steering());
+        }
+        let mut s = Settings::default();
+        let before = s.clone();
+        s.analog_steering = true;
+        assert!(!s.effective_analog_steering());
+        s.profile = Profile::Enhanced;
+        assert!(s.effective_analog_steering());
+        s.restore_preset();
+        assert!(s.effective_analog_steering(), "not part of the preset");
+        let saved = Settings::default().with_changes(&before, &s);
+        let back: Settings = toml::from_str(&toml::to_string_pretty(&saved).unwrap()).unwrap();
+        assert!(back.effective_analog_steering());
+        s.profile = Profile::Classic;
+        assert!(s.analog_steering && !s.effective_analog_steering());
+    }
 
     #[test]
     fn round_trips_and_tolerates_partial_files() {

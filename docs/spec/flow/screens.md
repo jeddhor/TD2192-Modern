@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `flow/screens` |
-| **Revision** | 5 |
+| **Revision** | 6 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for layouts, fonts, colours and resource ids; T1 for the `Random` call of the retry prompt and the skip rule; T2 for wait and fade timing (§2.1, §2.2: measured at P1) |
 | **Confidence** | LIKELY (static analysis of each routine); main-menu pixels CONFIRMED against C-0002 f997 |
@@ -153,7 +153,9 @@ fade out
 return c != Esc                       (any key but Esc flies again)
 ```
 
-x_r for r = 0..9: 78, 46, 54, 82, 58, 46, 130, 30, 70, 42. Because the taunt is typed before the fade-in, it appears all at once. Because the prompt calls `Random`, every retry shifts the RNG sequence of the next flight ([core/bp7-runtime-semantics](../core/bp7-runtime-semantics.md): `RandSeed` starts at 0 and is never reseeded). The port must call its `BpRandom` once here.
+x_r for r = 0..9: 78, 46, 54, 82, 58, 46, 130, 30, 70, 42. Because the taunt is typed before the fade-in, it appears all at once.
+
+**Black typing duration (U-585, P1/T2).** The hidden typing still calls the retrace wait after every character, including the last (`051A:1269..1608`); black DAC entries do not make it instantaneous. Port rule: before starting the ordinary fade, spend one frame per taunt byte with the screen black. No two-character first-visible-frame boost applies: there is no visible character yet. Taunt lengths for indices 0..9 are 38, 54, 49, 36, 47, 54, 12, 62, 40 and 56 (numeric asset decode at file offset 10484h). C-0324 selects index 3, length 36: last flight seed B065CD21h, next Random(10) = 3; `td.pal` opens f5804, retrace polling continues through f5840 and first fade DAC writes are f5841. This proves the approximately half-second hidden delay; do not confuse the first DAC-write frame with the hidden call's start. Sub-frame entry phase, fade setup and interrupt load can shift a boundary by a frame; the frame-count port rule is a T2 approximation, not a CPU emulator. Because the prompt calls `Random`, every retry shifts the RNG sequence of the next flight ([core/bp7-runtime-semantics](../core/bp7-runtime-semantics.md): `RandSeed` starts at 0 and is never reseeded). The port must call its `BpRandom` once here.
 
 ### 3.8 Story so far (`Scene_BackgroundStory` `051A:8EAA`, menu item 5)
 
@@ -202,7 +204,7 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 
 ### 3.13 Typed lines after a `Crt.Delay` (U-521)
 
-[text §4.3](../render/text.md) item 5. F is the frame that shows the previous line's last character; the line after the delay first shows in the frame given here, with one or two characters (two when the delay ended before the retrace of the frame before, so that the first character was drawn after the beam had passed its row). The values are the same in every capture of each screen (oracle P1, music playing) and in all three episodes.
+[text §4.3](../render/text.md) item 5. F is the frame that shows the previous line's last character; the line after the delay first shows in the frame given here, with one or two characters (two when the delay ended before the retrace of the frame before, so that the first character was drawn after the beam had passed its row). These are baseline measurements at oracle P1 with music playing. The first-frame character count is not an invariant of the line identity: it also depends on entry phase and interrupt work during the busy-loop delay (U-583). In C-0324 the failure-debrief outcome line at y 75 shows **two**, not one, in F + 36 (f6015): the delay ended about 0.8 into F + 35, after the beam passed the text row but before retrace. Preserve the baseline table for the deterministic frame-count approximation; retain that measured variant as a pinned T2 timing residue. A new screen-specific constant must not be inferred from a single call.
 
 | Screen | Line (pen y) after the delay | Delay | First frame | Characters in it | Evidence |
 |---|---|---:|---|---:|---|
@@ -219,6 +221,8 @@ So Esc on the mission-1 title or hangar card goes straight to flight 1 (no dialo
 
 Then one character per frame as usual.
 
+**Hints between calls (U-581).** Hint lines are not direct back-to-back calls: the caller polls for a key between them. At P1 this can consume about a third of a frame, moving the next first glyph past its beam position. The shared text rule therefore permits a frame with no new glyph followed by a frame with two. Confirmed examples: C-0273 hint 2 line 2, pen y 54, no new glyph f3615 then two f3616; C-0280 hint 6 line 3, pen y 68, likewise f1883/f1884. These observations do not establish a universal per-line table across all entry phases; U-581 remains open for that enumeration. Keep these exact captures as pinned T2 variants rather than delaying every hint line.
+
 ## 4. Edge cases and original bugs
 
 | Quirk | Original | Port policy (proposal) |
@@ -229,7 +233,7 @@ Then one character per frame as usual.
 | `td1-15` first column | Byte before the buffer (black) | Preserve as black (OB-149) |
 | Enemy dossier line 9 | Typed only by the variant-2 call, which the shipped game never makes (U-520) | Do not type it (Classic and Enhanced: it is unused content, not a bug) |
 | Missed retrace while typing | About one character in 800 takes two frames (interrupt load) | Not modelled (T2; text §4.3 item 6) |
-| Typed taunt before the fade-in | Appears at once | Preserve |
+| Typed taunt before the fade-in | Invisible typing still consumes one retrace wait per byte; fully typed taunt appears at fade-in | Preserve the hidden character-count delay (§3.7, T2) |
 
 ## 5. Test vectors
 
@@ -246,7 +250,7 @@ Then one character per frame as usual.
 - U-228: hint screens: does the line-skip test see keys typed during the fade-in (the buffer is flushed only after the fade)? Static answer: no, the flush comes after the fade-in, so earlier keys are lost.
 - U-229: the menu's `MemAvail` print and DAC 255 := white look like a leftover debug feature; is anything else drawn in ink 255 on the menu? (no other call found)
 - U-581 (IM-24, M12-16): hint lines after the key test can start mid-frame and show their first character a frame late (C-0273 f3615, C-0280 f1883); §3.13 has no hint rows.
-- U-585 (IM-24, M12-16): the retry prompt's taunt is typed while black, so its fade-in starts about one frame per character later (C-0324: f5804 → f5841); the port types it at once (§3.7 gives no timing).
+- U-585: resolved to the bounded T2 port rule in §3.7 (one hidden frame per taunt byte; C-0324 index 3 has 36 bytes, first DAC write 37 frames after palette open). Exact sub-frame busy-loop phase is not modelled.
 - U-583 (IM-24, M12-16): §3.13's debrief row for y 75 (one character in F + 36) does not hold in C-0324 (two, the delay ending 0.8 into F + 35, f6014).
 - U-302 (IM-7, M9-19): details the port had to assume: the box colour of the cursor entry on item 3, the pulse after a cancelled quit box, what item 5 reloads, the joystick delay after Down, and whether keys typed before a flight survive it. Also: §3.1 says "one per retrace start" for the pulse, but C-0002 f868..872 show 11 steps per frame at P1 (the wait returns at once while the retrace bit is set); the port uses 11.
 
@@ -276,3 +280,4 @@ Then one character per frame as usual.
 | 3 | 2026-11-06 | RE-16 (Archaeologist + Spec author) | §2.1: frames per fade level follow the non-zero count of the palette being faded (1 for a nearly black buffer, 2 for a picture palette at P1); the title card's fast fade only while `g_Palette` is still black (BUG-6; C-0160, C-0170). §2.2: the wait clock is DOS time, 0.948 n s with the ADR-0007 clock (BUG-7). §3.1: the highlight ramp also runs at loop entry |
 | 4 | 2026-11-06 | RE-18 (Archaeologist + Spec author) | §2.1: the level phase is normative (U-510): level 0 is cheap because its products are zero (Real48 zero shortcut) and is shown one frame after the level before it; each level starts at the first retrace after the previous level's last write; port rule; missed retraces under interrupt load not modelled. §4 row `td1-15`: OB-149 |
 | 5 | 2026-11-06 | RE-19 (Archaeologist + Spec author) | §3.5: the enemy dossier types line 9 only for its variant byte 2; the shipped call (block 5) passes 1, so line 9 is never shown (U-520, BUG-12; `051A:67D7`, `0000:1475`; C-0271); typing cadence pointer to text rev 5 §4.3 (two characters in the first frame after a fade-in). §3.13 new: first frame and character count of each line typed after a `Crt.Delay` (U-521; C-0270, C-0274, C-0277, C-0278, C-0284, C-0289). §4, §7 rows |
+| 6 | 2026-11-09 | RE-21 (Archaeologist + Spec author) | §3.7 states hidden taunt typing duration with numeric length/RNG/C-0324 vector (U-585); §3.13 removes the universal per-line count claim, records C-0324 outcome-line variant (U-583) and hint key-poll variants (U-581). CPU-phase enumeration remains open. |

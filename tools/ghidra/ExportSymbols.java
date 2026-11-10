@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 TD2192-Modern contributors
 //
 // Writes user-defined Ghidra names back to docs/re/symbols/<exe>.csv (ADG 7.3), for agents

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Spec ID** | `narrative/dialogue-player` |
-| **Revision** | 2 |
+| **Revision** | 3 |
 | **Status** | Draft |
 | **Fidelity tier** | T0 for layout, palette and text; T1 for event order; T2 for fade and typing speed (CPU-bound in the original) |
 | **Confidence** | CONFIRMED for E1 (static analysis of `file0001:051A:92AF` and helpers; three C-0002 frames checked). E2/E3: LIKELY (same routine, differences listed in §4.9) |
@@ -120,6 +120,10 @@ With face 200 nothing is drawn: at the start of a scene that half stays black an
 
 Padding lines (`02 01 <colour> ` with a single space) are typed like any other line, so each one costs a blank 7-pixel line. With the usual block (blank, text, blank) the finished text line sits at rows 162..166.
 
+**First call after fade-in (U-610, BUG-33; P1 picture palette, T2).** Let S be the frame in which the `03` fade starts. The last fade-level writes end during S + 33; that level first appears complete in S + 34. The first `02` highlight and first character start in **S + 33**, immediately after the fade writes, without an extra retrace wait. Glyph rows 176..180 have not yet been scanned when the call draws, so its first character is displayed in that same frame (text §4.3 rule 2). It shows **one** character, then one per frame. The highlight writes do not add a whole frame, and scrolling between lines adds no frame. A leading one-space padding line therefore occupies S + 33 (invisible), and the following line starts at S + 34 with one character. Do not apply the early-row story-screen rule of two characters in S + 34 to dialogue.
+
+Dense reproduction of C-0324 D75 (C-0381, same original anchors and reference settings): S = 7713; final fade writes f7745/f7746; padding highlight in f7746, next line highlight in f7747. f7747 shows the first real line's first character (a space, cursor columns 8..12); f7748 its second character (space, cursor 12..16); f7749 its third character and cursor 16..20. f7743..7746 have no nonzero pixel in rows 101..189. This pins the fade/typing overlap independently of any port test alignment. Missed retraces retain text §4.3 rule 6's T2 exception. Initial scene setup/search/file loads precede S and are not additional per-line delays.
+
 ### 4.6 Segment start and end (`03`, `04`)
 
 - `03`: in E1 scene 1 only, draw the prompt (§3.2). Then **fade in** (`Gfx_FadeInScene`, `051A:0016`): snapshot `g_Palette`; for *k* = 0..16: wait for the vertical-retrace bit, then write DAC entries 1..255 as Round(component × *k* / 16) each. Set the lit flag. Both faces are at full brightness after the fade, until the first line.
@@ -169,6 +173,7 @@ Skip to the next line, then wait until a key is pressed or a joystick button is 
 | 4 | Names | Left name pen (50, 89) in entry 250; right name pen (215, 89) in entry 251 | C-0002 f2433, 0 differences ([text.md §6](../render/text.md#6-test-vectors)) |
 | 5 | Newest finished text line after a padding line | rows 162..166, first inked column 4 (12 with two leading spaces) | C-0002 f2433 |
 | 6 | Fade-in | 17 groups of 255 DAC writes, about 2 frames per group at P1 | C-0002 `frames.tsv` 2186..2219 |
+| 7 | D75, fade start f7713; first `02` is one space | First padding call f7746; next line char1/cursor x8 f7747, char2/cursor x12 f7748, char3/cursor x16 f7749. No two-character boost or blank frame between lines | C-0324 plus dense reproduction C-0381 f7743..7751 |
 
 ## 7. Presentation and audio hooks
 
@@ -178,7 +183,7 @@ Skip to the next line, then wait until a key is pressed or a joystick button is 
 
 ## 8. Open questions
 
-- [ ] U-062: frames per typed character (and per fade step) on reference hardware.
+- [x] U-062/U-610: reference cadence is text rev 6 §4.3 and §4.5 above; one character per frame, overlapping the final fade frame at the dialogue row.
 - [ ] U-063: BP7 `Read(ch)` / `Read(s)` behaviour at a line end, for the 3-byte speaker lines of E3 (§5 item 3).
 - [ ] Who calls the player with which scene ID, and with what music, belongs to the episode flow (M1-04).
 
@@ -190,6 +195,7 @@ Skip to the next line, then wait until a key is pressed or a joystick button is 
 | Portrait load, palette split, pixel clamp, name placement | `051A:1618` | static + C-0002 | CONFIRMED |
 | Highlight (full/half) | `051A:1BF7` | static + C-0002 | CONFIRMED |
 | Typing pen and 7-px scroll | `051A:1BF7`, `051A:0269`, `051A:1269` | static + C-0002 | CONFIRMED |
+| First `02` after `03`, including padding and no inter-line gap | `file0001:051A:1BF7..1DA0`, `051A:92AF`; C-0324 `frames.tsv` f7745..7748 and dense reproduction C-0381 | Static event order + dense per-frame pixels/DACs; exact C-0324 anchor replay | CONFIRMED at P1 (T2) |
 | Fades | `051A:0016`, `051A:013F` (Real48 divisor 16.0) | static + C-0002 frames.tsv | CONFIRMED (speed T2) |
 | Page wait, Esc | `051A:1A40` | static | CONFIRMED |
 | Face remaps | `051A:92AF`, `td2:04EC:96A4`, `td3:04A0:7795` | static | CONFIRMED |
@@ -201,3 +207,4 @@ Skip to the next line, then wait until a key is pressed or a joystick button is 
 |---|---|---|---|
 | 1 | 2026-11-02 | RE-3 | Initial, from static analysis of all three episodes and C-0002 |
 | 2 | 2026-11-02 | RE-7 (M1-09) | E2/E3 text-entry allocator starts at 240 and cycles 240..254; face remaps confirmed |
+| 3 | 2026-11-09 | RE-21 (Archaeologist + Spec author) | §4.5 first-call frame: type at S + 33, one character, overlapping the last fade write frame; initial padding consumes that frame. Dense D75 vector resolves U-610/BUG-33. |

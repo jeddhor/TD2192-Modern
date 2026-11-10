@@ -1,5 +1,7 @@
 //! TD2192-Modern: the game executable (composition root).
 
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod data;
 mod enhanced;
 mod flight;
@@ -14,6 +16,7 @@ use clap::Parser;
 use td_assets::{DataDir, Episode, discover_data_dir, validate};
 use td_flow::Settings;
 use td_flow::front::DataSource;
+use tracing_subscriber::fmt::writer::{BoxMakeWriter, MakeWriterExt};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -88,23 +91,49 @@ fn parse_flight_spec(spec: &str) -> Result<(Episode, u8)> {
 }
 
 fn main() {
-    if let Err(e) = real_main() {
+    let text_output = td_platform::attach_parent_console();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            let code = error.exit_code();
+            if text_output {
+                let _ = error.print();
+            } else if code == 0 {
+                td_platform::show_info("TD2192-Modern", &error.to_string());
+            } else {
+                td_platform::show_error("TD2192-Modern", &error.to_string());
+            }
+            std::process::exit(code);
+        }
+    };
+    if let Err(e) = real_main(cli, text_output) {
         let msg = format!("{e:#}");
-        td_platform::show_error("TD2192-Modern", &msg);
+        tracing::error!("{msg}");
+        if text_output {
+            eprintln!("TD2192-Modern: {msg}");
+        } else {
+            td_platform::show_error("TD2192-Modern", &msg);
+        }
         std::process::exit(1);
     }
 }
 
-fn real_main() -> Result<()> {
-    let cli = Cli::parse();
+fn real_main(cli: Cli, text_output: bool) -> Result<()> {
+    let user_dir = td_platform::user_data_dir().context("locating the user data directory")?;
+    std::fs::create_dir_all(&user_dir).context("creating the user data directory")?;
+    // Explorer launches have no stderr. Keep diagnostics in the writable user folder too.
+    let writer = match std::fs::File::create(user_dir.join("td2192.log")) {
+        Ok(file) => BoxMakeWriter::new(std::io::stderr.and(std::sync::Mutex::new(file))),
+        Err(_) => BoxMakeWriter::new(std::io::stderr),
+    };
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("TD2192_LOG")
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
-        .with_writer(std::io::stderr)
+        .with_writer(writer)
+        .with_ansi(false)
         .init();
-    let user_dir = td_platform::user_data_dir().context("locating the user data directory")?;
     let settings_path = user_dir.join("settings.toml");
     let mut settings = Settings::load(&settings_path)?;
     if !settings_path.exists() {
@@ -140,13 +169,15 @@ fn real_main() -> Result<()> {
     let dir = DataDir::open(&root).with_context(|| format!("opening {}", root.display()))?;
     let report = validate(&dir);
     if cli.check {
-        println!(
-            "TD2192-Modern {} (SDL {})",
+        use std::fmt::Write;
+        let mut output = format!(
+            "TD2192-Modern {} (SDL {})\n",
             env!("CARGO_PKG_VERSION"),
             td_platform::sdl_version()
         );
         let summary = td_flow::front::DataSummary::of(&dir, &report);
-        println!(
+        let _ = writeln!(
+            output,
             "data: {} ({}, {source:?}); {}",
             root.display(),
             if summary.archive {
@@ -157,7 +188,8 @@ fn real_main() -> Result<()> {
             summary.files_line()
         );
         for ep in Episode::ALL {
-            println!(
+            let _ = writeln!(
+                output,
                 "{ep}: {}",
                 if report.playable(ep) {
                     "playable"
@@ -165,6 +197,11 @@ fn real_main() -> Result<()> {
                     "unavailable"
                 }
             );
+        }
+        if text_output {
+            print!("{output}");
+        } else {
+            td_platform::show_info("TD2192-Modern installation check", &output);
         }
         return Ok(());
     }

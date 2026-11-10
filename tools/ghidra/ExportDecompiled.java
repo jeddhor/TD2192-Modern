@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 TD2192-Modern contributors
 //
 // Decompiles functions to one C file each: <outdir>/<SSSS>_<OOOO>_<name>.c, with an

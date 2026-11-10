@@ -7,6 +7,9 @@
 //! [`Platform::present_rgba`]). Everything here is thin glue; game logic lives elsewhere.
 
 mod present;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod windows_console;
 
 use std::path::PathBuf;
 
@@ -499,22 +502,65 @@ fn read_pad(pad: &sdl3::gamepad::Gamepad) -> td_input::Pad {
             buttons |= b.bit();
         }
     }
-    let axis = |a: Axis, neg: Button, pos: Button| -> i8 {
-        let v = pad.axis(a);
-        if v < -STICK_THRESHOLD || pad.button(neg) {
-            -1
-        } else if v > STICK_THRESHOLD || pad.button(pos) {
+    pad_snapshot(pad.axis(Axis::LeftX), pad.axis(Axis::LeftY), buttons)
+}
+
+/// Preserve raw axes while retaining the existing digital threshold and original signs.
+fn pad_snapshot(stick_x: i16, stick_y: i16, buttons: u32) -> td_input::Pad {
+    use td_input::PadButton as P;
+    let held = |b: P| buttons & b.bit() != 0;
+    let axis = |raw: i16, neg: P, pos: P| -> i8 {
+        if raw < -STICK_THRESHOLD || held(neg) {
             1
+        } else if raw > STICK_THRESHOLD || held(pos) {
+            -1
         } else {
             0
         }
     };
     td_input::Pad {
-        // The original stores left and up as +1.
-        x: -axis(Axis::LeftX, Button::DPadLeft, Button::DPadRight),
-        y: -axis(Axis::LeftY, Button::DPadUp, Button::DPadDown),
-        button1: pad.button(Button::East),
-        button2: pad.button(Button::South),
+        x: axis(stick_x, P::DPadLeft, P::DPadRight),
+        y: axis(stick_y, P::DPadUp, P::DPadDown),
+        stick_x,
+        stick_y,
+        button1: held(P::East),
+        button2: held(P::South),
         buttons,
+    }
+}
+
+/// Reuse the launching terminal, if present, without ever allocating a console window.
+/// Call before parsing arguments or initializing Rust standard streams. Returns whether
+/// text output is available (including redirected output). Other platforms already have it.
+pub fn attach_parent_console() -> bool {
+    #[cfg(windows)]
+    {
+        windows_console::attach_parent()
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+    #[test]
+    fn raw_axes_survive_digital_quantization_and_disconnect_clears_the_snapshot() {
+        use td_input::{InputState, PadButton as P};
+        let p = pad_snapshot(-32768, 16000, P::South.bit());
+        assert_eq!((p.x, p.y), (1, 0));
+        assert_eq!((p.stick_x, p.stick_y), (-32768, 16000));
+        assert!(p.button2 && !p.button1);
+        let p = pad_snapshot(16001, 0, P::DPadUp.bit() | P::East.bit());
+        assert_eq!((p.x, p.y), (-1, 1));
+        assert!(p.button1 && !p.button2);
+        let mut input = InputState::default();
+        input.pad = Some(p);
+        assert_eq!(input.snapshot().pad, Some(p));
+        // Platform::poll replaces the first-controller sample with None after removal.
+        input.pad = None;
+        assert_eq!(input.snapshot().pad, None);
+        assert_eq!(input.snapshot().pad, None);
     }
 }

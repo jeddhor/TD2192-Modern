@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2026 TD2192-Modern contributors
 """Cross-episode function matching (M1-09): file0001.exe (E1) -> td2.exe / td3.exe.
 

@@ -2,7 +2,7 @@
 //! 21) of `td3.exe` (tick steps 8–9), the comm viewer table (step 15), `Msn_E3TimedEvents`
 //! (after the flight menu) and the teardown outcome tests.
 //!
-//! Spec: `docs/spec/sim/e3-mission-logic.md` rev 1 (section numbers below are its own) and
+//! Spec: `docs/spec/sim/e3-mission-logic.md` rev 2 (section numbers below are its own) and
 //! `docs/spec/sim/e3-mission-setup.md` rev 1 §3.2 (the mission-logic part of `Msn_Setup`).
 //! Fidelity: T1. Confidence: flights 1 and 8 start state and first ticks CONFIRMED (C-0036,
 //! C-0041), the rest LIKELY (static).
@@ -498,7 +498,7 @@ impl Flight {
         self.exits(&[(6, 1, 170), (7, 1, 168), (9, 1, 95), (10, 101, 199)]);
     }
 
-    /// §5.15: Kreel (slot 1's exit is inert, OB-046).
+    /// §5.15 (rev 2): Kreel; slot 1 leaves at (168, 199), slot 2 at (199, 126).
     fn e3_flight_15(&mut self) {
         self.e3_base_home();
         if self.near_live(15, PLAYER, 55) && self.phase() == 1 {
@@ -514,12 +514,12 @@ impl Flight {
         for a in 4..=15 {
             self.engage(a, &[PLAYER], 15);
         }
-        self.exits(&[(1, 199, 168), (2, 199, 126)]);
+        self.exits(&[(1, 168, 199), (2, 199, 126)]);
     }
 
     /// §5.16: the convoy; enemies near an escort are sent after the player (OB-047); the
-    /// exits are inert (OB-046). The forced transmission is step 15, the freeze the event
-    /// routine.
+    /// trucks leave at (168, 199) after the phase rules (rev 2 §5.16). The forced
+    /// transmission is step 15, the freeze the event routine.
     fn e3_flight_16(&mut self) {
         self.e3_base_home();
         if self.dead(&[2, 3, 4]) && self.phase() == 1 {
@@ -541,7 +541,7 @@ impl Flight {
             self.engage(7, &[a], 15);
             self.engage(a, &[PLAYER], 15);
         }
-        self.exit_all(2..=4, 199, 168);
+        self.exit_all(2..=4, 168, 199);
     }
 
     /// §5.17: phase 100 from setup; fly home.

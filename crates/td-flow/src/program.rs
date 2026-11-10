@@ -1,7 +1,7 @@
 //! The Episode 1 program (`file0001.exe` main body): script choice, main menu and the campaign.
 //!
 //! Spec: `docs/spec/flow/episode-program-flow.md` (rev 2) §4.1–§4.2; screen layouts per
-//! `docs/spec/flow/screens.md` (rev 1) §3; menu graphics per `docs/re/FORMATS.md` §12.1 and
+//! `docs/spec/flow/screens.md` (rev 6) §3; menu graphics per `docs/re/FORMATS.md` §12.1 and
 //! `docs/re/asset-load-sites.md` §3; music per `docs/spec/audio/music-cues.md` §4.2.
 //! Fidelity: T0 for the layouts, T1 for the retry prompt's `Random(10)`, T2 for the order and
 //! pacing of screens.
@@ -365,7 +365,7 @@ impl Program {
             items,
             Hold::Key,
         );
-        story::type_now(&mut s, &self.assets.small, &line(&t, r), (x, 90), 40);
+        story::type_before_fade(&mut s, &self.assets.small, &line(&t, r), (x, 90), 40);
         s
     }
 
@@ -841,6 +841,7 @@ impl Screen for Episode1 {
                 // The controller answered above; no other button ends this wait.
                 s.set_text_waits(ctx.settings.accessibility.text_waits_for_key);
                 s.step(&TickInput {
+                    keyboard: input.keyboard,
                     pressed: keys,
                     held: input.held.clone(),
                     pad: None,

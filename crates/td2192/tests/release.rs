@@ -51,3 +51,30 @@ fn changelog_has_a_section_for_this_version() {
          (docs/RELEASE.md §3.1)"
     );
 }
+
+/// A GUI-subsystem executable must still report script errors through redirected stderr.
+#[test]
+fn invalid_arguments_report_stderr_and_fail_without_a_dialog() {
+    let out = Command::new(env!("CARGO_BIN_EXE_td2192"))
+        .arg("--this-option-does-not-exist")
+        .output()
+        .expect("running td2192 with an invalid option");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unexpected argument"));
+    assert!(out.stdout.is_empty());
+}
+
+/// The Windows loader must not create a console when launched from Explorer.
+#[cfg(windows)]
+#[test]
+fn windows_executable_uses_the_gui_subsystem() {
+    let exe = std::fs::read(env!("CARGO_BIN_EXE_td2192")).unwrap();
+    let pe = u32::from_le_bytes(exe[0x3c..0x40].try_into().unwrap()) as usize;
+    assert_eq!(&exe[pe..pe + 4], b"PE\0\0");
+    // IMAGE_OPTIONAL_HEADER32/64: Subsystem is 68 bytes after the optional header starts.
+    let subsystem = pe + 4 + 20 + 68;
+    assert_eq!(
+        u16::from_le_bytes(exe[subsystem..subsystem + 2].try_into().unwrap()),
+        2
+    );
+}

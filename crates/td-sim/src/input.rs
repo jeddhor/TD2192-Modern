@@ -268,7 +268,7 @@ impl TickControls {
 
     /// True if any key or chord letter got a make code since the previous tick.
     pub fn any_made(&self) -> bool {
-        self.made != 0 || self.chord_made != 0
+        self.made & ((1 << FlightKey::ALL.len()) - 1) != 0 || self.chord_made != 0
     }
 
     /// Sets the joystick (centred = default).
@@ -286,6 +286,39 @@ impl TickControls {
                 self.down |= bit;
             }
         }
+    }
+
+    /// T3 analog steering: stable facing independent of this tick's thrust pulse.
+    /// Spec frontend/analog-steering rev 1. Requires replay version 4.
+    pub fn set_steering(&mut self, joy: Joystick) {
+        const MASK: u32 = 0x4f00_0000;
+        self.made &= !MASK;
+        self.made |= 1 << 30;
+        for (on, bit) in [
+            (joy.x > 0, 24),
+            (joy.x < 0, 25),
+            (joy.y > 0, 26),
+            (joy.y < 0, 27),
+        ] {
+            if on {
+                self.made |= 1 << bit;
+            }
+        }
+    }
+
+    /// Stable T3 facing override, absent for every Classic input.
+    pub fn steering(&self) -> Option<Joystick> {
+        if self.made & (1 << 30) == 0 {
+            return None;
+        }
+        let axis = |a: u32, b: u32| {
+            i8::from(self.made & (1u32 << a) != 0u32) - i8::from(self.made & (1u32 << b) != 0u32)
+        };
+        Some(Joystick {
+            x: axis(24, 25),
+            y: axis(26, 27),
+            ..Joystick::default()
+        })
     }
 
     /// True if `key` is down now.
@@ -311,7 +344,8 @@ impl TickControls {
     }
 
     /// The replay word: `down` in bits 0..32, `made` in 32..64 (replay version 2's word), the
-    /// chord letters down in 64..80 and made in 96..112 (version 3).
+    /// chord letters down in 64..80 and made in 96..112 (version 3). Optional stable-facing
+    /// metadata occupies made bits 24..27 and 30 (version 4; frontend/analog-steering rev 1).
     pub fn to_word(self) -> u128 {
         u128::from(self.down)
             | u128::from(self.made) << 32

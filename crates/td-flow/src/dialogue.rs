@@ -1,8 +1,8 @@
 //! The dialogue scene player (`Dlg_PlayScene`): two portraits, names, typed lines that scroll,
 //! page waits and fades, for one scene of a dialogue script.
 //!
-//! Spec: `docs/spec/narrative/dialogue-player.md` (rev 1); text per `docs/spec/render/text.md`
-//! (rev 1). Fidelity: T0 for layout, palette and text; T1 for the order of events; T2 for the
+//! Spec: `docs/spec/narrative/dialogue-player.md` (rev 3); text per `docs/spec/render/text.md`
+//! (rev 6). Fidelity: T0 for layout, palette and text; T1 for the order of events; T2 for the
 //! typing and fade pace, which is CPU-bound in the original (U-062).
 //!
 //! The screen ticks once per vertical retrace ([`RETRACE_HZ`]). Every wait of the original
@@ -10,7 +10,8 @@
 //! (`td_render::small_text::FRAMES_PER_TYPED_CHAR`) and, per fade level, the frames
 //! `td_render::fade::level_frames` gives for the palette buffer (two with portraits loaded,
 //! [`FADE_FRAMES_PER_LEVEL`], one for level 0; `docs/spec/flow/screens.md` rev 3 §2.1), each
-//! level shown from the frame after its last write (`fade::first_level_frames`, M12-14). Everything between two
+//! level shown from the frame after its last write (`fade::first_level_frames`, M12-14),
+//! except that typing overlaps the final picture-palette writes (rev 3 §4.5). Everything between two
 //! waits happens at once inside one tick,
 //! in the original's order. A page break waits for a key; keys pressed while text is typing or
 //! fading are kept, like the BIOS type-ahead buffer, and taken by the next page break.
@@ -425,7 +426,7 @@ impl DialogueScene {
             tracing::warn!("dialogue scene {id} not found; playing nothing");
             Vec::new()
         });
-        Self {
+        let mut scene = Self {
             episode,
             id,
             assets,
@@ -448,7 +449,11 @@ impl DialogueScene {
             portraits: Vec::new(),
             text_waits: false,
             any_button: crate::controls::AnyButton::default(),
-        }
+        };
+        // Setup and script reads precede the first fade-start frame (rev 3 §4.5).
+        // Prepare through the first wait without spending a displayed retrace.
+        scene.step(&TickInput::default());
+        scene
     }
 
     /// The accessibility option "text waits for a key" (`accessibility.text_waits_for_key`,
@@ -462,7 +467,13 @@ impl DialogueScene {
     /// (the scene overwrites only the entries it uses, §4.4).
     #[must_use]
     pub fn with_palette_buffer(mut self, left: &Palette) -> Self {
-        self.pal.clone_from(left);
+        // Construction already loaded the speakers. Seed only the entries those
+        // synchronous commands did not replace, as loading over g_Palette does.
+        for (entry, written) in self.written.iter().enumerate() {
+            if !written {
+                self.pal.colors[entry] = left.colors[entry];
+            }
+        }
         self
     }
 
@@ -567,6 +578,13 @@ impl DialogueScene {
                             run.level - 1
                         };
                         self.wait = fade::level_frames(&self.pal, 1, f.level);
+                        if run.fading_in && f.level == 16 && self.wait > 1 {
+                            // rev 3 §4.5: the last writes finish during S+33, so
+                            // typing starts then, before their complete S+34 dump.
+                            // A whole-frame DAC approximates that volatile frame;
+                            // stable frames and one-character typing stay exact.
+                            self.wait -= 1;
+                        }
                         continue;
                     }
                     if run.fading_in {
@@ -882,10 +900,10 @@ mod tests {
             s.screen().pixels[192 * 320..197 * 320].contains(&254),
             "prompt"
         );
-        // Fade-in: 17 levels, each after a 2-tick wait; the last level and the first character
-        // come together, 34 ticks after the one that started the fade.
+        // Setup was primed at S. Picture-palette typing overlaps the last writes
+        // at S+33 (rev 3 §4.5), after the one step already taken above.
         let fade = run_until(&mut s, |s| s.lit);
-        assert_eq!(fade, 2 * 17);
+        assert_eq!(fade, 32);
         // The first line ("ab", slot 2) has started: one character typed in that tick, with
         // the cursor; left face dim, right face full.
         assert_eq!(s.screen().palette.colors[1], Rgb6::default(), "1 >> 1 = 0");
@@ -923,6 +941,38 @@ mod tests {
                 .iter()
                 .all(|c| *c == Rgb6::default())
         );
+    }
+
+    /// Rev 3 §4.5: a padding line starts at S+33 and the real line at S+34.
+    /// Unlike early-row story screens, dialogue never reveals two characters at once.
+    #[test]
+    fn first_dialogue_line_overlaps_the_last_fade_writes() {
+        let data = script(&[
+            b"\x06\x02",
+            b"\x01\x01\x01\x40left",
+            b"\x01\x02\x02\x80right",
+            b"\x03",
+            b"\x02\x01\x80 ",
+            b"\x02\x01\x80abc",
+            b"\x05",
+            b"d",
+        ]);
+        let mut s = DialogueScene::new(assets(data), Episode::E1, 2);
+        for frame in 1..=36 {
+            s.step(&TickInput::default());
+            if frame == 32 {
+                assert!(!s.lit);
+            }
+            if (33..=36).contains(&frame) {
+                let State::Typing(t) = &s.state else {
+                    panic!("frame {frame}: typing expected")
+                };
+                assert_eq!(t.typed(), if frame == 33 { 1 } else { frame - 33 });
+                assert!(!s.waiting_for_key());
+            }
+        }
+        s.step(&TickInput::default());
+        assert!(s.waiting_for_key());
     }
 
     /// M12-18: a controller button turns the page (§4.7's joystick button, any button in the
@@ -1063,7 +1113,7 @@ mod tests {
         ]);
         let mut s = DialogueScene::new(assets(data.clone()), Episode::E1, 2);
         s.step(&TickInput::default());
-        assert_eq!(run_until(&mut s, |s| s.lit), 18);
+        assert_eq!(run_until(&mut s, |s| s.lit), 17);
         let mut left = Palette::default();
         for c in &mut left.colors {
             *c = Rgb6 { r: 7, g: 7, b: 7 };
@@ -1071,7 +1121,7 @@ mod tests {
         let mut s = DialogueScene::new(assets(data), Episode::E1, 2).with_palette_buffer(&left);
         s.step(&TickInput::default());
         assert_eq!(s.palette_buffer().colors[230], left.colors[230], "kept");
-        assert_eq!(run_until(&mut s, |s| s.lit), 34, "the leftover counts");
+        assert_eq!(run_until(&mut s, |s| s.lit), 32, "the leftover counts");
     }
 
     #[test]

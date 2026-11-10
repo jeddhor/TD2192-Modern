@@ -481,7 +481,7 @@ Correctness first. The whole game is tiny by modern standards: a full-screen ind
 ### 9.9 Dependencies
 
 - Add a crate only when it removes real work. Check its licence (MDG §5.4), maintenance, and transitive weight. Record it in THIRD_PARTY.md.
-- Never vendor GPL code. ymfm (BSD-3) is the planned vendored C++ component.
+- Do not vendor DOSBox or other emulator code: the clean-room boundary remains in force after the project adopted GPL-3.0-or-later. New copyleft dependencies still need owner approval. ymfm (BSD-3) is the planned vendored C++ component.
 
 ## 10. Testing playbook
 

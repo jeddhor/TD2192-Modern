@@ -106,6 +106,8 @@ pub struct FrameContext<'a> {
     /// Reduce flashing (accessibility, M12-18): no muzzle flashes, and explosions at
     /// [`SOFT_EXPLOSION`] of their intensity.
     pub soft: bool,
+    /// OB-175: omit engine lights of ships hidden by the Enhanced rendering fix.
+    pub suppress_wrapped_ships: bool,
 }
 
 /// The explosions' share of their intensity under reduce flashing (M12-18,
@@ -301,7 +303,10 @@ pub fn flight_scene(f: &Flight, ctx: &FrameContext<'_>, mode: LightMode, scene: 
         let b = PLAYER_ENGINE_BACK;
         push(PLAYER_ENGINE, (x - nx * b, y - ny * b));
     }
-    for s in f.drawn.ships.0.iter().filter(|s| s.alive()) {
+    for s in f.drawn.ships.0.iter().filter(|s| {
+        s.alive()
+            && flight::mission_ship_offsets_visible(s.sub_x, s.sub_y, ctx.suppress_wrapped_ships)
+    }) {
         let mark = ShipMark {
             tile_x: s.tile_x,
             tile_y: s.tile_y,
@@ -371,6 +376,7 @@ mod tests {
         let (w, pal) = (world(), palette());
         let ctx = FrameContext {
             soft,
+            suppress_wrapped_ships: false,
             world: &w,
             palette: &pal,
             page: 1,

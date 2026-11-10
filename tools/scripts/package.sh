@@ -47,7 +47,7 @@ case "$out_full/" in
 esac
 
 cd "$repo"
-version="$(cargo metadata --format-version 1 --no-deps \
+version="$(cargo metadata --locked --format-version 1 --no-deps \
     | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"]=="td2192"))')"
 grep -qF "## [$version]" CHANGELOG.md \
     || { echo "CHANGELOG.md has no '## [$version]' section (docs/RELEASE.md)." >&2; exit 1; }
@@ -56,7 +56,7 @@ packages=(-p td2192)
 if [[ -n "$target_dir" ]]; then
     export CARGO_TARGET_DIR="$target_dir"
 fi
-cargo build --release "${packages[@]}"
+cargo build --locked --release "${packages[@]}"
 bin_dir="${CARGO_TARGET_DIR:-$repo/target}/release"
 
 name="TD2192-Modern-$version-linux-x64"

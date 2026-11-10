@@ -34,12 +34,37 @@ This guide covers:
 
 ## 2. Installing
 
+### Guided setup (Windows and Linux)
+
+Run `TD2192-Modern-<version>-windows-x64-setup.exe`, or make
+`TD2192-Modern-<version>-linux-x64-setup.run` executable and run it on Linux.
+The native Qt6 wizard includes its own runtime; Qt and Python need no separate installation.
+
+Choose a new or empty installation folder, then browse to your local retail game
+folder and select **Check game files**. Setup imports the recognized files into
+its own `game/` subfolder. The retail folder is read only; original saves and
+configuration are not imported. For a distribution ZIP, extract it to a folder
+before using setup, or use the portable game below to read the ZIP directly.
+
+Setup defaults to `%LOCALAPPDATA%/Programs/TD2192-Modern` on Windows and
+`~/Games/TD2192-Modern` on Linux. Start Menu/Applications entries are optional
+and selected by default; a desktop shortcut is optional. Launch through these
+shortcuts or `Play.cmd` / `play` inside the installation folder. They point the game
+at the imported data automatically.
+
+To remove an installed copy, use **Uninstall** in its Start Menu/Applications entries
+or run `uninstall.exe` / `uninstall` in its folder. Windows also lists it under
+installed applications. Saves and settings are kept, as are files you changed or
+added. Unchanged files copied by setup are removed. Your retail copy stays intact.
+
+### Portable packages
+
 **Windows:**
 
 1. Download the TD2192-Modern package (`TD2192-Modern-<version>-windows-x64.zip`) and unpack it into a folder of your choice, for example `C:\Games\TD2192-Modern`.
 2. Run `td2192.exe`. Nothing else needs installing; the Visual C++ runtime is built in.
 
-   A console window opens beside the game window. It shows the game's log; closing it also closes the game.
+   The game opens without a console window. When started from a terminal, it reuses that terminal for command-line output and logs.
 
 **Linux:**
 
@@ -48,7 +73,7 @@ This guide covers:
 
 Neither build is code-signed. Windows SmartScreen may warn about an unknown publisher the first time; choose "More info", then "Run anyway".
 
-Nothing is installed into the system, and nothing is written to your game folder. To remove TD2192-Modern, delete its folder, and also its user folder if you want your saves and settings gone (see [section 9](#9-where-your-saves-and-settings-live)).
+For portable packages, nothing is installed into the system, and nothing is written to your game folder. To remove a portable copy, delete its folder, and also its user folder if you want your saves and settings gone (see [section 9](#9-where-your-saves-and-settings-live)).
 
 The package also holds `tdtool.exe` (`tdtool` on Linux), a helper used by developers. You do not need it to play, but it can check a game folder for you (see [section 10](#10-troubleshooting)).
 
@@ -56,7 +81,7 @@ The package also holds `tdtool.exe` (`tdtool` on Linux), a helper used by develo
 
 ### The first start
 
-On the first start TD2192-Modern asks where your copy of the game is:
+When launched from a setup-created shortcut, the game already uses the imported data. With a portable package, on the first start TD2192-Modern asks where your copy of the game is:
 
 - **Folder...**: choose the installed game folder (the one with `TD1.EXE` and `FILE0001.EXE`). The game uses the files where they are. It only reads them and never changes anything in that folder.
 - **ZIP file...**: choose the original ZIP file. The game reads the files straight from the archive; you do not have to unpack it.
@@ -253,7 +278,8 @@ The keys of the menus and story screens (Enter, Space, Escape, the arrows) canno
 | profile | classic, enhanced | See [section 7](#7-classic-and-enhanced) |
 | original bug fixes* | on, off | Fixes the small annoyances of the original game listed in [section 8](#8-bugs-of-the-original-game). Preset: on |
 | intro before episode 1 | always, first launch, never | Enhanced only; the classic profile always plays the intro, as the original did. The default is **always**; **never** skips it |
-| restore the enhanced preset* | | Puts every Enhanced option back to the preset |
+| analog steering | on, off | Enhanced only, off by default. The left stick controls thrust strength: a slight push gives occasional thrust and a full push gives full thrust. Facing stays steady. Keyboard movement and the D-pad keep full strength and take precedence. This changes flight handling; menus keep their digital stick controls. |
+| restore the enhanced preset* | | Restores the preset features; separate options such as analog steering keep their choices |
 
 ### accessibility
 
@@ -282,7 +308,7 @@ TD2192-Modern has two **profiles**:
 
   Each option can then be changed on its own. What you change is remembered and kept, also when the preset changes in a later version; **restore the enhanced preset** on the profile page forgets your changes. Switching back to Classic turns every Enhanced option off again, but remembers your choices.
 
-The options marked * belong to the profile. The accessibility options and the intro setting are separate options, off by default (they work under either profile). **in the background** follows the profile until you choose. No Enhanced option changes how the game itself plays, except widescreen, which lets you see more.
+The options marked * belong to the profile. The accessibility options are separate, off by default, and work under either profile. The separate intro setting follows the profile rules above. **in the background** follows the profile until you choose. Widescreen changes what you can see. Optional **analog steering** on the profile page changes thrust strength under Enhanced and is off by default; Classic always uses digital steering.
 
 Settings files written by earlier versions still load. There every Enhanced option was saved even if you never touched it, so options saved as off or none count as untouched and get the preset; options you had turned on keep their value.
 
@@ -351,7 +377,8 @@ The 1994 game has bugs and quirks. TD2192-Modern records each one it knows about
   - wrong radar colours in Episode 2 flights 1 to 8 after flying one of flights 9 to 20 in the same session;
   - no way to cancel typing a save name (now Escape cancels it and puts the slot back);
   - one piece of the lander in Episode 1 flight 20 drawn wrong after looking at the ship library;
-  - a fragment of the hoverskid flashing at the bottom of the intro.
+  - a fragment of the hoverskid flashing at the bottom of the intro;
+  - ghost ships and scattered target brackets after a ship wraps its position far beyond the map edge. Enhanced fixes hide ships whose horizontal or vertical within-tile offset is outside -16 through 80, including their engine lights. This changes only drawing; their movement, collisions and recorded simulation state remain the same. Turning original bug fixes off preserves the ghosts, as Classic does.
 
   A controller button closes the transmission screen under both profiles, because controller buttons stand for keyboard keys everywhere.
 - **Left out** when it is hostile or only made sense on a 1994 PC:
@@ -375,6 +402,7 @@ Inside it:
 
 | What | Where |
 |---|---|
+| Diagnostic log | `td2192.log`, replaced on each normal start; help and version commands leave it alone |
 | Settings | `settings.toml`, a text file you can edit while the game is closed. Delete it to go back to all the default settings (the game then asks for your game data again) |
 | Saved games | `saves\`: the save slots of each episode, in the original's own file format (`td.sav` and `td.stt` for Episode 1, `td2.*` and `td3.*` for the others) |
 | Screenshots | `screenshots\`: `td2192-<number>.png`, plus `td2192-<number>.enhanced.png` with Enhanced features on |
@@ -410,7 +438,7 @@ TD2192-Modern never writes into your original game folder. It does not read the 
 
 **I lost my settings or controls.** Delete `settings.toml` in the user folder to start again from the defaults, or use **reset to defaults** on the controls page.
 
-**Something else went wrong.** To keep a log, start the game from a terminal with the environment variable `TD2192_LOG=debug`. The log is written to the terminal and helps the developers find the problem.
+**Something else went wrong.** The game keeps `td2192.log` in your user folder (section 9), including when launched from Explorer. Copy it before starting the game again, because the next normal start replaces it. For more detail, start from a terminal with `TD2192_LOG=debug`; the log goes to that terminal and the file. Startup errors appear in a message box when there is no terminal, or on stderr with a failing exit status when launched from a terminal or script.
 
 ## 11. Command line
 
@@ -426,3 +454,5 @@ You do not need any of these to play, but they can help:
 | `td2192 --check` | Print the version, which game data is used, its file check and the playable episodes, then exit |
 | `td2192 --version` | Print the version |
 | `td2192 --help` | List every option |
+
+On Windows, scripts can capture `td2192.exe --version`, `--help` and `--check` using normal output redirection. Interactive shells may return their prompt before a GUI-subsystem program exits; PowerShell scripts can use `Start-Process -Wait` when they need to wait for completion.

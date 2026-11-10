@@ -579,7 +579,10 @@ fn retry_prompt_matches_the_original() {
         let mut prog = Program::new(&dir, &res, Box::new(l)).unwrap();
         let mut s = prog.retry_prompt();
         assert_eq!(calls.get(), 1, "one Random call per prompt");
-        fade_in(&mut s, 40);
+        // Up to 62 hidden typing frames, then the 34-frame picture fade
+        // (screens rev 6 §3.7). This test checks the stable layout; exact
+        // black/fade timing is pinned by screens_parity.
+        fade_in(&mut s, 100);
         let ours = s.screen();
         if (0..64_000).all(|i| ours.pixels[i] == frame[i]) {
             for e in [39, 40] {

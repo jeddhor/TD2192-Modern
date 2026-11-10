@@ -205,7 +205,7 @@ Details, captures and results: [M12-checklist](M12-checklist.md) §10. E2/E3 fli
 | E3 8 | C-0372 | C-0041's route into the hazard cells: death, end sequence, hit flash | PASS, 297 ticks |
 | E3 9 | C-0374 | hangar bounces, diagonal steering | PASS, 700 ticks |
 | E3 16 → 17 | C-0376 | one program run; class tables patched, then restored (U-284 vector 7) | PASS, 908 + 300 ticks |
-| E3 16 | C-0378 | idle: the convoy reaches (168, 199) | PASS to tick 872; **BUG-34**: the original removes each truck there (OB-046 says the exit is inert) |
+| E3 16 | C-0378 | idle: the convoy reaches (168, 199) | PASS through tick 887 in 0.9.1; **BUG-34 fixed**, OB-046 withdrawn; all three trucks exit as in C-0378 |
 | E3 19 | C-0340 (RE-20) | idle to tick 4,499 through the BUG-18 wrap | PASS |
 
 ## Planner notes

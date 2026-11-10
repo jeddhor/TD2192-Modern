@@ -40,7 +40,7 @@ def run(args):
 
 def built_packages(target: str):
     """(name, version) of every package `cargo tree` builds for td2192 on `target`."""
-    out = run(['cargo', 'tree', '-p', 'td2192', '-e', 'normal,build,no-proc-macro',
+    out = run(['cargo', 'tree', '--locked', '-p', 'td2192', '-e', 'normal,build,no-proc-macro',
                '--target', target, '--prefix', 'none', '--format', '{p}'])
     built = set()
     for line in out.splitlines():
@@ -55,7 +55,7 @@ def is_proc_macro(pkg) -> bool:
 
 
 def runtime_packages(target: str):
-    meta = json.loads(run(['cargo', 'metadata', '--format-version', '1',
+    meta = json.loads(run(['cargo', 'metadata', '--locked', '--format-version', '1',
                            '--filter-platform', target]))
     built = built_packages(target)
     packages = {p['id']: p for p in meta['packages']}
@@ -165,7 +165,7 @@ def main() -> int:
     out = [
         'TD2192-Modern: third-party notices',
         '',
-        'This program is distributed under the MIT licence (see LICENSE). It includes the',
+        'This program is distributed under GPL version 3 or later (see LICENSE). It includes the',
         'following third-party software, each under its own licence, reproduced below.',
         f'Target: {args.target}.',
         '',

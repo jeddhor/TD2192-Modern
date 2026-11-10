@@ -1,4 +1,4 @@
-//! Unit tests from `e3-mission-logic.md` rev 1 §7 and `e3-mission-ships.md` rev 1 §5 (static
+//! Unit tests from `e3-mission-logic.md` rev 2 §7 and `e3-mission-ships.md` rev 1 §5 (static
 //! vectors and the pseudocode).
 
 use super::super::{INK, INK_ALERT, MARK_HOME, Message, PHASE_DONE};
@@ -618,4 +618,58 @@ fn comm_table_and_outcomes() {
     let mut f = scripted(4);
     put(&mut f, 6, NO_SHIP, (199, 111));
     assert!(!f.outcome());
+}
+
+/// BUG-34: rev 2 §5.15. Only the documented X/Y pair removes a slot; an exit
+/// clears its class without moving it or destroying its armour.
+#[test]
+fn flight_15_exit_coordinates_are_not_transposed() {
+    for (slot, tile, exits) in [
+        (1, (168, 199), true),
+        (1, (199, 168), false),
+        (2, (199, 126), true),
+        (2, (126, 199), false),
+    ] {
+        let mut f = scripted(15);
+        put(&mut f, slot, 6, tile);
+        put(&mut f, 15, 1, (100, 100));
+        f.msn_update();
+        let ship = &f.ships.0[slot - 1];
+        assert_eq!(
+            ship.class,
+            if exits { NO_SHIP } else { 6 },
+            "slot {slot}, {tile:?}"
+        );
+        assert_eq!((ship.tile_x, ship.tile_y), tile);
+        assert_eq!(ship.armour, 100);
+    }
+}
+
+/// BUG-34: rev 2 §5.16. Rule A sees the gone trucks on the tick after the
+/// exit calls, so the transmission request must not appear one tick early.
+#[test]
+fn flight_16_truck_exit_posts_the_transmission_next_tick() {
+    let mut f = scripted(16);
+    for slot in 2..=4 {
+        put(&mut f, slot, 6, (168, 199));
+    }
+    f.msn_update();
+    for slot in 2..=4 {
+        assert_eq!(f.class_of(slot), NO_SHIP);
+        assert_eq!(f.slot_tile(slot), (168, 199));
+        assert_eq!(f.ships.0[slot - 1].armour, 100);
+    }
+    assert_eq!(f.phase(), 1);
+    assert!(!f.mission.comm_pending);
+    f.msn_update();
+    assert_eq!(f.phase(), 2);
+    assert!(f.mission.comm_pending);
+    assert_eq!(f.mission.ticker.message, Some(M2(4)));
+
+    let mut f = scripted(16);
+    for slot in 2..=4 {
+        put(&mut f, slot, 6, (199, 168));
+    }
+    f.msn_update();
+    assert!((2..=4).all(|slot| f.live(slot)));
 }

@@ -747,9 +747,31 @@ fn e1_ending_b_screens_match_c0324() {
             .unwrap()
             .retry_prompt()
     };
+    // Independently pin the pre-fade duration from screens rev 6 §3.7. The
+    // later pixel comparison still aligns fades, so consume exactly the tested delay.
+    const HIDDEN: [u32; 10] = [38, 54, 49, 36, 47, 54, 12, 62, 40, 56];
+    let after_hidden = |r: u16| {
+        let s = run(retry(r), HIDDEN[usize::from(r)]);
+        assert!(
+            !lit(&s.screen().palette),
+            "taunt {r}: still black during hidden typing"
+        );
+        s
+    };
+    for r in 0..10 {
+        let mut s = after_hidden(r);
+        for step in 1..=4 {
+            s.step(&TickInput::default());
+            assert_eq!(
+                lit(&s.screen().palette),
+                step == 4,
+                "taunt {r}, fade frame {step}"
+            );
+        }
+    }
     let taunts: Vec<u16> = (0..10)
         .filter(|&r| {
-            let s = run(retry(r), 5870 - 5841);
+            let s = run(after_hidden(r), 5870 - 5841);
             let d = diff(s.screen(), &oracle, "C-0324", 5870, Dac::Used);
             d.iter().all(|x| x.starts_with("DAC"))
         })
@@ -757,7 +779,7 @@ fn e1_ending_b_screens_match_c0324() {
     assert_eq!(taunts.len(), 1, "taunts matching C-0324 f5870: {taunts:?}");
     let retry_dumps = dumps(5804, 5870);
     assert_dumps(
-        retry(taunts[0]),
+        after_hidden(taunts[0]),
         &oracle,
         "C-0324",
         ("retry", &retry_dumps),

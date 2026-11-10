@@ -146,25 +146,108 @@ fn chord_keys(binds: &[(Key, FlightKey)]) -> Vec<(Key, ChordKey)> {
         .collect()
 }
 
+/// T3 analog conversion is outside the simulation: replay words contain its resolved output.
+/// Spec frontend/analog-steering rev 1. Original digital input is unchanged while disabled.
+fn apply_analog(
+    analog: &mut td_input::AnalogSteering,
+    c: &mut TickControls,
+    input: &TickInput,
+    enabled: bool,
+) {
+    let Some(pad) = input.pad.filter(|_| enabled) else {
+        analog.reset();
+        return;
+    };
+    // Any bound movement key takes full precedence, including a controller button mapped to
+    // a movement key by the host. Buttons remain available for fire and afterburner.
+    let keyboard = [
+        FlightKey::Kp8,
+        FlightKey::Up,
+        FlightKey::Kp2,
+        FlightKey::Down,
+        FlightKey::Kp4,
+        FlightKey::Left,
+        FlightKey::Kp6,
+        FlightKey::Right,
+    ]
+    .into_iter()
+    .any(|k| c.is_down(k));
+    let mut joy = c.joystick();
+    if keyboard {
+        analog.reset();
+        joy.x = 0;
+        joy.y = 0;
+        c.set_joystick(joy);
+        return;
+    }
+    let s = analog.sample(pad);
+    joy.x = s.thrust_x;
+    joy.y = s.thrust_y;
+    c.set_joystick(joy);
+    c.set_steering(Joystick {
+        x: s.facing_x,
+        y: s.facing_y,
+        ..Joystick::default()
+    });
+}
+
+fn repeat_count(elapsed_us: u64) -> u64 {
+    elapsed_us
+        .checked_sub(TYPEMATIC_DELAY_US)
+        .map_or(0, |d| d / TYPEMATIC_PERIOD_US + 1)
+}
+
 /// Turns tick-sampled host key state into the original's make codes, with typematic repeats.
 ///
 /// An AT keyboard repeats only the **last key pressed**, and only while it is held; a key held
 /// before another is pressed sends no more make codes (flight-screens rev 7 §4.4, U-450,
 /// C-0325). So after a screen that clears the key bytes, a key held through it stays clear
-/// until it is pressed again ([`Typematic::after_screen`], BUG-23). Before the first key press
-/// of the flight the last key is unknown; ASSUMPTION(U-582): a key held since before the flight
-/// repeats then, as the only key held would.
+/// until it is pressed again ([`Typematic::after_screen`], BUG-23). The run-wide host history
+/// keeps the newest key and its AT-default clock across flight entry (flight-screens rev 8
+/// section 4.4, U-582). Synthetic inputs without history conservatively repeat only after an
+/// observed press; a held set alone cannot identify the newest key.
 #[derive(Debug, Default)]
 struct Typematic {
-    /// Microseconds each held key has been down.
+    /// Synthetic-input fallback only: microseconds each observed held key has been down.
     held_us: BTreeMap<KeyByte, u64>,
     /// The host key pressed last (the keyboard's typematic key), once one was pressed.
     last: Option<Key>,
+    host_history: Option<td_input::KeyboardHistory>,
+    host_repeat: Option<Key>,
 }
 
 impl Typematic {
+    /// Sample once per host tick, even while the flight opening or a modal screen is active.
+    fn observe_host(&mut self, input: &TickInput) {
+        self.host_repeat = None;
+        if let Some(now) = input.keyboard {
+            if let Some(before) = self.host_history
+                && now.eligible
+                && now.last == before.last
+                && now.serial == before.serial
+                && repeat_count(now.elapsed_us) > repeat_count(before.elapsed_us)
+            {
+                self.host_repeat = now.last;
+            }
+            self.last = now.last;
+        }
+        self.host_history = input.keyboard;
+    }
+
+    /// Relevant repeat makes are latched during setup; they are never UI press edges.
+    fn opening_repeat(&self, binds: &[(Key, FlightKey)]) -> Option<Key> {
+        self.host_repeat.filter(|host| {
+            binds
+                .iter()
+                .any(|&(h, k)| h == *host && !matches!(k, FlightKey::Alt | FlightKey::RightAlt))
+                || chord_keys(binds).iter().any(|&(h, _)| h == *host)
+        })
+    }
+
     fn controls(&mut self, input: &TickInput, binds: &[(Key, FlightKey)]) -> TickControls {
-        if let Some(&k) = input.pressed.last() {
+        if input.keyboard.is_none()
+            && let Some(&k) = input.pressed.last()
+        {
             self.last = Some(k);
         }
         let mut c = TickControls::default();
@@ -202,6 +285,13 @@ impl Typematic {
     fn key(&mut self, input: &TickInput, host: Key, key: KeyByte) -> (bool, bool) {
         let tick_us = (1e6 / FLIGHT_TICK_HZ) as u64;
         let down = input.held.contains(&host);
+        if input.keyboard.is_some() {
+            let repeatable = !matches!(key, KeyByte::Flight(FlightKey::Alt | FlightKey::RightAlt));
+            return (
+                down,
+                input.pressed.contains(&host) || (repeatable && self.host_repeat == Some(host)),
+            );
+        }
         if input.pressed.contains(&host) {
             self.held_us.insert(key, 0);
             return (down, true);
@@ -215,17 +305,13 @@ impl Typematic {
         self.held_us.insert(key, t1);
         // A repeat fires at DELAY + n·PERIOD; did one fall in (t0, t1]? Only the last key
         // pressed repeats.
-        let count = |t: u64| {
-            t.checked_sub(TYPEMATIC_DELAY_US)
-                .map_or(0, |d| d / TYPEMATIC_PERIOD_US + 1)
-        };
         // OB-176 (fix-all, the user, 2026-11-07): Alt and right Alt make one code per press, no
         // typematic repeats, so a held Alt toggles the infra-red palette once instead of
         // strobing the whole screen ten times a second (a photosensitivity hazard; the
         // original repeats, U-571, C-0341).
         let no_repeat = matches!(key, KeyByte::Flight(FlightKey::Alt | FlightKey::RightAlt));
-        let repeats = self.last.is_none_or(|k| k == host) && !no_repeat;
-        (true, repeats && count(t1) > count(t0))
+        let repeats = self.last == Some(host) && !no_repeat;
+        (true, repeats && repeat_count(t1) > repeat_count(t0))
     }
 
     /// The key bytes' input when a modal or real-time screen closes and its tick goes on:
@@ -236,14 +322,17 @@ impl Typematic {
     /// bytes (pause, flight menu, map, comm viewer: `Flight::resume`) only keys pressed while
     /// it showed and still held are set, and after a real-time screen, which clears nothing,
     /// held keys keep their bytes and released ones are cleared (flight-screens rev 7 §4.4 and
-    /// §4.10, U-450; C-0325, C-0067, C-0069). The pressed keys restart their typematic delay.
+    /// §4.10, U-450; C-0325, C-0067, C-0069). The host clock persists through this operation;
+    /// only the synthetic no-history fallback restarts a pressed key's local delay.
     fn after_screen(
         &mut self,
         input: &TickInput,
         binds: &[(Key, FlightKey)],
         pressed: &[Key],
     ) -> TickControls {
-        if let Some(&k) = pressed.last() {
+        if input.keyboard.is_none()
+            && let Some(&k) = pressed.last()
+        {
             self.last = Some(k);
         }
         let mut c = TickControls::default();
@@ -257,7 +346,9 @@ impl Typematic {
         }
         let mut key = |host: Key, byte: KeyByte| {
             let down = input.held.contains(&host);
-            let made = pressed.contains(&host);
+            let repeatable = !matches!(byte, KeyByte::Flight(FlightKey::Alt | FlightKey::RightAlt));
+            let made = pressed.contains(&host)
+                || (input.keyboard.is_some() && repeatable && self.host_repeat == Some(host));
             if !down {
                 self.held_us.remove(&byte);
             } else if made {
@@ -319,6 +410,9 @@ pub struct FlightArena {
     run: Option<Rc<RefCell<RunState>>>,
     binds: Vec<(Key, FlightKey)>,
     typematic: Typematic,
+    analog: td_input::AnalogSteering,
+    /// OB-175: presentation-only omission, refreshed from the live Enhanced-fixes setting.
+    suppress_wrapped_ships: bool,
     /// Host keys pressed since the open screen opened ([`Typematic::after_screen`]).
     screen_pressed: Vec<Key>,
     events: Vec<Event>,
@@ -801,6 +895,8 @@ impl FlightArena {
             run,
             binds: bindings(&td_flow::Settings::default()),
             typematic: Typematic::default(),
+            analog: td_input::AnalogSteering::default(),
+            suppress_wrapped_ships: fixes,
             screen_pressed: Vec::new(),
             events: Vec::new(),
             magenta: None,
@@ -864,12 +960,20 @@ impl FlightArena {
         // The bindings may change in the options screen at any time (M11-03), and so may the
         // profile: the Enhanced original-bug fixes apply from the next tick.
         self.binds = bindings(ctx.settings);
+        self.typematic.observe_host(input);
+        let mut setup_input = input.clone();
+        if let Some(key) = self.typematic.opening_repeat(&self.binds) {
+            setup_input.pressed.push(key);
+        }
         let fixes = ctx.settings.enhanced_fixes();
+        self.suppress_wrapped_ships = fixes;
         // OB-022 is fix-all (U-182): on whatever the profile.
         self.flight.enhanced_fixes = true;
         // The original reads the joystick only when it is the chosen controller; the port
         // uses it whenever one is connected.
-        self.flight.joystick_enabled = input.pad.is_some();
+        // Read one centred sample after disconnect, so a removed controller cannot stick.
+        self.flight.joystick_enabled =
+            input.pad.is_some() || self.flight.joystick != Joystick::default();
         self.events.clear();
         let before = self.clock;
         self.clock += 1.0 / self.tick_hz();
@@ -879,7 +983,7 @@ impl FlightArena {
         let mut first_input = None;
         let mut tick_1 = false;
         if let Some(o) = &mut self.opening {
-            if !o.step(input) {
+            if !o.step(&setup_input) {
                 return Transition::None;
             }
             first_input = Some(TickInput {
@@ -891,7 +995,7 @@ impl FlightArena {
         }
         if let Some(st) = &mut self.settle {
             // OB-151 (Classic): tick 1's page unscrolled, then tick 2 when it is due.
-            st.pressed.extend(input.pressed.iter().copied());
+            st.pressed.extend(setup_input.pressed.iter().copied());
             st.unscrolled = st.unscrolled.saturating_sub(1);
             if now < st.tick_2_at {
                 return Transition::None;
@@ -969,7 +1073,13 @@ impl FlightArena {
                     // Keys held through the screen keep their bytes after a real-time screen
                     // and stay cleared after the others (BUG-23).
                     let pressed = std::mem::take(&mut self.screen_pressed);
-                    let c = self.typematic.after_screen(input, &self.binds, &pressed);
+                    let mut c = self.typematic.after_screen(input, &self.binds, &pressed);
+                    apply_analog(
+                        &mut self.analog,
+                        &mut c,
+                        input,
+                        ctx.settings.effective_analog_steering(),
+                    );
                     let r = self.flight.resume(&self.world, &c, &mut self.events);
                     // The rest of the tick runs as the screen closes.
                     self.issue_sounds(ctx, 0, now, now);
@@ -977,7 +1087,13 @@ impl FlightArena {
                 }
             }
         } else {
-            let c = self.typematic.controls(input, &self.binds);
+            let mut c = self.typematic.controls(input, &self.binds);
+            apply_analog(
+                &mut self.analog,
+                &mut c,
+                input,
+                ctx.settings.effective_analog_steering(),
+            );
             if cfg!(debug_assertions) && input.pressed(Key(0x42)) {
                 // F9, debug builds only: complete the mission.
                 self.flight.succeeded = true;
@@ -1008,11 +1124,17 @@ impl FlightArena {
             }
             // Nothing to show: continue the tick at once (a scene keeps the key bytes).
             self.modal = None;
-            let c = if m == Modal::Scene {
+            let mut c = if m == Modal::Scene {
                 self.typematic.after_screen(input, &self.binds, &[])
             } else {
                 TickControls::default()
             };
+            apply_analog(
+                &mut self.analog,
+                &mut c,
+                input,
+                ctx.settings.effective_analog_steering(),
+            );
             let start = self.events.len();
             result = self.flight.resume(&self.world, &c, &mut self.events);
             self.issue_sounds(ctx, start, now, now);
@@ -1530,7 +1652,14 @@ impl FlightArena {
     /// view stays within tiles 6..183 × 7..190), so it is never visible and is not drawn here.
     fn draw_mission_ships(&self, fb: &mut Framebuffer, view: ViewPos) {
         let page = self.drawn_page();
-        for s in self.flight.drawn.ships.0.iter().filter(|s| s.alive()) {
+        for s in self.flight.drawn.ships.0.iter().filter(|s| {
+            s.alive()
+                && flight::mission_ship_offsets_visible(
+                    s.sub_x,
+                    s.sub_y,
+                    self.suppress_wrapped_ships,
+                )
+        }) {
             let mark = flight::ShipMark {
                 tile_x: s.tile_x,
                 tile_y: s.tile_y,
@@ -1700,6 +1829,219 @@ mod tests {
     use td_flow::FlightLauncher;
     use td_render::flight::SHIP_POS;
     use td_test_support::{require_data, require_oracle};
+
+    /// OB-175: the live profile/fixes setting controls sprites, brackets and lights only.
+    #[test]
+    fn keyboard_history_keeps_repeat_phase_across_story_to_flight() {
+        let mut clock = td_input::KeyboardRepeat::default();
+        let held = std::collections::BTreeSet::from([Key::UP]);
+        clock.update(&held, &[Key::UP], 0); // A real press on the story screen.
+        let mut input = TickInput {
+            held: held.clone(),
+            keyboard: Some(clock.update(&held, &[], 450_000)),
+            ..TickInput::default()
+        };
+        let binds = [(Key::UP, FlightKey::Up)];
+        let mut flight = Typematic::default();
+        flight.observe_host(&input); // Enter flight: do not invent a make from old repeats.
+        assert!(!flight.controls(&input, &binds).any_made());
+        for (elapsed, made) in [(60_000, true), (40_000, false), (50_000, true)] {
+            input.keyboard = Some(clock.update(&held, &[], elapsed));
+            flight.observe_host(&input);
+            assert_eq!(flight.controls(&input, &binds).any_made(), made);
+            assert!(
+                input.pressed.is_empty(),
+                "flight repeats must never become UI press edges"
+            );
+        }
+    }
+
+    #[test]
+    fn synthetic_held_only_input_does_not_guess_a_repeating_key() {
+        let mut typematic = Typematic::default();
+        let input = TickInput {
+            held: std::collections::BTreeSet::from([Key::UP, Key::SPACE]),
+            ..TickInput::default()
+        };
+        let binds = [(Key::UP, FlightKey::Up), (Key::SPACE, FlightKey::Space)];
+        for _ in 0..30 {
+            assert!(!typematic.controls(&input, &binds).any_made());
+        }
+        let mut press = input.clone();
+        press.held.insert(Key::ESCAPE);
+        press.pressed.push(Key::ESCAPE);
+        typematic.controls(&press, &binds);
+        for _ in 0..30 {
+            assert!(
+                !typematic.controls(&input, &binds).any_made(),
+                "releasing newest key cannot revive older held keys"
+            );
+        }
+    }
+
+    /// C-0383/C-0384: a story-screen press before/after Esc reaches the real flight opening
+    /// with different physical repeat eligibility, despite the identical held set.
+    #[test]
+    fn keyboard_history_across_story_and_opening_matches_c0383_c0384() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let resources = ExeResources::load(&dir).unwrap();
+        let kp8 = Key(0x60);
+        for after_escape in [false, true] {
+            let mut keyboard = td_input::KeyboardRepeat::default();
+            let mut held = std::collections::BTreeSet::new();
+            if !after_escape {
+                held.insert(kp8);
+                keyboard.update(&held, &[kp8], 0);
+            }
+            held.insert(Key::ESCAPE);
+            keyboard.update(&held, &[Key::ESCAPE], 300_000);
+            held.remove(&Key::ESCAPE);
+            keyboard.update(&held, &[], 50_000);
+            if after_escape {
+                held.insert(kp8);
+                keyboard.update(&held, &[kp8], 10_000);
+            }
+            keyboard.update(&held, &[], 650_000);
+            let mut arena = FlightArena::new(&dir, &resources, Episode::E1, 1).unwrap();
+            let settings = td_flow::Settings::default();
+            let mut audio = Vec::new();
+            let mut checked = Vec::new();
+            while arena.flight.ticks < 30 {
+                let elapsed = (1_000_000.0 / arena.tick_hz()) as u64;
+                let input = TickInput {
+                    held: held.clone(),
+                    keyboard: Some(keyboard.update(&held, &[], elapsed)),
+                    ..TickInput::default()
+                };
+                let before = arena.flight.ticks;
+                let mut ctx = FlowContext {
+                    data: &dir,
+                    resources: &resources,
+                    settings: &settings,
+                    audio: &mut audio,
+                };
+                arena.tick(&mut ctx, &input);
+                if arena.flight.ticks > before {
+                    assert_eq!(
+                        arena.flight.keys.get(FlightKey::Kp8),
+                        after_escape,
+                        "after Esc={after_escape}, tick {}",
+                        arena.flight.ticks
+                    );
+                    checked.push(arena.flight.ticks);
+                }
+            }
+            assert_eq!(checked, (1..=30).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn ob175_ghosts_follow_live_enhanced_fixes_without_changing_simulation() {
+        let data = require_data!();
+        let dir = DataDir::open(&data).unwrap();
+        let resources = ExeResources::load(&dir).unwrap();
+        let mut arena = FlightArena::new(&dir, &resources, Episode::E1, 1).unwrap();
+        arena.flight.frame.view = td_sim::flight::player::View {
+            tile_x: 102,
+            tile_y: 104,
+            sub_x: 32,
+            sub_y: 16,
+        };
+        for s in &mut arena.flight.drawn.ships.0 {
+            s.class = 0xff;
+        }
+        let ghost = &mut arena.flight.drawn.ships.0[0];
+        ghost.class = 3;
+        ghost.heading = 8;
+        ghost.tile_x = 107;
+        ghost.tile_y = 106;
+        ghost.sub_x = 16;
+        ghost.sub_y = 32_000;
+        ghost.marker = 0x32;
+        let before = td_sim::hash::state_hash(&arena.flight);
+        let view = ViewPos {
+            tile_x: 102,
+            tile_y: 104,
+            sub_x: 32,
+            sub_y: 16,
+        };
+        let mut audio = Vec::new();
+        for (profile, fixes, visible) in [
+            (td_flow::settings::Profile::Classic, true, true),
+            (td_flow::settings::Profile::Enhanced, false, true),
+            (td_flow::settings::Profile::Enhanced, true, false),
+            (td_flow::settings::Profile::Classic, true, true),
+        ] {
+            let mut settings = td_flow::Settings {
+                profile,
+                ..td_flow::Settings::default()
+            };
+            settings.enhanced.fixes = Some(fixes);
+            let mut ctx = FlowContext {
+                data: &dir,
+                resources: &resources,
+                settings: &settings,
+                audio: &mut audio,
+            };
+            // Still inside opening: refresh the live setting without advancing the simulation.
+            arena.tick(&mut ctx, &TickInput::default());
+            let mut fb = Framebuffer::new();
+            arena.draw_mission_ships(&mut fb, view);
+            assert_eq!(
+                fb.pixels.iter().any(|&p| p != 0),
+                visible,
+                "{profile:?}, fixes={fixes}"
+            );
+            let scene = arena
+                .light_scene(0, td_render::enhanced::scene::LightMode::Subtle)
+                .unwrap();
+            let engine = td_render::enhanced::lights::SHIP_ENGINE;
+            assert_eq!(
+                scene
+                    .lights
+                    .iter()
+                    .any(|l| l.radius == engine.radius && l.color == engine.color),
+                visible
+            );
+            assert_eq!(td_sim::hash::state_hash(&arena.flight), before);
+        }
+    }
+
+    #[test]
+    fn analog_conversion_preserves_classic_and_gives_keyboard_precedence() {
+        let mut analog = td_input::AnalogSteering::default();
+        let mut t = Typematic::default();
+        let binds = bindings(&td_flow::Settings::default());
+        let mut input = TickInput {
+            pad: Some(td_input::Pad {
+                x: -1,
+                stick_x: 20_384,
+                button2: true,
+                ..td_input::Pad::default()
+            }),
+            ..TickInput::default()
+        };
+        let original = t.controls(&input, &binds);
+        let mut c = original;
+        apply_analog(&mut analog, &mut c, &input, false);
+        assert_eq!(c, original, "disabled is byte-identical");
+        apply_analog(&mut analog, &mut c, &input, true);
+        assert_eq!(c.joystick().x, 0, "first half-strength pulse waits");
+        assert_eq!(c.steering().unwrap().x, -1, "facing does not wait");
+        assert!(c.joystick().button2);
+        input.held.insert(Key::LEFT);
+        input.pressed.push(Key::LEFT);
+        let mut c = t.controls(&input, &binds);
+        apply_analog(&mut analog, &mut c, &input, true);
+        assert!(c.is_down(FlightKey::Left));
+        assert_eq!(c.joystick().x, 0, "opposing stick cannot cancel keyboard");
+        assert_eq!(c.steering(), None);
+        input.pad = None;
+        let mut c = t.controls(&input, &binds);
+        apply_analog(&mut analog, &mut c, &input, true);
+        assert_eq!(c.steering(), None, "disconnect resets conversion");
+    }
 
     #[test]
     fn player_sprite_follows_the_page_only_when_drawn_late() {

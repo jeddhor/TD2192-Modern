@@ -229,11 +229,15 @@ pub fn run(
     let mut pad_buttons = 0;
     let mut stats = Stats::new(last);
     let mut dev_keys = options.keys.iter().peekable();
+    // One physical keyboard persists across every story, menu and flight (U-582).
+    let mut keyboard = td_input::KeyboardRepeat::default();
+    let mut keyboard_poll = Instant::now();
     while flow.running() {
         let mut snap: InputSnapshot = platform.poll();
         if snap.quit {
             break;
         }
+        let mut keyboard_pressed = snap.pressed.clone();
         let shot = handle_host_keys(&snap, &mut platform)?;
         // F10/F11 change the session only; the options screen shows them.
         session.video.fullscreen = platform.is_fullscreen();
@@ -245,8 +249,14 @@ pub fn run(
         let pad_keys = session.controls.pad_keys(snap.pad, pad_buttons);
         let options_button = session.controls.options_pressed(snap.pad, pad_buttons);
         pad_buttons = snap.pad.map_or(0, |p| p.buttons);
+        keyboard_pressed.extend(pad_keys.pressed.iter().copied());
         snap.held.extend(pad_keys.held);
         snap.pressed.extend(pad_keys.pressed);
+        let keyboard_now = Instant::now();
+        let elapsed_us =
+            u64::try_from((keyboard_now - keyboard_poll).as_micros()).unwrap_or(u64::MAX);
+        keyboard_poll = keyboard_now;
+        let keyboard_state = keyboard.update(&snap.held, &keyboard_pressed, elapsed_us);
         if (snap.was_pressed(OPTIONS_KEY) || options_button) && !rd.port.is_open() {
             flow.push(Box::new(OptionsScreen::new(
                 UiAssets::load(host.data()),
@@ -265,6 +275,7 @@ pub fn run(
             std::thread::sleep(Duration::from_millis(BACKGROUND_SLEEP_MS));
             continue;
         }
+        pending.keyboard = Some(keyboard_state);
         pending.held = snap.held.clone();
         pending.pad = snap.pad;
         pending.pressed.extend(snap.pressed);
@@ -277,6 +288,7 @@ pub fn run(
             let mut input = std::mem::replace(
                 &mut pending,
                 TickInput {
+                    keyboard: Some(keyboard_state),
                     held: snap.held.clone(),
                     pressed: Vec::new(),
                     pad: snap.pad,

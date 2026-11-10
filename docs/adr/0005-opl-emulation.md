@@ -1,6 +1,6 @@
 # ADR-0005: OPL2 emulation via ymfm
 
-- **Status:** Accepted (D2 = MIT; ymfm is BSD-3-Clause, compatible)
+- **Status:** Accepted (ymfm is BSD-3-Clause, compatible; D2 changed from MIT to GPL-3.0-or-later on 2026-11-10)
 - **Date:** 2026-11-02
 
 ## Context
@@ -26,4 +26,4 @@ Use **ymfm** through the existing `ymfm-sys` crate (BSD-3-Clause; `cxx` bridge w
 
 ## Alternatives considered
 
-The others in the table above. If D2 picks GPL, DOSBox's cores become options, but ymfm remains the recommended default.
+The others in the table above. D2 later changed to GPL-3.0-or-later, but the clean-room restriction on DOSBox code remains in force. ymfm remains the recommended default.

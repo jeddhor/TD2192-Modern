@@ -1040,7 +1040,7 @@ dependencies = [
 
 [[package]]
 name = "td-assets"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "flate2",
  "proptest",
@@ -1056,7 +1056,7 @@ dependencies = [
 
 [[package]]
 name = "td-audio"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "sha2",
  "td-assets",
@@ -1069,7 +1069,7 @@ dependencies = [
 
 [[package]]
 name = "td-flow"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "serde",
  "td-assets",
@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "td-formats"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "proptest",
  "sha2",
@@ -1096,18 +1096,18 @@ dependencies = [
 
 [[package]]
 name = "td-input"
-version = "0.9.0"
+version = "0.9.1"
 
 [[package]]
 name = "td-opl"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "ymfm-sys",
 ]
 
 [[package]]
 name = "td-platform"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "sdl3",
  "td-input",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "td-render"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "rayon",
  "sha2",
@@ -1131,7 +1131,7 @@ dependencies = [
 
 [[package]]
 name = "td-sim"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "proptest",
  "td-assets",
@@ -1143,14 +1143,14 @@ dependencies = [
 
 [[package]]
 name = "td-test-support"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "td2192"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1172,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "tdtool"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "clap",

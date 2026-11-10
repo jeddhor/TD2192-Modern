@@ -38,6 +38,7 @@ impl FlightArena {
             page: self.drawn_page(),
             margin,
             soft: self.reduce_flashing,
+            suppress_wrapped_ships: self.suppress_wrapped_ships,
         };
         let mut scene = LightScene::default();
         flight_scene(&self.flight, &ctx, mode, &mut scene);

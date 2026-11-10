@@ -1,0 +1,136 @@
+name: Release artifacts
+
+# Artifact preparation only: no GitHub Release, tag push or package publication.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing vMAJOR.MINOR.PATCH tag matching the workspace version'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifacts-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  package:
+    name: ${{ matrix.target }} artifact
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows-x64
+            extension: zip
+          # Jammy preserves the supported glibc 2.35 floor.
+          - os: ubuntu-22.04
+            target: linux-x64
+            extension: tar.gz
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux build dependencies for bundled SDL3
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config binutils \
+            libasound2-dev libpulse-dev libjack-jackd2-dev libsndio-dev libx11-dev \
+            libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+            libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libegl1-mesa-dev \
+            libgles2-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
+            libpipewire-0.3-dev libwayland-dev libdecor-0-dev wayland-protocols
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show
+      - name: Check tag, checked-out commit, version and changelog
+        id: release
+        run: python tools/scripts/check-release-tag.py --tag "$env:RELEASE_TAG" --github-output "$env:GITHUB_OUTPUT"
+      - name: Release helper tests (synthetic; no game data)
+        run: python -B -m unittest discover -s tools/scripts -p test_release_tools.py -v
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Test (no game data; data-gated tests skip)
+        run: |
+          Remove-Item -Path Env:TD2192_DATA,Env:TD2192_ORACLE -ErrorAction SilentlyContinue
+          cargo test --locked --workspace
+      - name: Windows package (static CRT; import check required)
+        if: runner.os == 'Windows'
+        run: ./tools/scripts/package.ps1 -Out "$env:RUNNER_TEMP/dist" -RequireRuntimeCheck
+      - name: Linux package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash tools/scripts/package.sh --out "$RUNNER_TEMP/dist"
+      - name: Validate archive, smoke without data and write checksum
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          EXTENSION: ${{ matrix.extension }}
+        run: |
+          $archive = "$env:RUNNER_TEMP/dist/TD2192-Modern-$env:VERSION-$env:TARGET.$env:EXTENSION"
+          python tools/scripts/check-package.py --archive "$archive" --version "$env:VERSION" --smoke --sha256-out "$archive.sha256"
+          if ($LASTEXITCODE -ne 0) { throw 'Package validation failed.' }
+          git diff --exit-code -- Cargo.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Build changed Cargo.lock.' }
+      - name: Upload package and checksum for review (no publication)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TD2192-Modern-${{ steps.release.outputs.version }}-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/dist/*.${{ matrix.extension }}
+            ${{ runner.temp }}/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  checksums:
+    name: Combined checksums
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: TD2192-Modern-*
+          path: packages
+          merge-multiple: true
+      - name: Verify both packages and make SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packages
+          shopt -s nullglob
+          archives=(*-windows-x64.zip *-linux-x64.tar.gz)
+          sidecars=(*.sha256)
+          [[ ${#archives[@]} -eq 2 && ${#sidecars[@]} -eq 2 ]]
+          cat "${sidecars[@]}" | LC_ALL=C sort -k2 > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums
+          path: packages/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
