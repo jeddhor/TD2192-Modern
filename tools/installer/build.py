@@ -465,7 +465,8 @@ def main():
     else:
         shutil.copy2(built, destination)
         destination.chmod(destination.stat().st_mode | 0o111)
-        (args.output / (filename + ".sha256")).write_text(f"{sha256(destination)}  {filename}\n", encoding="utf-8")
+        (args.output / (filename + ".sha256")).write_bytes(
+            f"{sha256(destination)}  {filename}\n".encode("ascii"))
     companion = args.output / (name + "-source.zip")
     with zipfile.ZipFile(companion, "w", zipfile.ZIP_DEFLATED) as out:
         for folder in ("installer-source", "installer-notices"):

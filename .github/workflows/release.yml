@@ -126,7 +126,8 @@ jobs:
           archives=(*-windows-x64.zip *-linux-x64.tar.gz)
           sidecars=(*.sha256)
           [[ ${#archives[@]} -eq 2 && ${#sidecars[@]} -eq 2 ]]
-          cat "${sidecars[@]}" | LC_ALL=C sort -k2 > SHA256SUMS
+          # The tagged Windows helper may emit CRLF sidecars; normalize before checking.
+          sed 's/\r$//' "${sidecars[@]}" | LC_ALL=C sort -k2 > SHA256SUMS
           sha256sum --check --strict SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:

@@ -236,7 +236,7 @@ def main():
     if args.sha256_out:
         if args.sha256_out.resolve() == archive:
             raise ValueError('Checksum output must not overwrite the archive.')
-        args.sha256_out.write_text(checksum, encoding='utf-8')
+        args.sha256_out.write_bytes(checksum.encode('ascii'))
     if args.smoke:
         smoke(archive, root, windows, args.version, args.no_tools, data, args.seconds, args.keep)
 
