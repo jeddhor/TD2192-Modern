@@ -2,7 +2,7 @@
 //!
 //! Spec: ADR-0003, MDG §9.1.4, `docs/re/exe-resources/README.md`. The offset maps are compiled
 //! into the program; each map is only applied to an executable whose SHA-256 matches, so a
-//! different version yields "unavailable" rather than wrong text.
+//! diagnostic loading marks another version as unavailable; gameplay rejects it (D10, MDG §14).
 
 use std::collections::BTreeMap;
 
@@ -33,9 +33,13 @@ const MAPS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Errors in a resource map itself (programming errors caught by tests).
+/// Errors loading executable resources.
 #[derive(Debug, Error)]
 pub enum ExeResError {
+    #[error(
+        "Unsupported retail version of {exe}. TD2192-Modern needs the unmodified reference version of this original DOS executable to read its text and tables. Choose a supported retail copy of the game."
+    )]
+    UnsupportedVersion { exe: String },
     #[error("resource map {map}: {source}")]
     Map {
         map: &'static str,
@@ -115,6 +119,20 @@ fn latin1(bytes: &[u8]) -> String {
 }
 
 impl ExeResources {
+    /// D10 (MDG §14): gameplay must stop before using an unknown resource executable.
+    /// `load` remains available to diagnostic tools that report each map's status.
+    pub fn load_supported(dir: &DataDir) -> Result<Self, ExeResError> {
+        let resources = Self::load(dir)?;
+        if let Some((exe, _)) = resources
+            .status
+            .iter()
+            .find(|(_, status)| matches!(status, MapStatus::VersionMismatch))
+        {
+            return Err(ExeResError::UnsupportedVersion { exe: exe.clone() });
+        }
+        Ok(resources)
+    }
+
     /// Loads every compiled-in map against the executables in `dir`.
     pub fn load(dir: &DataDir) -> Result<Self, ExeResError> {
         let mut out = Self::default();
@@ -317,5 +335,20 @@ mod tests {
             seed.iter()
                 .all(|s| s.bytes().all(|b| (0x20..0x7f).contains(&b)))
         );
+    }
+
+    #[test]
+    fn unknown_retail_executable_is_rejected_with_its_name() {
+        let root =
+            std::env::temp_dir().join(format!("td-assets-unsupported-exe-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("FILE0001.EXE"), b"MZ unknown retail version").unwrap();
+        let dir = DataDir::open(&root).unwrap();
+        let err = ExeResources::load_supported(&dir).unwrap_err();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(
+            matches!(err, ExeResError::UnsupportedVersion { ref exe } if exe == "file0001.exe")
+        );
+        assert!(err.to_string().contains("Choose a supported retail copy"));
     }
 }

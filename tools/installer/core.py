@@ -99,7 +99,7 @@ def validate_source(source: Path) -> list[tuple[dict, Path]]:
             if item.stat().st_size == 0:
                 raise ValueError(f"The game file is empty: {name}")
             if entry.get("exact", False) and _hash(item) != entry["sha256"]:
-                raise ValueError(f"Unsupported retail version of {name}. The port needs the reference version to read its text and tables.")
+                raise ValueError(f"Unsupported retail version of {name}. TD2192-Modern needs the unmodified reference version of this original DOS executable to read its text and tables. Choose a supported retail copy of the game.")
             found.append((entry, item))
     if missing:
         raise ValueError(f"This folder is missing {len(missing)} required game files: " + ", ".join(missing[:12]))

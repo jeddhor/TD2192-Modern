@@ -143,19 +143,27 @@ fn real_main(cli: Cli, text_output: bool) -> Result<()> {
     // MDG §8.8: --data > TD2192_DATA > settings.toml > the first-run choice (M13-02).
     let mut found = discover_data_dir(cli.data.as_deref(), settings.data_dir.as_deref())
         .map(|(root, source)| (root, DataSource::from(source)));
-    if let Some((root, DataSource::Settings)) = &found
-        && !DataDir::open(root).is_ok_and(|d| validate(&d).playable(Episode::E1))
-    {
-        // The saved choice was moved, deleted or changed: ask again.
-        td_platform::show_info(
-            "TD2192-Modern",
-            &format!(
-                "The game data saved in your settings ({}) can no longer be used. \
-                 Please choose it again.",
-                root.display()
-            ),
-        );
-        found = None;
+    if let Some((root, DataSource::Settings)) = &found {
+        let unusable = match DataDir::open(root) {
+            Ok(dir) if !validate(&dir).playable(Episode::E1) => {
+                Some("The folder no longer contains a complete Episode 1 installation.".to_string())
+            }
+            Ok(dir) => td_assets::ExeResources::load_supported(&dir)
+                .err()
+                .map(|e| e.to_string()),
+            Err(e) => Some(e.to_string()),
+        };
+        if let Some(reason) = unusable {
+            td_platform::show_info(
+                "TD2192-Modern",
+                &format!(
+                    "The game data saved in your settings ({}) can no longer be used: \
+                     {reason}\n\nPlease choose it again.",
+                    root.display()
+                ),
+            );
+            found = None;
+        }
     }
     let (root, source) = match found {
         Some(found) => found,
@@ -168,6 +176,7 @@ fn real_main(cli: Cli, text_output: bool) -> Result<()> {
     };
     let dir = DataDir::open(&root).with_context(|| format!("opening {}", root.display()))?;
     let report = validate(&dir);
+    let resources = td_assets::ExeResources::load_supported(&dir)?;
     if cli.check {
         use std::fmt::Write;
         let mut output = format!(
@@ -240,7 +249,6 @@ fn real_main(cli: Cli, text_output: bool) -> Result<()> {
     let view = enhanced::SharedView::default();
     let port = td_flow::front::SettingsPort::new();
 
-    let resources = td_assets::ExeResources::load(&dir)?;
     let first: Box<dyn td_flow::Screen> = match (cli.dev_flight, cli.dev_dialogue.as_deref()) {
         _ if cli.dev_intro => shell::dev_intro(&dir, &resources, &settings)?,
         _ if cli.dev_credits.is_some() => {

@@ -43,7 +43,13 @@ pub fn first_run() -> Result<PathBuf> {
             Ok(dir) => {
                 let report = validate(&dir);
                 if report.playable(Episode::E1) {
-                    return Ok(path);
+                    match ExeResources::load_supported(&dir) {
+                        Ok(_) => return Ok(path),
+                        Err(e) => {
+                            question = format!("{e}\n\nPlease choose another folder or ZIP file.");
+                            continue;
+                        }
+                    }
                 }
                 question = format!(
                     "{}\n\nPlease choose another folder or ZIP file.",
@@ -203,6 +209,10 @@ impl DataHost {
             ));
             return None;
         }
+        if let Err(e) = ExeResources::load_supported(&dir) {
+            self.info.message = Some(format!("nothing changed - {e}"));
+            return None;
+        }
         self.info.pending = Some(summary);
         self.info.message = Some("saved to settings.toml".into());
         self.pending = Some(dir);
@@ -243,7 +253,7 @@ impl DataHost {
         let Some(dir) = self.pending.take() else {
             return false;
         };
-        match ExeResources::load(&dir) {
+        match ExeResources::load_supported(&dir) {
             Ok(resources) => {
                 tracing::info!("game data: now {}", dir.root().display());
                 self.dir = dir;
@@ -311,6 +321,31 @@ mod tests {
         assert_eq!(host.choose(&junk), None);
         assert!(!host.switch());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn game_data_page_rejects_unknown_retail_executable() {
+        let original = td_test_support::require_data!();
+        let source = DataDir::open(&original).unwrap();
+        let scratch = temp("unknown-exe-choice");
+        let candidate = scratch.join("candidate");
+        fs::create_dir_all(&candidate).unwrap();
+        for name in source.names() {
+            fs::write(candidate.join(name), source.read(name).unwrap()).unwrap();
+        }
+        fs::write(candidate.join("file0001.exe"), b"MZ unsupported version").unwrap();
+        let mut host = host_for(&original, DataSource::Settings, scratch.join("import"));
+        assert_eq!(host.choose(&candidate), None);
+        assert!(host.info().pending.is_none());
+        assert!(
+            host.info()
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("Unsupported retail version of file0001.exe")
+        );
+        assert_eq!(host.data().root(), original);
+        fs::remove_dir_all(scratch).unwrap();
     }
 
     #[test]

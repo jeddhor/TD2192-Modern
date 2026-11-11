@@ -161,7 +161,7 @@ class InstallerTests(unittest.TestCase):
     def test_exact_executable_hash_mismatch_fails_before_creating_target(self):
         path, _ = self.add_exact_executable_data()
         path.write_bytes(b"different unsupported executable version")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "Unsupported retail version of file0001.exe.*Choose a supported retail copy"):
             self.install()
         self.assertFalse(self.target.exists())
         self.assertFalse(list(self.root.glob(".td2192-install-*")))

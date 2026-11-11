@@ -12,7 +12,8 @@ Modern-only infrastructure requested by the owner on 2026-11-10. This is not DOS
   checked-in asset manifest; original saves/configuration, documentation, unused
   executables and TFP extras are excluded (D3/D4). Four original executables are
   imported **as data only** because the port reads text and tables from them. They
-  are never launched. Their hashes must match the resource maps' reference version.
+  are never launched. Their hashes must match the resource maps' reference version;
+  an unknown version is rejected with a message naming the file (D10).
 - Retail paths and files are read only. Source/destination overlap and linked path
   components are refused. Missing required files stop before installation. Modified
   non-executable assets are allowed, identified by reference hash, and reported.

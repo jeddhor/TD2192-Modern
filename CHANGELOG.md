@@ -6,6 +6,10 @@ TD2192-Modern contains no part of the original game. You need your own copy of *
 
 ## [Unreleased]
 
+### Changed
+
+- **Retail executable compatibility (D10):** the game now rejects unknown versions of the four original DOS executables used for text and tables, naming the unsupported file before play. The installer already rejected them. Modified ordinary data files remain warnings.
+
 ## [0.9.1] - 2026-11-10
 
 The second release candidate. The Classic parity checklist now passes 363 of 376 items

@@ -512,13 +512,13 @@ Each subsection below is the design *intent*. Detailed behaviour belongs in the 
 2. Truncate the base name to 8 characters and the extension to 3 (DOS 8.3).
 3. Match case-insensitively against a directory listing taken once at start-up.
 
-**9.1.2 Manifest and validation.** The manifest is generated from `docs/re/FILE_INVENTORY.md` into `crates/td-assets/src/manifest.rs` by `tdtool gen-manifest` and committed. It lists name, size, SHA-256, category and the episodes that need the file. Validation reports OK, missing, modified (hash mismatch) and extra files, then works out which episodes are playable. Modified files are a warning, not an error: some users will have patched or alternative releases. Behaviour on unknown versions is §14 D10.
+**9.1.2 Manifest and validation.** The manifest is generated from `docs/re/FILE_INVENTORY.md` into `crates/td-assets/src/manifest.rs` by `tdtool gen-manifest` and committed. It lists name, size, SHA-256, category and the episodes that need the file. Validation reports OK, missing, modified (hash mismatch) and extra files, then works out which episodes are playable. Modified ordinary data files are a warning: some users will have patched or alternative releases. The four executable resource files are an exception (D10, §14): an unknown hash prevents play.
 
 **9.1.3 Episode data sets.** `EpisodeData { tileset, map(s), portraits, dialogue{uncut,edited}, comm_gfx, missions[..], saves... }` is built per episode from a declarative table (episode → filenames). Which files each episode uses is confirmed in M1-05.
 
 **9.1.4 Executable resource map (ADR-0003).** Text and tables embedded in the original executables are read **at runtime** from the user's copies:
 - `docs/re/exe-resources/<exe>.toml` (committed) lists the expected exe SHA-256 and the resources: `{ id, kind = pstring | pstring_array | fixed_width_text | u8_table | i16_table, offset, count, width }`.
-- `td-assets` checks the exe hash and then extracts by offset. A wrong hash means the resource is unavailable, and the game shows a clear message.
+- `td-assets` checks the exe hash and then extracts by offset. A wrong hash makes the source unsupported; the game rejects it with a message naming the executable before play starts (D10, §14).
 - Numeric gameplay constants (speeds, armour and so on) MAY be committed as Rust constants with a citation comment (they are facts), but SHOULD also be cross-checked against runtime extraction in a data-gated test.
 
 **9.1.5 Caching.** Decoded assets are immutable `Arc<T>` held in a cache keyed by logical name. Everything is small (9 MB total), so the whole set can be loaded eagerly at start-up.
@@ -1087,12 +1087,12 @@ Candidates, each needing its own spec and ADR where it affects gameplay: widescr
 | R10 | Episode 2/3 engine divergence larger than expected | Medium | Medium | M1-09 early; configuration-driven deltas; never fork the engine |
 | R11 | Real48 (software floating point) used in gameplay math: **MATERIALISED** (M1-01: about 470 game call sites) | Certain | Medium | Detect in M1-01; if used, implement a bit-exact Real48 type in `td-sim` |
 | R12 | Input semantics (Alt key on macOS, keyboard layouts, IME) | Medium | Low | Scancode-based bindings; full rebinding; F11 for fullscreen |
-| R13 | Unknown original versions or patched files in the wild | Medium | Low | Manifest validation tolerant of modifications; exe-resource maps per known hash |
+| R13 | Unknown original versions or patched files in the wild | Medium | Low | Manifest validation tolerates modified ordinary data; D10 rejects unknown executable resource hashes until their offsets are mapped and tested |
 | R14 | Scope creep from Enhanced features delaying 1.0 | Medium | Medium | Enhanced features only in M12 (per D5) and M14 |
 
 ## 14. Open decisions
 
-These need the project owner's decision. Agents MUST NOT decide them; they are listed in STATUS.md as blockers.
+These decisions belong to the project owner. Their current state is also listed in STATUS.md.
 
 | ID | Decision | Recommendation |
 |---|---|---|
@@ -1105,15 +1105,16 @@ These need the project owner's decision. Agents MUST NOT decide them; they are l
 | D7 | Repository hosting and visibility | **DECIDED 2026-11-10 (user): public GitHub `jeddhor/TD2192-Modern` with a beta prerelease** |
 | D8 | Default script variant on first run | **DECIDED 2026-11-10 (user): ask the player to choose, exactly like the original; do not silently select a default** |
 | D9 | Reproduce the original's in-game "cheater" judgement (text only)? | **DECIDED 2026-11-06 (user):** port the five harmless cheat chords (T+I+M, H+A+R+D, J+O+H+N, J+D+W, M+K+A+R) exactly as the original, in both profiles, with the debrief's "cheater" text when its rule fires; the host-modifying E+V+L and P+L+A+Y are never ported |
-| D10 | Behaviour when retail executable hashes don't match the known version | **OPEN.** Earlier recommendation: continue with a clear warning and degraded text. Current installer rejects mismatched resource EXEs; direct launch skips their mapped resources and can encounter missing-text or missing-table errors. |
+| D10 | Behaviour when retail executable hashes don't match the known version | **DECIDED 2026-11-10 (user): reject unknown resource executables with a clear message before play or installation.** |
 
 **D10 clarification.** The four original DOS executables `file0000.exe`,
 `file0001.exe`, `td2.exe` and `td3.exe` supply story text and gameplay tables at
 known byte offsets. The port never executes them. A patched or alternate retail
 version may have different bytes or offsets, so its SHA-256 hash does not match
-the corresponding resource map. The remaining choice is whether 1.0 should
-reject such a version consistently with an actionable message, or support a
-deliberately limited mode after its missing-resource paths have been made safe.
+the corresponding resource map. The installer, direct launch, first-run picker,
+game-data page and installation check reject it and name the unsupported file.
+The `tdtool inventory` command also marks such data as unusable; the diagnostic
+`tdtool exe-res` command can still report individual map statuses.
 This decision does not concern the version of the modern port's own executable.
 
 ## 15. Glossary

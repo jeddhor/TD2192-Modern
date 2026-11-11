@@ -64,6 +64,31 @@ fn invalid_arguments_report_stderr_and_fail_without_a_dialog() {
     assert!(out.stdout.is_empty());
 }
 
+#[test]
+fn installation_check_rejects_unknown_retail_executable_before_play() {
+    let dir = std::env::temp_dir().join(format!(
+        "td2192-unsupported-retail-exe-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("FILE0001.EXE"), b"MZ unsupported version").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_td2192"))
+        .args(["--data", dir.to_str().unwrap(), "--check"])
+        .output()
+        .expect("running td2192 --check with an unknown resource executable");
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(!out.status.success(), "{out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("Unsupported retail version of file0001.exe"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Choose a supported retail copy"),
+        "{stderr}"
+    );
+}
+
 /// The Windows loader must not create a console when launched from Explorer.
 #[cfg(windows)]
 #[test]

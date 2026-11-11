@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use td_assets::{DataDir, Episode, FileStatus, discover_data_dir, validate};
+use td_assets::exe_res::ExeResError;
+use td_assets::{DataDir, Episode, ExeResources, FileStatus, discover_data_dir, validate};
 
 pub fn run(data: Option<&Path>, verbose: bool) -> Result<()> {
     let Some((root, source)) = discover_data_dir(data, None) else {
@@ -33,13 +34,25 @@ pub fn run(data: Option<&Path>, verbose: bool) -> Result<()> {
         report.ok_count(),
         report.checks.len()
     );
+    // D10 (MDG §14): ordinary asset presence is not enough when resource
+    // executables have unknown offsets.
+    let resource_check = ExeResources::load_supported(&dir);
+    let resource_issue = match &resource_check {
+        Ok(_) => None,
+        Err(ExeResError::UnsupportedVersion { .. }) => Some("unsupported retail executable"),
+        Err(_) => Some("executable resources unavailable"),
+    };
     for ep in Episode::ALL {
-        let state = match (report.playable(ep), report.exact(ep)) {
-            (true, true) => "playable (exact)",
-            (true, false) => "playable (modified files)",
-            _ => "NOT playable (required files missing)",
-        };
-        println!("{ep}: {state}");
+        if let Some(issue) = resource_issue {
+            println!("{ep}: NOT playable ({issue})");
+        } else {
+            let state = match (report.playable(ep), report.exact(ep)) {
+                (true, true) => "playable (exact)",
+                (true, false) => "playable (modified files)",
+                _ => "NOT playable (required files missing)",
+            };
+            println!("{ep}: {state}");
+        }
     }
     println!(
         "Intro: {}",
@@ -49,5 +62,6 @@ pub fn run(data: Option<&Path>, verbose: bool) -> Result<()> {
             "missing"
         }
     );
+    resource_check?;
     Ok(())
 }

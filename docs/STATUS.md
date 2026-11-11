@@ -59,6 +59,16 @@ is public. The corrected
 and [main CI run](https://github.com/jeddhor/TD2192-Modern/actions/runs/42925050093)
 both passed.
 
+### D10 retail executable compatibility (2026-11-10)
+
+The owner chose to reject unknown versions of the four original executable
+resource files. The installer already checked exact hashes. The game now stops
+before play or installation check with a message naming the unsupported file;
+first-run and in-game data choices reject it as well. `tdtool inventory` marks
+it unusable, while `tdtool exe-res` remains a map diagnostic. Verified with
+installer tests (37 passed), Rust workspace tests both with and without retail
+data, Clippy and a direct-launch regression test.
+
 ### Blocking user decisions (MDG §14)
 
 | ID | Decision | Blocks | Status |
@@ -72,7 +82,7 @@ both passed.
 | D7 | Repo hosting and visibility | Running CI remotely (the workflow file is written regardless) | **DECIDED 2026-11-10 (user): public GitHub `jeddhor/TD2192-Modern`, beta prerelease** |
 | D8 | Default script variant | M5-07 | **DECIDED 2026-11-10 (user): ask the player to choose, as the original does; no automatic default** |
 | D9 | Cheater judgement text | M8-09 | **DECIDED 2026-11-06 (user): port the five harmless chords as original, both profiles; cheater text as original** |
-| D10 | Other retail executable versions | M2-14 | OPEN: decide what to do when one of the four text/table source EXEs has an unrecognized SHA-256. The installer currently rejects it; direct game launch skips its mapped resources and may fail later (MDG §14). |
+| D10 | Other retail executable versions | M2-14 | **DECIDED 2026-11-10 (user): reject an unrecognized SHA-256 for any of the four text/table source EXEs with a message naming the file, before installation or play.** |
 
 ### Done so far (pre-M0)
 
