@@ -268,6 +268,13 @@ M12 owner sign-off was received on 2026-11-10: audio and Enhanced features appro
 
 ## 5. Clean-machine tests (project owner)
 
+**Owner result, 2026-11-10:** The project owner reports that clean-machine install
+tests are finished and that both the Windows and Linux Qt6 installers work. This
+is an owner-reported PASS for both installers; machine details, tested file hashes,
+and itemized results from the checks below were not provided. The published
+[v0.9.1 beta](https://github.com/jeddhor/TD2192-Modern/releases/tag/v0.9.1)
+is the current release.
+
 The smoke tests run on a development machine, so they cannot show what is missing on a new one. Provisioning a new environment needs system changes. The owner runs or authorizes that provisioning, and performs the interactive checks in it:
 
 - Windows Sandbox or a VM;
@@ -365,7 +372,11 @@ outside the repository. `SHA256SUMS` covers these six files:
 The read-only R5 technical audit found no original game assets, disassembly files
 or credentials in the repository. The installers contain only numeric retail-file
 metadata and require the user to supply game data. External rights advice is not
-recorded. Fresh-machine install checks remain pending for 1.0.
+recorded. The owner subsequently reported that clean-machine installation succeeded
+with the Windows and Linux installers (2026-11-10; §5). The corrected hosted
+[release-artifact workflow](https://github.com/jeddhor/TD2192-Modern/actions/runs/42925074757)
+and [main CI](https://github.com/jeddhor/TD2192-Modern/actions/runs/42925050093)
+both completed successfully. Other 1.0 criteria remain in §2.
 
 ### Automation preparation (2026-11-09)
 

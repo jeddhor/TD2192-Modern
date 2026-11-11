@@ -82,6 +82,11 @@ A fresh Windows/Linux machine or VM was not provisioned. Windows Sandbox remains
 disabled; no Windows feature or global package was installed. Manual clean-machine
 picture/audio/controller/X11/Wayland checks remain the existing release gate.
 
+**Later owner update (2026-11-10):** The owner reports that clean-machine install
+tests have since been completed and that both Windows and Linux installers
+work. Individual machine and checklist details were not supplied; the results above
+remain the earlier local integration record.
+
 The earlier complete Rust gates (1,031 passed, 0 failed, 9 ignored with and without
 original data), fmt and Clippy remain the game candidate's record; installer work
 changed Python/C# and documentation only. The existing hosted workflow builds portable

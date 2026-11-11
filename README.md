@@ -6,7 +6,8 @@ A clean-room, modern reimplementation of **Traffic Department 2192** (Safari Sof
 >
 > - **What is in it:** all three episodes, which play from the intro to their endings, with saving, the options, controller support, the Enhanced profile and accessibility options.
 > - **How it is checked:** against recordings of the original game. Every flight of the three episodes matches the original tick for tick, and 96.5 % of the parity checklist passes (see [docs/parity/](docs/parity/)).
-> - **What 1.0 waits for:** clean-machine install tests and the remaining release checklist.
+> - **Installation:** the owner completed clean-machine tests of the Windows and Linux installers; both worked.
+> - **What 1.0 waits for:** the remaining release checklist.
 >
 > What is in this release and what is still missing: [CHANGELOG.md](CHANGELOG.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
