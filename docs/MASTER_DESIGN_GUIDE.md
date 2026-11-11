@@ -1103,9 +1103,18 @@ These need the project owner's decision. Agents MUST NOT decide them; they are l
 | D5 | Which Enhanced features ship in 1.0? | **DECIDED 2026-11-06 (user):** choosing the Enhanced profile turns on a visual preset: 16:9 widescreen, xBR 3x upscaling, subtle lighting, bloom off, polyphonic sound effects and every fix-enhanced original-bug fix; each stays individually adjustable. Colour-blind guidance, skip intro and analog steering are options, off by default |
 | D6 | Target platforms and signing for 1.0 | **DECIDED 2026-11-06 (user): Windows x64 and Linux x64, unsigned;** macOS later if a signing identity becomes available |
 | D7 | Repository hosting and visibility | **DECIDED 2026-11-10 (user): public GitHub `jeddhor/TD2192-Modern` with a beta prerelease** |
-| D8 | Default script variant on first run | Ask, exactly like the original |
+| D8 | Default script variant on first run | **DECIDED 2026-11-10 (user): ask the player to choose, exactly like the original; do not silently select a default** |
 | D9 | Reproduce the original's in-game "cheater" judgement (text only)? | **DECIDED 2026-11-06 (user):** port the five harmless cheat chords (T+I+M, H+A+R+D, J+O+H+N, J+D+W, M+K+A+R) exactly as the original, in both profiles, with the debrief's "cheater" text when its rule fires; the host-modifying E+V+L and P+L+A+Y are never ported |
-| D10 | Behaviour when exe hashes don't match (other versions) | Run with degraded text (placeholders), clear warning |
+| D10 | Behaviour when retail executable hashes don't match the known version | **OPEN.** Earlier recommendation: continue with a clear warning and degraded text. Current installer rejects mismatched resource EXEs; direct launch skips their mapped resources and can encounter missing-text or missing-table errors. |
+
+**D10 clarification.** The four original DOS executables `file0000.exe`,
+`file0001.exe`, `td2.exe` and `td3.exe` supply story text and gameplay tables at
+known byte offsets. The port never executes them. A patched or alternate retail
+version may have different bytes or offsets, so its SHA-256 hash does not match
+the corresponding resource map. The remaining choice is whether 1.0 should
+reject such a version consistently with an actionable message, or support a
+deliberately limited mode after its missing-resource paths have been made safe.
+This decision does not concern the version of the modern port's own executable.
 
 ## 15. Glossary
 

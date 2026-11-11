@@ -70,9 +70,9 @@ both passed.
 | D5 | Enhanced features in 1.0 | M12-04, M12-05 | **DECIDED 2026-11-06 (user): Enhanced = visual preset** (16:9 widescreen, xBR 3x, subtle lighting, bloom off, polyphonic SFX, all fix-enhanced fixes; each adjustable) |
 | D6 | Platforms and signing | M13-01 | **DECIDED 2026-11-06 (user): Windows x64 + Linux x64, unsigned; macOS later** |
 | D7 | Repo hosting and visibility | Running CI remotely (the workflow file is written regardless) | **DECIDED 2026-11-10 (user): public GitHub `jeddhor/TD2192-Modern`, beta prerelease** |
-| D8 | Default script variant | M5-07 | OPEN (recommend: ask, as the original does) |
+| D8 | Default script variant | M5-07 | **DECIDED 2026-11-10 (user): ask the player to choose, as the original does; no automatic default** |
 | D9 | Cheater judgement text | M8-09 | **DECIDED 2026-11-06 (user): port the five harmless chords as original, both profiles; cheater text as original** |
-| D10 | Unknown exe versions | M2-14 | OPEN |
+| D10 | Other retail executable versions | M2-14 | OPEN: decide what to do when one of the four text/table source EXEs has an unrecognized SHA-256. The installer currently rejects it; direct game launch skips its mapped resources and may fail later (MDG §14). |
 
 ### Done so far (pre-M0)
 

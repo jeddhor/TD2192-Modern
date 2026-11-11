@@ -32,6 +32,7 @@ Modern-only infrastructure requested by the owner on 2026-11-10. This is not DOS
   regression tests without a display.
 
 Qt/PySide6 are separate LGPL runtime dependencies expressly requested by the owner;
-they do not change the Rust game's MIT licence. Build notices include corresponding
-source locations, LGPL/GPL texts, third-party attributions, PyInstaller's exception,
+they retain their own licences alongside the Rust game's GPL-3.0-or-later
+licence. Build notices include corresponding source locations, LGPL/GPL texts,
+third-party attributions, PyInstaller's exception,
 and a reproducible onedir mode for replacing the dynamic Qt libraries.

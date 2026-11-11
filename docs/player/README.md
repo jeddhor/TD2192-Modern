@@ -418,7 +418,7 @@ TD2192-Modern never writes into your original game folder. It does not read the 
 - For a file-by-file report, run `tdtool inventory --data <folder or zip>`.
 - A ZIP file is searched for the game files in every folder inside it, so the layout of the archive does not matter.
 
-**Some files are reported as modified.** That is a warning, not an error: your copy differs from the version 1.0 files this port was checked against, for example because it was patched. The game still tries to use them. Text that the game reads from the original programs may be missing if those programs differ.
+**Some files are reported as modified.** For ordinary game data, this is a warning: your copy differs from the version 1.0 files this port was checked against, for example because it was patched. The game still tries to use them. Four original DOS executables (`file0000.exe`, `file0001.exe`, `td2.exe`, `td3.exe`) also supply text and tables. The Qt6 installer requires exact known versions of those four files and reports an unsupported retail version if a hash differs. A direct run without the installer warns and skips resources from a mismatched executable; some screens or flights may then be unavailable. The port never runs the DOS executables.
 
 **The ZIP file is "not a readable ZIP archive", or files in it are "unreadable".** The file may be damaged or incomplete, or it may use a compression method the game cannot read (encrypted archives, for example). Unpack it with your system's own tool, then choose the folder instead.
 
